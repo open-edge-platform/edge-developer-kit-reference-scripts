@@ -1,0 +1,86 @@
+<!-- 
+Copyright (C) 2025 Intel Corporation
+SPDX-License-Identifier: Apache-2.0
+-->
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Installing...</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      background-color: #ffffff; /* White background */
+      margin: 0;
+      padding: 0;
+      height: 100vh; /* Ensure the body fills the entire viewport height */
+      display: flex;
+      flex-direction: column;
+      justify-content: center; /* Center content vertically */
+      align-items: center; /* Center content horizontally */
+    }
+
+    h2 {
+      color: #0071c5; /* Intel blue text for contrast */
+      margin-top: 20px;
+    }
+
+    #progress-container {
+      width: 80%;
+      margin: 20px auto;
+      background-color: #ffffff;
+      border-radius: 10px;
+      border: 2px solid #0071c5; /* Add border color */
+      overflow: hidden;
+    }
+
+    #progress-bar {
+      height: 20px;
+      width: 0%;
+      background-color: #0071c5; /* Intel blue progress bar */
+      transition: width 0.5s ease;
+    }
+
+    #output {
+      white-space: pre-wrap;
+      height: 200px;
+      overflow-y: scroll;
+      background-color: #fff;
+      border: 1px solid #ccc;
+      padding: 10px;
+      margin-top: 20px;
+      animation: fadeIn 1s ease-in-out;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+      }
+      to {
+        opacity: 1;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h2 id="progress-label">Preparing...</h2>
+
+  <div id="progress-container">
+    <div id="progress-bar"></div>
+  </div>
+
+  <!-- <pre id="output"></pre> -->
+
+  <script>
+    // Progress will be controlled by Electron main process via splash.js
+    function updateProgress(status, progress) {
+      const progressLabel = document.getElementById('progress-label');
+      const progressBar = document.getElementById('progress-bar');
+      progressLabel.textContent = status;
+      progressBar.style.width = progress + '%';
+    }
+  </script>
+
+  <script src="splash.js"></script>
+</body>
+</html>

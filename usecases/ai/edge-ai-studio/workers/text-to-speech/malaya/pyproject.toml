@@ -1,0 +1,24 @@
+[project]
+name = "malayatts"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi[standard]>=0.115.6",
+    "malaya",
+    "malaya-speech",
+    "markupsafe==2.1.5",
+    "psutil>=7.0.0",
+    "pysastrawi>=1.2.0",
+    "torch>=2.8.0",
+    "torchaudio>=2.8.0",
+    "torchvision>=0.23.0",
+]
+
+[tool.uv.sources]
+malaya-speech = { git = "https://github.com/mesolitica/malaya-speech" }
+malaya = { git = "https://github.com/huseinzol05/malaya.git" }
+
+[[tool.uv.index]]
+url = "https://download.pytorch.org/whl/xpu"

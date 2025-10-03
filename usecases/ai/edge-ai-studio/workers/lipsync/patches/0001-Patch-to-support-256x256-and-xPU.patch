@@ -1,0 +1,88 @@
+From e73070bf548a4aa84cfa4130cd71e77370adc5fa Mon Sep 17 00:00:00 2001
+From: "user" <user@mail.com>
+Date: Wed, 25 Jun 2025 09:34:29 +0800
+Subject: [PATCH] Patch to support 256x256 and xPU
+
+---
+ audio.py                         |  4 ++--
+ face_detection/detection/core.py |  2 +-
+ models/wav2lip.py                | 12 +++++++++---
+ 3 files changed, 12 insertions(+), 6 deletions(-)
+
+diff --git a/audio.py b/audio.py
+index 32b20c4..66bfa41 100644
+--- a/audio.py
++++ b/audio.py
+@@ -4,7 +4,7 @@ import numpy as np
+ # import tensorflow as tf
+ from scipy import signal
+ from scipy.io import wavfile
+-from hparams import hparams as hp
++from .hparams import hparams as hp
+ 
+ def load_wav(path, sr):
+     return librosa.core.load(path, sr=sr)[0]
+@@ -97,7 +97,7 @@ def _linear_to_mel(spectogram):
+ 
+ def _build_mel_basis():
+     assert hp.fmax <= hp.sample_rate // 2
+-    return librosa.filters.mel(hp.sample_rate, hp.n_fft, n_mels=hp.num_mels,
++    return librosa.filters.mel(sr=hp.sample_rate, n_fft=hp.n_fft, n_mels=hp.num_mels,
+                                fmin=hp.fmin, fmax=hp.fmax)
+ 
+ def _amp_to_db(x):
+diff --git a/face_detection/detection/core.py b/face_detection/detection/core.py
+index 0f8275e..6bce5bd 100644
+--- a/face_detection/detection/core.py
++++ b/face_detection/detection/core.py
+@@ -24,7 +24,7 @@ class FaceDetector(object):
+                 logger = logging.getLogger(__name__)
+                 logger.warning("Detection running on CPU, this may be potentially slow.")
+ 
+-        if 'cpu' not in device and 'cuda' not in device:
++        if 'cpu' not in device and 'cuda' not in device and 'xpu' not in device:
+             if verbose:
+                 logger.error("Expected values for device are: {cpu, cuda} but got: %s", device)
+             raise ValueError
+diff --git a/models/wav2lip.py b/models/wav2lip.py
+index ae5d691..18e59b0 100644
+--- a/models/wav2lip.py
++++ b/models/wav2lip.py
+@@ -11,7 +11,7 @@ class Wav2Lip(nn.Module):
+ 
+         self.face_encoder_blocks = nn.ModuleList([
+             nn.Sequential(Conv2d(6, 16, kernel_size=7, stride=1, padding=3)), # 96,96
+-
++ 
+             nn.Sequential(Conv2d(16, 32, kernel_size=3, stride=2, padding=1), # 48,48
+             Conv2d(32, 32, kernel_size=3, stride=1, padding=1, residual=True),
+             Conv2d(32, 32, kernel_size=3, stride=1, padding=1, residual=True)),
+@@ -32,7 +32,10 @@ class Wav2Lip(nn.Module):
+             nn.Sequential(Conv2d(256, 512, kernel_size=3, stride=2, padding=1),     # 3,3
+             Conv2d(512, 512, kernel_size=3, stride=1, padding=1, residual=True),),
+             
+-            nn.Sequential(Conv2d(512, 512, kernel_size=3, stride=1, padding=0),     # 1, 1
++            nn.Sequential(Conv2d(512, 512, kernel_size=3, stride=2, padding=1),
++            Conv2d(512, 512, kernel_size=3, stride=1, padding=1, residual=True), ),
++
++            nn.Sequential(Conv2d(512, 512, kernel_size=4, stride=1, padding=0),     # 1, 1
+             Conv2d(512, 512, kernel_size=1, stride=1, padding=0)),])
+ 
+         self.audio_encoder = nn.Sequential(
+@@ -57,9 +60,12 @@ class Wav2Lip(nn.Module):
+         self.face_decoder_blocks = nn.ModuleList([
+             nn.Sequential(Conv2d(512, 512, kernel_size=1, stride=1, padding=0),),
+ 
+-            nn.Sequential(Conv2dTranspose(1024, 512, kernel_size=3, stride=1, padding=0), # 3,3
++            nn.Sequential(Conv2dTranspose(1024, 512, kernel_size=4, stride=1, padding=0), # 3,3
+             Conv2d(512, 512, kernel_size=3, stride=1, padding=1, residual=True),),
+ 
++            nn.Sequential(Conv2dTranspose(1024, 512, kernel_size=3, stride=2, padding=1, output_padding=1),
++            Conv2d(512, 512, kernel_size=3, stride=1, padding=1, residual=True), ),
++
+             nn.Sequential(Conv2dTranspose(1024, 512, kernel_size=3, stride=2, padding=1, output_padding=1),
+             Conv2d(512, 512, kernel_size=3, stride=1, padding=1, residual=True),
+             Conv2d(512, 512, kernel_size=3, stride=1, padding=1, residual=True),), # 6, 6
+-- 
+2.43.0
+

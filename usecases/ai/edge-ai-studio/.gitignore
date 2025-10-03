@@ -1,0 +1,38 @@
+# Python environment
+.venv
+__pycache__
+
+# Payload cache
+/frontend/.env
+/frontend/.next
+/frontend/db.sqlite
+/frontend/node_modules
+
+# Thirdparty
+/thirdparty/
+/workers/thirdparty
+/workers/embedding/thirdparty
+/workers/text-generation/thirdparty
+/workers/text-to-speech/kokoro/thirdparty
+/workers/lipsync/modules/lipsync/wav2lip/wav2lip256
+/workers/lipsync/data/avatars
+/workers/lipsync/models
+/workers/lipsync/build
+
+/workers/embedding/data
+
+/models
+
+tmp
+/logs
+
+/tests/coverity/*
+!/tests/coverity/coverity_scan.sh
+
+/build
+
+*.log
+/out/*
+!/out/README.md
+!/out/run_web.sh
+!/out/setup.sh

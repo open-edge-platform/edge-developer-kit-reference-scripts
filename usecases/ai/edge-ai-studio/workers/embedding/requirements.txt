@@ -1,0 +1,45 @@
+--extra-index-url "https://download.pytorch.org/whl/cpu"
+--extra-index-url "https://storage.openvinotoolkit.org/simple/wheels/nightly"
+--extra-index-url "https://storage.openvinotoolkit.org/simple/wheels/pre-release"
+
+# OVMS
+optimum-intel@git+https://github.com/huggingface/optimum-intel.git
+openvino-tokenizers==2025.3.0.0rc1
+openvino==2025.3.0rc1 
+nncf>=2.11.0 
+sentencepiece==0.2.0
+transformers<4.54
+einops
+torchvision
+timm==1.0.15
+diffusers==0.33.1
+
+# FastAPI and Web Framework
+fastapi[standard]==0.116.0
+
+# ML and AI Libraries
+sentence_transformers==5.0.0
+openai==1.93.1
+cohere==5.15.0
+numpy==1.26.3
+
+# Vector Database and Search
+faiss-cpu==1.11.0
+
+# LangChain Ecosystem
+langchain==0.3.26
+langchain-openai==0.3.27
+langchain_cohere==0.4.4
+langchain_community==0.3.27
+langchainhub==0.1.21
+
+# Document Processing
+unstructured==0.18.3
+pdfminer.six==20250506
+
+# Database and Modeling
+sqlmodel>=0.0.24
+
+# Model Context Protocol
+mcp>=1.12.4
+
