@@ -1,0 +1,121 @@
+From d8122a0d6e8b1b54a2b1055044d9c1fa4c7dd937 Mon Sep 17 00:00:00 2001
+From: Tiffany Pragasam <tiffany.tien.nee.pragasam@intel.com>
+Date: Tue, 29 Jul 2025 14:10:02 +0800
+Subject: [PATCH] Added KokoroTTS OpenVINO support
+
+---
+ api/src/inference/kokoro_v1.py | 78 ++++++++++++++++++++++++++++------
+ pyproject.toml                 |  1 +
+ 2 files changed, 67 insertions(+), 12 deletions(-)
+
+diff --git a/api/src/inference/kokoro_v1.py b/api/src/inference/kokoro_v1.py
+index a627dbb..22bc2ff 100644
+--- a/api/src/inference/kokoro_v1.py
++++ b/api/src/inference/kokoro_v1.py
+@@ -14,6 +14,68 @@ from ..core.model_config import model_config
+ from ..structures.schemas import WordTimestamp
+ from .base import AudioChunk, BaseModelBackend
+ 
++import json
++from pathlib import Path
++import openvino as ov
++from huggingface_hub import hf_hub_download
++
++
++class OVKModel(KModel):
++    def __init__(
++        self, model_dir: Path, device: str, repo_id: str = "hexgrad/Kokoro-82M"
++    ):
++        torch.nn.Module.__init__(self)
++
++        core = ov.Core()
++        self.repo_id = repo_id
++        self.model_dir = model_dir
++
++        self.download_kokoro_model()
++
++        with open(f"{self.model_dir}/config.json", encoding="utf8") as f:
++            config = json.load(f)
++        self.vocab = config["vocab"]
++        self.model = core.compile_model(
++            f"{self.model_dir}/openvino_model.xml", device.upper()
++        )
++        self.context_length = config["plbert"]["max_position_embeddings"]
++
++    @property
++    def device(self):
++        return torch.device("cpu")
++
++    def forward_with_tokens(
++        self, input_ids: torch.LongTensor, ref_s: torch.FloatTensor, speed: float = 1
++    ) -> tuple[torch.FloatTensor, torch.LongTensor]:
++        outputs = self.model([input_ids, ref_s, torch.tensor(speed)])
++        return torch.from_numpy(outputs[0]), torch.from_numpy(outputs[1])
++
++    def download_kokoro_model(self):
++        pipeline = KPipeline(lang_code="a", repo_id=self.repo_id)
++
++        if not Path(f"{self.model_dir}/openvino_model.xml").exists():
++            logger.info("Converting Kokoro model to OpenVINO format ...")
++            model = pipeline.model
++            model.forward = model.forward_with_tokens
++            input_ids = torch.randint(1, 100, (48,)).numpy()
++            input_ids = torch.LongTensor([[0, *input_ids, 0]])
++            style = torch.randn(1, 256)
++            speed = torch.randint(1, 10, (1,), dtype=torch.float32)
++
++            ov_model = ov.convert_model(
++                model,
++                example_input=(input_ids, style, speed),
++                input=[ov.PartialShape("[1, 2..]"), ov.PartialShape([1, -1])],
++            )
++            ov.save_model(ov_model, f"{self.model_dir}/openvino_model.xml")
++            hf_hub_download(
++                repo_id=self.repo_id, filename="config.json", local_dir=self.model_dir
++            )
++
++            del model
++
++        del pipeline
++
+ 
+ class KokoroV1(BaseModelBackend):
+     """Kokoro backend with controlled resource management."""
+@@ -47,18 +109,10 @@ class KokoroV1(BaseModelBackend):
+             logger.info(f"Config path: {config_path}")
+             logger.info(f"Model path: {model_path}")
+ 
+-            # Load model and let KModel handle device mapping
+-            self._model = KModel(config=config_path, model=model_path).eval()
+-            # For MPS, manually move ISTFT layers to CPU while keeping rest on MPS
+-            if self._device == "mps":
+-                logger.info(
+-                    "Moving model to MPS device with CPU fallback for unsupported operations"
+-                )
+-                self._model = self._model.to(torch.device("mps"))
+-            elif self._device == "cuda":
+-                self._model = self._model.cuda()
+-            else:
+-                self._model = self._model.cpu()
++            # Load model and let OVKModel handle device mapping
++            self._model = OVKModel(
++                model_dir=os.path.dirname(model_path), device="CPU"
++            ).eval()
+ 
+         except FileNotFoundError as e:
+             raise e
+diff --git a/pyproject.toml b/pyproject.toml
+index 5d082f7..f15519f 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -40,6 +40,7 @@ dependencies = [
+     "phonemizer-fork>=3.3.2",
+     "av>=14.2.0",
+     "text2num>=2.5.1",
++    "openvino==2025.2.0",
+ ]
+ 
+ [project.optional-dependencies]
+-- 
+2.43.0
+

@@ -1,0 +1,35 @@
+# Copyright (C) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+session_id: ''
+avatar_type: wav2lip
+wav2lip:
+  avatar_path: ./data/avatars/wav2lip_avatar_256
+tts_type: kokorotts
+kokorotts:
+  languages:
+    en-US:
+      voice: af_heart
+      lang_code: a
+    zh-TW:
+      voice: zf_xiaoxiao
+      lang_code: z
+    zh-CN:
+      voice: zf_xiaoxiao
+      lang_code: z
+    ja-JP:
+      voice: jf_nezumi
+      lang_code: j
+language:
+  en-US:
+    name: English
+  zh-TW:
+    name: Traditional Chinese
+  zh-CN:
+    name: Simplified Chinese
+  ja-JP:
+    name: Japanese
+  ko-KR:
+    name: Korean
+  ms-MY:
+    name: Bahasa Melayu
