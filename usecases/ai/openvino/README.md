@@ -5,7 +5,7 @@
 - Asrock IEPF-9030S-EY4 + Intel® Arc™ A770 Graphics
 
 ## Pre-requisites
-- Platform or GPU reference setup script installed. Refer to [README.md](../../../README.md#quick-start) 
+- Platform or GPU reference setup script installed. Refer to [README.md](../../../README.md#-5-minute-quick-start) 
 - Docker version 24 or later installed
 
 ## Quick Start

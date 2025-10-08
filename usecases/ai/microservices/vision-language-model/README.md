@@ -20,7 +20,7 @@ It provides endpoints for managing the pipeline, checking the pipeline status, r
 
 ### 2. Install GPU Driver (Optional)
 - If you plan to use a GPU for inference, install the appropriate GPU driver:
-  - **Intel® Arc™ A-Series Graphics:** [Installation Guide](../../../README.md#quick-start)
+  - **Intel® Arc™ A-Series Graphics:** [Installation Guide](../../../README.md#-5-minute-quick-start)
 
 ### 3. Install Docker Engine
 - Follow the official [Docker installation guide](https://docs.docker.com/engine/install/) to set up Docker Engine on your system.

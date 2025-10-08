@@ -28,7 +28,7 @@ grpcio | 1.69.0
 ## Prerequisites
 - [Docker Engine](https://docs.docker.com/engine/install/ubuntu/)
 
-- Optional: [GPU Driver](../../../README.md#quick-start)
+- Optional: [GPU Driver](../../../README.md#-5-minute-quick-start)
 
 
 ## Download and prepare YOLO model

@@ -1,21 +1,58 @@
+
 # Edge Developer Kit Reference Scripts
 
-This repository provides simplified developer kit reference setup scripts for various Intel platforms and GPUs.
 
-> **Note:** The main branch contains the latest development version of the project. It may include experimental features, work in progress, or unstable code.
+**Transform your Intel® hardware into a powerful AI and edge computing platform in minutes, not hours.**
 
-## Table of Contents
 
-- [Recommended Edge Design Support](#recommended-edge-design-support)
-- [Architecture Overview](#architecture-overview)
-- [System Requirements](#system-requirements)
-- [Quick Start](#quick-start)
-- [Use Cases](./docs/use-cases.md)
-- [Troubleshooting](./docs/troubleshooting.md)
-- [Support](#support)
-- [Disclaimer](#disclaimer)
+Whether you're an ODM/OEM developer, AI/ML engineer, university student, or hardware enthusiast, this repository provides everything you need to unlock the full potential of Intel® latest processors and GPUs.
 
-## Recommended Edge Design Support
+
+This repository provides simplified developer kit reference setup scripts for various Intel® platforms and GPUs.
+
+> **⚡ Quick Start:** Get running in 5 minutes with our [one-line installer](#-5-minute-quick-start)
+
+> **🚧 Note:** The main branch contains the latest development version of the project. It may include experimental features, work in progress, or unstable code.
+
+## 🎯 Who Is This For?
+
+| **Your Background** | **What You'll Get** | **Start Here** |
+|-------------------|-------------------|----------------|
+| 🏭 **ODM/OEM Developer** | Production-ready platform setup with validated hardware configurations | [Hardware Setup Guide](#-validated-hardware--configurations) |
+| 🤖 **AI/ML Developer** | Ready-to-use AI workloads: LLMs, computer vision, speech processing | [AI Use Cases](#-ai--ml-use-cases) |
+| 🎓 **Student/Researcher** | Learning-oriented tutorials with step-by-step explanations | [Learning Path](./docs/getting-started/README.md) |
+| 🔧 **Hardware Enthusiast** | Experiment with cutting-edge Intel* hardware and software | [Quick Start](#-5-minute-quick-start) |
+| 🏆 **ESQ Users** | System validation and certification for hardware qualification | [ESQ Overview](https://www.intel.com/content/www/us/en/developer/articles/guide/edge-software-device-qualification.html)|
+
+
+## 🚀 5-Minute Quick Start
+
+**Just bought an Intel developer kit?** Get up and running immediately:
+
+```bash
+# One command to rule them all
+sudo bash -c "$(wget -qLO - https://raw.githubusercontent.com/intel/edge-developer-kit-reference-scripts/refs/heads/main/main_installer.sh)"
+```
+
+> **First time?** → Follow our [detailed setup guide](./docs/getting-started.md) for a guided experience.
+
+### 🚀 **Next Steps**
+
+1. **Explore all use cases** from [our gallery](./docs/use-cases.md)
+2. **Discover more ingredients** in [Open Edge Platform Software Catalog](https://edgesoftwarecatalog.intel.com/) and [Open Edge Platform GitHub](https://github.com/open-edge-platform) 
+2. **Join the community** on [GitHub Discussions](https://github.com/intel/edge-developer-kit-reference-scripts/discussions)
+3. **Share your projects** and help others learn!
+
+## 📋 Table of Contents
+
+- [🎯 Who Is This For?](#-who-is-this-for)
+- [🚀 5-Minute Quick Start](#-5-minute-quick-start)
+- [💻 Validated Hardware & Configurations](#-validated-hardware--configurations)
+- [🤖 AI & ML Use Cases](./docs/use-cases.md)
+- [❓ Need Help?](#-need-help)
+- [⚠️ Important Notes](#️-important-notes)
+
+## 💻 Validated Hardware & Configurations
 
 | Product Collection | Code Name | Support | Validated Hardware |
 |--------------|--------------|-------------------|--------------------|
@@ -41,106 +78,44 @@ The following table lists the validated hardware combinations using Developer Ki
 | **Bartlett Lake (BTL)** | 2 x Arc B60 (dGPU) | ✅ Supported |
 | **Raptor Lake (RPL)** | Arc B60 (dGPU) | ✅ Supported |
 
-## Architecture Overview
 
-```
-edge-developer-kit-reference-scripts/
-├── main_installer.sh              # Main entry point
-├── platform_detection.sh          # Platform and hardware detection
-├── npu_installer.sh               # NPU drivers (Core Ultra)
-├── gpu_installer.sh               # GPU drivers and tools
-├── openvino_installer.sh          # OpenVINO and camera use cases
-├── print_summary_table.sh         # Summarize post installation
-└── usecases/                      # Reference implementation 
-```
-
-## System Requirements
-
-- **Operating System:** Ubuntu 24.04 LTS (Desktop)
-- **Kernel:** HWE kernel (auto-installed by script)
-- **User Privileges:** Requires sudo/root access
-- **Internet Connection:** Needed for package installation
-- **Graphics:** Integrated (iGPU) and/or discrete (dGPU) GPU 
-   >**Note:** Ensure the Resizable BAR option is enabled in BIOS [Intel® Arc™ Graphics – Desktop Quick Start Guide](https://www.intel.com/content/www/us/en/support/articles/000091128/graphics/intel-arc-dedicated-graphics-family.html#aSeries).
+## ❓ Need Help?
 
 
-## Quick Start
+### 🚑 **Quick Solutions**
+- **Installation Issues?** → [Troubleshooting Guide](./docs/troubleshooting.md)
+- **Common Questions?** → [FAQ](./docs/faq.md)
+- **Community Support?** → [GitHub* Discussions](https://github.com/intel/edge-developer-kit-reference-scripts/discussions)
 
-1. **Install Operating System**
-   Install the latest [Ubuntu* 24.04 LTS Desktop](https://releases.ubuntu.com/noble/). Refer to the [Ubuntu Desktop installation tutorial](https://ubuntu.com/tutorials/install-ubuntu-desktop) if needed.
+### 📞 **Get Support**
+| Issue Type | Where to Go |
+|------------|-------------|
+| **Bug Reports** | [GitHub* Issues](https://github.com/intel/edge-developer-kit-reference-scripts/issues) |
+| **Feature Requests** | [GitHub* Discussions](https://github.com/intel/edge-developer-kit-reference-scripts/discussions) |
+| **General Questions** | [Community Forum](https://community.intel.com/) |
 
-2. **Run Setup Script**
 
-   This step will configure the basic setup of the platform. Ensure all requirements have been met before proceeding.
+---
 
-   ```bash
-   sudo bash -c "$(wget -qLO - https://raw.githubusercontent.com/intel/edge-developer-kit-reference-scripts/refs/heads/main/main_installer.sh)"
-   ```
+## ⚠️ Important Notes
 
-   During the installation process, you may be asked to reboot your system. Reboot when prompted.
 
-3. **After Reboot**
-
-   Rerun `openvino_installer.sh` and `print_summary_table.sh` after system reboot.
-
-   ```bash
-   sudo ./openvino_installer.sh
-   ```
-   
-   ```bash
-   sudo ./print_summary_table.sh
-   ```
-   
-   Installation is completed when you see this message:
-
-   ```
-   ========================================================================
-   Running Installation Summary
-
-   ==================== System Installation Summary ====================
-   Item                      | Value
-   ------------------------ -+-----------------------------------------
-   Kernel Version            | 6.14.0-27-generic
-   HWE Stack                 | Installed
-   Ubuntu Version            | Ubuntu 24.04.3 LTS
-   NPU Status                | Detected
-   NPU Package               | intel-level-zero-npu
-   NPU Version               | 1.19.0.20250707-16111289554
-   intel-driver-compiler-npu | 1.19.0.20250707-16111289554
-   intel-fw-npu              | 1.19.0.20250707-16111289554
-   intel-level-zero-npu      | 1.19.0.20250707-16111289554
-   level-zero                | 1.22.4
-   GPU Type                  | Intel
-   GPU Count                 | 4 Intel graphics device(s) detected
-   GPU Driver                | i915 (loaded)
-   GPU Device 1              | 00:02.0 VGA compatible controller: Intel Corporation Arrow Lake-U [Intel Graphics] (rev 06)
-   GPU Device 2              | 03:00.0 VGA compatible controller: Intel Corporation Device e20b
-   GPU Device 3              | 08:00.0 VGA compatible controller: Intel Corporation Device e20b
-   GPU Device 4              | 80:14.5 Non-VGA unclassified device: Intel Corporation Device 7f2f (rev 10)
-   ------------------------ -+-----------------------------------------
-   Intel Graphics Packages   |
-   ------------------------ -+-----------------------------------------
-   i965-va-driver:amd64      | 2.4.1+dfsg1-1build2
-   intel-gsc                 | 0.9.5-0ubuntu1~24.04~ppa1
-   intel-media-va-driver-non-free:amd64 | 25.3.1-0ubuntu1~24.04~ppa1
-   intel-opencl-icd          | 25.27.34303.9-1~24.04~ppa1
-   libegl-mesa0:amd64        | 25.0.7-0ubuntu0.24.04.1
-   ------------------------ -+-----------------------------------------
-   Platform Status           | [✓] Platform is configured
-   =====================================================================
-
-   ========================================================================
-   Installation completed: 2025-08-11 10:11:54
-   Log file saved: /var/log/intel-platform-installer.log
-   ========================================================================
-   ```
-
-For further assistance, open an issue on GitHub with detailed information.
-
-## Disclaimer
-
+### 🛡️ **Development Status**
 This repository contains pre-production code and is intended for testing and evaluation purposes only. The code and features provided here are in development and may be incomplete, unstable, or subject to change without notice. Use this repository at your own risk.
 
 The reference scripts provided in this repository have been validated and tested on the hardware listed in the documentation. While we strive to ensure compatibility and performance, these scripts may not function as expected on other hardware configurations. Users may encounter issues or unexpected behavior when running the scripts on untested hardware. If you encounter any issues or have suggestions for improvements, we welcome you to open an issue.
 
-**GStreamer License Notice:** GStreamer* is an open source framework licensed under LGPL. See https://gstreamer.freedesktop.org/documentation/frequently-asked-questions/licensing.html. You are solely responsible for determining if your use of GStreamer requires any additional licenses. Intel is not responsible for obtaining any such licenses, nor liable for any licensing fees due, in connection with your use of GStreamer.
+### 📄 **License Notes**
+
+- **GStreamer*:** LGPL licensed - you're responsible for additional licenses if needed → [Learn more](https://gstreamer.freedesktop.org/documentation/frequently-asked-questions/licensing.html)
+- **Intel* Components:** Check individual component licenses in installation logs
+
+### 🤝 **Contributing**
+We welcome contributions! Check our [Contributing Guide](./CONTRIBUTING.md) to get started.
+
+---
+
+
+**🎉 Ready to start building amazing AI applications with Intel* hardware? Let's go!** → [Choose your first project](./docs/use-cases.md)
+
+---

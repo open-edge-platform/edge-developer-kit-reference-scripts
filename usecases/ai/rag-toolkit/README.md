@@ -31,7 +31,7 @@ Please ensure that you have these ports available before running the application
 - [Docker](https://docs.docker.com/engine/install/)
 
 ### 2. Install GPU driver
-- [Intel® Arc™ A-Series Graphics](../../../README.md#quick-start)
+- [Intel® Arc™ A-Series Graphics](../../../README.md#-5-minute-quick-start)
 
 ### 3. Run Script to Setup and Install Docker
 ```

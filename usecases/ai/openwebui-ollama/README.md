@@ -21,7 +21,7 @@ Install the latest [Ubuntu* 24.04 LTS Desktop](https://releases.ubuntu.com/noble
 Docker and docker compose should be setup before running the commands below. Refer to [here](https://docs.docker.com/engine/install/) to setup docker.
 
 ### 3. Install necessary GPU drivers.
-   - Refer to [here](../../../README.md#quick-start) to setup GPU drivers
+   - Refer to [here](../../../README.md#-5-minute-quick-start) to setup GPU drivers
 
 ## Application ports
 Please ensure that you have these ports available before running the applications.
