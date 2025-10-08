@@ -19,7 +19,7 @@ The smart parking application is an AI-based solution to monitor individual car 
 * **Docker and Docker Compose**: Ensure Docker and Docker Compose are installed. Refer to [Docker installation guide](https://docs.docker.com/engine/install/).
 
 * **Intel GPU Drivers**:
-Refer to [here](../../../README.md#gpu) to install Intel GPU Drivers
+Refer to [here](../../../README.md#-5-minute-quick-start) to install Intel GPU Drivers
 
 ### Generate SSL certs
 

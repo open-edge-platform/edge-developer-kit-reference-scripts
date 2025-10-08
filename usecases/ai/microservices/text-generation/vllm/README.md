@@ -15,7 +15,7 @@ Install the latest [Ubuntu 24.04 LTS Desktop](https://releases.ubuntu.com/noble/
 
 ### 2. Install GPU Driver (Optional)
 If you plan to use a GPU for inference, install the appropriate GPU driver:
-- **Intel® Arc™ A-Series Graphics:** [Installation Guide](../../../README.md#quick-start)
+- **Intel® Arc™ A-Series Graphics:** [Installation Guide](../../../README.md#-5-minute-quick-start)
 
 ### 3. Set Up Docker
 Follow the instructions [here](https://docs.docker.com/engine/install/) to install Docker and Docker Compose.
