@@ -88,7 +88,7 @@ await new Promise((resolve) => {
 })
 
 // Send offer to avatar service and get answer
-const response = await fetch('http://localhost:${port}/offer', {
+const response = await fetch('http://localhost:${port}/v1/lipsync/offer', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ offer: peerConnection.localDescription })
@@ -126,7 +126,7 @@ async def connect_to_avatar():
     
     # Send offer to avatar service
     async with aiohttp.ClientSession() as session:
-        async with session.post('http://localhost:${port}/offer', 
+        async with session.post('http://localhost:${port}/v1/lipsync/offer', 
                                json={"offer": pc.localDescription.dict()}) as resp:
             data = await resp.json()
             answer = RTCSessionDescription(**data["answer"])
@@ -143,13 +143,12 @@ async def connect_to_avatar():
     {
       language: 'Javascript',
       languageCode: 'js',
-      code: `
-// Send message to avatar
+      code: `// Send message to avatar
 const handleSendMessage = (message) => {
   if (!message) return
   
   // Send message - avatar will speak the message
-  fetch('http://localhost:${port}/chat',{
+  fetch('http://localhost:${port}/v1/lipsync/chat',{
       method: 'POST',
       body: JSON.stringify(
       { 
@@ -163,7 +162,7 @@ const handleSendMessage = (message) => {
 
 // Stop avatar speaking
 const stopAvatar = async (sessionId) => {
-  await fetch('http://localhost:${port}/stop'}', {
+  await fetch('http://localhost:${port}/v1/lipsync/stop'}', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sessionId })
@@ -179,7 +178,7 @@ import asyncio
 async def send_message_to_avatar(session_id, message):
     """Send a message to the avatar for speech synthesis"""
     async with aiohttp.ClientSession() as session:
-        async with session.post('http://localhost:${port}/chat', 
+        async with session.post('http://localhost:${port}/v1/lipsync/chat', 
                                json={
                                    "messages": [
                                        {"role": "user", "content": message}
@@ -197,9 +196,102 @@ async def send_message_to_avatar(session_id, message):
 async def stop_avatar_speaking(session_id):
     """Stop the avatar from speaking"""
     async with aiohttp.ClientSession() as session:
-        async with session.post('http://localhost:${port}/chat/stop', 
+        async with session.post('http://localhost:${port}/v1/lipsync/stop', 
                                json={"sessionId": session_id}) as resp:
             return await resp.json()`,
+    },
+  ]
+
+  const audioIntegrationSnippet: CodeSnippet[] = [
+    {
+      language: 'Javascript',
+      languageCode: 'js',
+      code: `// Upload audio file for lipsync processing
+const handleAudioUpload = async (audioFile, sessionId, textOverlay = null) => {
+  if (!audioFile || !sessionId) return
+  
+  const formData = new FormData()
+  formData.append('file', audioFile)
+  formData.append('session_id', sessionId)
+  
+  if (textOverlay) {
+    formData.append('text_overlay', textOverlay)
+  }
+  formData.append('language_code', 'en-US')
+
+  try {
+    const response = await fetch('http://localhost:${port}/v1/lipsync', {
+      method: 'POST',
+      body: formData // No need to set Content-Type, browser handles it for FormData
+    })
+    
+    const result = await response.json()
+    
+    if (result.status === 'success') {
+      console.log('Audio processing started:', result.audio_info)
+      // Audio will now be processed and lip-synced video will stream via WebRTC
+    }
+  } catch (error) {
+    console.error('Error uploading audio:', error)
+  }
+}
+
+// Example usage with file input
+const fileInput = document.getElementById('audioFile')
+fileInput.addEventListener('change', (event) => {
+  const file = event.target.files[0]
+  const textOverlay = 'This is the transcribed text from the audio'
+  
+  if (file) {
+    handleAudioUpload(file, sessionId, textOverlay)
+  }
+})`,
+    },
+    {
+      language: 'Python',
+      languageCode: 'py',
+      code: `import aiohttp
+import aiofiles
+
+async def upload_audio_for_lipsync(session_id, audio_file_path, text_overlay=None):
+    """Upload audio file for direct lipsync processing"""
+    
+    # Prepare form data
+    data = aiohttp.FormData()
+    data.add_field('session_id', session_id)
+    data.add_field('language_code', 'en-US')
+    
+    if text_overlay:
+        data.add_field('text_overlay', text_overlay)
+    
+    # Add audio file
+    async with aiofiles.open(audio_file_path, 'rb') as f:
+        file_content = await f.read()
+        data.add_field('file', file_content, 
+                      filename='audio.wav', 
+                      content_type='audio/wav')
+    
+    # Send request
+    async with aiohttp.ClientSession() as session:
+        async with session.post('http://localhost:${port}/v1/lipsync', 
+                               data=data) as resp:
+            result = await resp.json()
+            
+            if result['status'] == 'success':
+                print(f"Audio processing started: {result['audio_info']}")
+                # Lip-synced video will now stream via WebRTC
+                return result
+            else:
+                raise Exception(f"Failed to process audio: {result}")
+
+# Example usage
+async def process_audio_file():
+    session_id = "your_session_id_from_webrtc"
+    audio_path = "path/to/your/audio/file.wav"
+    text_overlay = "This text will appear on the video"
+    
+    result = await upload_audio_for_lipsync(session_id, audio_path, text_overlay)
+    print("Processing result:", result)`,
     },
   ]
 
@@ -207,111 +299,133 @@ async def stop_avatar_speaking(session_id):
     {
       language: 'Javascript',
       languageCode: 'js',
-      code: `import React, { useRef, useEffect, useState } from 'react'
-function AvatarChat() {
-  const [peerConnection, setPeerConnection] = useState(null)
-  const [sessionId, setSessionId] = useState('')
-  const [connectionStatus, setConnectionStatus] = useState('disconnected')
-  const [currentMessage, setCurrentMessage] = useState('')
-  const videoRef = useRef(null)
+      code: `import React, { useRef, useState } from 'react'
 
-  const connectAvatar = async () => {
-    const config = {
-      sdpSemantics: 'unified-plan',
-      iceServers: []
-    }
+function AvatarChat() {
+  const [sessionId, setSessionId] = useState('')
+  const [connected, setConnected] = useState(false)
+  const [message, setMessage] = useState('')
+  const videoRef = useRef(null)
+  const audioRef = useRef(null)
+
+  const connect = async () => {
+    const pc = new RTCPeerConnection({ sdpSemantics: 'unified-plan', iceServers: [] })
     
-    const pc = new RTCPeerConnection(config)
-    setPeerConnection(pc)
-    
-    // Handle incoming video stream
-    pc.addEventListener('track', (evt) => {
-      if (evt.track.kind === 'video') {
-        videoRef.current.srcObject = evt.streams[0]
-      }
-    })
-    
-    // Add transceivers
     pc.addTransceiver('video', { direction: 'recvonly' })
     pc.addTransceiver('audio', { direction: 'recvonly' })
     
-    // Create offer and establish connection
+    pc.addEventListener('track', (evt) => {
+      if (evt.track.kind === 'video') videoRef.current.srcObject = evt.streams[0]
+      if (evt.track.kind === 'audio') audioRef.current.srcObject = evt.streams[0]
+    })
+    
     const offer = await pc.createOffer()
     await pc.setLocalDescription(offer)
     
-    // Wait for ICE gathering
     await new Promise((resolve) => {
-      if (pc.iceGatheringState === 'complete') {
-        resolve()
-      } else {
-        pc.addEventListener('icegatheringstatechange', () => {
-          if (pc.iceGatheringState === 'complete') {
-            resolve()
-          }
-        })
-      }
+      if (pc.iceGatheringState === 'complete') resolve()
+      else pc.addEventListener('icegatheringstatechange', () => {
+        if (pc.iceGatheringState === 'complete') resolve()
+      })
     })
     
-    // Connect to avatar service
-    setConnectionStatus('connecting')
-    try {
-      const response = await fetch('http://localhost:${port}/offer', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ offer: pc.localDescription })
-      })
-      
-      const answer= await response.json()
-      await pc.setRemoteDescription(answer)
-      
-      setSessionId(session_id)
-      setConnectionStatus('connected')
-    } catch (error) {
-      setConnectionStatus('disconnected')
-      console.error('Failed to connect:', error)
-    }
-  }
-  
-  // Send message to avatar
-  const handleSendMessage = () => {
-    if (!currentMessage) return
+    const response = await fetch('http://localhost:${port}/v1/lipsync/offer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sdp: pc.localDescription.sdp, type: pc.localDescription.type })
+    })
+    const answer = await response.json()
     
-    // Send message - avatar will speak the message
-    fetch('http://localhost:${port}/chat',{
-        method: 'POST',
-        body: JSON.stringify(
-        { 
-          text: currentMessage, 
-          language_code: 'en-US', //Customize your language here for supported tts language
-          session_id: sessionId, 
-          type: "echo"}
-        )
-      }
-    setCurrentMessage('')
+    await pc.setRemoteDescription(new RTCSessionDescription({ sdp: answer.sdp, type: answer.type }))
+    setSessionId(answer.session_id)
+    setConnected(true)
+  }
+
+  const sendMessage = async () => {
+    await fetch('http://localhost:${port}/v1/lipsync/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_type: 'echo',
+        session_id: sessionId,
+        text: message,
+        voice: 'af_heart',
+        model: 'kokoro',
+        speed: '1.0'
+      })
+    })
+    setMessage('')
+  }
+
+  const uploadAudio = async (event) => {
+    const file = event.target.files[0]
+    if (!file) return
+    
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('session_id', sessionId)
+    formData.append('language_code', 'en-US')
+    
+    await fetch('http://localhost:${port}/v1/lipsync', { method: 'POST', body: formData })
   }
 
   return (
-    <div>
-      <video ref={videoRef} autoPlay muted playsInline />
-      <button onClick={connectAvatar} disabled={connectionStatus === 'connected'}>
-        {connectionStatus === 'connected' ? 'Connected' : 'Connect Avatar'}
-      </button>
-      
-      <div>
-        {messages.map((message) => (
-          <div key={message.id}>
-            <strong>{message.role}:</strong> {message.content}
-          </div>
-        ))}
+    <div style={{ padding: '20px', maxWidth: '800px', margin: '0 auto' }}>
+      <div style={{ marginBottom: '20px' }}>
+        <video ref={videoRef} autoPlay muted playsInline style={{ 
+          width: '400px', 
+          border: '2px solid #ddd',
+          borderRadius: '8px'
+        }} />
+        <audio ref={audioRef} autoPlay style={{ display: 'none' }} />
       </div>
       
-      <input
-        value={currentMessage}
-        onChange={(e) => setCurrentMessage(e.target.value)}
-        placeholder="Type message for avatar to speak..."
-        disabled={connectionStatus !== 'connected'}
-      />
-      <button onClick={handleSendMessage}>Send</button>
+      <div style={{ marginBottom: '20px' }}>
+        <button onClick={connect} disabled={connected} style={{ 
+          padding: '5px 10px',
+          marginRight: '10px',
+          backgroundColor: connected ? '#28a745' : '#007bff',
+          color: 'white',
+          border: 'none',
+          borderRadius: '6px',
+          cursor: connected ? 'default' : 'pointer'
+        }}>
+          {connected ? 'Connected' : 'Connect'}
+        </button>
+        <span>Session: {sessionId}</span>
+      </div>
+
+      <div style={{ marginBottom: '20px' }}>
+        <input 
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          placeholder="Type message..."
+          disabled={!connected}
+          style={{ 
+            width: '300px', 
+            padding: '5px', 
+            marginRight: '10px',
+            border: '2px solid #ddd',
+            borderRadius: '6px'
+          }}
+        />
+        <button onClick={sendMessage} disabled={!connected || !message} style={{
+          padding: '5px 10px',
+          backgroundColor: '#28a745',
+          color: 'white',
+          border: 'none',
+          borderRadius: '6px',
+          cursor: (!connected || !message) ? 'default' : 'pointer'
+        }}>Send</button>
+      </div>
+
+      <div>
+        <input type="file" accept=".wav,.mp3,.m4a" onChange={uploadAudio} disabled={!connected} style={{
+          padding: '5px 10px',
+          border: '2px solid #ddd',
+          borderRadius: '6px'
+        }} />
+      </div>
     </div>
   )
 }
@@ -424,10 +538,29 @@ export default AvatarChat`,
               data={webRTCConnectionSnippet}
             />
 
+            <p className="text-lg leading-relaxed font-semibold text-slate-700">
+              Audio File Integration with Avatar
+            </p>
             <p className="leading-relaxed text-slate-700">
-              Once connected, send a POST to the /chat endpoint with type set to
-              &quot;echo&quot;, include the session_id from the WebRTC
-              handshake, and provide a language_code to select the TTS voice.
+              You can upload audio files directly for lipsync processing without
+              requiring text-to-speech conversion. The avatar will lip-sync to
+              your uploaded audio and stream the result via WebRTC.
+            </p>
+            <CodeBlock
+              title={'Audio File Integration with Avatar'}
+              data={audioIntegrationSnippet}
+            />
+
+            <p className="text-lg leading-relaxed font-semibold text-slate-700">
+              Chat Integration with Avatar
+            </p>
+            <p className="leading-relaxed text-slate-700">
+              Alternatively, you can send text messages to the avatar which will
+              be converted to speech using text-to-speech, then lip-synced and
+              streamed via WebRTC. Send a POST to the /v1/lipsync/chat endpoint
+              with type set to &quot;echo&quot;, include the session_id from the
+              WebRTC handshake, and provide a language_code to select the TTS
+              voice.
             </p>
             <CodeBlock
               title={'Chat Integration with Avatar'}

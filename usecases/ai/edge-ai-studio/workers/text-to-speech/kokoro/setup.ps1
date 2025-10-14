@@ -1,12 +1,22 @@
 # Copyright (C) 2025 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
-$KokoroFastAPICommitHash = "543cbecc1a36b1d1b1cc90923a47d6178d9374dc"
-$EspeakNgVersion = "1.52.0"
+$ErrorActionPreference = "Stop"
+
+$TTS_SCRIPT_DIR = $PSScriptRoot
+$TTS_VENV_DIR = Join-Path $TTS_SCRIPT_DIR ".venv"
+
+# Repo info for kokoro
+$REPO_URL = "https://github.com/hexgrad/kokoro.git"
+# specific commit hash to fetch (from the tree URL provided)
+$REPO_COMMIT = "dfb907a02bba8152ca444717ca5d78747ccb4bec"
+$DEST_DIR = Join-Path $TTS_SCRIPT_DIR "kokoro"
+$ROOT_THIRDPARTY_DIR = "$TTS_SCRIPT_DIR\..\..\..\thirdparty"
+$PARENT_GIT_PATH = "$ROOT_THIRDPARTY_DIR\git\cmd\git.exe"
 
 # Function to check if uv is installed
 function Test-UvInstalled {
-    Write-Host "Checking if uv is installed..." -ForegroundColor Yellow
+    Write-Host "Checking if uv is installed in workers thirdparty directory..." -ForegroundColor Yellow
     
     # Use uv from workers thirdparty folder (2 levels up)
     $parentUvPath = Join-Path (Split-Path (Split-Path $PWD -Parent) -Parent) "thirdparty\uv\uv.exe"
@@ -21,127 +31,138 @@ function Test-UvInstalled {
     }
 }
 
-# Download and extract espeak-ng if not exists
-function Download-EspeakNg {
-    if (Test-Path "espeak-ng-$EspeakNgVersion") {
-        Write-Host "espeak-ng already exists, skipping download..." -ForegroundColor Green
+function New-VirtualEnvironment {
+    if (Test-Path $TTS_VENV_DIR) {
+        Write-Host "Virtual environment already exists at $TTS_VENV_DIR." -ForegroundColor Green
     } else {
-        Write-Host "Downloading espeak-ng..." -ForegroundColor Yellow
-        try {
-            Invoke-WebRequest -Uri "https://github.com/espeak-ng/espeak-ng/archive/refs/tags/$EspeakNgVersion.zip" -OutFile "espeak-ng-$EspeakNgVersion.zip"
-        } catch {
-            Write-Host "Failed to download espeak-ng" -ForegroundColor Red
-            Read-Host "Press Enter to continue..."
-            throw
-        }
-        
-        Write-Host "Extracting espeak-ng..." -ForegroundColor Yellow
-        try {
-            Expand-Archive -Path "espeak-ng-$EspeakNgVersion.zip" -DestinationPath '.'
-        } catch {
-            Write-Host "Failed to extract espeak-ng" -ForegroundColor Red
-            Read-Host "Press Enter to continue..."
-            throw
-        }
-        
-        Write-Host "Cleaning up zip file..." -ForegroundColor Yellow
-        try {
-            Remove-Item "espeak-ng-$EspeakNgVersion.zip"
-        } catch {
-            Write-Host "Warning: Failed to delete zip file" -ForegroundColor Yellow
-        }
+        Write-Host "Creating Python 3.11 virtual environment with uv ..." -ForegroundColor Yellow
+        & $script:uvCommand venv --python 3.11 --seed
     }
+    & $script:uvCommand sync
+    & $script:uvCommand run python -m ensurepip
 }
 
-# Clone Kokoro-FastAPI if not exists
-function Clone-KokoroFastAPI {
-    ..\.venv\Scripts\activate.ps1
+function Clone-KokoroRepo {
+    Write-Host "Preparing kokoro at $DEST_DIR" -ForegroundColor Yellow
 
-    if (Test-Path "Kokoro-FastAPI") {
-        Write-Host "Kokoro-FastAPI already exists, skipping clone..." -ForegroundColor Green
-    } else {
-        Write-Host "Cloning Kokoro-FastAPI repository..." -ForegroundColor Yellow
-
-        # Check if Git is installed
-        try {
-            git --version | Out-Null
-        } catch {
-            Write-Host "Git not found. Please install Git from: https://github.com/git-for-windows/git/releases" -ForegroundColor Red
-            Read-Host "Press Enter to continue..."
-            throw
-        }
-
-        try {
-            git clone https://github.com/remsky/Kokoro-FastAPI
-        } catch {
-            Write-Host "Failed to clone Kokoro-FastAPI repository" -ForegroundColor Red
-            Read-Host "Press Enter to continue..."
-            throw
-        }
-        
-        Set-Location Kokoro-FastAPI
-
-        Write-Host "Checking out specific commit..." -ForegroundColor Yellow
-        try {
-            git checkout $KokoroFastAPICommitHash
-        } catch {
-            Write-Host "Failed to checkout commit" -ForegroundColor Red
-            Read-Host "Press Enter to continue..."
-            throw
-        }
-        
-        Write-Host "Applying patch..." -ForegroundColor Yellow
-        try {
-            git apply --ignore-whitespace ..\..\0001-PATCH-Added-KokoroTTS-OpenVINO-support.patch
-        } catch {
-            Write-Host "Failed to apply patch" -ForegroundColor Red
-            Read-Host "Press Enter to continue..."
-            throw
-        }
-        
-        Write-Host "Installing dependencies..." -ForegroundColor Yellow
-        try {
-            & $script:uvCommand sync --active --extra cpu
-        } catch {
-            Write-Host "Failed to install dependencies" -ForegroundColor Red
-            Read-Host "Press Enter to continue..."
-            throw
-        }
-
-        Set-Location "..\"
+    # Check if git is available
+    if (-not (Test-Path "$PARENT_GIT_PATH")) {
+        Write-Host "Portable git is not found in thirdparty folder, ensure setup script is ran properly"
+        throw "Git not found"
     }
 
-    deactivate
-}
-
-# Function to download third-party dependencies
-function Get-ThirdPartyDependencies {
-    Write-Host "Creating thirdparty directory..." -ForegroundColor Yellow
-    if (-not (Test-Path ".\thirdparty")) {
-        New-Item -ItemType Directory -Path ".\thirdparty" | Out-Null
+    if ((Test-Path $DEST_DIR) -and (Get-ChildItem $DEST_DIR -Force).Count -gt 0) {
+        Write-Host "Destination $DEST_DIR already exists and is not empty. Skipping clone." -ForegroundColor Green
+        return
     }
 
-    Set-Location ".\thirdparty"
-    Download-EspeakNg
-    Clone-KokoroFastAPI
-    Set-Location "..\"
+    # Initialize a repository and fetch only the specific commit (shallow)
+    Write-Host "Cloning specific commit $REPO_COMMIT from $REPO_URL into $DEST_DIR" -ForegroundColor Yellow
+    & $PARENT_GIT_PATH init $DEST_DIR
+    Push-Location $DEST_DIR
+    
+    try {
+        & $PARENT_GIT_PATH remote add origin $REPO_URL
+
+        # Try to fetch the specific commit shallowly. If that fails, fall back to a shallow branch fetch.
+        try {
+            & $PARENT_GIT_PATH fetch --depth 1 origin $REPO_COMMIT
+            & $PARENT_GIT_PATH checkout FETCH_HEAD
+        } catch {
+            Write-Host "Warning: could not fetch commit $REPO_COMMIT directly. Falling back to shallow clone of default branch." -ForegroundColor Yellow
+            & $PARENT_GIT_PATH fetch --depth 1 origin
+            try {
+                & $PARENT_GIT_PATH checkout --detach FETCH_HEAD
+            } catch {
+                & $PARENT_GIT_PATH checkout --force
+            }
+        }
+
+        # If a local patch file exists next to this script, attempt to apply it now
+        $PATCH_FILE = Join-Path $TTS_SCRIPT_DIR "kokoro.patch"
+        if (Test-Path $PATCH_FILE) {
+            Write-Host "Applying local patch: $PATCH_FILE" -ForegroundColor Yellow
+            # Try a clean git apply first (index update) and commit the result. Fail hard if patch can't be applied.
+            try {
+                & $PARENT_GIT_PATH apply --whitespace=fix $PATCH_FILE
+                & $PARENT_GIT_PATH add -A
+                # Try to commit; if commit fails (e.g. no changes), continue
+                try {
+                    & $PARENT_GIT_PATH commit -m "Apply local kokoro.patch" --author="Edge AI Studio <no-reply@local>"
+                    Write-Host "Patch applied and committed." -ForegroundColor Green
+                } catch {
+                    # Continue if commit fails (no changes)
+                }
+            } catch {
+                Write-Host "git apply failed; attempting git am fallback..." -ForegroundColor Yellow
+                # git am expects an email-style patch. Try it as a fallback. If it fails, abort and exit to avoid pruning useful files.
+                try {
+                    Get-Content $PATCH_FILE | & $PARENT_GIT_PATH am --signoff
+                    Write-Host "Patch applied via git am." -ForegroundColor Green
+                } catch {
+                    Write-Host "ERROR: Failed to apply patch $PATCH_FILE. Aborting setup so the repository isn't pruned incorrectly." -ForegroundColor Red
+                    try { & $PARENT_GIT_PATH am --abort } catch { }
+                    Pop-Location
+                    throw "Patch application failed"
+                }
+            }
+        } else {
+            Write-Host "No local patch file found at $PATCH_FILE; skipping patch step." -ForegroundColor Yellow
+        }
+
+        # Remove everything except the kokoro folder
+        Write-Host "Pruning repository: keeping only the 'kokoro' folder" -ForegroundColor Yellow
+        # Get all items except kokoro
+        $itemsToRemove = Get-ChildItem -Force | Where-Object { $_.Name -ne "kokoro" -and $_.Name -ne "." -and $_.Name -ne ".." }
+        foreach ($item in $itemsToRemove) {
+            try {
+                Remove-Item -Path $item.FullName -Recurse -Force
+            } catch {
+                # Continue on error
+            }
+        }
+
+        # If the repo produced a nested kokoro folder (DEST_DIR/kokoro), move its contents up
+        if (Test-Path "kokoro") {
+            Write-Host "Moving contents of inner 'kokoro' up into $DEST_DIR" -ForegroundColor Yellow
+            $kokoroItems = Get-ChildItem -Path "kokoro" -Force
+            if ($kokoroItems.Count -gt 0) {
+                foreach ($item in $kokoroItems) {
+                    try {
+                        Move-Item -Path $item.FullName -Destination . -Force
+                    } catch {
+                        # Continue on error
+                    }
+                }
+            }
+            Remove-Item -Path "kokoro" -Recurse -Force -ErrorAction SilentlyContinue
+        } else {
+            Write-Host "Warning: expected 'kokoro' directory not found in fetched repo." -ForegroundColor Yellow
+        }
+
+        # Optionally remove .git to leave only the kokoro content in the folder structure
+        if (Test-Path ".git") {
+            Remove-Item -Path ".git" -Recurse -Force
+        }
+
+        Write-Host "kokoro prepared at $DEST_DIR (kokoro files at top level)" -ForegroundColor Green
+    } finally {
+        Pop-Location
+    }
 }
 
 # Main execution
-try {
-    Write-Host "Starting setup for Kokoro FastAPI with Intel GPU support..." -ForegroundColor Green
+function Main {
+    Write-Host "Starting setup for Kokoro FastAPI with Intel GPU support ..." -ForegroundColor Green
+    Set-Location $TTS_SCRIPT_DIR
     Test-UvInstalled
-    
-    # create a virtual environment if it doesn't exist
-    if (Test-Path ".venv") {
-        Write-Host "Virtual environment already exists." -ForegroundColor Green
-    } else {
-        Write-Host "Creating virtual environment with uv..." -ForegroundColor Yellow
-        & $script:uvCommand venv --python 3.11
-    }
-    
-    Get-ThirdPartyDependencies
+    New-VirtualEnvironment
+    Clone-KokoroRepo
     Write-Host "Setup completed successfully!" -ForegroundColor Green
+}
+
+try {
+    Main
     exit 0
 } catch {
     Write-Host "Setup failed: $($_.Exception.Message)" -ForegroundColor Red

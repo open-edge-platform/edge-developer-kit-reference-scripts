@@ -4,6 +4,8 @@
 $SCRIPT_DIR = $PSScriptRoot
 $PARENT_THIRDPARTY_DIR = "$SCRIPT_DIR\..\thirdparty"
 $PARENT_UV_PATH = "$PARENT_THIRDPARTY_DIR\uv\uv.exe"
+$ROOT_THIRDPARTY_DIR = "$SCRIPT_DIR\..\..\thirdparty"
+$PARENT_GIT_PATH = "$ROOT_THIRDPARTY_DIR\git\cmd\git.exe"
 $UV_CMD = $PARENT_UV_PATH
 
 Write-Host "Setup Digital Avatar Environment" -ForegroundColor Green
@@ -41,11 +43,16 @@ function Install-Wav2LipDependencies {
         New-Item -ItemType Directory -Path "$SCRIPT_DIR\tmp" -Force
     }
 
+    if (-not (Test-Path "$PARENT_GIT_PATH")) {
+        Write-Host "Portable git is not found in thirdparty folder, ensure setup script is ran properly"
+        throw "Git not found"
+    }
+
     # Clone and patch Wav2Lip
-    git clone https://github.com/Rudrabha/Wav2Lip "$SCRIPT_DIR\tmp\Wav2Lip"
+    & $PARENT_GIT_PATH clone https://github.com/Rudrabha/Wav2Lip "$SCRIPT_DIR\tmp\Wav2Lip"
     Set-Location -Path "$SCRIPT_DIR\tmp\Wav2Lip"
-    git checkout bac9a81e63ecc153202353372e5724b83d9e6322
-    git apply "$SCRIPT_DIR\patches\0001-Patch-to-support-256x256-and-xPU.patch"
+    & $PARENT_GIT_PATH checkout bac9a81e63ecc153202353372e5724b83d9e6322
+    & $PARENT_GIT_PATH apply "$SCRIPT_DIR\patches\0001-Patch-to-support-256x256-and-xPU.patch"
 
     Set-Location -Path $SCRIPT_DIR
     

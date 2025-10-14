@@ -35,7 +35,31 @@ export interface SearchKBProps {
   query: string
 }
 
+export interface ChunkMetadata {
+  producer?: string
+  creator?: string
+  creationdate?: string
+  author?: string
+  moddate?: string
+  total_pages?: number
+  source: string
+}
+
 export interface SearchResult {
   content: string
-  metadata: Record<string, unknown>
+  metadata: ChunkMetadata
+}
+
+export interface ChunkResult {
+  chunk_id: number
+  doc_id: string
+  content: string
+  metadata: ChunkMetadata
+  embedding?: number[]
+}
+
+export interface ChunksResponse {
+  kb_id: number
+  total_chunks: number
+  chunks: ChunkResult[]
 }

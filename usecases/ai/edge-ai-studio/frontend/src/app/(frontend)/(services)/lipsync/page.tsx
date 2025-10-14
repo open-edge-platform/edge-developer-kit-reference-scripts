@@ -116,7 +116,7 @@ export default function LipsyncPage() {
         }
       />
       <WorkloadComponent
-        title="AI Lipsync"
+        title="Lipsync"
         workload={workload}
         description={DESCRIPTION}
         workloadType={TYPE}
@@ -129,13 +129,11 @@ export default function LipsyncPage() {
               workload?.metadata?.turnServerIp ??
               LIPSYNC_WORKLOAD.metadata.turnServerIp
             }
-            workload={ttsWorkload}
           />
         }
         docsElement={<DocumentationTemplate data={data} />}
         logsElement={<Logs name={`${workload?.name}_${workload?.id}`} />}
         isLoading={isLoading}
-        prerequisiteServices={['text-to-speech']}
       />
     </>
   )

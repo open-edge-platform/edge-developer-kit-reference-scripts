@@ -40,6 +40,17 @@ Replace `--port` with your desired value if needed. See the options below for de
 - Downloads the Kokoro TTS model if not present.
 - Starts the FastAPI server with the specified port.
 
+### Model Caching
+
+The Kokoro worker implements intelligent model caching to optimize performance and reduce download times:
+
+- **Kokoro Base Model**: Downloaded and cached on first startup in `models/tts/kokoro/` directory
+- **Default Voice**: The `af_heart` voice is downloaded during initial setup
+- **Other Voices**: Additional voices are downloaded and cached only when first requested/selected
+- **Local Model Reuse**: If a voice model already exists in the models directory, the local cached version is used instead of downloading
+
+This approach minimizes initial setup time while ensuring voices are available when needed. All models are stored locally for subsequent use.
+
 ### Notes
 
 - For GPU support, make sure your system has the required Intel drivers.

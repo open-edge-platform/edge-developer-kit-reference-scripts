@@ -5,7 +5,7 @@ import numpy as np
 import argparse
 import cv2
 import os
-import pickle #nosec B403 -- creating a pickle file for storing coordinates
+import pickle  # nosec B403 -- reading the pickle file created by another script only
 import yaml
 
 from uuid import uuid4

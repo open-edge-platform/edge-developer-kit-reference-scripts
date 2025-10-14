@@ -90,6 +90,35 @@ class WebRTCAvatar(WebRTCStreamer):
     def echo(self, text, voice, model, speed):
         self.tts.speak(text, {"voice": voice, "model": model, "speed": speed})
 
+    def process_audio(self, audio_data, metadata=None):
+        """
+        Process audio file data directly for lipsync streaming via WebRTC.
+
+        Args:
+            audio_data: Raw audio data (numpy array, 16kHz mono)
+            metadata: Optional metadata for text overlay
+        """
+        # Convert audio data to chunks that match the expected audio frame size
+        chunk_size = self.avatar.audio_chunk_size
+        audio_chunks = []
+
+        for i in range(0, len(audio_data), chunk_size):
+            chunk = audio_data[i : i + chunk_size]
+            if len(chunk) < chunk_size:
+                # Pad the last chunk if necessary
+                padded_chunk = np.zeros(chunk_size, dtype=np.float32)
+                padded_chunk[: len(chunk)] = chunk
+                chunk = padded_chunk
+            audio_chunks.append(chunk)
+
+        # Queue the audio chunks for processing
+        for chunk in audio_chunks:
+            self.avatar.audio_input_queue.put((chunk, metadata))
+
+        getLogger(__file__).info(
+            f"Queued {len(audio_chunks)} audio chunks for processing"
+        )
+
     def webrtc(self, signal_event, loop, video_track, audio_track):
         while not signal_event.is_set():
             try:

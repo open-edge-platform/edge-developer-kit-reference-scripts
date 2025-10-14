@@ -8,7 +8,7 @@ import argparse
 import logging
 import multiprocessing
 import asyncio
-import subprocess #nosec -- used as a catch exception type only
+import subprocess  # nosec -- used as a catch exception type only
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -26,7 +26,7 @@ from sqlmodel import Field, Session, SQLModel, select
 from openai import OpenAI
 from openai.types import EmbeddingCreateParams
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 
 from utils.embedding_ovms import (
     start_ovms_background,
@@ -36,6 +36,9 @@ from utils.rag_engine import (
     configure_rag_engine,
     create_data_embedding,
     search_information,
+    get_all_chunks,
+    add_chunk_to_kb,
+    delete_chunks_from_kb,
 )
 from utils.database import create_db_and_tables, get_session
 
@@ -77,8 +80,71 @@ class KnowledgeFile(BaseModel):
     name: str
 
 
+class SearchRequest(BaseModel):
+    """Request model for knowledge base search."""
+
+    query: str = Field(..., description="Search query string")
+    search_type: str = Field(
+        "similarity",
+        description="Type of search: 'similarity', 'mmr', or 'similarity_score_threshold'",
+    )
+    top_k: int = Field(
+        4, description="Number of documents to retrieve from vector search"
+    )
+    top_n: int = Field(3, description="Number of documents to return after reranking")
+    score_threshold: Optional[float] = Field(
+        None,
+        description="Minimum relevance threshold (only for similarity_score_threshold)",
+    )
+    fetch_k: int = Field(
+        20, description="Amount of documents to pass to MMR algorithm (only for mmr)"
+    )
+    lambda_mult: float = Field(
+        0.5,
+        description="Diversity of results returned by MMR (only for mmr, 1=min diversity, 0=max diversity)",
+    )
+    filter: Optional[Dict[str, Any]] = Field(
+        None, description="Filter by document metadata"
+    )
+
+
+class CreateEmbeddingsRequest(BaseModel):
+    """Request model for creating knowledge base embeddings."""
+
+    splitter_name: str = Field(
+        "RecursiveCharacter",
+        description="Type of text splitter: 'Character', 'RecursiveCharacter', or 'Markdown'",
+    )
+    chunk_size: int = Field(
+        1000, description="Size of each text chunk (default: 1000)", gt=0
+    )
+    chunk_overlap: int = Field(
+        200, description="Overlap between chunks (default: 200)", ge=0
+    )
+
+
+class AddChunkRequest(BaseModel):
+    """Request model for manually adding a text chunk to knowledge base."""
+
+    content: str = Field(..., description="Text content of the chunk", min_length=1)
+    metadata: Optional[Dict[str, Any]] = Field(
+        None, description="Optional metadata for the chunk"
+    )
+
+
+class DeleteChunksRequest(BaseModel):
+    """Request model for deleting chunks from knowledge base by document IDs."""
+
+    doc_ids: List[str] = Field(
+        ...,
+        description="List of document IDs to delete from the knowledge base",
+        min_length=1,
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global OVMS_PROCESS
     create_db_and_tables()
 
     logger.info("Initializing server services ...")
@@ -286,13 +352,40 @@ def upload_file(id: int, file: UploadFile, session: Session = Depends(get_sessio
 
 
 @app.post("/v1/kb/{id}/create")
-def create_kb_embeddings(id: int):
+def create_kb_embeddings(id: int, request: Optional[CreateEmbeddingsRequest] = None):
+    """Create embeddings for documents in the knowledge base.
+
+    Args:
+        id: Knowledge base ID
+        request: Optional configuration for text splitting (uses defaults if not provided)
+    """
     try:
-        if create_data_embedding(id, f"./data/{id}"):
+        # Use defaults if no request body is provided for backward compatibility
+        if request is None:
+            request = CreateEmbeddingsRequest()
+
+        # Validate chunk_overlap is not greater than chunk_size
+        if request.chunk_overlap >= request.chunk_size:
+            raise HTTPException(
+                status_code=400, detail="chunk_overlap must be less than chunk_size"
+            )
+
+        if create_data_embedding(
+            id,
+            f"./data/{id}",
+            splitter_name=request.splitter_name,
+            chunk_size=request.chunk_size,
+            chunk_overlap=request.chunk_overlap,
+        ):
             return JSONResponse(
                 {
                     "status": True,
                     "message": f"Successfully created embeddings for {id}",
+                    "config": {
+                        "splitter_name": request.splitter_name,
+                        "chunk_size": request.chunk_size,
+                        "chunk_overlap": request.chunk_overlap,
+                    },
                 }
             )
         else:
@@ -302,18 +395,197 @@ def create_kb_embeddings(id: int):
                     "message": f"Failed to create embeddings for {id}",
                 }
             )
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions
     except Exception as e:
-        raise HTTPException(status_code=404, detail=e)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/v1/kb/{id}/search", name="Search KB")
-def search_kb(id: int, q: str = Query(..., alias="q")):
-    """Search the knowledge base `id` for the query `q` and return matching documents.
+@app.get("/v1/kb/{id}/chunks", name="Get All KB Chunks")
+def get_kb_chunks(
+    id: int,
+    include_embeddings: bool = Query(
+        False, description="Include embedding vectors in the response"
+    ),
+    session: Session = Depends(get_session),
+):
+    """Retrieve all embedding chunks from the knowledge base.
+
+    Args:
+        id: Knowledge base ID
+        include_embeddings: Whether to include embedding vectors (default: False)
+        session: Database session for checking KB existence
+
+    Returns:
+        A list of objects with `content`, `metadata`, and `chunk_id` keys.
+        If include_embeddings=True, also includes `embedding` key with vector data.
+    """
+    try:
+        # Check if the knowledge base exists in the database
+        kb = session.get(KnowledgeBase, id)
+        if not kb:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Knowledge base with ID {id} not found in database.",
+            )
+
+        # Check if FAISS database exists
+        faiss_path = f"./data/{id}/faissdb"
+        if not os.path.exists(faiss_path):
+            # Return empty chunks if no FAISS database exists yet
+            return JSONResponse({"kb_id": id, "total_chunks": 0, "chunks": []})
+
+        chunks = get_all_chunks(id, include_embeddings=include_embeddings)
+
+        return JSONResponse(
+            {"kb_id": id, "total_chunks": len(chunks), "chunks": chunks}
+        )
+
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Error retrieving chunks: {str(e)}"
+        )
+
+
+@app.post("/v1/kb/{id}/chunks", name="Add Chunk to KB")
+def add_chunk_to_kb_endpoint(
+    id: int, request: AddChunkRequest, session: Session = Depends(get_session)
+):
+    """Manually add a text chunk to the knowledge base.
+
+    Args:
+        id: Knowledge base ID
+        request: Request containing the text content and optional metadata
+        session: Database session for checking KB existence
+
+    Returns:
+        Success status and chunk information
+    """
+    try:
+        # Check if the knowledge base exists in the database
+        kb = session.get(KnowledgeBase, id)
+        if not kb:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Knowledge base with ID {id} not found in database.",
+            )
+
+        # Check if FAISS database exists, create if it doesn't
+        faiss_path = f"./data/{id}/faissdb"
+        data_dir = f"./data/{id}"
+
+        # Ensure data directory exists
+        if not os.path.exists(data_dir):
+            os.makedirs(data_dir, exist_ok=True)
+
+        result = add_chunk_to_kb(
+            kb_id=id, content=request.content, metadata=request.metadata
+        )
+
+        return JSONResponse(result)
+
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error adding chunk: {str(e)}")
+
+
+@app.delete("/v1/kb/{id}/chunks", name="Delete Chunks from KB")
+def delete_chunks_from_kb_endpoint(
+    id: int, request: DeleteChunksRequest, session: Session = Depends(get_session)
+):
+    """Delete chunks from the knowledge base by document IDs.
+
+    Args:
+        id: Knowledge base ID
+        request: Request containing the list of document IDs to delete
+        session: Database session for checking KB existence
+
+    Returns:
+        Success status and deletion information
+    """
+    try:
+        # Check if the knowledge base exists in the database
+        kb = session.get(KnowledgeBase, id)
+        if not kb:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Knowledge base with ID {id} not found in database.",
+            )
+
+        # Check if FAISS database exists
+        faiss_path = f"./data/{id}/faissdb"
+        if not os.path.exists(faiss_path):
+            # Return success with no deletions if no FAISS database exists
+            return JSONResponse(
+                {
+                    "success": True,
+                    "message": "No chunks to delete - knowledge base is empty",
+                    "deletion_info": {
+                        "requested_ids": request.doc_ids,
+                        "initial_count": 0,
+                        "final_count": 0,
+                        "deleted_count": 0,
+                    },
+                }
+            )
+
+        result = delete_chunks_from_kb(kb_id=id, doc_ids=request.doc_ids)
+
+        return JSONResponse(result)
+
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except FileNotFoundError as fe:
+        raise HTTPException(status_code=404, detail=str(fe))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error deleting chunks: {str(e)}")
+
+
+@app.post("/v1/kb/{id}/search", name="Search KB")
+def search_kb(id: int, request: SearchRequest):
+    """Search the knowledge base `id` for the query and return matching documents.
+
+    Args:
+        id: Knowledge base ID
+        request: Search request containing query and parameters
 
     Returns a list of objects with `content` and `metadata` keys.
     """
     try:
-        docs = search_information(id, q)
+        # Validate search_type
+        valid_search_types = ["similarity", "mmr", "similarity_score_threshold"]
+        if request.search_type not in valid_search_types:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid search_type. Must be one of: {valid_search_types}",
+            )
+
+        # Build retriever_kwargs from request parameters
+        retriever_kwargs = {"k": request.top_k}
+
+        if request.score_threshold is not None:
+            retriever_kwargs["score_threshold"] = request.score_threshold
+        if request.fetch_k != 20:  # Only add if different from default
+            retriever_kwargs["fetch_k"] = request.fetch_k
+        if request.lambda_mult != 0.5:  # Only add if different from default
+            retriever_kwargs["lambda_mult"] = request.lambda_mult
+        if request.filter is not None:
+            retriever_kwargs["filter"] = request.filter
+
+        docs = search_information(
+            id,
+            request.query,
+            top_n=request.top_n,
+            search_type=request.search_type,
+            retriever_kwargs=retriever_kwargs,
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

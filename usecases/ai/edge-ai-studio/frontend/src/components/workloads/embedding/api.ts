@@ -182,8 +182,8 @@ export const embeddingEndpoints: EndpointProps[] = [
     method: 'GET',
     exampleResponse: `{
   "name": "Research Papers",
-  "db": ""
-  "id": 1,
+  "db": "",
+  "id": 1
 }`,
     parameters: [
       {
@@ -284,12 +284,23 @@ export const embeddingEndpoints: EndpointProps[] = [
   {
     title: 'Create Embeddings for Knowledge Base',
     description:
-      'Process all uploaded files in a knowledge base and create embeddings for semantic search.',
+      'Process all uploaded files in a knowledge base and create embeddings for semantic search. Supports configurable text splitting and chunking parameters.',
     path: '/v1/kb/{id}/create',
+    body: `{
+  "splitter_name": "RecursiveCharacter",
+  "chunk_size": 1000,
+  "chunk_overlap": 200
+}`,
     method: 'POST',
+    headers: `Content-Type: application/json`,
     exampleResponse: `{
   "status": true,
-  "message": "Successfully created embeddings for 1"
+  "message": "Successfully created embeddings for 1",
+  "config": {
+    "splitter_name": "RecursiveCharacter",
+    "chunk_size": 1000,
+    "chunk_overlap": 200
+  }
 }`,
     parameters: [
       {
@@ -297,14 +308,40 @@ export const embeddingEndpoints: EndpointProps[] = [
         description: 'Knowledge base ID to create embeddings for',
         required: true,
       },
+      {
+        name: 'splitter_name',
+        description:
+          'Type of text splitter: "Character", "RecursiveCharacter", or "Markdown"',
+        required: false,
+      },
+      {
+        name: 'chunk_size',
+        description: 'Size of each text chunk (default: 1000)',
+        required: false,
+      },
+      {
+        name: 'chunk_overlap',
+        description: 'Overlap between chunks (default: 200)',
+        required: false,
+      },
     ],
   },
   {
     title: 'Search Knowledge Base',
     description:
-      'Perform semantic search within a knowledge base and return relevant document chunks.',
-    path: '/v1/kb/{id}/search?q={query}',
-    method: 'GET',
+      'Perform semantic search within a knowledge base using various search algorithms and return relevant document chunks.',
+    path: '/v1/kb/{id}/search',
+    body: `{
+  "query": "machine learning fundamentals",
+  "search_type": "similarity",
+  "top_k": 4,
+  "top_n": 3,
+  "score_threshold": 0.5,
+  "fetch_k": 20,
+  "lambda_mult": 0.5
+}`,
+    method: 'POST',
+    headers: `Content-Type: application/json`,
     exampleResponse: `[
   {
     "content": "Machine learning is a subset of artificial intelligence...",
@@ -340,8 +377,166 @@ export const embeddingEndpoints: EndpointProps[] = [
         required: true,
       },
       {
-        name: 'q',
-        description: 'URL-encoded search query for semantic matching',
+        name: 'query',
+        description: 'Search query string for semantic matching',
+        required: true,
+      },
+      {
+        name: 'search_type',
+        description:
+          'Type of search: "similarity", "mmr", or "similarity_score_threshold"',
+        required: false,
+      },
+      {
+        name: 'top_k',
+        description:
+          'Number of documents to retrieve from vector search (default: 4)',
+        required: false,
+      },
+      {
+        name: 'top_n',
+        description:
+          'Number of documents to return after reranking (default: 3)',
+        required: false,
+      },
+      {
+        name: 'score_threshold',
+        description:
+          'Minimum relevance threshold (only for similarity_score_threshold)',
+        required: false,
+      },
+      {
+        name: 'fetch_k',
+        description:
+          'Amount of documents to pass to MMR algorithm (only for mmr, default: 20)',
+        required: false,
+      },
+      {
+        name: 'lambda_mult',
+        description:
+          'Diversity of results returned by MMR (only for mmr, 0=max diversity, 1=min diversity, default: 0.5)',
+        required: false,
+      },
+      {
+        name: 'filter',
+        description: 'Filter by document metadata (optional)',
+        required: false,
+      },
+    ],
+  },
+  {
+    title: 'Get Knowledge Base Chunks',
+    description:
+      'Retrieve all text chunks from a knowledge base with optional embedding vectors.',
+    path: '/v1/kb/{id}/chunks',
+    method: 'GET',
+    exampleResponse: `{
+  "kb_id": 1,
+  "total_chunks": 25,
+  "chunks": [
+    {
+      "chunk_id": 0,
+      "doc_id": "doc_123456",
+      "content": "Machine learning is a subset of artificial intelligence...",
+      "metadata": {
+        "producer": "Microsoft® Word for Microsoft 365",
+        "creator": "Microsoft® Word for Microsoft 365",
+        "creationdate": "2025-04-15T09:41:32+08:00",
+        "author": "John Doe",
+        "moddate": "2025-04-15T09:41:32+08:00",
+        "total_pages": 4,
+        "source": "./data/1/ml_guide.pdf",
+      }
+    },
+    {
+      "chunk_id": 1,
+      "doc_id": "doc_123457",
+      "content": "Deep neural networks consist of multiple layers...",
+      "metadata": {
+        "source": "manual_entry"
+      }
+    }
+  ]
+}`,
+    parameters: [
+      {
+        name: 'id',
+        description: 'Knowledge base ID',
+        required: true,
+      },
+      {
+        name: 'include_embeddings',
+        description:
+          'Include embedding vectors in the response (query parameter, default: false)',
+        required: false,
+      },
+    ],
+  },
+  {
+    title: 'Add Chunk to Knowledge Base',
+    description:
+      'Manually add a text chunk to a knowledge base with optional metadata.',
+    path: '/v1/kb/{id}/chunks',
+    body: `{
+  "content": "This is a manually added text chunk about AI concepts.",
+  "metadata": {
+    "source": "manual_entry",
+    "author": "John Doe"
+  }
+}`,
+    method: 'POST',
+    headers: `Content-Type: application/json`,
+    exampleResponse: `{
+  "success": true,
+  "chunk_id": "chunk_26",
+  "doc_id": "doc_789012",
+  "message": "Chunk added successfully to knowledge base 1"
+}`,
+    parameters: [
+      {
+        name: 'id',
+        description: 'Knowledge base ID',
+        required: true,
+      },
+      {
+        name: 'content',
+        description: 'Text content of the chunk',
+        required: true,
+      },
+      {
+        name: 'metadata',
+        description: 'Optional metadata for the chunk (JSON object)',
+        required: false,
+      },
+    ],
+  },
+  {
+    title: 'Delete Chunks from Knowledge Base',
+    description:
+      'Delete specific chunks from a knowledge base by their document IDs.',
+    path: '/v1/kb/{id}/chunks',
+    body: `{
+  "doc_ids": ["doc_123456", "doc_123457", "doc_789012"]
+}`,
+    method: 'DELETE',
+    headers: `Content-Type: application/json`,
+    exampleResponse: `{
+  "success": true,
+  "message": "Successfully deleted chunks from knowledge base 1",
+  "deletion_info": {
+    "deleted_count": 3,
+    "failed_deletions": []
+  }
+}`,
+    parameters: [
+      {
+        name: 'id',
+        description: 'Knowledge base ID',
+        required: true,
+      },
+      {
+        name: 'doc_ids',
+        description: 'Array of document IDs to delete from the knowledge base',
         required: true,
       },
     ],

@@ -166,7 +166,7 @@ class SentenceHandler {
     // const wordCount = countWords(sentence)
     // console.log(`Sentence (${wordCount} words):`, sentence)
 
-    fetch(`http://localhost:${LIPSYNC_PORT}/chat`, {
+    fetch(`http://localhost:${LIPSYNC_PORT}/v1/lipsync/chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -177,7 +177,7 @@ class SentenceHandler {
         chat_type: 'echo',
         voice: voice,
         model: ttsModel,
-        speed: '0.8',
+        speed: '1.0',
       }),
     })
   }
@@ -188,25 +188,49 @@ const createRAGContextPrompt = async (
   query: string,
   language: string,
 ) => {
-  const url = new URL(
-    `http://localhost:${EMBEDDING_PORT}/v1/kb/${knowledgeBaseId}/search?q=${encodeURIComponent(query)}`,
-  )
-  const response = await fetch(url)
-  const searchResults = await response.json()
+  const searchParams = {
+    query,
+    search_type: 'similarity',
+    top_k: 4,
+    top_n: 3,
+  }
 
-  // Create system message with RAG context
-  const contextContent = searchResults
-    .map((result: { content: string }) => result.content)
-    .join('\n\n---\n\n')
+  try {
+    const sanitizedURL = new URL(
+      `http://localhost:${EMBEDDING_PORT}/v1/kb/${knowledgeBaseId}/search`,
+    )
+    const response = await fetch(sanitizedURL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(searchParams),
+    })
 
-  const systemMessage = `/no_think
+    if (!response.ok) {
+      throw new Error(`Search failed with status: ${response.status}`)
+    }
+
+    const searchResults = await response.json()
+
+    // Create system message with RAG context
+    const contextContent = searchResults
+      .map((result: { content: string }) => result.content)
+      .join('\n\n---\n\n')
+
+    const systemMessage = `/no_think
 Use the following pieces of retrieved context to answer the question. 
 If you don't know the answer, just say that you do not know the answer.
 Always response in ${language} ISO language standard
 
 Context: ${contextContent}
 Answer:`
-  return systemMessage
+    return systemMessage
+  } catch (error) {
+    console.error('RAG search error:', error)
+    // Return default system prompt if search fails
+    return createDefaultSystemPrompt(language)
+  }
 }
 
 export async function POST(req: Request) {

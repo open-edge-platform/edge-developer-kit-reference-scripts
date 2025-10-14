@@ -7,6 +7,7 @@ import {
   LIPSYNC_PORT,
   EMBEDDING_PORT,
   SPEECH_TO_TEXT_PORT,
+  TEXT_TO_SPEECH_PORT,
 } from '@/lib/constants'
 
 const nextConfig: NextConfig = {
@@ -43,6 +44,10 @@ const nextConfig: NextConfig = {
       {
         source: '/api/embeddings/v1/:slug*',
         destination: `http://localhost:${EMBEDDING_PORT}/v1/:slug*`,
+      },
+      {
+        source: '/api/tts/v1/:slug*',
+        destination: `http://localhost:${TEXT_TO_SPEECH_PORT}/v1/:slug*`,
       },
       {
         source: '/api/lipsync/:slug*',

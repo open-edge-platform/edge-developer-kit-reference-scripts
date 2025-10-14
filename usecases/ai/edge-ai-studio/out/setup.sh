@@ -17,7 +17,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 
 # Resources directory in the packaged application
-RESOURCES_DIR="$SCRIPT_DIR/edge-ai-studio-linux-x64/resources"
+RESOURCES_DIR="$SCRIPT_DIR/linux-unpacked/resources"
 THIRDPARTY_DIR="$RESOURCES_DIR/thirdparty"
 
 # List of services to set up (Name, Path, Skip flag)

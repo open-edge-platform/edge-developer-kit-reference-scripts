@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export PORT="8080"
 
 # Define paths relative to the script directory
-RESOURCES_DIR="$SCRIPT_DIR/edge-ai-studio-linux-x64/resources"
+RESOURCES_DIR="$SCRIPT_DIR/linux-unpacked/resources"
 FRONTEND_DIR="$RESOURCES_DIR/frontend"
 NODE_EXECUTABLE="$RESOURCES_DIR/thirdparty/node/bin/node"
 SERVER_JS="$FRONTEND_DIR/server.js"

@@ -13,10 +13,62 @@ $NODE_URL =  "https://nodejs.org/dist/v22.18.0/node-v22.18.0-win-x64.zip"
 $NODE_DIR = Join-Path $THIRDPARTY_DIR 'node'
 $NODE_PATH = Join-Path $NODE_DIR 'node.exe'
 
+$GIT_URL = "https://github.com/git-for-windows/git/releases/download/v2.51.0.windows.2/MinGit-2.51.0.2-64-bit.zip"
+$GIT_DIR = Join-Path $THIRDPARTY_DIR 'git'
+$GIT_PATH = Join-Path $GIT_DIR 'cmd\git.exe'
+
 function Setup-Thirdparty {
     Write-Host "Creating thirdparty directory at $THIRDPARTY_DIR..."
     New-Item -ItemType Directory -Force -Path $THIRDPARTY_DIR | Out-Null
     Install-Node
+    Install-Git
+}
+
+function Install-Git {
+     Write-Host "Setting up Git..."
+    if (Test-Path $GIT_PATH) {
+        Write-Host "Git already exists in thirdparty directory."
+        return $GIT_PATH
+    }
+
+    # Ensure thirdparty directory exists
+    if (-not (Test-Path $THIRDPARTY_DIR)) {
+        New-Item -ItemType Directory -Path $THIRDPARTY_DIR -Force | Out-Null
+        Write-Host "Created thirdparty directory."
+    }
+
+    if (Test-Path $GIT_DIR) {
+        Remove-Item $GIT_DIR -Recurse -Force
+    }
+    New-Item -ItemType Directory -Path $GIT_DIR -Force | Out-Null
+
+    $fileName = "git.zip"
+    $downloadPath = Join-Path $GIT_DIR $fileName
+
+    try {
+        Write-Host "Downloading Git from $GIT_URL ..."
+        Write-Host "This may take a few minutes depending on your internet connection..."
+        Invoke-WebRequest -Uri $GIT_URL -OutFile $downloadPath -UseBasicParsing
+        Write-Host "Git downloaded successfully."
+
+        Write-Host "Extracting Git ..."
+        Expand-Archive -Path $downloadPath -DestinationPath $GIT_DIR -Force
+
+        # Clean up downloaded archive
+        Remove-Item $downloadPath -Force
+        Write-Host "Cleaned up downloaded archive."
+
+          # Verify installation
+        if (Test-Path $GIT_PATH) {
+            Write-Host "Git installation completed successfully!"
+            return $GIT_PATH
+        } else {
+            throw "Git executable not found at $GIT_PATH"
+        }
+    } catch {
+        Write-Host "Failed to download or extract Git: $($_.Exception.Message)"
+        throw
+    }
 }
 
 function Install-Node {

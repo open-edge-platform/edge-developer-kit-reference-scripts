@@ -72,9 +72,18 @@ with open("document.pdf", "rb") as f:
     response = requests.post(f"http://localhost:${port}/v1/kb/{kb_id}/files", files=files)
     print("Upload result:", response.json())
 
-# Create embeddings for uploaded documents
+# Create embeddings with default settings
 response = requests.post(f"http://localhost:${port}/v1/kb/{kb_id}/create")
-print("Embeddings result:", response.json())`,
+print("Embeddings result:", response.json())
+
+# Or create embeddings with advanced configuration
+embedding_config = {
+    "splitter_name": "RecursiveCharacter",  # 'Character', 'RecursiveCharacter', or 'Markdown'
+    "chunk_size": 1000,
+    "chunk_overlap": 200
+}
+response = requests.post(f"http://localhost:${port}/v1/kb/{kb_id}/create", json=embedding_config)
+print("Advanced embeddings result:", response.json())`,
     },
     {
       language: 'JavaScript',
@@ -106,12 +115,26 @@ response = await fetch(\`http://localhost:${port}/v1/kb/\${kbId}/files\`, {
 const uploadResult = await response.json()
 console.log('Upload result:', uploadResult)
 
-// Create embeddings for uploaded documents
+// Create embeddings with default settings
 response = await fetch(\`http://localhost:${port}/v1/kb/\${kbId}/create\`, {
   method: 'POST'
 })
-const embeddingsResult = await response.json()
-console.log('Embeddings result:', embeddingsResult)`,
+let embeddingsResult = await response.json()
+console.log('Embeddings result:', embeddingsResult)
+
+// Or create embeddings with advanced configuration
+const embeddingConfig = {
+  splitter_name: 'RecursiveCharacter', // 'Character', 'RecursiveCharacter', or 'Markdown'
+  chunk_size: 1000,
+  chunk_overlap: 200
+}
+response = await fetch(\`http://localhost:${port}/v1/kb/\${kbId}/create\`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(embeddingConfig)
+})
+embeddingsResult = await response.json()
+console.log('Advanced embeddings result:', embeddingsResult)`,
     },
   ]
 
@@ -122,35 +145,49 @@ console.log('Embeddings result:', embeddingsResult)`,
       code: `import requests
 
 # Get all knowledge bases
-response = requests.get("http://localhost:5003/v1/kb")
+response = requests.get("http://localhost:${port}/v1/kb")
 knowledge_bases = response.json()
 print("Knowledge Bases:", knowledge_bases)
 
 # Get specific knowledge base
 kb_id = 1
-response = requests.get(f"http://localhost:5003/v1/kb/{kb_id}")
+response = requests.get(f"http://localhost:${port}/v1/kb/{kb_id}")
 kb_details = response.json()
 print("KB Details:", kb_details)
 
 # Get files in a knowledge base
-response = requests.get(f"http://localhost:5003/v1/kb/{kb_id}/files")
+response = requests.get(f"http://localhost:${port}/v1/kb/{kb_id}/files")
 files = response.json()
 print("Files:", files)
 
 # Delete a file from knowledge base
 file_data = {"name": "document.pdf"}
-response = requests.delete(f"http://localhost:5003/v1/kb/{kb_id}/files", json=file_data)
+response = requests.delete(f"http://localhost:${port}/v1/kb/{kb_id}/files", json=file_data)
 print("Delete file result:", response.json())
 
-# Search in knowledge base
-response = requests.get(
-    f"http://localhost:5003/v1/kb/{kb_id}/search?q=your search query"
-)
+# Search in knowledge base with basic query
+search_data = {"query": "your search query"}
+response = requests.post(f"http://localhost:${port}/v1/kb/{kb_id}/search", json=search_data)
+
 results = response.json()
 print("Search results:", results)
 
+# Advanced search with parameters
+advanced_search = {
+    "query": "your search query",
+    "search_type": "similarity",  # 'similarity', 'mmr', or 'similarity_score_threshold'
+    "top_k": 4,  # Documents to retrieve
+    "top_n": 3,  # Final results to return
+    "score_threshold": 0.5,  # For similarity_score_threshold type
+    "fetch_k": 20,  # For MMR search
+    "lambda_mult": 0.5  # MMR diversity (0=max diversity, 1=min diversity)
+}
+response = requests.post(f"http://localhost:${port}/v1/kb/{kb_id}/search", json=advanced_search)
+results = response.json()
+print("Advanced search results:", results)
+
 # Delete knowledge base
-response = requests.delete(f"http://localhost:5003/v1/kb/{kb_id}")
+response = requests.delete(f"http://localhost:${port}/v1/kb/{kb_id}")
 print("Delete KB result:", response.json())`,
     },
     {
@@ -184,12 +221,33 @@ response = await fetch(\`http://localhost:${port}/v1/kb/\${kbId}/files\`, {
 const deleteFileResult = await response.json()
 console.log('Delete result:', deleteFileResult)
 
-// Search in knowledge base
-response = await fetch(
-  \`http://localhost:${port}/v1/kb/\${kbId}/search?q=your search query\`,
-)
-const results = await response.json()
+// Search in knowledge base with basic query
+const searchData = { query: 'your search query' }
+response = await fetch(\`http://localhost:${port}/v1/kb/\${kbId}/search\`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(searchData)
+})
+let results = await response.json()
 console.log('Search results:', results)
+
+// Advanced search with parameters
+const advancedSearch = {
+  query: 'your search query',
+  search_type: 'similarity', // 'similarity', 'mmr', or 'similarity_score_threshold'
+  top_k: 4, // Documents to retrieve
+  top_n: 3, // Final results to return
+  score_threshold: 0.5, // For similarity_score_threshold type
+  fetch_k: 20, // For MMR search
+  lambda_mult: 0.5 // MMR diversity (0=max diversity, 1=min diversity)
+}
+response = await fetch(\`http://localhost:${port}/v1/kb/\${kbId}/search\`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(advancedSearch)
+})
+results = await response.json()
+console.log('Advanced search results:', results)
 
 // Delete knowledge base
 response = await fetch(\`http://localhost:${port}/v1/kb/\${kbId}\`, {
@@ -197,6 +255,83 @@ response = await fetch(\`http://localhost:${port}/v1/kb/\${kbId}\`, {
 })
 const deleteKbResult = await response.json()
 console.log('Delete result:', deleteKbResult)`,
+    },
+  ]
+
+  const chunkManagementSnippet = [
+    {
+      language: 'Python',
+      languageCode: 'py' as const,
+      code: `import requests
+
+kb_id = 1
+
+# Get all chunks from a knowledge base
+response = requests.get(f"http://localhost:${port}/v1/kb/{kb_id}/chunks")
+chunks = response.json()
+print(f"Found {chunks['total_chunks']} chunks")
+
+# Get chunks with embedding vectors included
+response = requests.get(f"http://localhost:${port}/v1/kb/{kb_id}/chunks?include_embeddings=true")
+chunks_with_embeddings = response.json()
+print("Chunks with embeddings:", len(chunks_with_embeddings['chunks']))
+
+# Add a new chunk manually
+chunk_data = {
+    "content": "This is a manually added text chunk.",
+    "metadata": {"source": "manual_entry"}
+}
+response = requests.post(f"http://localhost:${port}/v1/kb/{kb_id}/chunks", json=chunk_data)
+result = response.json()
+print("Added chunk:", result)
+
+# Delete specific chunks by document IDs
+doc_ids = [chunk["doc_id"] for chunk in chunks["chunks"][:2]]
+delete_data = {"doc_ids": doc_ids}
+response = requests.delete(f"http://localhost:${port}/v1/kb/{kb_id}/chunks", json=delete_data)
+delete_result = response.json()
+print("Deletion result:", delete_result)`,
+    },
+    {
+      language: 'JavaScript',
+      languageCode: 'js' as const,
+      code: `import fetch from 'node-fetch'
+      
+const kbId = kb.id
+
+// Get all chunks from a knowledge base
+let response = await fetch(\`http://localhost:${port}/v1/kb/\${kbId}/chunks\`)
+const chunks = await response.json()
+console.log(\`Found \${chunks.total_chunks} chunks\`)
+
+// Get chunks with embedding vectors included
+response = await fetch(\`http://localhost:${port}/v1/kb/\${kbId}/chunks?include_embeddings=true\`)
+const chunksWithEmbeddings = await response.json()
+console.log('Chunks with embeddings:', chunksWithEmbeddings.chunks.length)
+
+// Add a new chunk manually
+const chunkData = {
+  content: 'This is a manually added text chunk.',
+  metadata: { source: 'manual_entry' }
+}
+response = await fetch(\`http://localhost:${port}/v1/kb/\${kbId}/chunks\`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(chunkData)
+})
+const result = await response.json()
+console.log('Added chunk:', result)
+
+// Delete specific chunks by document IDs
+const docIdsToDelete = chunks.chunks.slice(0, 2).map((chunk) => chunk.doc_id)
+const deleteData = { doc_ids: docIdsToDelete }
+response = await fetch(\`http://localhost:${port}/v1/kb/\${kbId}/chunks\`, {
+  method: 'DELETE',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(deleteData)
+})
+const deleteResult = await response.json()
+console.log('Deletion result:', deleteResult)`,
     },
   ]
 
@@ -234,7 +369,7 @@ print(response)`,
       code: `import { CohereClient } from 'cohere-ai'
 
 const cohere = new CohereClient({
-  baseUrl: 'http://localhost:5003',
+  baseUrl: 'http://localhost:${port}',
   token: 'unused',
 })
 
@@ -293,9 +428,12 @@ console.log(rerank)`,
               The service provides multiple APIs: OpenAI-compatible embedding
               generation, Cohere-compatible document reranking, and a
               comprehensive Knowledge Base API for managing document
-              collections. You can use standard OpenAI and Cohere client
-              libraries, while leveraging the Knowledge Base system for building
-              RAG applications directly on your edge device.
+              collections. Advanced features include chunk-level management,
+              multiple search algorithms (similarity, MMR, score threshold), and
+              embedding vector access. You can use standard OpenAI and Cohere
+              client libraries, while leveraging the Knowledge Base system for
+              building sophisticated RAG applications directly on your edge
+              device.
             </p>
 
             <p className="leading-relaxed text-slate-700">
@@ -338,6 +476,19 @@ console.log(rerank)`,
             <CodeBlock
               title={'Manage Knowledge Bases and Search Documents'}
               data={knowledgeBaseManagementSnippet}
+            />
+
+            <p className="text-lg leading-relaxed font-semibold text-slate-700">
+              Chunk Management
+            </p>
+            <p className="leading-relaxed text-slate-700">
+              The API provides direct access to individual text chunks within
+              knowledge bases. You can view, add, and delete chunks, optionally
+              including embedding vectors:
+            </p>
+            <CodeBlock
+              title={'Manage Text Chunks in Knowledge Bases'}
+              data={chunkManagementSnippet}
             />
 
             <p className="text-lg leading-relaxed font-semibold text-slate-700">

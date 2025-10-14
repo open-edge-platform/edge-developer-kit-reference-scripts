@@ -1,18 +1,18 @@
 # Copyright (C) 2025 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
+from pathlib import Path
 from huggingface_hub import snapshot_download
 from malaya_speech.torch_model.vits.model_infer import SynthesizerTrn
 from malaya_speech.torch_model.vits.commons import intersperse
 from malaya_speech.utils.text import TTS_SYMBOLS
-from malaya_speech.tts import load_text_ids
+from overrides.malaya_speech_tts import load_text_ids
 import torch
 import os
 import json
 import time
 import argparse
 import psutil
-import wave
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse, Response, StreamingResponse
@@ -21,7 +21,7 @@ from contextlib import asynccontextmanager
 import socket
 import io
 import numpy as np
-from schemas import OpenAISpeechRequest, VoicesResponse
+from schemas import OpenAISpeechRequest
 
 try:
     from malaya_boilerplate.hparams import HParams
@@ -112,14 +112,20 @@ def load_model(device, use_fp16=None):
     # Download model files
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
-    model_cache_dir = os.path.join(project_root, "models", "huggingface")
-    folder = snapshot_download(
-        repo_id=AVAILABLE_MODEL,
-        cache_dir=model_cache_dir,
-    )
+    model_dir = os.path.join(project_root, "models", "huggingface", AVAILABLE_MODEL)
+
+    if (
+        not Path(f"{model_dir}/config.json").exists()
+        or not Path(f"{model_dir}/model.pth").exists()
+    ):
+        print("Downloading model from Hugging Face...")
+        snapshot_download(
+            repo_id=AVAILABLE_MODEL,
+            local_dir=model_dir,
+        )
 
     # Load configuration
-    with open(os.path.join(folder, "config.json")) as fopen:
+    with open(os.path.join(model_dir, "config.json")) as fopen:
         hps = HParams(**json.load(fopen))
 
     # Initialize model
@@ -133,7 +139,7 @@ def load_model(device, use_fp16=None):
 
     # Load weights and move to device
     model.load_state_dict(
-        torch.load(os.path.join(folder, "model.pth"), map_location="cpu")
+        torch.load(os.path.join(model_dir, "model.pth"), map_location="cpu")
     )
     model = model.to(device)
 
@@ -162,9 +168,6 @@ def synthesize_speech(model, hps, text, speaker, device, speed=1.0):
         "Anwar Ibrahim": 2,
     }
 
-    # Initialize text normalizer
-    normalizer = load_text_ids(pad_to=None, understand_punct=True, is_lower=False)
-
     print(f"Synthesizing text: '{text}'")
     print(f"Using speaker: {speaker}")
     print(f"Using speed: {speed}")
@@ -174,6 +177,14 @@ def synthesize_speech(model, hps, text, speaker, device, speed=1.0):
     # VITS length_scale: 1.0 = normal, <1.0 = faster, >1.0 = slower
     # So we need to invert the relationship
     length_scale = 1.0 / speed
+
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    temp_dir = os.path.join(script_dir, "temp")
+
+    # Initialize text normalizer
+    normalizer = load_text_ids(
+        pad_to=None, understand_punct=True, is_lower=False, demoji_local_dir=temp_dir
+    )
 
     # Normalize text
     t, ids = normalizer.normalize(text, add_fullstop=False)
@@ -411,7 +422,7 @@ def setup_routes(app: FastAPI):
     async def list_voices():
         """List all available voices for text-to-speech"""
         try:
-            return VoicesResponse(voices=AVAILABLE_VOICES)
+            return {voice: True for voice in AVAILABLE_VOICES}
         except Exception as e:
             print(f"Error listing voices: {str(e)}")
             raise HTTPException(
@@ -423,21 +434,10 @@ def setup_routes(app: FastAPI):
                 },
             )
 
-    @app.get("/v1/models")
-    async def list_models():
-        """List all available models for text-to-speech"""
-        try:
-            return JSONResponse(content={"models": [AVAILABLE_MODEL]})
-        except Exception as e:
-            print(f"Error listing models: {str(e)}")
-            raise HTTPException(
-                status_code=500,
-                detail={
-                    "error": "server_error",
-                    "message": "Failed to retrieve voice list",
-                    "type": "server_error",
-                },
-            )
+    @app.get("/healthcheck")
+    async def healthcheck():
+        """Health check endpoint."""
+        return JSONResponse({"status": "ok"})
 
 
 def create_app(device="auto", use_fp16=None):

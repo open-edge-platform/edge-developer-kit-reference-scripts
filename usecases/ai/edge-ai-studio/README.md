@@ -11,7 +11,14 @@ Edge AI Studio is a modern toolkit for deploying, managing, and serving AI model
 - **Easy Model Deployment:** Download, convert, and serve Hugging Face models with minimal setup.
 - **Web-Based Management:** Manage devices, workloads, and users through a modern web interface.
 - **Edge Optimized:** Built for Intel hardware and edge environments.
-
+- **AI Services:** AI Services that users can use for their applications
+  - Text Generation (LLM)
+  - Text to Speech (TTS)
+  - Speech to Text (STT)
+  - Embedding 
+  - Lipsync
+- **Samples:** Samples use cases that implements the ai services
+  - Digital Avatar
 
 ## Software Requirements
 
