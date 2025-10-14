@@ -8,7 +8,7 @@ Transform your Intel® hardware into powerful AI and edge computing solutions wi
 
 | **Use Case** | **What You'll Build** | **Time** | **Learn** |
 |-------------|----------------------|----------|-----------|
-| [**🤖 Chat with Local LLMs**](../usecases/ai/openwebui-ollama/README.md) | Private ChatGPT alternative | ⏱️ 10 min | LLM deployment, web interfaces |
+| [**🤖 Chat with Local LLMs**](../usecases/ai/openwebui-ollama/README.md) | Private ChatGPT* alternative | ⏱️ 10 min | LLM deployment, web interfaces |
 | [**🎥 AI Video Analytics**](../usecases/ai/ai-video-analytics/README.md) | Smart video content analysis | ⏱️ 15 min | Computer vision, semantic search |
 | [**💬 Edge AI Studio (Digital Avatar)**](../usecases/ai/edge-ai-studio/README.md) | AI microservices | ⏱️ 20 min | Multi-modal AI, speech processing |
 
@@ -26,7 +26,7 @@ Transform your Intel® hardware into powerful AI and edge computing solutions wi
 |-------------|----------------------|----------|-----------|
 | [**🏎️ Real-Time Computing (TCC)**](../usecases/real-time/tcc_tutorial/README.md) | Ultra-low latency applications | ⏱️ 60+ min | Real-time systems, hardware timing |
 | [**📷 GMSL Camera Integration**](../usecases/camera/gmsl/README.md) | High-speed camera systems | ⏱️ 90+ min | Camera drivers, embedded systems |
-| [**🔍 OpenVINO Advanced**](../usecases/ai/openvino/README.md) | Custom AI model deployment | ⏱️ 120+ min | Model optimization, performance tuning |
+| [**🔍 Intel® Distribution of OpenVINO™ Toolkit Advanced**](../usecases/ai/openvino/README.md) | Custom AI model deployment | ⏱️ 120+ min | Model optimization, performance tuning |
 
 ## 🎯 Choose by Application Area
 
@@ -46,7 +46,7 @@ Transform your Intel® hardware into powerful AI and edge computing solutions wi
 - **Real-Time Systems:** [TCC Tutorial](../usecases/real-time/tcc_tutorial/README.md)
 
 ### 🔧 **Platform & Framework**
-- **OpenVINO Development:** [OpenVINO Toolkit](../usecases/ai/openvino/README.md)
+- **Intel® Distribution of OpenVINO™ Toolkit Development:** [Intel® Distribution of OpenVINO™ Toolkit](../usecases/ai/openvino/README.md)
 - **Camera Development:** [GMSL](../usecases/camera/gmsl/README.md), [MIPI](../usecases/camera/mipi/README.md)
 
 ## 🚀 Quick Start Recommendations
@@ -78,7 +78,7 @@ Transform your Intel® hardware into powerful AI and edge computing solutions wi
 |----------------------|---------------------|-----------------|
 | **LLM/Chat Applications** | 8GB GPU memory | 12GB+ GPU memory |
 | **Computer Vision** | Integrated graphics | Dedicated GPU + NPU |
-| **Real-Time Systems** | Core Ultra processor | Latest generation CPU |
+| **Real-Time Systems** | Intel® Core™ Ultra processor | Latest generation CPU |
 | **Camera Integration** | Platform-specific | Validated hardware only |
 
 ## 🆘 Getting Help
@@ -89,8 +89,8 @@ Transform your Intel® hardware into powerful AI and edge computing solutions wi
 
 ### **During Development**
 - Check [Troubleshooting Guide](troubleshooting.md) for common issues
-- Ask questions in [GitHub Discussions](https://github.com/intel/edge-developer-kit-reference-scripts/discussions)
-- Report bugs via [GitHub Issues](https://github.com/intel/edge-developer-kit-reference-scripts/issues)
+- Ask questions in [GitHub* Discussions](https://github.com/intel/edge-developer-kit-reference-scripts/discussions)
+- Report bugs via [GitHub* Issues](https://github.com/intel/edge-developer-kit-reference-scripts/issues)
 
 ---
 

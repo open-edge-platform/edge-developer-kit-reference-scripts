@@ -1,6 +1,6 @@
-# Getting Started with Intel Edge Developer Kits
+# Getting Started with Intel® Edge Developer Kits
 
-Welcome to Intel's edge computing ecosystem! This guide will help you get up and running quickly, regardless of your experience level.
+Welcome to Intel®'s edge computing ecosystem! This guide will help you get up and running quickly, regardless of your experience level.
 
 ## Table of Contents
 
@@ -13,18 +13,18 @@ Welcome to Intel's edge computing ecosystem! This guide will help you get up and
 ### Step 1: Prepare Your System
 
 **Required:**
-- Ubuntu 24.04 LTS Desktop ([Download](https://releases.ubuntu.com/noble/))
+- Ubuntu* 24.04 LTS Desktop ([Download](https://releases.ubuntu.com/noble/))
 - Internet connection
 - Administrator (sudo) access
 
 **Recommended:**
 - 16GB RAM minimum
 - 100GB free disk space
-- Supported Intel hardware ([Check compatibility](../README.md/#-validated-hardware--configurations))
+- Supported Intel® hardware ([Check compatibility](../README.md/#-validated-hardware--configurations))
 
 ### Step 2: Enable Hardware Features
 
-**For Intel Arc Graphics:**
+**For Intel® Arc™ Graphics:**
 1. Access BIOS/UEFI settings
 2. Enable "Resizable BAR" or "Above 4G Decoding"
 3. Save and reboot
@@ -113,7 +113,7 @@ Log file saved: /var/log/intel-platform-installer.log
 
 ### Quick Test: Chat Interface
 
-Let's deploy a ChatGPT-like interface running locally:
+Let's deploy a ChatGPT*-like interface running locally:
 
 ```bash
 cd usecases/ai/openwebui-ollama
@@ -125,13 +125,13 @@ docker compose up -d
 **What you get:**
 - Private AI chat interface
 - No data sent to external servers
-- Runs entirely on your Intel hardware
+- Runs entirely on your Intel® hardware
 
 ### Understanding What Happened
 
-1. **Hardware Detection:** The installer identified your specific Intel platform
+1. **Hardware Detection:** The installer identified your specific Intel® platform
 2. **Driver Installation:** GPU, NPU, and other drivers were configured
-3. **AI Framework:** OpenVINO and supporting tools were installed
+3. **AI Framework:** Intel® Distribution of OpenVINO™ Toolkit and supporting tools were installed
 4. **Optimization:** System was tuned for your hardware configuration
 
 ## Next Steps
@@ -147,8 +147,8 @@ docker compose up -d
 
 ### 🤝 **Join the Community**
 
-- **Questions?** → [GitHub Discussions](https://github.com/intel/edge-developer-kit-reference-scripts/discussions)
-- **Issues?** → [GitHub Issues](https://github.com/intel/edge-developer-kit-reference-scripts/issues)
+- **Questions?** → [GitHub* Discussions](https://github.com/intel/edge-developer-kit-reference-scripts/discussions)
+- **Issues?** → [GitHub* Issues](https://github.com/intel/edge-developer-kit-reference-scripts/issues)
 - **Show & Tell** → Share your projects in discussions!
 
 ---
