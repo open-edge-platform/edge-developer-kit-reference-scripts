@@ -20,12 +20,13 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
-import { useTextToSpeech } from '@/hooks/use-tts'
+import { useGetVoices, useTextToSpeech } from '@/hooks/use-tts'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Play, Zap, Languages, Mic } from 'lucide-react'
 import { Workload } from '@/payload-types'
 import { TTS_MODELS } from '@/lib/workloads/text-to-speech'
+import { SelectLanguage, SelectVoice } from './common'
 
 interface TextToSpeechDemoProps {
   disabled?: boolean
@@ -43,6 +44,7 @@ export default function TextToSpeechDemo({
   const [speed, setSpeed] = useState<number>(1.0)
   const audioRef = useRef<HTMLAudioElement>(null)
   const tts = useTextToSpeech()
+  const { data: availableVoices, refetch: refetchVoices } = useGetVoices()
 
   // Use the model from workload or default to 'kokoro'
   const selectedModel = workload?.model || 'kokoro'
@@ -62,6 +64,33 @@ export default function TextToSpeechDemo({
   const currentLanguageConfig = availableLanguages.find(
     (lang) => lang.id === selectedLanguage,
   )
+
+  // Group voices by cached status
+  const groupedVoices = useMemo(() => {
+    if (!currentLanguageConfig || !availableVoices) {
+      return { cached: [], notCached: [] }
+    }
+
+    const cached: string[] = []
+    const notCached: string[] = []
+
+    currentLanguageConfig.voices.forEach((voice) => {
+      if (availableVoices[voice] === true) {
+        cached.push(voice)
+      } else {
+        notCached.push(voice)
+      }
+    })
+
+    return { cached, notCached }
+  }, [currentLanguageConfig, availableVoices])
+
+  // Refetch voices if disabled variable changes
+  useEffect(() => {
+    if (!disabled) {
+      refetchVoices()
+    }
+  }, [disabled, refetchVoices])
 
   // Initialize default selections when component mounts
   useEffect(() => {
@@ -102,14 +131,12 @@ export default function TextToSpeechDemo({
 
     setAudioUrl(null)
 
-    const responseFormat = 'wav'
-
     tts
       .mutateAsync({
         input: text,
         model: selectedModel,
         voice: selectedVoice,
-        responseFormat,
+        responseFormat: 'wav',
         speed,
       })
       .then(async (response) => {
@@ -117,6 +144,9 @@ export default function TextToSpeechDemo({
           const blob = await response.blob()
           const url = URL.createObjectURL(blob)
           setAudioUrl(url)
+          if (availableVoices?.[selectedVoice] != true) {
+            refetchVoices()
+          }
         } else {
           toast.error('Error', {
             description: 'Failed to synthesize audio. Please try again.',
@@ -224,6 +254,7 @@ export default function TextToSpeechDemo({
             </CardTitle>
             <CardDescription>
               Configure the language and voice for text-to-speech synthesis.
+              Cached voices are ready instantly, others download on first use.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -236,24 +267,14 @@ export default function TextToSpeechDemo({
                 <Languages className="mr-1 inline h-4 w-4" />
                 Language:
               </label>
-              <Select
-                value={selectedLanguage}
-                onValueChange={setSelectedLanguage}
+              <SelectLanguage
+                selectedLanguage={selectedLanguage}
+                setSelectedLanguage={setSelectedLanguage}
+                availableLanguages={availableLanguages}
                 disabled={
                   disabled || tts.isPending || !availableLanguages.length
                 }
-              >
-                <SelectTrigger id="language-select">
-                  <SelectValue placeholder="Select language" />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableLanguages.map((language) => (
-                    <SelectItem key={language.id} value={language.id}>
-                      {language.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              />
             </div>
 
             {/* Voice Selection */}
@@ -264,22 +285,12 @@ export default function TextToSpeechDemo({
               >
                 Voice:
               </label>
-              <Select
-                value={selectedVoice}
-                onValueChange={setSelectedVoice}
+              <SelectVoice
+                selectedVoice={selectedVoice}
+                setSelectedVoice={setSelectedVoice}
+                groupedVoices={groupedVoices}
                 disabled={disabled || tts.isPending || !currentLanguageConfig}
-              >
-                <SelectTrigger id="voice-select">
-                  <SelectValue placeholder="Select voice" />
-                </SelectTrigger>
-                <SelectContent>
-                  {currentLanguageConfig?.voices.map((voice) => (
-                    <SelectItem key={voice} value={voice}>
-                      {voice}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              />
             </div>
 
             {/* Speed Configuration */}

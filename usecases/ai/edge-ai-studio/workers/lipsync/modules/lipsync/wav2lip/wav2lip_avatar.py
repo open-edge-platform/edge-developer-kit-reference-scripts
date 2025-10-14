@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import torch
-import pickle #nosec B403 -- reading the pickle file created by another script only
+import pickle  # nosec B403 -- reading the pickle file created by another script only
 import os
 import cv2
 import copy
@@ -238,6 +238,99 @@ class Wav2lipAvatar(Avatar):
         self.model(mel_batch, img_batch)
 
     @torch.no_grad()
+    def _run_lipsync_inference(self, mel_batch, start_index, debug=False):
+        """
+        Modularized lipsync inference logic that can be reused for different input types.
+
+        Args:
+            mel_batch: Mel-spectrogram batch for audio features
+            start_index: Starting frame index for face selection
+            debug: Whether to enable debug timing logs
+
+        Returns:
+            numpy.ndarray: Predicted lip-synced face frames
+        """
+        # Prepare image batch
+        img_batch = []
+        for i in range(self.batch_size):
+            idx = self.reflection(self.face_frames_len, start_index + i)
+            face = self.face_frames[idx]
+            img_batch.append(face)
+
+        img_batch, mel_batch = np.asarray(img_batch), np.asarray(mel_batch)
+        img_masked = img_batch.copy()
+        img_masked[:, face.shape[0] // 2 :] = 0
+
+        img_batch = np.concatenate((img_masked, img_batch), axis=3) / 255.0
+        mel_batch = np.reshape(
+            mel_batch,
+            [len(mel_batch), mel_batch.shape[1], mel_batch.shape[2], 1],
+        )
+
+        img_batch = torch.FloatTensor(np.transpose(img_batch, (0, 3, 1, 2))).to(
+            self.device
+        )
+        mel_batch = torch.FloatTensor(np.transpose(mel_batch, (0, 3, 1, 2))).to(
+            self.device
+        )
+
+        # Run model and optionally measure inference time when debugging
+        if debug:
+            t_start = time.perf_counter()
+            pred_tensor = self.model(mel_batch, img_batch)
+            t_end = time.perf_counter()
+            inf_time = t_end - t_start
+        else:
+            pred_tensor = self.model(mel_batch, img_batch)
+
+        pred = pred_tensor.cpu().numpy().transpose(0, 2, 3, 1) * 255.0
+
+        if debug:
+            try:
+                batch_n = int(pred_tensor.size(0))
+            except Exception:
+                batch_n = pred.shape[0] if hasattr(pred, "shape") else 0
+            avg_per_frame = inf_time / max(batch_n, 1)
+            getLogger(__file__).info(
+                f"Wav2Lip inference: batch_size={batch_n}, total_time={inf_time:.6f}s, avg_per_frame={avg_per_frame:.6f}s"
+            )
+
+        return pred
+
+    def process_audio_to_mel_chunks(self, audio_frames):
+        """
+        Convert audio frames to mel-spectrogram chunks for lipsync inference.
+
+        Args:
+            audio_frames: List of audio frame arrays
+
+        Returns:
+            list: Mel-spectrogram chunks ready for inference
+        """
+        if len(audio_frames) <= self.audio_left_stride + self.audio_right_stride:
+            return []
+
+        inputs = np.concatenate(audio_frames)
+        mel = audio256.melspectrogram(inputs)
+
+        left = max(0, self.audio_left_stride * 80 / self.audio_fps)
+        mel_idx_multiplier = 80.0 * 2 / self.audio_fps
+
+        mel_step_size, i, mel_chunks = 16, 0, []
+        while (
+            i
+            < (len(audio_frames) - self.audio_left_stride - self.audio_right_stride) / 2
+        ):
+            start_idx = int(left + i * mel_idx_multiplier)
+            if start_idx + mel_step_size > len(mel[0]):
+                mel_chunks.append(mel[:, len(mel[0]) - mel_step_size :])
+            else:
+                mel_chunks.append(mel[:, start_idx : start_idx + mel_step_size])
+            i += 1
+
+        return mel_chunks
+
+    @torch.no_grad()
     def text_to_speech(self):
         if self.stop_infer == True:
             for _ in range(self.batch_size * 2):
@@ -269,36 +362,14 @@ class Wav2lipAvatar(Avatar):
                 self.audio_output_queue.put((audio_frame, state, metadata))
                 self.audio_frames.append(audio_frame)
 
-        if len(self.audio_frames) <= self.audio_left_stride + self.audio_right_stride:
-            return
+        # Use the helper method to process audio to mel chunks
+        mel_chunks = self.process_audio_to_mel_chunks(self.audio_frames)
 
-        inputs = np.concatenate(self.audio_frames)
-        mel = audio256.melspectrogram(inputs)
-
-        left = max(0, self.audio_left_stride * 80 / self.audio_fps)
-        mel_idx_multiplier = 80.0 * 2 / self.audio_fps
-
-        mel_step_size, i, mel_chunks = 16, 0, []
-        while (
-            i
-            < (
-                len(self.audio_frames)
-                - self.audio_left_stride
-                - self.audio_right_stride
-            )
-            / 2
-        ):
-            start_idx = int(left + i * mel_idx_multiplier)
-            if start_idx + mel_step_size > len(mel[0]):
-                mel_chunks.append(mel[:, len(mel[0]) - mel_step_size :])
-            else:
-                mel_chunks.append(mel[:, start_idx : start_idx + mel_step_size])
-            i += 1
-
-        self.audio_feature_queue.put(mel_chunks)
-        self.audio_frames = self.audio_frames[
-            -(self.audio_left_stride + self.audio_right_stride) :
-        ]
+        if mel_chunks:
+            self.audio_feature_queue.put(mel_chunks)
+            self.audio_frames = self.audio_frames[
+                -(self.audio_left_stride + self.audio_right_stride) :
+            ]
 
     @torch.no_grad()
     def lip_sync(self, signal_event, debug=False):
@@ -331,49 +402,8 @@ class Wav2lipAvatar(Avatar):
                     )
                     index = index + 1
             else:
-                img_batch = []
-                for i in range(self.batch_size):
-                    idx = self.reflection(self.face_frames_len, index + i)
-                    face = self.face_frames[idx]
-                    img_batch.append(face)
-
-                img_batch, mel_batch = np.asarray(img_batch), np.asarray(mel_batch)
-                img_masked = img_batch.copy()
-                img_masked[:, face.shape[0] // 2 :] = 0
-
-                img_batch = np.concatenate((img_masked, img_batch), axis=3) / 255.0
-                mel_batch = np.reshape(
-                    mel_batch,
-                    [len(mel_batch), mel_batch.shape[1], mel_batch.shape[2], 1],
-                )
-
-                img_batch = torch.FloatTensor(np.transpose(img_batch, (0, 3, 1, 2))).to(
-                    self.device
-                )
-                mel_batch = torch.FloatTensor(np.transpose(mel_batch, (0, 3, 1, 2))).to(
-                    self.device
-                )
-
-                # Run model and optionally measure inference time when debugging
-                if debug:
-                    t_start = time.perf_counter()
-                    pred_tensor = self.model(mel_batch, img_batch)
-                    t_end = time.perf_counter()
-                    inf_time = t_end - t_start
-                else:
-                    pred_tensor = self.model(mel_batch, img_batch)
-
-                pred = pred_tensor.cpu().numpy().transpose(0, 2, 3, 1) * 255.0
-
-                if debug:
-                    try:
-                        batch_n = int(pred_tensor.size(0))
-                    except Exception:
-                        batch_n = pred.shape[0] if hasattr(pred, "shape") else 0
-                    avg_per_frame = inf_time / max(batch_n, 1)
-                    getLogger(__file__).info(
-                        f"Wav2Lip inference: batch_size={batch_n}, total_time={inf_time:.6f}s, avg_per_frame={avg_per_frame:.6f}s"
-                    )
+                # Use modularized lipsync inference
+                pred = self._run_lipsync_inference(mel_batch, index, debug)
 
                 for i, res_frame in enumerate(pred):
                     batched_audio_frames = audio_frames[i * 2 : i * 2 + 2]

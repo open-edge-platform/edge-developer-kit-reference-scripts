@@ -325,7 +325,7 @@ def ensure_wav(in_path: str, out_wav: str) -> bool:
     local_ffmpeg = get_local_ffmpeg_path()
     if local_ffmpeg:
         try:
-            import subprocess #nosec -- used to run ffmpeg in secured environment
+            import subprocess  # nosec -- used to run ffmpeg in secured environment
 
             subprocess.run(
                 [
@@ -359,7 +359,7 @@ def ensure_wav(in_path: str, out_wav: str) -> bool:
 
     # Try system ffmpeg as last resort
     try:
-        import subprocess #nosec
+        import subprocess  # nosec -- used to run ffmpeg in secured environment
 
         subprocess.run(
             [

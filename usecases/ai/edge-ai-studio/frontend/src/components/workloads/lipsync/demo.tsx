@@ -4,6 +4,7 @@
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
+import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
@@ -11,261 +12,258 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { useSendLipsyncMessage } from '@/hooks/use-lipsync'
-import { Loader2, Send, Languages, Mic } from 'lucide-react'
-import { useState, useEffect, useMemo } from 'react'
+import { useAudioLipsync } from '@/hooks/use-lipsync'
+import { Loader2, FileAudio, X, Play } from 'lucide-react'
+import { useState, useRef } from 'react'
 import { toast } from 'sonner'
 import { AvatarStream } from '@/components/samples/digital-avatar'
-import { useGetWorkloadByType } from '@/hooks/use-workload'
-import { TTS_MODELS } from '@/lib/workloads/text-to-speech'
-import { Workload } from '@/payload-types'
 
 export default function LipsyncDemo({
   disabled,
   turnServerIp,
-  workload,
 }: {
   disabled?: boolean
   turnServerIp: string
-  workload?: Workload
 }) {
-  const { isLoading } = useGetWorkloadByType('text-to-speech')
   const [sessionId, setSessionId] = useState('')
   const [connectionStatus, setConnectionStatus] = useState('disconnected')
-  const [selectedLanguage, setSelectedLanguage] = useState<string>('')
-  const [selectedVoice, setSelectedVoice] = useState<string>('')
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [textOverlay, setTextOverlay] = useState('')
+  const [languageCode, setLanguageCode] = useState('en-US')
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const [message, setMessage] = useState('')
-  const [currentSpeakingMessage, setCurrentSpeakingMessage] = useState('')
+  const audioLipsync = useAudioLipsync()
 
-  const sendLipsyncMessage = useSendLipsyncMessage()
+  // Supported audio formats
+  const supportedFormats = ['.wav', '.mp3']
 
-  // Use the model from workload or default to 'kokoro'
-  const selectedModel = workload?.model || 'kokoro'
-
-  // Get the current model configuration
-  const currentModelConfig = TTS_MODELS.find(
-    (model) => model.model === selectedModel,
-  )
-
-  // Get available languages for the selected model
-  const availableLanguages = useMemo(
-    () => currentModelConfig?.languages || [],
-    [currentModelConfig],
-  )
-
-  // Get available voices for the selected language
-  const currentLanguageConfig = availableLanguages.find(
-    (lang) => lang.id === selectedLanguage,
-  )
-
-  // Initialize default selections when component mounts
-  useEffect(() => {
-    const modelConfig = TTS_MODELS.find(
-      (model) => model.model === selectedModel,
-    )
-    if (modelConfig && modelConfig.languages.length > 0) {
-      const firstLanguage = modelConfig.languages[0]
-      setSelectedLanguage(firstLanguage.id)
-      setSelectedVoice(firstLanguage.voices[0] || '')
-    }
-  }, [selectedModel])
-
-  // Update voice when language changes
-  useEffect(() => {
-    const languageConfig = availableLanguages.find(
-      (lang) => lang.id === selectedLanguage,
-    )
-    if (languageConfig && languageConfig.voices.length > 0) {
-      setSelectedVoice(languageConfig.voices[0])
-    }
-  }, [selectedLanguage, availableLanguages])
+  // Available language options
+  const languageOptions = [
+    { code: 'en-US', name: 'English' },
+    { code: 'es-ES', name: 'Spanish' },
+    { code: 'fr-FR', name: 'French' },
+    { code: 'de-DE', name: 'German' },
+    { code: 'ja-JP', name: 'Japanese' },
+    { code: 'ko-KR', name: 'Korean' },
+    { code: 'zh-CN', name: 'Chinese' },
+  ]
 
   const handleSessionIdChange = (newSessionId: string) => {
     setSessionId(newSessionId)
   }
 
-  const handleSendMessage = () => {
-    if (!message) return
-    const messageToSend = message
-    setCurrentSpeakingMessage(messageToSend)
-    sendLipsyncMessage
-      .mutateAsync({
-        sessionId,
-        voice: selectedVoice,
-        text: messageToSend,
-        model: selectedModel,
-        speed: '1.0',
-      })
-      .then(() => {
-        setMessage('')
-      })
-      .catch(() => {
-        setCurrentSpeakingMessage('')
-        toast.error('Failed to send message to avatar. Please try again.')
-      })
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file) {
+      // Check if file type is supported
+      const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase()
+      if (!supportedFormats.includes(fileExtension)) {
+        toast.error(
+          `Unsupported file format. Please use: ${supportedFormats.join(', ')}`,
+        )
+        return
+      }
+      setSelectedFile(file)
+    }
   }
 
+  const handleProcessAudio = async () => {
+    if (!selectedFile || !sessionId) return
+
+    try {
+      await audioLipsync.mutateAsync({
+        audioFile: selectedFile,
+        sessionId,
+        textOverlay: textOverlay.trim() || undefined,
+        languageCode,
+      })
+
+      clearSelectedFile()
+
+      toast.success(
+        `Audio file "${selectedFile.name}" is being processed for lipsync`,
+      )
+    } catch {
+      toast.error('Failed to process audio file. Please try again.')
+    }
+  }
+
+  const clearSelectedFile = () => {
+    setSelectedFile(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
+  const isConnected = connectionStatus === 'connected'
+
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-4">
-      <div className="min-h-[500px] lg:col-span-3">
+    <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+      <div className="min-h-[500px] xl:col-span-2">
         <AvatarStream
-          disabled={disabled || isLoading}
+          disabled={disabled || false}
           onSessionIdChange={handleSessionIdChange}
           connectionStatus={connectionStatus}
           setConnectionStatus={setConnectionStatus}
           turnServerIp={turnServerIp}
         />
+      </div>
 
-        <Card className="mt-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Send className="h-4 w-4" />
-              Send Message to Avatar
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {/* Current Speaking Message */}
-              {currentSpeakingMessage && (
-                <div className="rounded-lg bg-blue-50 p-3 dark:bg-blue-900/20">
-                  <div className="flex items-center gap-2">
-                    <div className="h-2 w-2 animate-pulse rounded-full bg-blue-500"></div>
-                    <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
-                      Avatar is speaking:
-                    </span>
-                  </div>
-                  <p className="mt-1 text-sm text-blue-600 dark:text-blue-400">
-                    &ldquo;{currentSpeakingMessage}&rdquo;
-                  </p>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FileAudio className="h-5 w-5" />
+            Audio Lipsync Controls
+          </CardTitle>
+          <p className="text-muted-foreground text-sm">
+            Upload an audio file and configure settings to generate lipsync
+            animation
+          </p>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-6">
+            {/* Step 1: Upload Audio */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="bg-primary text-primary-foreground flex h-7 w-7 items-center justify-center rounded-full text-sm font-semibold">
+                  1
                 </div>
-              )}
+                <h3 className="font-semibold">Upload Audio File</h3>
+              </div>
 
-              <div className="flex gap-2">
-                <div className="flex-1">
-                  <Textarea
-                    placeholder="Type your message here..."
-                    value={message}
-                    onChange={(e) => setMessage(e.target.value)}
-                    className="min-h-[60px] resize-none border-slate-300 focus:border-blue-500 focus:ring-blue-500 dark:border-slate-600"
-                    disabled={
-                      disabled ||
-                      isLoading ||
-                      !(connectionStatus === 'connected')
-                    }
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault()
-                        if (
-                          message.trim() &&
-                          connectionStatus === 'connected'
-                        ) {
-                          handleSendMessage()
-                        }
-                      }
-                    }}
-                  />
-                </div>
-                <div className="flex flex-col gap-1">
-                  {sendLipsyncMessage.isPending ? (
-                    <Button disabled size="default" className="h-[60px] w-14">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    </Button>
-                  ) : (
-                    <Button
+              <div className="ml-9 space-y-1">
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Input
+                      ref={fileInputRef}
+                      id="audio-file"
+                      type="file"
+                      accept={supportedFormats.join(',')}
+                      onChange={handleFileSelect}
                       disabled={
-                        !message.trim() ||
-                        !(connectionStatus === 'connected') ||
-                        disabled ||
-                        isLoading
+                        disabled || !isConnected || audioLipsync.isPending
                       }
-                      onClick={handleSendMessage}
-                      size="default"
-                      className="h-[60px] w-14 disabled:bg-slate-300"
+                      className="cursor-pointer"
+                    />
+                  </div>
+                  {selectedFile && (
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={clearSelectedFile}
+                      disabled={audioLipsync.isPending}
                     >
-                      <Send className="h-4 w-4" />
+                      <X className="h-4 w-4" />
                     </Button>
                   )}
                 </div>
+
+                <p className="text-muted-foreground text-xs">
+                  Supported: WAV, MP3 <br />• Files are converted to 16kHz mono
+                </p>
               </div>
             </div>
-          </CardContent>
-        </Card>
-      </div>
 
-      {/* Voice Settings Card - Takes 1 column */}
-      <div className="lg:col-span-1">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Mic className="h-5 w-5" />
-              Voice Settings
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Language Selection */}
-            <div>
-              <label
-                htmlFor="language-select"
-                className="mb-2 block text-sm font-medium"
-              >
-                <Languages className="mr-1 inline h-4 w-4" />
-                Language:
-              </label>
-              <Select
-                value={selectedLanguage}
-                onValueChange={setSelectedLanguage}
-                disabled={
-                  disabled ||
-                  sendLipsyncMessage.isPending ||
-                  !availableLanguages.length
-                }
-              >
-                <SelectTrigger id="language-select">
-                  <SelectValue placeholder="Select language" />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableLanguages.map((language) => (
-                    <SelectItem key={language.id} value={language.id}>
-                      {language.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            {/* Step 2: Configure Settings */}
+            <div className="space-y-1">
+              <div className="flex items-center gap-1">
+                <div className="bg-primary text-primary-foreground flex h-7 w-7 items-center justify-center rounded-full text-sm font-semibold">
+                  2
+                </div>
+                <h3 className="font-semibold">Configure Settings</h3>
+              </div>
+
+              <div className="ml-9 space-y-2">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <label
+                      htmlFor="language-select"
+                      className="text-sm font-medium"
+                    >
+                      Language
+                    </label>
+                    <Select
+                      value={languageCode}
+                      onValueChange={setLanguageCode}
+                      disabled={
+                        disabled || !isConnected || audioLipsync.isPending
+                      }
+                    >
+                      <SelectTrigger id="language-select">
+                        <SelectValue placeholder="Select language" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {languageOptions.map((option) => (
+                          <SelectItem key={option.code} value={option.code}>
+                            {option.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label htmlFor="text-overlay" className="text-sm font-medium">
+                    Text Overlay{' '}
+                    <span className="text-muted-foreground">(Optional)</span>
+                  </label>
+                  <Textarea
+                    id="text-overlay"
+                    placeholder="Enter text to display on the video during playback..."
+                    value={textOverlay}
+                    onChange={(e) => setTextOverlay(e.target.value)}
+                    className="min-h-[80px] resize-none"
+                    disabled={
+                      disabled || !isConnected || audioLipsync.isPending
+                    }
+                  />
+                </div>
+              </div>
             </div>
 
-            {/* Voice Selection */}
-            <div>
-              <label
-                htmlFor="voice-select"
-                className="mb-2 block text-sm font-medium"
-              >
-                Voice:
-              </label>
-              <Select
-                value={selectedVoice}
-                onValueChange={setSelectedVoice}
-                disabled={
-                  disabled ||
-                  sendLipsyncMessage.isPending ||
-                  !currentLanguageConfig
-                }
-              >
-                <SelectTrigger id="voice-select">
-                  <SelectValue placeholder="Select voice" />
-                </SelectTrigger>
-                <SelectContent>
-                  {currentLanguageConfig?.voices.map((voice) => (
-                    <SelectItem key={voice} value={voice}>
-                      {voice}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            {/* Step 3: Process */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="bg-primary text-primary-foreground flex h-7 w-7 items-center justify-center rounded-full text-sm font-semibold">
+                  3
+                </div>
+                <h3 className="font-semibold">Generate Lipsync</h3>
+              </div>
+
+              <div className="ml-9">
+                {audioLipsync.isPending ? (
+                  <Button disabled size="lg" className="w-full sm:w-auto">
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                    Processing Audio...
+                  </Button>
+                ) : (
+                  <Button
+                    disabled={
+                      !selectedFile ||
+                      !isConnected ||
+                      disabled ||
+                      audioLipsync.isPending
+                    }
+                    onClick={handleProcessAudio}
+                    size="lg"
+                    className="w-full sm:w-auto"
+                  >
+                    <Play className="mr-2 h-5 w-5" />
+                    Process Audio File
+                  </Button>
+                )}
+
+                {!isConnected && (
+                  <p className="text-muted-foreground mt-1 text-sm">
+                    Connect to the avatar stream above to enable processing
+                  </p>
+                )}
+              </div>
             </div>
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }

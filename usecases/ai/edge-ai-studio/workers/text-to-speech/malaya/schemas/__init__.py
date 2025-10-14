@@ -79,9 +79,3 @@ class OpenAISpeechRequest(BaseModel):
         default=NormalizationOptions(),
         description="Options for the normalization system",
     )
-
-
-class VoicesResponse(BaseModel):
-    """Response schema for voices endpoint"""
-
-    voices: list[str] = Field(..., description="List of available voice names")

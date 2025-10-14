@@ -1,73 +1,134 @@
-# Edge AI Studio - Electron App
+# Edge AI Studio - Electron Builder Version
 
-This directory contains the Electron application for Edge AI Studio.
+This directory contains the Electron Builder implementation of Edge AI Studio, running in parallel with the Electron Forge version for comparison and testing.
+
+## Differences from Electron Forge
+
+| Feature | Electron Forge | Electron Builder |
+|---------|---------------|------------------|
+| Configuration | `forge.config.js` | `build` in `package.json` |
+| Package Command | `electron-forge package` | `electron-builder --dir` |
+| Make Command | `electron-forge make` | `electron-builder` |
+| Dependencies | Multiple `@electron-forge/*` packages | Single `electron-builder` package |
+
+## Setup
+
+From the project root, run:
+
+```bash
+# Linux/macOS
+./setup.sh
+
+# Windows PowerShell
+./setup.ps1
+```
+
+Or setup just this directory:
+
+```bash
+# Linux/macOS
+cd electron-builder
+./setup.sh
+
+# Windows PowerShell
+cd electron-builder
+./setup.ps1
+```
 
 ## Development
 
-### Prerequisites
-
-Before starting, ensure you have the following installed:
-
-- **Node.js** and **npm**
-
-If you're behind a proxy, export the following environment variable before installing dependencies:
-
-For Linux/macOS:
+### Start in Development Mode
 
 ```bash
-export ELECTRON_GET_USE_PROXY=http://proxy:port
+cd electron-builder
+npm start
 ```
 
-For Windows (PowerShell):
+This will launch the Electron app pointing to your local frontend server.
 
-```powershell
-$env:ELECTRON_GET_USE_PROXY="http://proxy:port"
-```
+## Building
 
-
-### Starting the Electron App
-
-To start the Electron app in development mode:
+### Build Package Directory (No Installer)
 
 ```bash
-npm run start
+cd electron-builder
+npm run build:dir
 ```
 
-### Packaging the Electron App
+This creates an unpacked directory at `../out/linux-unpacked/` (or `win-unpacked` on Windows).
 
-To package the Electron app for distribution:
+### Build Distributable
 
 ```bash
-npm run make
+# Linux
+npm run build:linux
+
+# Windows
+npm run build:win
+
+# Both
+npm run build
 ```
 
-**Note:** Before running `npm run make`, ensure that all dependencies are set up properly by running the package script:
+This creates distributable installers:
+- **Linux**: ZIP and DEB files
+- **Windows**: Squirrel installer
+
+Output is in `../out/`.
+
+## Configuration
+
+The build configuration is in `package.json` under the `build` key. Key settings:
+
+- **appId**: `com.intel.edge-ai-studio`
+- **productName**: `EdgeAIStudio`
+- **extraResources**: Copies `frontend`, `workers`, and `scripts` from `../build/`
+- **electronFuses**: Same security settings as Forge version
+- **Linux targets**: ZIP and DEB
+- **Windows targets**: Squirrel
+
+## Package Script
+
+To use the automated package script (similar to Forge):
 
 ```bash
-../scripts/package.sh
+cd ../scripts
+./package-builder.sh
 ```
 
-This script will help ensure all dependencies are installed and configured correctly before packaging.
+This will:
+1. Create `../build/` directory
+2. Copy workers (excluding `.venv`, `__pycache__`, etc.)
+3. Copy scripts
+4. Build frontend
+5. Run `electron-builder`
+6. Create final ZIP package
 
-## Running on Ubuntu 24.04
+## Comparing with Forge
 
-If you're running the packaged Electron app on Ubuntu 24.04, you may need to adjust AppArmor settings to allow the application to run properly:
+Both versions are functionally identical. You can test both to compare:
 
-```bash
-sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-```
+1. **Build time**: Which is faster?
+2. **Package size**: Any difference in final output?
+3. **Ease of use**: Which configuration is clearer?
+4. **Features**: Any missing capabilities?
 
-This command disables AppArmor restrictions on unprivileged user namespaces, which is required for Electron apps to function correctly on Ubuntu 24.04.
+## Migration Status
 
-## Project Structure
+✅ **Completed**:
+- Package.json with build configuration
+- All source files (main.js, preload.js, splash files)
+- Setup scripts (Linux & Windows)
+- Electron Fuses configuration
+- Extra resources configuration
 
-- `main.js` - Main Electron process
-- `preload.js` - Preload script for renderer process
-- `splash.html` - Splash screen HTML
-- `splash.js` - Splash screen JavaScript
-- `forge.config.js` - Electron Forge configuration
-- `logs/` - Application log files
+📋 **To Do**:
+- Create package script for automated builds
+- Test on Windows
+- Compare output with Forge version
 
-## Prerequisites
+## Notes
 
-Make sure you have Node.js and npm installed before running the commands above.
+- The `main.js` file is identical to the Forge version
+- Output directory is shared (`../out/`) but different subdirectories
+- Both versions can coexist without conflicts

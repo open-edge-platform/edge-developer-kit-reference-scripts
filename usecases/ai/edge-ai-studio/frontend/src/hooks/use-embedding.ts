@@ -130,10 +130,118 @@ export const useCreateKnowledgeBaseEmbeddings = () => {
 
 export const useSearchKnowledgeBase = () => {
   return useMutation({
-    mutationFn: async ({ kbId, query }: SearchKBProps) => {
-      const response = await EMBEDDINGS_API.get(
-        `kb/${kbId}/search?q=${encodeURIComponent(query)}`,
+    mutationFn: async ({
+      kbId,
+      query,
+      searchType = 'similarity',
+      topK = 4,
+      topN = 3,
+      scoreThreshold,
+      fetchK = 20,
+      lambdaMult = 0.5,
+    }: SearchKBProps & {
+      searchType?: string
+      topK?: number
+      topN?: number
+      scoreThreshold?: number
+      fetchK?: number
+      lambdaMult?: number
+    }) => {
+      const searchParams = {
+        query,
+        search_type: searchType,
+        top_k: topK,
+        top_n: topN,
+        ...(scoreThreshold !== undefined && {
+          score_threshold: scoreThreshold,
+        }),
+        ...(searchType === 'mmr' && {
+          fetch_k: fetchK,
+          lambda_mult: lambdaMult,
+        }),
+      }
+
+      const response = await EMBEDDINGS_API.post(
+        `kb/${kbId}/search`,
+        searchParams,
       )
+      return response
+    },
+  })
+}
+
+export const useCreateKnowledgeBaseEmbeddingsAdvanced = () => {
+  return useMutation({
+    mutationFn: async ({
+      kbId,
+      splitterName = 'RecursiveCharacter',
+      chunkSize = 1000,
+      chunkOverlap = 200,
+    }: {
+      kbId: number
+      splitterName?: string
+      chunkSize?: number
+      chunkOverlap?: number
+    }) => {
+      const response = await EMBEDDINGS_API.post(`kb/${kbId}/create`, {
+        splitter_name: splitterName,
+        chunk_size: chunkSize,
+        chunk_overlap: chunkOverlap,
+      })
+      return response
+    },
+  })
+}
+
+export const useGetKnowledgeBaseChunks = (
+  kbId: number,
+  includeEmbeddings: boolean = false,
+) => {
+  return useQuery({
+    queryKey: ['knowledge-base-chunks', kbId, includeEmbeddings],
+    queryFn: async () => {
+      const params = includeEmbeddings ? '?include_embeddings=true' : ''
+      const response = await EMBEDDINGS_API.get(`kb/${kbId}/chunks${params}`)
+      return response
+    },
+    enabled: !!kbId,
+  })
+}
+
+export const useAddChunkToKnowledgeBase = () => {
+  return useMutation({
+    mutationFn: async ({
+      kbId,
+      content,
+      metadata,
+    }: {
+      kbId: number
+      content: string
+      metadata?: Record<string, unknown>
+    }) => {
+      const response = await EMBEDDINGS_API.post(`kb/${kbId}/chunks`, {
+        content,
+        metadata,
+      })
+      return response
+    },
+  })
+}
+
+export const useDeleteChunksFromKnowledgeBase = () => {
+  return useMutation({
+    mutationFn: async ({
+      kbId,
+      docIds,
+    }: {
+      kbId: number
+      docIds: string[]
+    }) => {
+      const response = await EMBEDDINGS_API.delete(`kb/${kbId}/chunks`, {
+        data: {
+          doc_ids: docIds,
+        },
+      })
       return response
     },
   })

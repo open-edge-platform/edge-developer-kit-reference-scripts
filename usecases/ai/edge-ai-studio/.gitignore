@@ -36,3 +36,5 @@ tmp
 !/out/README.md
 !/out/run_web.sh
 !/out/setup.sh
+!/out/run_web.ps1
+!/out/setup.ps1

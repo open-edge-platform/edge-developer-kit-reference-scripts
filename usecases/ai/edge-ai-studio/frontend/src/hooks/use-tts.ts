@@ -1,7 +1,10 @@
 // Copyright (C) 2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-import { useMutation } from '@tanstack/react-query'
+import { FetchAPI } from '@/lib/api'
+import { useMutation, useQuery } from '@tanstack/react-query'
+
+const TTS_API = new FetchAPI(`/api/tts`, 'v1')
 
 export const useTextToSpeech = () => {
   return useMutation({
@@ -36,6 +39,16 @@ export const useTextToSpeech = () => {
       if (!response.ok) {
         throw new Error('Network response was not ok')
       }
+      return response
+    },
+  })
+}
+
+export const useGetVoices = () => {
+  return useQuery({
+    queryKey: ['tts-voices'],
+    queryFn: async () => {
+      const response = await TTS_API.get('audio/voices')
       return response
     },
   })

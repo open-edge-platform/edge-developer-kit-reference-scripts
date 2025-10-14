@@ -14,12 +14,15 @@ from aiortc import (
 )
 from aiortc.rtcrtpsender import RTCRtpSender
 
-from fastapi import FastAPI, Request, WebSocket
+from fastapi import FastAPI, Request, WebSocket, UploadFile, File, HTTPException, Form
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from pydantic import BaseModel
 from typing import Optional
+import numpy as np
+import librosa
+import io
 
 from modules.base.logger import getLogger
 from modules.webrtc_avatar import WebRTCAvatar
@@ -194,7 +197,7 @@ def setup_routes(
         except:
             manager.disconnect(session_id)
 
-    @app.post("/chat")
+    @app.post("/v1/lipsync/chat")
     async def chat(chat: Chat):
         session_id = chat.session_id
 
@@ -212,7 +215,7 @@ def setup_routes(
 
         return JSONResponse({"status": "success"})
 
-    @app.post("/stop")
+    @app.post("/v1/lipsync/stop")
     async def stop(chat_opt: ChatOption):
         session_id = chat_opt.session_id
 
@@ -224,7 +227,79 @@ def setup_routes(
 
         return JSONResponse({"status": "success"})
 
-    @app.post("/offer", include_in_schema=False)
+    @app.post("/v1/lipsync")
+    async def audio_lipsync(
+        file: UploadFile = File(...),
+        session_id: str = Form(...),
+        text_overlay: str = Form(None),
+        language_code: str = Form("en-US"),
+    ):
+        """
+        Endpoint for processing audio files directly for lipsync streaming.
+        The audio and video are streamed back via WebRTC similar to the chat endpoint.
+        """
+
+        # Validate session
+        if not session_id or session_id not in avatars:
+            raise HTTPException(status_code=400, detail="Invalid or missing session_id")
+
+        # Validate audio file
+        if not file.filename.lower().endswith((".wav", ".mp3")):
+            raise HTTPException(
+                status_code=400,
+                detail="Unsupported audio format. Please use WAV, MP3",
+            )
+
+        try:
+            # Read and process audio file
+            audio_data = await file.read()
+            audio_buffer = io.BytesIO(audio_data)
+
+            # Load audio with librosa (converts to mono, 16kHz)
+            audio_array, sample_rate = librosa.load(
+                audio_buffer,
+                sr=16000,  # Target sample rate to match avatar expectations
+                mono=True,
+            )
+
+            getLogger(__name__).info(
+                f"Loaded audio: duration={len(audio_array)/sample_rate:.2f}s, samples={len(audio_array)}"
+            )
+
+            # Get avatar instance
+            avatar_streamer = avatars[session_id]
+
+            # Prepare metadata for text overlay if provided
+            metadata = None
+            if text_overlay:
+                metadata = {"message": text_overlay, "language_code": language_code}
+
+            # Process audio through the WebRTC avatar
+            # This will queue the audio for lipsync processing and stream via WebRTC
+            avatar_streamer.process_audio(audio_array, metadata)
+
+            return JSONResponse(
+                {
+                    "status": "success",
+                    "session_id": session_id,
+                    "audio_info": {
+                        "filename": file.filename,
+                        "duration_seconds": len(audio_array) / sample_rate,
+                        "sample_rate": sample_rate,
+                        "samples": len(audio_array),
+                        "has_text_overlay": text_overlay is not None,
+                    },
+                    "message": "Audio processing started, check WebRTC stream for output",
+                }
+            )
+
+        except Exception as e:
+            getLogger(__name__).error(f"Error processing audio file: {str(e)}")
+            raise HTTPException(
+                status_code=500, detail=f"Error processing audio: {str(e)}"
+            )
+
+    @app.post("/v1/lipsync/offer", include_in_schema=False)
     async def offer(request: Request):
         params = await request.json()
 

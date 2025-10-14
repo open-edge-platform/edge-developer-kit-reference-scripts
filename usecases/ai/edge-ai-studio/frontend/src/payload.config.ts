@@ -53,6 +53,8 @@ export default buildConfig({
 
     // Initialize health check service with 10 second interval
     initHealthCheckService(payload)
+    console.log('--------------------------------------------')
+    console.log('payload init health check')
 
     process.on('beforeExit', async (code) => {
       console.log('Process beforeExit event with code:', code)

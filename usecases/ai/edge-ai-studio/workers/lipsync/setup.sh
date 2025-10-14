@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VENV_DIR="$SCRIPT_DIR/.venv"
 
 PARENT_THIRDPARTY_DIR="$SCRIPT_DIR/../thirdparty"
 PARENT_UV_PATH="$PARENT_THIRDPARTY_DIR/uv/uv"
@@ -10,33 +11,28 @@ UV_CMD="$PARENT_UV_PATH"
 
 echo "Setup Digital Avatar Environment"
 
-setup_env() {
-  if [ -f "$HOME/.local/bin/env" ]; then
-    # shellcheck disable=SC1091
-    source "$HOME/.local/bin/env"
+check_uv_installed() {
+  echo -e "Checking if uv is installed in workers thirdparty directory..."
+  if [ -x "$PARENT_UV_PATH" ]; then
+      echo -e "Found uv in workers thirdparty folder."
   else
-    echo "Notice: $HOME/.local/bin/env not found; continuing without it"
-  fi
-  echo "Setup Virtual Environment"
-  echo "Remove existing venv if exists"
-  rm -rf .venv
-
-  echo "Create 3.11.9 venv environment"
-  "$UV_CMD" venv --python=3.11.9
-  if [ -f ".venv/bin/activate" ]; then
-    # shellcheck disable=SC1091
-    source ".venv/bin/activate"
-  else
-    echo "Notice: .venv/bin/activate not found; continuing without it"
+      echo -e "uv not found in expected location: $PARENT_UV_PATH"
+      echo -e "Please ensure the workers setup has been run first."
+      exit 1
   fi
 }
 
-pytorch_installation() {
-  cd "$SCRIPT_DIR" || exit
-  echo "Installing PyTorch for xPU"
-  "$UV_CMD" pip install -U pip
-  "$UV_CMD" pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
-  "$UV_CMD" pip install huggingface-hub[cli]
+create_venv() {
+  if [[ -d "$VENV_DIR" ]]; then
+    echo "Virtual environment already exists at $VENV_DIR."
+  else
+    echo "Creating Python 3.11 virtual environment with uv ..."
+    "$UV_CMD" venv --seed --python 3.11 "$VENV_DIR"
+  fi
+  # shellcheck disable=SC1091
+  source "$VENV_DIR/bin/activate"
+  "$UV_CMD" sync
+  "$UV_CMD" run python -m ensurepip
 }
 
 wav2lip_dependencies_installation() {
@@ -64,13 +60,12 @@ wav2lip_dependencies_installation() {
   "$UV_CMD" run modules/lipsync/wav2lip/wav2lip_avatar_generator.py --video_path data/samples/sample_video_ai.mp4
 }
 
-main_dependencies_installation() {
-  echo "Install Digital Avatar Dependencies"
-  cd "$SCRIPT_DIR" || exit
-  "$UV_CMD" pip install -r requirements.txt
+main() {
+  echo "Starting setup for Lipsync with Intel GPU support ..."
+  check_uv_installed
+  create_venv
+  wav2lip_dependencies_installation
+  echo "Setup completed successfully!"
 }
 
-setup_env
-pytorch_installation
-main_dependencies_installation
-wav2lip_dependencies_installation
+main

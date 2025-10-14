@@ -4,7 +4,7 @@
 import os
 import json
 import argparse
-import subprocess #nosec -- used to spawn ovms in a secured environment
+import subprocess  # nosec -- used to spawn ovms in a secured environment
 import time
 import requests
 import urllib.parse
@@ -121,7 +121,7 @@ def setup_ovms_environment():
                 for file in os.listdir(ovms_dir):
                     print(f"  - {file}")
             raise RuntimeError(f"OVMS executable not found at {ovms_executable}")
-        return ovms_executable
+        return ovms_executable, None
     else:  # Linux/Unix
         env["LD_LIBRARY_PATH"] = os.path.join(ovms_dir, "lib")
         env["PATH"] = f"{os.path.join(ovms_dir, 'bin')}"

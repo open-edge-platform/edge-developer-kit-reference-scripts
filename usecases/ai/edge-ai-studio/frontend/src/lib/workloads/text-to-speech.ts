@@ -14,7 +14,7 @@ export const TEXT_TO_SPEECH_WORKLOAD = {
   device: 'CPU',
   type: TEXT_TO_SPEECH_TYPE,
   port: TEXT_TO_SPEECH_PORT,
-  healthUrl: '/v1/models',
+  healthUrl: '/healthcheck',
 }
 
 // Language/Model Options
@@ -41,12 +41,6 @@ export const TTS_MODELS = [
           'af_river',
           'af_sarah',
           'af_sky',
-          'af_v0',
-          'af_v0bella',
-          'af_v0irulan',
-          'af_v0nicole',
-          'af_v0sarah',
-          'af_v0sky',
           'am_adam',
           'am_echo',
           'am_eric',
@@ -56,9 +50,6 @@ export const TTS_MODELS = [
           'am_onyx',
           'am_puck',
           'am_santa',
-          'am_v0adam',
-          'am_v0gurney',
-          'am_v0michael',
         ],
       },
       {
@@ -68,14 +59,10 @@ export const TTS_MODELS = [
           'bf_alice',
           'bf_emma',
           'bf_lily',
-          'bf_v0emma',
-          'bf_v0isabella',
           'bm_daniel',
           'bm_fable',
           'bm_george',
           'bm_lewis',
-          'bm_v0george',
-          'bm_v0lewis',
         ],
       },
       {

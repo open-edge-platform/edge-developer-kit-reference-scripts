@@ -17,7 +17,7 @@
 import argparse
 import os
 import sys
-import subprocess #nosec -- used to run optimum cli in a secured environment
+import subprocess  # nosec -- used to run optimum cli in a secured environment
 from openvino_tokenizers import convert_tokenizer
 from transformers import AutoTokenizer
 import jinja2

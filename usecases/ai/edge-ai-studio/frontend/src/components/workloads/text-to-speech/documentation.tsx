@@ -79,7 +79,7 @@ import { spawn } from "child_process";
 import path from "path";
 
 const openai = new OpenAI({
-  baseURL: 'http://localhost:5002/v1',
+  baseURL: 'http://localhost:${port}/v1',
   apiKey: 'not-needed',
 });
 
@@ -131,7 +131,7 @@ fetch(url)
 from openai import OpenAI
 import requests
 
-base_url = "http://localhost:5002/v1"
+base_url = "http://localhost:${port}/v1"
 client = OpenAI(base_url=base_url, api_key="not-needed")
 speech_file_path = Path(__file__).parent / "speech.mp3"
 
@@ -157,7 +157,7 @@ import path from 'path'
 import OpenAI from 'openai'
 
 const openai = new OpenAI({
-  baseURL: 'http://localhost:5002/v1',
+  baseURL: 'http://localhost:${port}/v1',
   apiKey: 'not-needed',
 })
 const speechFile = path.resolve('./speech.mp3')

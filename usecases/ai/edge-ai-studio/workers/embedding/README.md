@@ -91,13 +91,22 @@ The worker provides several REST API endpoints:
 **Knowledge Base Management:**
 - `GET /v1/kb` - List all knowledge bases
 - `POST /v1/kb` - Create a new knowledge base
-- `GET /v1/kb/{id}` - Get a knowledge base
-- `DELETE /v1/kb/{id}` - Delete a knowledge base
-- `GET /v1/kb/{id}/files` - List all files
-- `DELETE /v1/kb/{id}/files` - Delete a file
-- `POST /v1/kb/{id}/files` - Upload files to a knowledge base
-- `POST /v1/kb/{id}/create` - Create knowledge base embeddings
-- `POST /v1/kb/{id}/search` - Search within a knowledge base using RAG
+- `GET /v1/kb/{id}` - Get a knowledge base by ID
+- `DELETE /v1/kb/{id}` - Delete a knowledge base and all its data
+
+**File Management:**
+- `GET /v1/kb/{id}/files` - List all uploaded files in a knowledge base
+- `POST /v1/kb/{id}/files` - Upload files to a knowledge base (PDF, TXT, CSV, DOC/DOCX, HTML, MD, ODT, PPT/PPTX, EPUB)
+- `DELETE /v1/kb/{id}/files` - Delete a specific file from a knowledge base
+
+**Embedding and Chunking:**
+- `POST /v1/kb/{id}/create` - Create embeddings from uploaded documents with configurable text splitting
+- `GET /v1/kb/{id}/chunks` - Retrieve all chunks from a knowledge base (with optional embedding vectors)
+- `POST /v1/kb/{id}/chunks` - Manually add a text chunk to the knowledge base
+- `DELETE /v1/kb/{id}/chunks` - Delete specific chunks by document IDs
+
+**Search and Retrieval:**
+- `POST /v1/kb/{id}/search` - Advanced search with configurable parameters (top_k, top_n, search types, filters)
 
 **Health Check:**
 - `GET /healthcheck` - Service health status
@@ -125,8 +134,9 @@ Models designed for reranking tasks:
 The worker supports document upload and processing for RAG workflows:
 
 - **Supported formats**: PDF, Plain text (.txt), CSV, DOC/DOCX, HTML, Markdown, ODT, PPT/PPTX, EPUB, EverNote
-- **Chunking**: Configurable chunk size and overlap for optimal retrieval (default: 1000 chunks, 200 overlap)
+- **Flexible chunking**: Configurable text splitters (Character, RecursiveCharacter, Markdown) with custom chunk size and overlap
 - **Vector storage**: Documents are automatically embedded and stored using FAISS vector database
+- **Advanced search**: Multiple search types (similarity, MMR, similarity with score threshold)
 - **Reranking**: Uses contextual compression with Cohere reranker for improved search relevance
 
 ### Notes

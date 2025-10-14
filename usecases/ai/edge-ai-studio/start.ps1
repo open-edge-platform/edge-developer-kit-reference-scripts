@@ -3,7 +3,7 @@
 
 # Save the original location
 $script:originalLocation = Get-Location
-Set-Location -Path "frontend"
+Push-Location -Path "frontend"
 
 
 # Global variables to track PATH changes
@@ -130,7 +130,7 @@ try {
     Remove-NodeFromPath
     # Restore the original location
     if ($script:originalLocation) {
-        Set-Location -Path $script:originalLocation
+        Pop-Location
         Write-Host "Returned to original directory: $script:originalLocation" -ForegroundColor Green
     }
 }

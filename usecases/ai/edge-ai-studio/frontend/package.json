@@ -1,5 +1,5 @@
 {
-  "name": "frontend",
+  "name": "edge-ai-studio-frontend",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -8,16 +8,16 @@
     "build": "next build",
     "start": "next start --port 8080",
     "lint": "next lint",
-    "lint:fix": "next lint --fix",
-    "worker": "payload run scripts/worker.ts"
+    "lint:fix": "next lint --fix"
   },
   "dependencies": {
-    "@ai-sdk/openai-compatible": "^1.0.17",
-    "@ai-sdk/react": "^2.0.49",
-    "@payloadcms/db-sqlite": "^3.56.0",
-    "@payloadcms/next": "^3.56.0",
-    "@payloadcms/richtext-lexical": "^3.56.0",
+    "@ai-sdk/openai-compatible": "^1.0.19",
+    "@ai-sdk/react": "^2.0.57",
+    "@payloadcms/db-sqlite": "^3.57.0",
+    "@payloadcms/next": "^3.57.0",
+    "@payloadcms/richtext-lexical": "^3.57.0",
     "@radix-ui/react-accordion": "^1.2.11",
+    "@radix-ui/react-collapsible": "^1.1.12",
     "@radix-ui/react-dialog": "^1.1.14",
     "@radix-ui/react-label": "^2.1.7",
     "@radix-ui/react-popover": "^1.1.15",
@@ -29,21 +29,20 @@
     "@radix-ui/react-switch": "^1.2.5",
     "@radix-ui/react-tabs": "^1.1.12",
     "@radix-ui/react-tooltip": "^1.2.7",
-    "@tanstack/react-query": "^5.90.1",
+    "@tanstack/react-query": "^5.90.2",
     "@types/mdx": "^2.0.13",
     "ai": "^5.0.26",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
-    "esbuild": "0.25.9",
     "graphql": "^16.11.0",
     "hast-util-to-jsx-runtime": "^2.3.6",
     "lucide-react": "^0.544.0",
-    "next": "^15.5.3",
+    "next": "^15.5.4",
     "next-themes": "^0.4.6",
     "openai": "^5.20.2",
     "openvino-node": "^2025.1.0",
-    "payload": "^3.56.0",
+    "payload": "^3.57.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-dropzone": "^14.3.8",
@@ -55,13 +54,13 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
-    "@tanstack/react-query-devtools": "^5.90.1",
+    "@tanstack/react-query-devtools": "^5.90.2",
     "@types/node": "^24.5.0",
-    "@types/react": "^19.1.13",
+    "@types/react": "^19.1.15",
     "@types/react-dom": "^19",
     "concurrently": "^9.2.1",
     "eslint": "^9",
-    "eslint-config-next": "^15.5.2",
+    "eslint-config-next": "^15.5.4",
     "eslint-config-prettier": "^10.1.5",
     "eslint-plugin-jsx-a11y": "^6.10.2",
     "eslint-plugin-prettier": "^5.4.1",
@@ -73,6 +72,22 @@
     "typescript": "^5"
   },
   "overrides": {
-    "esbuild": "0.25.9"
+    "esbuild": "^0.25.10",
+    "pino": "^9.13.0",
+    "@esbuild-kit/core-utils": {
+      "esbuild": "^0.25.10"
+    },
+    "@esbuild-kit/esm-loader": {
+      "esbuild": "^0.25.10"
+    },
+    "drizzle-kit": {
+      "esbuild": "^0.25.10",
+      "@esbuild-kit/esm-loader": {
+        "esbuild": "^0.25.10"
+      },
+      "@esbuild-kit/core-utils": {
+        "esbuild": "^0.25.10"
+      }
+    }
   }
 }

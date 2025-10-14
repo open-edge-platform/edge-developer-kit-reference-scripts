@@ -4,12 +4,14 @@
 
 set -euo pipefail
 
-KOKORO_COMMIT_HASH="543cbecc1a36b1d1b1cc90923a47d6178d9374dc"
 TTS_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TTS_VENV_DIR="$TTS_SCRIPT_DIR/.venv"
-TTS_THIRDPARTY_DIR="$TTS_SCRIPT_DIR/thirdparty"
-KOKORO_DIR="$TTS_THIRDPARTY_DIR/Kokoro-FastAPI"
-KOKORO_PATCH_FILE="$TTS_SCRIPT_DIR/0001-PATCH-Added-KokoroTTS-OpenVINO-support.patch"
+
+# Repo info for kokoro
+REPO_URL="https://github.com/hexgrad/kokoro.git"
+# specific commit hash to fetch (from the tree URL provided)
+REPO_COMMIT="dfb907a02bba8152ca444717ca5d78747ccb4bec"
+DEST_DIR="$TTS_SCRIPT_DIR/kokoro"
 
 check_uv_installed() {
     echo -e "Checking if uv is installed in workers thirdparty directory..."
@@ -29,38 +31,102 @@ create_venv() {
         echo "Virtual environment already exists at $TTS_VENV_DIR."
     else
         echo "Creating Python 3.11 virtual environment with uv ..."
-        "$UV_CMD" venv --python 3.11 "$TTS_VENV_DIR"
+        "$UV_CMD" venv --seed --python 3.11 "$TTS_VENV_DIR"
     fi
-    if [ -f "$TTS_VENV_DIR/bin/activate" ]; then
-        # shellcheck disable=SC1091
-        source "$TTS_VENV_DIR/bin/activate"
-    else
-        echo "Notice: $TTS_VENV_DIR/bin/activate not found; continuing without it"
-    fi
+    # shellcheck disable=SC1091
+    source "$TTS_VENV_DIR/bin/activate"
+    "$UV_CMD" sync
+    "$UV_CMD" run python -m ensurepip
 }
 
-clone_kokoro_fastapi() {
-    mkdir -p "$TTS_THIRDPARTY_DIR"
-    cd "$TTS_THIRDPARTY_DIR"
-    if [[ -d "Kokoro-FastAPI" ]]; then
-        echo "Kokoro-FastAPI already exists. Skipping clone."
+clone_kokoro_repo() {
+    echo "Preparing kokoro at $DEST_DIR"
+
+    if command -v git >/dev/null 2>&1; then
+        echo "git found"
     else
-        echo "Cloning Kokoro-FastAPI repository ..."
-        git clone https://github.com/remsky/Kokoro-FastAPI
-        cd Kokoro-FastAPI
-        git checkout "$KOKORO_COMMIT_HASH"
-        cd ..
+        echo "git is required but not installed. Please install git and rerun this script."
+        exit 1
     fi
-    if [[ -f "$KOKORO_PATCH_FILE" ]]; then
-        echo "Applying patch for Intel GPU support ..."
-        cd Kokoro-FastAPI
-        git apply --ignore-whitespace "$KOKORO_PATCH_FILE" || true
-        cd ..
+
+    if [[ -d "$DEST_DIR" && -n "$(ls -A "$DEST_DIR")" ]]; then
+        echo "Destination $DEST_DIR already exists and is not empty. Skipping clone."
+        return 0
     fi
-    cd "$KOKORO_DIR"
-    echo "Syncing uv dependencies ..."
-    $UV_CMD sync --active --extra cpu
-    cd "$TTS_SCRIPT_DIR"
+
+    # Initialize a repository and fetch only the specific commit (shallow)
+    echo "Cloning specific commit $REPO_COMMIT from $REPO_URL into $DEST_DIR"
+    git init "$DEST_DIR"
+    pushd "$DEST_DIR" >/dev/null
+    git remote add origin "$REPO_URL"
+
+    # Try to fetch the specific commit shallowly. If that fails, fall back to a shallow branch fetch.
+    if git fetch --depth 1 origin "$REPO_COMMIT"; then
+        git checkout FETCH_HEAD
+    else
+        echo "Warning: could not fetch commit $REPO_COMMIT directly. Falling back to shallow clone of default branch."
+        git fetch --depth 1 origin
+        git checkout --detach FETCH_HEAD || git checkout --force
+    fi
+
+    # If a local patch file exists next to this script, attempt to apply it now
+    PATCH_FILE="$TTS_SCRIPT_DIR/kokoro.patch"
+    if [[ -f "$PATCH_FILE" ]]; then
+        echo "Applying local patch: $PATCH_FILE"
+        if git apply --whitespace=fix "$PATCH_FILE"; then
+            git add -A
+            # Try to commit; if commit fails (e.g. no changes), continue
+            git commit -m "Apply local kokoro.patch" --author="Edge AI Studio <no-reply@local>" || true
+            echo "Patch applied and committed."
+        else
+            echo "git apply failed; attempting git am fallback..."
+            # git am expects an email-style patch. Try it as a fallback. If it fails, abort and exit to avoid pruning useful files.
+            if git am --signoff < "$PATCH_FILE"; then
+                echo "Patch applied via git am."
+            else
+                echo "ERROR: Failed to apply patch $PATCH_FILE. Aborting setup so the repository isn't pruned incorrectly."
+                git am --abort >/dev/null 2>&1 || true
+                popd >/dev/null
+                exit 1
+            fi
+        fi
+    else
+        echo "No local patch file found at $PATCH_FILE; skipping patch step."
+    fi
+
+    # Remove everything except the kokoro folder
+    echo "Pruning repository: keeping only the 'kokoro' folder"
+    # Use a safe loop that handles dotfiles and ordinary files
+    for entry in .?* *; do
+        # skip current and parent dir
+        [ "$entry" = "." ] && continue
+        [ "$entry" = ".." ] && continue
+        [ "$entry" = "kokoro" ] && continue
+        rm -rf -- "$entry" || true
+    done
+
+    # If the repo produced a nested kokoro folder (DEST_DIR/kokoro), move its contents up
+    if [[ -d "kokoro" ]]; then
+        echo "Moving contents of inner 'kokoro' up into $DEST_DIR"
+        # include dotfiles and avoid literal pattern expansion when empty
+        shopt -s dotglob nullglob
+        kokoro_entries=(kokoro/*)
+        if (( ${#kokoro_entries[@]} )); then
+            mv -f "${kokoro_entries[@]}" . || true
+        fi
+        shopt -u dotglob nullglob
+        rm -rf kokoro
+    else
+        echo "Warning: expected 'kokoro' directory not found in fetched repo."
+    fi
+
+    # Optionally remove .git to leave only the kokoro content in the folder structure
+    if [[ -d ".git" ]]; then
+        rm -rf .git
+    fi
+
+    popd >/dev/null
+    echo "kokoro prepared at $DEST_DIR (kokoro files at top level)"
 }
 
 main() {
@@ -68,7 +134,7 @@ main() {
     cd "$TTS_SCRIPT_DIR"
     check_uv_installed
     create_venv
-    clone_kokoro_fastapi
+    clone_kokoro_repo
     echo "Setup completed successfully!"
 }
 

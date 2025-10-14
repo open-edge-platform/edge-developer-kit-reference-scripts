@@ -1,104 +1,53 @@
 # Copyright (C) 2025 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
-param(
-    [string]$ErrorActionPreference = "Stop"
-)
+# Exit on error
+$ErrorActionPreference = "Stop"
 
-# Global variables to track PATH changes
-$script:originalPath = $null
-$script:nodePathAdded = $false
+# Get the directory of this script
+$SCRIPT_DIR = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-function Add-NodeToPath {
-    param([string]$NodeBinPath)
+# Node.js path from thirdparty
+$NODE_PATH = Join-Path $SCRIPT_DIR "..\thirdparty\node"
 
-    if (-not $script:nodePathAdded -and (Test-Path $NodeBinPath)) {
-        $script:originalPath = $env:PATH
-        $env:PATH = "$NodeBinPath;$env:PATH"
-        $script:nodePathAdded = $true
-        Write-Host "Temporarily added Node.js to PATH: $NodeBinPath" -ForegroundColor Green
-        return $true
+# Function to set up Node.js environment
+function Setup-NodeEnv {
+    Write-Host "Setting up Node.js environment..."
+    
+    if (-Not (Test-Path $NODE_PATH)) {
+        Write-Host "Error: Node.js not found in $NODE_PATH. Please run setup.ps1 in the project root first." -ForegroundColor Red
+        exit 1
     }
-    return $false
-}
-
-function Remove-NodeFromPath {
-    if ($script:nodePathAdded -and $script:originalPath) {
-        $env:PATH = $script:originalPath
-        $script:nodePathAdded = $false
-        Write-Host "Restored original PATH" -ForegroundColor Green
+    
+    $env:PATH = "$NODE_PATH;$env:PATH"
+    
+    # Check for node and npm
+    if (-Not (Get-Command node -ErrorAction SilentlyContinue)) {
+        Write-Host "Error: node is not available in PATH." -ForegroundColor Red
+        exit 1
     }
-}
-
-function Get-NodePaths {
-    # Get the root directory (parent of electron)
-    $rootDir = Split-Path $PWD -Parent
-
-    $nodeDir = Join-Path $rootDir "thirdparty\node"
-    $nodeExecutable = Join-Path $nodeDir "node.exe"
-
-    return @{
-        NodeDir = $nodeDir
-        NodeExecutable = $nodeExecutable
+    
+    if (-Not (Get-Command npm -ErrorAction SilentlyContinue)) {
+        Write-Host "Error: npm is not available in PATH." -ForegroundColor Red
+        exit 1
     }
+    
+    Write-Host "Node.js version: $(node -v)"
+    Write-Host "npm version: $(npm -v)"
 }
 
-function Test-NodeInstalled {
-    Write-Host "Checking Node.js installation..." -ForegroundColor Yellow
-
-    $nodePaths = Get-NodePaths
-
-    if (Test-Path $nodePaths.NodeExecutable) {
-        Write-Host "Using Node.js from: $($nodePaths.NodeExecutable)" -ForegroundColor Green
-        try {
-            & $nodePaths.NodeExecutable --version | Out-Null
-            Write-Host "Node.js is ready to use." -ForegroundColor Green
-
-            # Add Node.js to PATH for easier npm usage
-            Add-NodeToPath -NodeBinPath $nodePaths.NodeDir | Out-Null
-            return $true
-        } catch {
-            Write-Host "ERROR: Node.js executable is not working properly." -ForegroundColor Red
-            throw "Node.js executable test failed"
-        }
-    } else {
-        Write-Host "Node.js not found in thirdparty directory. Checking system PATH..." -ForegroundColor Yellow
-        try {
-            node --version | Out-Null
-            Write-Host "Node.js is installed in system PATH." -ForegroundColor Green
-            return $true
-        } catch {
-            Write-Host "ERROR: Node.js is not installed or not in PATH." -ForegroundColor Red
-            Write-Host "Please run the root setup.ps1 first to install Node.js, or install Node.js manually:" -ForegroundColor Yellow
-            Write-Host "  - Download from: https://nodejs.org/en/download" -ForegroundColor White
-            Read-Host "Press Enter to continue..."
-            exit 1
-        }
-    }
+# Main installation
+function Main {
+    Push-Location $SCRIPT_DIR
+    
+    Write-Host "Setting up Electron Builder environment..."
+    Setup-NodeEnv
+    
+    Write-Host "Installing npm dependencies..."
+    npm install
+    
+    Write-Host "Electron Builder setup complete!" -ForegroundColor Green
+    Pop-Location
 }
 
-function Install-Dependencies {
-    Write-Host "Installing Electron node dependencies..." -ForegroundColor Yellow
-    try {
-        npm install
-        Write-Host "Electron node dependencies installed successfully." -ForegroundColor Green
-    } catch {
-        Write-Host "Failed to install Electron node dependencies." -ForegroundColor Red
-        throw
-    }
-}
-# Main execution
-try {
-    Write-Host "Starting setup..." -ForegroundColor Green
-    Test-NodeInstalled
-    Install-Dependencies
-    Write-Host "Setup completed successfully!" -ForegroundColor Green
-    exit 0
-} catch {
-    Write-Host "Setup failed: $($_.Exception.Message)" -ForegroundColor Red
-    Read-Host "Press Enter to continue..."
-    exit 1
-} finally {
-    # Always restore the original PATH
-    Remove-NodeFromPath
-}
+Main

@@ -36,6 +36,11 @@ import {
 import { useEffect, useRef, useState, useMemo } from 'react'
 import { toast } from 'sonner'
 import { TTS_MODELS } from '@/lib/workloads/text-to-speech'
+import { useGetVoices } from '@/hooks/use-tts'
+import {
+  SelectLanguage,
+  SelectVoice,
+} from '@/components/workloads/text-to-speech/common'
 
 interface ConversationPanelProps {
   sessionId: string
@@ -56,6 +61,7 @@ export function ConversationPanel({
   const [currentMessage, setCurrentMessage] = useState('')
   const [selectedLanguage, setSelectedLanguage] = useState<string>('')
   const [selectedVoice, setSelectedVoice] = useState<string>('')
+  const { data: availableVoices, refetch: refetchVoices } = useGetVoices()
 
   const { messages, sendMessage, status, stop } = useChat({
     transport: new DefaultChatTransport({
@@ -79,6 +85,33 @@ export function ConversationPanel({
   const currentLanguageConfig = useMemo(() => {
     return availableLanguages.find((lang) => lang.id === selectedLanguage)
   }, [availableLanguages, selectedLanguage])
+
+  // Group voices by cached status
+  const groupedVoices = useMemo(() => {
+    if (!currentLanguageConfig || !availableVoices) {
+      return { cached: [], notCached: [] }
+    }
+
+    const cached: string[] = []
+    const notCached: string[] = []
+
+    currentLanguageConfig.voices.forEach((voice) => {
+      if (availableVoices[voice] === true) {
+        cached.push(voice)
+      } else {
+        notCached.push(voice)
+      }
+    })
+
+    return { cached, notCached }
+  }, [currentLanguageConfig, availableVoices])
+
+  // Refetch voices if disabled variable changes
+  useEffect(() => {
+    if (!disabled) {
+      refetchVoices()
+    }
+  }, [disabled, refetchVoices])
 
   useEffect(() => {
     // Auto-scroll to bottom when new messages arrive
@@ -122,7 +155,11 @@ export function ConversationPanel({
           ttsModel: selectedModel,
         },
       },
-    )
+    ).then(() => {
+      if (availableVoices?.[selectedVoice] != true) {
+        refetchVoices()
+      }
+    })
     setCurrentMessage('')
   }
 
@@ -168,22 +205,12 @@ export function ConversationPanel({
               <Languages className="mr-1 h-4 w-4" />
               Language
             </label>
-            <Select
-              value={selectedLanguage}
-              onValueChange={setSelectedLanguage}
+            <SelectLanguage
+              selectedLanguage={selectedLanguage}
+              setSelectedLanguage={setSelectedLanguage}
+              availableLanguages={availableLanguages}
               disabled={disabled || connectionStatus !== 'connected'}
-            >
-              <SelectTrigger id="language-select">
-                <SelectValue placeholder="Select language" />
-              </SelectTrigger>
-              <SelectContent>
-                {availableLanguages.map((language) => (
-                  <SelectItem key={language.id} value={language.id}>
-                    {language.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            />
           </div>
 
           {/* Voice Selection */}
@@ -195,26 +222,16 @@ export function ConversationPanel({
               <Mic className="mr-1 h-4 w-4" />
               Voice
             </label>
-            <Select
-              value={selectedVoice}
-              onValueChange={setSelectedVoice}
+            <SelectVoice
+              selectedVoice={selectedVoice}
+              setSelectedVoice={setSelectedVoice}
+              groupedVoices={groupedVoices}
               disabled={
                 disabled ||
                 connectionStatus !== 'connected' ||
                 !currentLanguageConfig
               }
-            >
-              <SelectTrigger id="voice-select">
-                <SelectValue placeholder="Select voice" />
-              </SelectTrigger>
-              <SelectContent>
-                {currentLanguageConfig?.voices.map((voice) => (
-                  <SelectItem key={voice} value={voice}>
-                    {voice}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            />
           </div>
         </div>
 

@@ -3,7 +3,7 @@
 
 import os
 import argparse
-import subprocess #nosec -- used to spawn ovms in a secured environment
+import subprocess  # nosec -- used to run optimum cli to convert model
 import signal
 import sys
 import atexit
@@ -29,35 +29,39 @@ def cleanup_ovms_process():
     Cleanup function to gracefully terminate the OVMS subprocess.
     """
     global ovms_process
-    
+
     # Prevent multiple cleanup attempts
     if not cleanup_in_progress.acquire(blocking=False):
         return
-    
+
     try:
         if ovms_process is not None and ovms_process.poll() is None:
             print("Shutting down OVMS subprocess...")
             try:
                 # Send SIGTERM first for graceful shutdown
-                if hasattr(ovms_process, 'terminate'):
+                if hasattr(ovms_process, "terminate"):
                     ovms_process.terminate()
                     print("Sent SIGTERM to OVMS process...")
-                
+
                 # Wait for up to 10 seconds for graceful shutdown
                 try:
                     ovms_process.wait(timeout=10)
                     print("OVMS process terminated gracefully.")
                 except subprocess.TimeoutExpired:
                     # If graceful termination fails, send SIGKILL
-                    print("OVMS process didn't terminate gracefully, sending SIGKILL...")
-                    if hasattr(ovms_process, 'kill'):
+                    print(
+                        "OVMS process didn't terminate gracefully, sending SIGKILL..."
+                    )
+                    if hasattr(ovms_process, "kill"):
                         ovms_process.kill()
                         # Wait a bit more for the kill to take effect
                         ovms_process.wait(timeout=5)
                     print("OVMS process force killed.")
-                    
+
             except subprocess.TimeoutExpired:
-                print("OVMS process didn't respond to SIGKILL, may be in unrecoverable state")
+                print(
+                    "OVMS process didn't respond to SIGKILL, may be in unrecoverable state"
+                )
             except Exception as e:
                 print(f"Error during OVMS cleanup: {e}")
             finally:
@@ -71,16 +75,16 @@ def signal_handler(signum, frame):
     Signal handler for graceful shutdown.
     """
     print(f"Received signal {signum}, initiating shutdown...")
-    
+
     # Avoid recursive signal handling
     signal.signal(signal.SIGINT, signal.SIG_IGN)
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
-    
+
     cleanup_ovms_process()
-    
+
     # Give a moment for cleanup to complete
     time.sleep(1)
-    
+
     print("Shutdown complete.")
     os._exit(0)  # Use os._exit to avoid potential atexit issues
 
@@ -190,10 +194,10 @@ def start_model_serving(
     port: int, model_path: str, model_id: str, model_provider: str, device: str
 ):
     global ovms_process
-    
+
     print("Setting environment for model serving ...")
     ovms, env = setup_ovms_environment()
-    
+
     if model_provider == "OpenVINO":
         serving_command = [
             ovms,
@@ -223,32 +227,34 @@ def start_model_serving(
 
     print("Starting model serving...")
     print(f"Command: {serving_command}")
-    
+
     try:
         # Use Popen with output piped to current session for real-time monitoring
         ovms_process = subprocess.Popen(
-            serving_command, 
-            text=True, 
+            serving_command,
+            text=True,
             env=env,
-            preexec_fn=os.setsid if hasattr(os, 'setsid') else None,  # Create new process group
+            preexec_fn=(
+                os.setsid if hasattr(os, "setsid") else None
+            ),  # Create new process group
             stdout=None,  # Inherit stdout from parent (shows in current session)
             stderr=None,  # Inherit stderr from parent (shows in current session)
-            stdin=None    # Inherit stdin from parent
+            stdin=None,  # Inherit stdin from parent
         )
         print(f"OVMS process started with PID: {ovms_process.pid}")
         print("OVMS output will be displayed below (Ctrl+C to stop):")
         print("-" * 50)
-        
+
         # Wait for the process to complete (this will block until the process is terminated)
         try:
             return_code = ovms_process.wait()
             print("-" * 50)
             print(f"OVMS process exited with code: {return_code}")
-                    
+
         except KeyboardInterrupt:
             print("\nReceived keyboard interrupt during process monitoring...")
             raise
-            
+
     except subprocess.CalledProcessError as e:
         print(f"Model serving command failed with error: {e}")
         cleanup_ovms_process()
@@ -293,12 +299,12 @@ def parse_args():
 def main():
     try:
         # Register signal handlers for graceful shutdown
-        signal.signal(signal.SIGINT, signal_handler)   # Ctrl+C
+        signal.signal(signal.SIGINT, signal_handler)  # Ctrl+C
         signal.signal(signal.SIGTERM, signal_handler)  # Termination signal
-        
+
         # Register atexit handler but use a simpler version to avoid issues
         atexit.register(lambda: cleanup_ovms_process() if ovms_process else None)
-        
+
         args = parse_args()
         model_id = args.model_id
         model_provider = model_id.split("/")[0] if "/" in model_id else "local"
@@ -368,7 +374,7 @@ def main():
         except Exception as e:
             print(f"Error starting model serving: {e}")
             raise RuntimeError(f"Failed to start model serving: {e}")
-            
+
     except Exception as e:
         print(f"Fatal error in main: {e}")
         cleanup_ovms_process()

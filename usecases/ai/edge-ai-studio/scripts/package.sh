@@ -65,35 +65,11 @@ finalize_package() {
   echo "Finalizing package..."
   
   # Determine the output folder name (assuming Linux build for now)
-  OUT_FOLDER="$SCRIPT_DIR/../out/edge-ai-studio-linux-x64"
+  OUT_FOLDER="$SCRIPT_DIR/../out/linux-unpacked"
   
   if [ ! -d "$OUT_FOLDER" ]; then
     echo "Error: Output folder not found at $OUT_FOLDER"
     exit 1
-  fi
-  
-  # Copy the README from out directory to the output folder
-  if [ -f "$SCRIPT_DIR/../out/README.md" ]; then
-    cp "$SCRIPT_DIR/../out/README.md" "$OUT_FOLDER/" || { echo "Failed to copy README.md to output folder."; exit 1; }
-    echo "README.md copied to output folder successfully."
-  else
-    echo "Warning: README.md not found at $SCRIPT_DIR/../out/README.md"
-  fi
-  
-  # Copy install_dependencies.sh from project root to the output folder
-  if [ -f "$SCRIPT_DIR/../install_dependencies.sh" ]; then
-    cp "$SCRIPT_DIR/../install_dependencies.sh" "$OUT_FOLDER/" || { echo "Failed to copy install_dependencies.sh to output folder."; exit 1; }
-    echo "install_dependencies.sh copied to output folder successfully."
-  else
-    echo "Warning: install_dependencies.sh not found at project root"
-  fi
-  
-  # Copy run_web.sh from out directory to the output folder
-  if [ -f "$SCRIPT_DIR/../out/run_web.sh" ]; then
-    cp "$SCRIPT_DIR/../out/run_web.sh" "$OUT_FOLDER/" || { echo "Failed to copy run_web.sh to output folder."; exit 1; }
-    echo "run_web.sh copied to output folder successfully."
-  else
-    echo "Warning: run_web.sh not found at $SCRIPT_DIR/../out/run_web.sh"
   fi
   
   # Create the new EdgeAIStudio package structure
@@ -126,10 +102,16 @@ finalize_package() {
     cp "$SCRIPT_DIR/../out/run_web.sh" EdgeAIStudio/ || { echo "Failed to copy run_web.sh to EdgeAIStudio folder."; exit 1; }
     echo "run_web.sh copied to EdgeAIStudio root successfully."
   fi
+
+  # Copy setup.sh to the root of EdgeAIStudio
+  if [ -f "$SCRIPT_DIR/../out/setup.sh" ]; then
+    cp "$SCRIPT_DIR/../out/setup.sh" EdgeAIStudio/ || { echo "Failed to copy setup.sh to EdgeAIStudio folder."; exit 1; }
+    echo "setup.sh copied to EdgeAIStudio root successfully."
+  fi
   
   # Copy the entire edge-ai-studio-linux-x64 directory into EdgeAIStudio
-  cp -r edge-ai-studio-linux-x64 EdgeAIStudio/ || { echo "Failed to copy edge-ai-studio-linux-x64 to EdgeAIStudio folder."; exit 1; }
-  echo "edge-ai-studio-linux-x64 directory copied successfully."
+  cp -r linux-unpacked EdgeAIStudio/ || { echo "Failed to copy linux-unpacked to EdgeAIStudio folder."; exit 1; }
+  echo "linux-unpacked directory copied successfully."
   
   # Create a shell script launcher that launches the application correctly
   cd EdgeAIStudio
@@ -140,7 +122,7 @@ finalize_package() {
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Define the path to the executable
-EXECUTABLE="$SCRIPT_DIR/edge-ai-studio-linux-x64/edge-ai-studio"
+EXECUTABLE="$SCRIPT_DIR/linux-unpacked/edge-ai-studio"
 
 # Check if the executable exists
 if [ ! -f "$EXECUTABLE" ]; then
@@ -200,7 +182,7 @@ run_electron_package() {
   if [ -d "$ELECTRON_DIR" ]; then
     echo "Packaging Electron application..."
     cd "$ELECTRON_DIR"
-    npm run package || { echo "Electron packaging failed."; exit 1; }
+    npm run build:dir || { echo "Electron packaging failed."; exit 1; }
     cd -
   else
     echo "Electron directory not found. Exiting..."
@@ -209,6 +191,7 @@ run_electron_package() {
 }
 
 main() {
+  cd "$SCRIPT_DIR"
   create_temp_dir
   setup_node_env
   copy_workers

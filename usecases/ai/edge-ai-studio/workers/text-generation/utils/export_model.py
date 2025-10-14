@@ -17,7 +17,7 @@
 import argparse
 import os
 import sys
-import subprocess #nosec -- used to run optimum cli to convert model
+import subprocess  # nosec -- used to run a script to download model
 from openvino_tokenizers import convert_tokenizer, connect_models
 from transformers import AutoTokenizer
 import jinja2

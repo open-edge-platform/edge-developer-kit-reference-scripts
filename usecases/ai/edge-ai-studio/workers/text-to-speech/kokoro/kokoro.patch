@@ -1,0 +1,668 @@
+diff --git kokoro/kokoro/__init__.py kokoro_patched/kokoro/__init__.py
+index 9156e5c..6ff6d2b 100644
+--- kokoro/kokoro/__init__.py
++++ kokoro_patched/kokoro/__init__.py
+@@ -20,4 +20,4 @@ logger.add(
+ logger.disable("kokoro")
+ 
+ from .model import KModel
+-from .pipeline import KPipeline
++from .pipeline import KPipeline
+\ No newline at end of file
+diff --git kokoro/kokoro/__main__.py kokoro/kokoro/__main__.py
+deleted file mode 100644
+index 34ee21a..0000000
+--- kokoro/kokoro/__main__.py
++++ /dev/null
+@@ -1,148 +0,0 @@
+-"""Kokoro TTS CLI
+-Example usage:
+-python3 -m kokoro --text "The sky above the port was the color of television, tuned to a dead channel." -o file.wav --debug
+-
+-echo "Bom dia mundo, como vão vocês" > text.txt
+-python3 -m kokoro -i text.txt -l p --voice pm_alex > audio.wav
+-
+-Common issues:
+-pip not installed: `uv pip install pip`
+-(Temporary workaround while https://github.com/explosion/spaCy/issues/13747 is not fixed)
+-
+-espeak not installed: `apt-get install espeak-ng`
+-"""
+-
+-import argparse
+-import wave
+-from pathlib import Path
+-from typing import Generator, TYPE_CHECKING
+-
+-import numpy as np
+-from loguru import logger
+-
+-languages = [
+-    "a",  # American English
+-    "b",  # British English
+-    "h",  # Hindi
+-    "e",  # Spanish
+-    "f",  # French
+-    "i",  # Italian
+-    "p",  # Brazilian Portuguese
+-    "j",  # Japanese
+-    "z",  # Mandarin Chinese
+-]
+-
+-if TYPE_CHECKING:
+-    from kokoro import KPipeline
+-
+-
+-def generate_audio(
+-    text: str, kokoro_language: str, voice: str, speed=1
+-) -> Generator["KPipeline.Result", None, None]:
+-    from kokoro import KPipeline
+-
+-    if not voice.startswith(kokoro_language):
+-        logger.warning(f"Voice {voice} is not made for language {kokoro_language}")
+-    pipeline = KPipeline(lang_code=kokoro_language)
+-    yield from pipeline(text, voice=voice, speed=speed, split_pattern=r"\n+")
+-
+-
+-def generate_and_save_audio(
+-    output_file: Path, text: str, kokoro_language: str, voice: str, speed=1
+-) -> None:
+-    with wave.open(str(output_file.resolve()), "wb") as wav_file:
+-        wav_file.setnchannels(1)  # Mono audio
+-        wav_file.setsampwidth(2)  # 2 bytes per sample (16-bit audio)
+-        wav_file.setframerate(24000)  # Sample rate
+-
+-        for result in generate_audio(
+-            text, kokoro_language=kokoro_language, voice=voice, speed=speed
+-        ):
+-            logger.debug(result.phonemes)
+-            if result.audio is None:
+-                continue
+-            audio_bytes = (result.audio.numpy() * 32767).astype(np.int16).tobytes()
+-            wav_file.writeframes(audio_bytes)
+-
+-
+-def main() -> None:
+-    parser = argparse.ArgumentParser()
+-    parser.add_argument(
+-        "-m",
+-        "--voice",
+-        default="af_heart",
+-        help="Voice to use",
+-    )
+-    parser.add_argument(
+-        "-l",
+-        "--language",
+-        help="Language to use (defaults to the one corresponding to the voice)",
+-        choices=languages,
+-    )
+-    parser.add_argument(
+-        "-o",
+-        "--output-file",
+-        "--output_file",
+-        type=Path,
+-        help="Path to output WAV file",
+-        required=True,
+-    )
+-    parser.add_argument(
+-        "-i",
+-        "--input-file",
+-        "--input_file",
+-        type=Path,
+-        help="Path to input text file (default: stdin)",
+-    )
+-    parser.add_argument(
+-        "-t",
+-        "--text",
+-        help="Text to use instead of reading from stdin",
+-    )
+-    parser.add_argument(
+-        "-s",
+-        "--speed",
+-        type=float,
+-        default=1.0,
+-        help="Speech speed",
+-    )
+-    parser.add_argument(
+-        "--debug",
+-        action="store_true",
+-        help="Print DEBUG messages to console",
+-    )
+-    args = parser.parse_args()
+-    if args.debug:
+-        logger.level("DEBUG")
+-    logger.debug(args)
+-
+-    lang = args.language or args.voice[0]
+-
+-    if args.text is not None and args.input_file is not None:
+-        raise Exception("You cannot specify both 'text' and 'input_file'")
+-    elif args.text:
+-        text = args.text
+-    elif args.input_file:
+-        file: Path = args.input_file
+-        text = file.read_text()
+-    else:
+-        import sys
+-        print("Press Ctrl+D to stop reading input and start generating", flush=True)
+-        text = '\n'.join(sys.stdin)
+-
+-    logger.debug(f"Input text: {text!r}")
+-
+-    out_file: Path = args.output_file
+-    if not out_file.suffix == ".wav":
+-        logger.warning("The output file name should end with .wav")
+-    generate_and_save_audio(
+-        output_file=out_file,
+-        text=text,
+-        kokoro_language=lang,
+-        voice=args.voice,
+-        speed=args.speed,
+-    )
+-
+-
+-if __name__ == "__main__":
+-    main()
+diff --git kokoro/kokoro/custom_stft.py kokoro_patched/kokoro/custom_stft.py
+index c9cf0d2..07150d5 100644
+--- kokoro/kokoro/custom_stft.py
++++ kokoro_patched/kokoro/custom_stft.py
+@@ -97,6 +97,11 @@ class CustomSTFT(nn.Module):
+         self.register_buffer(
+             "weight_backward_imag", torch.from_numpy(backward_imag).float().unsqueeze(1)
+         )
++    
++    def cleanup_cache(self):
++        """Clean up any cached tensors to free memory"""
++        # This method can be called to ensure no cached tensors are held
++        pass
+         
+ 
+ 
+@@ -128,14 +133,25 @@ class CustomSTFT(nn.Module):
+             stride=self.hop_length,
+             padding=0,
+         )
+-
+-        # magnitude, phase
+-        magnitude = torch.sqrt(real_out**2 + imag_out**2 + 1e-14)
++        
++        # Clean up x after use
++        del x
++
++        # Calculate magnitude and phase with memory management
++        real_squared = real_out**2
++        imag_squared = imag_out**2
++        magnitude = torch.sqrt(real_squared + imag_squared + 1e-14)
++        del real_squared, imag_squared  # Clean up intermediate tensors
++        
+         phase = torch.atan2(imag_out, real_out)
+         # Handle the case where imag_out is 0 and real_out is negative to correct ONNX atan2 to match PyTorch
+         # In this case, PyTorch returns pi, ONNX returns -pi
+         correction_mask = (imag_out == 0) & (real_out < 0)
+         phase[correction_mask] = torch.pi
++        
++        # Clean up intermediate tensors
++        del real_out, imag_out, correction_mask
++        
+         return magnitude, phase
+ 
+ 
+@@ -145,14 +161,13 @@ class CustomSTFT(nn.Module):
+         """
+         # magnitude, phase => (B, freq_bins, frames)
+         # Re-create real/imag => shape (B, freq_bins, frames)
+-        real_part = magnitude * torch.cos(phase)
+-        imag_part = magnitude * torch.sin(phase)
+-
+-        # conv_transpose wants shape (B, freq_bins, frames). We'll treat "frames" as time dimension
+-        # so we do (B, freq_bins, frames) => (B, freq_bins, frames)
+-        # But PyTorch conv_transpose1d expects (B, in_channels, input_length)
+-        real_part = real_part  # (B, freq_bins, frames)
+-        imag_part = imag_part
++        cos_phase = torch.cos(phase)
++        sin_phase = torch.sin(phase)
++        real_part = magnitude * cos_phase
++        imag_part = magnitude * sin_phase
++        
++        # Clean up intermediate tensors
++        del cos_phase, sin_phase
+ 
+         # real iSTFT => convolve with "backward_real", "backward_imag", and sum
+         # We'll do 2 conv_transpose calls, each giving (B, 1, time),
+@@ -171,18 +186,24 @@ class CustomSTFT(nn.Module):
+             stride=self.hop_length,
+             padding=0,
+         )
++        
++        # Clean up after convolutions
++        del real_part, imag_part
++        
+         # sum => (B, 1, time)
+         waveform = real_rec - imag_rec  # typical real iFFT has minus for imaginary part
++        del real_rec, imag_rec  # Clean up
+ 
+         # If we used "center=True" in forward, we should remove pad
+         if self.center:
+             pad_len = self.n_fft // 2
+             # Because of transposed convolution, total length might have extra samples
+             # We remove `pad_len` from start & end if possible
+-            waveform = waveform[..., pad_len:-pad_len]
++            if waveform.shape[-1] > 2 * pad_len:
++                waveform = waveform[..., pad_len:-pad_len]
+ 
+         # If a specific length is desired, clamp
+-        if length is not None:
++        if length is not None and waveform.shape[-1] > length:
+             waveform = waveform[..., :length]
+ 
+         # shape => (B, T)
+@@ -194,4 +215,7 @@ class CustomSTFT(nn.Module):
+         Same interface as your original code.
+         """
+         mag, phase = self.transform(x)
+-        return self.inverse(mag, phase, length=x.shape[-1])
++        result = self.inverse(mag, phase, length=x.shape[-1])
++        # Clean up intermediate tensors
++        del mag, phase
++        return result
+\ No newline at end of file
+diff --git kokoro/kokoro/istftnet.py kokoro_patched/kokoro/istftnet.py
+index f1c536e..80981ba 100644
+--- kokoro/kokoro/istftnet.py
++++ kokoro_patched/kokoro/istftnet.py
+@@ -189,23 +189,31 @@ class SineGen(nn.Module):
+         output sine_tensor: tensor(batchsize=1, length, dim)
+         output uv: tensor(batchsize=1, length, 1)
+         """
+-        f0_buf = torch.zeros(f0.shape[0], f0.shape[1], self.dim, device=f0.device)
+-        # fundamental component
++        # # Create harmonic multipliers once and cache them
++        # if not hasattr(self, '_harmonic_multiplier') or self._harmonic_multiplier.device != f0.device:
++        #     self._harmonic_multiplier = torch.FloatTensor([[range(1, self.harmonic_num + 2)]]).to(f0.device)
++        
++        # # fundamental component with memory cleanup
++        # fn = torch.multiply(f0, self._harmonic_multiplier)
+         fn = torch.multiply(f0, torch.FloatTensor([[range(1, self.harmonic_num + 2)]]).to(f0.device))
+         # generate sine waveforms
+         sine_waves = self._f02sine(fn) * self.sine_amp
++        del fn  # Clean up intermediate
++        
+         # generate uv signal
+-        # uv = torch.ones(f0.shape)
+-        # uv = uv * (f0 > self.voiced_threshold)
+         uv = self._f02uv(f0)
++        
+         # noise: for unvoiced should be similar to sine_amp
+         #        std = self.sine_amp/3 -> max value ~ self.sine_amp
+         #        for voiced regions is self.noise_std
+         noise_amp = uv * self.noise_std + (1 - uv) * self.sine_amp / 3
+         noise = noise_amp * torch.randn_like(sine_waves)
++        del noise_amp  # Clean up intermediate
++        
+         # first: set the unvoiced part to 0 by uv
+         # then: additive noise
+         sine_waves = sine_waves * uv + noise
++        
+         return sine_waves, uv, noise
+ 
+ 
+@@ -295,34 +303,80 @@ class Generator(nn.Module):
+             if disable_complex
+             else TorchSTFT(filter_length=gen_istft_n_fft, hop_length=gen_istft_hop_size, win_length=gen_istft_n_fft)
+         )
++    
++    def cleanup_cache(self):
++        """Clear cached tensors to free memory"""
++        if hasattr(self.stft, '_cached_window'):
++            self.stft._cached_window = None
++            self.stft._device = None
++        if hasattr(self.m_source.l_sin_gen, '_harmonic_multiplier'):
++            del self.m_source.l_sin_gen._harmonic_multiplier
+ 
+     def forward(self, x, s, f0):
++        # Pre-compute harmonic features with explicit cleanup
+         with torch.no_grad():
+-            f0 = self.f0_upsamp(f0[:, None]).transpose(1, 2)  # bs,n,t
+-            har_source, noi_source, uv = self.m_source(f0)
++            f0_upsampled = self.f0_upsamp(f0[:, None]).transpose(1, 2)  # bs,n,t
++            har_source, noi_source, uv = self.m_source(f0_upsampled)
++            # Clean up unused tensors
++            del noi_source, uv, f0_upsampled
++            
+             har_source = har_source.transpose(1, 2).squeeze(1)
+             har_spec, har_phase = self.stft.transform(har_source)
++            # Clean up har_source after transform
++            del har_source
++            
+             har = torch.cat([har_spec, har_phase], dim=1)
++            # Clean up individual spec/phase tensors
++            del har_spec, har_phase
++            
++        # Main upsampling loop with memory management
+         for i in range(self.num_upsamples):
+             x = F.leaky_relu(x, negative_slope=0.1) 
+             x_source = self.noise_convs[i](har)
+             x_source = self.noise_res[i](x_source, s)
+-            x = self.ups[i](x)
++            x_upsampled = self.ups[i](x)
++            
+             if i == self.num_upsamples - 1:
+-                x = self.reflection_pad(x)
+-            x = x + x_source
++                x_upsampled = self.reflection_pad(x_upsampled)
++            
++            # Add source and clean up intermediate
++            x = x_upsampled + x_source
++            del x_upsampled, x_source
++            
++            # ResBlock processing
+             xs = None
+             for j in range(self.num_kernels):
++                resblock_output = self.resblocks[i*self.num_kernels+j](x, s)
+                 if xs is None:
+-                    xs = self.resblocks[i*self.num_kernels+j](x, s)
++                    xs = resblock_output
+                 else:
+-                    xs += self.resblocks[i*self.num_kernels+j](x, s)
++                    xs += resblock_output
++                # Don't delete resblock_output as it might be xs
++                
+             x = xs / self.num_kernels
++            del xs
++            
++        # Clean up har after loop
++        del har
++        
++        # Final processing
+         x = F.leaky_relu(x)
+         x = self.conv_post(x)
+-        spec = torch.exp(x[:,:self.post_n_fft // 2 + 1, :])
+-        phase = torch.sin(x[:, self.post_n_fft // 2 + 1:, :])
+-        return self.stft.inverse(spec, phase)
++        
++        # Split output and create spec/phase with explicit cleanup
++        spec_part = x[:,:self.post_n_fft // 2 + 1, :]
++        phase_part = x[:, self.post_n_fft // 2 + 1:, :]
++        del x  # Clean up full tensor
++        
++        spec = torch.exp(spec_part)
++        phase = torch.sin(phase_part)
++        del spec_part, phase_part
++        
++        # Final inverse transform
++        result = self.stft.inverse(spec, phase)
++        del spec, phase
++        
++        return result
+ 
+ 
+ class UpSample1d(nn.Module):
+@@ -405,17 +459,44 @@ class Decoder(nn.Module):
+                                    upsample_kernel_sizes, gen_istft_n_fft, gen_istft_hop_size, disable_complex=disable_complex)
+ 
+     def forward(self, asr, F0_curve, N, s):
+-        F0 = self.F0_conv(F0_curve.unsqueeze(1))
+-        N = self.N_conv(N.unsqueeze(1))
+-        x = torch.cat([asr, F0, N], axis=1)
++        # Process F0 and N with explicit cleanup
++        F0_unsqueezed = F0_curve.unsqueeze(1)
++        F0 = self.F0_conv(F0_unsqueezed)
++        del F0_unsqueezed
++        
++        N_unsqueezed = N.unsqueeze(1)
++        N_processed = self.N_conv(N_unsqueezed)
++        del N_unsqueezed
++        
++        # Initial concatenation
++        x = torch.cat([asr, F0, N_processed], axis=1)
+         x = self.encode(x, s)
++        
++        # ASR residual processing
+         asr_res = self.asr_res(asr)
++        
++        # Decode blocks with memory management
+         res = True
+         for block in self.decode:
+             if res:
+-                x = torch.cat([x, asr_res, F0, N], axis=1)
+-            x = block(x, s)
++                x_cat = torch.cat([x, asr_res, F0, N_processed], axis=1)
++                x = block(x_cat, s)
++                del x_cat  # Clean up concatenated tensor
++            else:
++                x = block(x, s)
+             if block.upsample_type != "none":
+                 res = False
+-        x = self.generator(x, s, F0_curve)
+-        return x
++        
++        # Clean up intermediate tensors before generator
++        del asr_res, F0, N_processed
++        
++        # Generator processing
++        result = self.generator(x, s, F0_curve)
++        del x  # Clean up input to generator
++        
++        return result
++        
++    def cleanup_cache(self):
++        """Clean up cached tensors to free memory"""
++        if hasattr(self.generator, 'cleanup_cache'):
++            self.generator.cleanup_cache()
+\ No newline at end of file
+diff --git kokoro/kokoro/model.py kokoro_patched/kokoro/model.py
+index a7622ba..2865034 100644
+--- kokoro/kokoro/model.py
++++ kokoro_patched/kokoro/model.py
+@@ -7,7 +7,7 @@ from transformers import AlbertConfig
+ from typing import Dict, Optional, Union
+ import json
+ import torch
+-
++from .util import get_memory_usage
+ class KModel(torch.nn.Module):
+     '''
+     KModel is a torch.nn.Module with 2 main responsibilities:
+@@ -59,6 +59,10 @@ class KModel(torch.nn.Module):
+             channels=config['hidden_dim'], kernel_size=config['text_encoder_kernel_size'],
+             depth=config['n_layer'], n_symbols=config['n_token']
+         )
++        self.hidden_dim = config['hidden_dim']
++        self.style_dim = config['style_dim']
++        self.n_mels = config['n_mels']
++        self.istftnet = config['istftnet']
+         self.decoder = Decoder(
+             dim_in=config['hidden_dim'], style_dim=config['style_dim'],
+             dim_out=config['n_mels'], disable_complex=disable_complex, **config['istftnet']
+@@ -97,25 +101,71 @@ class KModel(torch.nn.Module):
+             dtype=torch.long
+         )
+ 
+-        text_mask = torch.arange(input_lengths.max()).unsqueeze(0).expand(input_lengths.shape[0], -1).type_as(input_lengths)
+-        text_mask = torch.gt(text_mask+1, input_lengths.unsqueeze(1)).to(self.device)
+-        bert_dur = self.bert(input_ids, attention_mask=(~text_mask).int())
++        current_memory = get_memory_usage()["ram_mb"]
++        # Text mask creation with explicit cleanup
++        length_range = torch.arange(input_lengths.max(), device=self.device)
++        text_mask_expanded = length_range.unsqueeze(0).expand(input_lengths.shape[0], -1).type_as(input_lengths)
++        text_mask = torch.gt(text_mask_expanded + 1, input_lengths.unsqueeze(1))
++        del length_range, text_mask_expanded  # Clean up intermediate tensors
++        
++        # BERT processing with cleanup
++        attention_mask = (~text_mask).int()
++        bert_dur = self.bert(input_ids, attention_mask=attention_mask)
++        del attention_mask  # Clean up
++        
+         d_en = self.bert_encoder(bert_dur).transpose(-1, -2)
++        del bert_dur  # Clean up after use
++        
++        # Reference style processing
+         s = ref_s[:, 128:]
++        
++        # Predictor processing with cleanup
+         d = self.predictor.text_encoder(d_en, s, input_lengths, text_mask)
+-        x, _ = self.predictor.lstm(d)
++        del d_en  # Clean up after use
++        
++        x, lstm_hidden = self.predictor.lstm(d)
++        del lstm_hidden  # Clean up LSTM hidden state
++        
+         duration = self.predictor.duration_proj(x)
++        del x  # Clean up after use
++        
+         duration = torch.sigmoid(duration).sum(axis=-1) / speed
+         pred_dur = torch.round(duration).clamp(min=1).long().squeeze()
+-        indices = torch.repeat_interleave(torch.arange(input_ids.shape[1], device=self.device), pred_dur)
++        del duration  # Clean up
++        
++        # Alignment processing with cleanup
++        input_range = torch.arange(input_ids.shape[1], device=self.device)
++        indices = torch.repeat_interleave(input_range, pred_dur)
++        del input_range  # Clean up
++        
+         pred_aln_trg = torch.zeros((input_ids.shape[1], indices.shape[0]), device=self.device)
+-        pred_aln_trg[indices, torch.arange(indices.shape[0])] = 1
+-        pred_aln_trg = pred_aln_trg.unsqueeze(0).to(self.device)
+-        en = d.transpose(-1, -2) @ pred_aln_trg
++        index_range = torch.arange(indices.shape[0], device=self.device)
++        pred_aln_trg[indices, index_range] = 1
++        del indices, index_range  # Clean up intermediate tensors
++        
++        pred_aln_trg = pred_aln_trg.unsqueeze(0)
++        
++        # Final encoding with cleanup
++        d_transposed = d.transpose(-1, -2)
++        en = d_transposed @ pred_aln_trg
++        del d, d_transposed  # Clean up
++        
+         F0_pred, N_pred = self.predictor.F0Ntrain(en, s)
++        del en  # Clean up after use
++        
+         t_en = self.text_encoder(input_ids, input_lengths, text_mask)
++        del input_lengths, text_mask  # Clean up
++        
+         asr = t_en @ pred_aln_trg
+-        audio = self.decoder(asr, F0_pred, N_pred, ref_s[:, :128]).squeeze()
++        del t_en, pred_aln_trg  # Clean up
++
++        # Decoder processing with style split
++        ref_style = ref_s[:, :128]
++        audio = self.decoder(asr, F0_pred, N_pred, ref_style).squeeze()
++        
++        # Clean up decoder inputs
++        del asr, F0_pred, N_pred, ref_style, s
++
+         return audio, pred_dur
+ 
+     def forward(
+@@ -148,4 +198,4 @@ class KModelForONNX(torch.nn.Module):
+         speed: float = 1
+     ) -> tuple[torch.FloatTensor, torch.LongTensor]:
+         waveform, duration = self.kmodel.forward_with_tokens(input_ids, ref_s, speed)
+-        return waveform, duration
++        return waveform, duration
+\ No newline at end of file
+diff --git kokoro/kokoro/modules.py kokoro_patched/kokoro/modules.py
+index f183bd3..1e58b47 100644
+--- kokoro/kokoro/modules.py
++++ kokoro_patched/kokoro/modules.py
+@@ -180,4 +180,4 @@ class DurationEncoder(nn.Module):
+ class CustomAlbert(AlbertModel):
+     def forward(self, *args, **kwargs):
+         outputs = super().forward(*args, **kwargs)
+-        return outputs.last_hidden_state
++        return outputs.last_hidden_state
+\ No newline at end of file
+diff --git kokoro/kokoro/pipeline.py kokoro_patched/kokoro/pipeline.py
+index 3377069..1c4afc7 100644
+--- kokoro/kokoro/pipeline.py
++++ kokoro_patched/kokoro/pipeline.py
+@@ -68,7 +68,8 @@ class KPipeline:
+         model: Union[KModel, bool] = True,
+         trf: bool = False,
+         en_callable: Optional[Callable[[str], str]] = None,
+-        device: Optional[str] = None
++        device: Optional[str] = None,
++        model_dir: Optional[str] = None
+     ):
+         """Initialize a KPipeline.
+         
+@@ -143,13 +144,15 @@ class KPipeline:
+             logger.warning(f"Using EspeakG2P(language='{language}'). Chunking logic not yet implemented, so long texts may be truncated unless you split them with '\\n'.")
+             self.g2p = espeak.EspeakG2P(language=language)
+ 
++        self.model_dir = model_dir
++
+     def load_single_voice(self, voice: str):
+         if voice in self.voices:
+             return self.voices[voice]
+         if voice.endswith('.pt'):
+             f = voice
+         else:
+-            f = hf_hub_download(repo_id=self.repo_id, filename=f'voices/{voice}.pt')
++            f = hf_hub_download(repo_id=self.repo_id, filename=f'voices/{voice}.pt', local_dir=self.model_dir)
+             if not voice.startswith(self.lang_code):
+                 v = LANG_CODES.get(voice, voice)
+                 p = LANG_CODES.get(self.lang_code, self.lang_code)
+@@ -439,4 +442,4 @@ class KPipeline:
+                         ps = ps[:510]
+                         
+                     output = KPipeline.infer(model, ps, pack, speed) if model else None
+-                    yield self.Result(graphemes=chunk, phonemes=ps, output=output, text_index=graphemes_index)
++                    yield self.Result(graphemes=chunk, phonemes=ps, output=output, text_index=graphemes_index)
+\ No newline at end of file
+diff --git kokoro_patched/kokoro/util.py kokoro_patched/kokoro/util.py
+new file mode 100644
+index 0000000..fa646dc
+--- /dev/null
++++ kokoro_patched/kokoro/util.py
+@@ -0,0 +1,48 @@
++import os
++import psutil
++import torch
++import gc
++from contextlib import contextmanager
++
++def get_memory_usage():
++    """Get current memory usage in MB"""
++    process = psutil.Process(os.getpid())
++    mem_info = process.memory_info()
++    return {
++        'ram_mb': mem_info.rss / 1024**2,  # Convert to MB
++    }
++
++def cleanup_memory(force_gc=True):
++    """Clean up GPU and CPU memory"""
++    if torch.cuda.is_available():
++        torch.cuda.empty_cache()
++        torch.cuda.synchronize()
++    
++    if force_gc:
++        gc.collect()
++
++def safe_del(*tensors):
++    """Safely delete tensors and clean up memory"""
++    for tensor in tensors:
++        if tensor is not None:
++            del tensor
++    
++    if torch.cuda.is_available():
++        torch.cuda.empty_cache()
++
++@contextmanager
++def memory_efficient_context():
++    """Context manager for automatic memory cleanup"""
++    try:
++        yield
++    finally:
++        cleanup_memory(force_gc=True)
++
++def get_tensor_memory_mb(tensor):
++    """Get the memory usage of a tensor in MB"""
++    if tensor is None:
++        return 0
++    # Calculate memory usage: num_elements * bytes_per_element
++    num_elements = tensor.numel()
++    bytes_per_element = tensor.element_size()
++    return (num_elements * bytes_per_element) / (1024**2)

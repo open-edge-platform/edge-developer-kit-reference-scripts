@@ -20,19 +20,17 @@ check_uv_installed() {
     fi
 }
 
-setup_tts() {
+create_venv() {
     if [[ -d "$TTS_VENV_DIR" ]]; then
         echo "Virtual environment already exists at $TTS_VENV_DIR."
     else
         echo "Creating Python 3.11 virtual environment with uv ..."
+        "$UV_CMD" venv --seed --python 3.11 "$TTS_VENV_DIR"
     fi
+    # shellcheck disable=SC1091
+    source "$TTS_VENV_DIR/bin/activate"
     "$UV_CMD" sync
-    if [ -f "$TTS_VENV_DIR/bin/activate" ]; then
-        # shellcheck disable=SC1091
-        source "$TTS_VENV_DIR/bin/activate"
-    else
-        echo "Notice: $TTS_VENV_DIR/bin/activate not found; continuing without it"
-    fi
+    "$UV_CMD" run python -m ensurepip
     
 }
 
@@ -40,7 +38,7 @@ main() {
     echo "Starting setup for Malaya with Intel GPU support ..."
     cd "$TTS_SCRIPT_DIR"
     check_uv_installed
-    setup_tts
+    create_venv
     echo "Setup completed successfully!"
 }
 
