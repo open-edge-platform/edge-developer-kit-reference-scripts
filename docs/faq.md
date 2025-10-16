@@ -1,6 +1,6 @@
 # Frequently Asked Questions (FAQ)
 
-Quick answers to common questions about Intel Edge Developer Kits.
+Quick answers to common questions about Intel® Edge Developer Kits.
 
 ## Table of Contents
 
@@ -21,10 +21,10 @@ Quick answers to common questions about Intel Edge Developer Kits.
 4. Join our [community discussions](https://github.com/intel/edge-developer-kit-reference-scripts/discussions) to ask questions
 
 ### **Q: Do I need to buy specific hardware?**
-**A:** The scripts work with many Intel platforms, but we recommend:
-- **Students/Beginners:** Any Core Ultra system with integrated graphics
-- **Professionals:** Core Ultra + Intel Arc GPU (B580 or better)
-- **Researchers:** High-end CPU + Arc B60 Pro for maximum performance
+**A:** The scripts work with many Intel® platforms, but we recommend:
+- **Students/Beginners:** Any Intel® Core™ Ultra system with integrated graphics
+- **Professionals:** Intel® Core™ Ultra + Intel® Arc™ GPU (B580 or better)
+- **Researchers:** High-end CPU + Intel® Arc™ B60 Pro for maximum performance
 
 Check our [Hardware Selection Guide](getting-started/hardware-selection.md) for detailed recommendations.
 
@@ -36,7 +36,7 @@ Check our [Hardware Selection Guide](getting-started/hardware-selection.md) for 
 
 ## Hardware Compatibility
 
-### **Q: Is my Intel hardware supported?**
+### **Q: Is my Intel® hardware supported?**
 **A:** Check the [compatibility matrix](../README.md#-validated-hardware--configurations). Supported platforms include:
 - Intel® Core™ Ultra (Series 1 & 2)
 - Intel® Arc™ Graphics (A-Series, B-Series)
@@ -44,10 +44,10 @@ Check our [Hardware Selection Guide](getting-started/hardware-selection.md) for 
 - Intel® Core™ N-series
 
 
-### **Q: What about older Intel hardware?**
+### **Q: What about older Intel® hardware?**
 **A:** Older hardware may work with reduced functionality:
-- **10th-12th Gen Intel CPUs:** Basic functionality, no NPU features
-- **Older Intel GPUs:** Limited AI acceleration
+- **10th-12th Gen Intel® CPUs:** Basic functionality, no NPU features
+- **Older Intel® GPUs:** Limited AI acceleration
 - **Very old systems:** May require manual driver installation
 
 For best results, use hardware from our [validated list](../README.md#-validated-hardware--configurations).

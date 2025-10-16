@@ -5,7 +5,7 @@
 - [Common Issues](#common-issues)
 - [Platform-Specific Issues](#platform-specific-issues)
 - [Log Files & Troubleshooting Steps](#log-files--troubleshooting-steps)
-- [Intel Camera Systems Troubleshooting Guide](../usecases/camera/TROUBLESHOOTING.md)
+- [Intel® Camera Systems Troubleshooting Guide](../usecases/camera/TROUBLESHOOTING.md)
 
 ### Common Issues
 
@@ -28,7 +28,7 @@ Please install HWE kernel: sudo apt install linux-generic-hwe-24.04
 - Add to appropriate platform list
 
 **NPU Not Detected:**
-- Confirm you are using a Core Ultra platform
+- Confirm you are using an Intel® Core™ Ultra platform
 - Check for NPU device: `ls /dev/intel-npu*`
 - If missing, reboot the system and rerun the installer
 
@@ -43,7 +43,7 @@ Please install HWE kernel: sudo apt install linux-generic-hwe-24.04
 During installation, logs are displayed in real time. For deeper troubleshooting, consult these sources:
 
 - **APT Package Logs:** `/var/log/apt/`
-- **Docker Logs:** `docker logs [container_name]`
+- **Docker* Logs:** `docker logs [container_name]`
 - **NPU Driver Logs:** `/var/log/intel-npu.log`
 - **Installer Output:** Review terminal messages for errors or warnings
 
