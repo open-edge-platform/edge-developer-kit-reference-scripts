@@ -14,7 +14,7 @@ The smart parking application is an AI-based solution to monitor individual car 
 ## Setup
 
 ### Prequisite
-* **OS**: Ubuntu (Validated on 22.04)
+* **OS**: Ubuntu 24.04 LTS
 
 * **Docker and Docker Compose**: Ensure Docker and Docker Compose are installed. Refer to [Docker installation guide](https://docs.docker.com/engine/install/).
 
