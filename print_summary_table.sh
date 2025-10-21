@@ -5,7 +5,8 @@
 
 # Print a summary table of system installation status
 
-set -eo pipefail
+# Note: Removed 'set -eo pipefail' to prevent early exits from failed commands
+# Individual functions handle errors gracefully with timeouts and || true
 
 # Status indicators - using ASCII for better compatibility
 readonly S_ERROR="[ERROR]"
@@ -150,8 +151,8 @@ detect_npu() {
     local npu_status npu_pkg npu_ver
     
     # Check if main NPU package is installed with timeout
-    npu_pkg=$(timeout_cmd 5 dpkg -l | grep 'intel-level-zero-npu' | awk '{print $2}')
-    npu_ver=$(timeout_cmd 5 dpkg -l | grep 'intel-level-zero-npu' | awk '{print $3}')
+    npu_pkg=$(timeout_cmd 5 dpkg -l 2>/dev/null | grep 'intel-level-zero-npu' | awk '{print $2}' || true)
+    npu_ver=$(timeout_cmd 5 dpkg -l 2>/dev/null | grep 'intel-level-zero-npu' | awk '{print $3}' || true)
     
     if [ -n "$npu_pkg" ]; then
         npu_status="Detected"
