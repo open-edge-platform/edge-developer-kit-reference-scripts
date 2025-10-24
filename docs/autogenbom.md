@@ -1,6 +1,6 @@
 # Bill of Materials (BOM)
 
-**Generated:** 2025-10-14 01:18:48 UTC
+**Generated:** 2025-10-24 03:18:36 UTC
 **Tool:** Intel Edge Developer Kit Reference Scripts
 **Repository:** intel/edge-developer-kit-reference-scripts
 
@@ -49,8 +49,8 @@ intel-gsc                 | 0.9.5-0ubuntu1~24.04~ppa1
 ------------------------ -+-----------------------------------------
 GPU Media Components      |                                         
 ------------------------ -+-----------------------------------------
-intel-media-va-driver-non-free | 25.3.3-0ubuntu1~2.04~ppa1               
-libmfx-gen1               | 25.3.3-0ubuntu1~24.04~ppa1              
+intel-media-va-driver-non-free | 25.4.0-0ubuntu1~24.04~ppa1              
+libmfx-gen1               | 25.4.0-0ubuntu1~24.04~ppa1              
 libvpl2                   | 1:2.15.0-0ubuntu1~24.04~ppa1            
 libvpl-tools              | 1.4.0-0ubuntu1~24.04~ppa1               
 libva-glx2                | 2.22.0-1ubuntu1~24.04~ppa1              

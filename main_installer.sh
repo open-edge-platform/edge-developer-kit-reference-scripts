@@ -71,7 +71,7 @@ usage() {
     echo ""
     echo "Usage: $0"
     echo ""
-    echo "Supported OS: Ubuntu 24.04 LTS with kernel 6.11.x (HWE) only"
+    echo "Supported OS: Ubuntu 24.04 LTS with kernel 6.14.x (HWE) only"
     echo ""
 }
 
@@ -153,16 +153,16 @@ verify_ubuntu_24() {
         exit 1
     fi
 
-   # Check kernel version (Ubuntu 24.04 LTS - require 6.11.x or 6.14.x only)
+   # Check kernel version (Ubuntu 24.04 LTS - require 6.14.x)
    local kernel_major
    local kernel_minor
    kernel_major=$(uname -r | cut -d'.' -f1)
    kernel_minor=$(uname -r | cut -d'.' -f2)
 
-   # Check for supported kernel versions (6.11.x or 6.14.x)
-   if ! { [ "$kernel_major" = "6" ] && { [ "$kernel_minor" = "11" ] || [ "$kernel_minor" = "14" ]; }; }; then
+   # Check for supported kernel versions (6.14.x)
+   if ! { [ "$kernel_major" = "6" ] && { [ "$kernel_minor" = "14" ] ; }; }; then
       echo "$S_WARNING Unsupported kernel version: $(uname -r)"
-      echo "This installer requires Ubuntu 24.04 LTS with kernel 6.11.x or 6.14.x"
+      echo "This installer requires Ubuntu 24.04 LTS with kernel 6.14.x"
       
       # Check HWE support status if command is available
       if command -v hwe-support-status >/dev/null 2>&1; then
