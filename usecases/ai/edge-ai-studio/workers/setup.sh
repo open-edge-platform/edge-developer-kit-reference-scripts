@@ -142,8 +142,8 @@ setup_workers() {
 
     # Determine skip mapping for known workers
     declare -A SKIP_MAP
-    SKIP_MAP["text-generation"]=$SKIP_STT
-    SKIP_MAP["text-generation"]=$SKIP_EMBEDDING
+    SKIP_MAP["speech-to-text"]=$SKIP_STT
+    SKIP_MAP["embedding"]=$SKIP_EMBEDDING
     SKIP_MAP["text-generation"]=$SKIP_LLM
     SKIP_MAP["text-to-speech"]=$SKIP_TTS
 
@@ -157,33 +157,92 @@ setup_workers() {
         echo "  - $name$status"
     done
     echo "================="
+    
+    # Track setup results
+    SUCCESSFUL_SETUPS=()
+    FAILED_SETUPS=()
+    SKIPPED_SETUPS=()
+    
     for worker_dir in $WORKER_DIRS; do
         name=$(basename "$worker_dir")
         if [[ ${SKIP_MAP[$name]:-0} -eq 1 ]]; then
             echo "Skipping $name setup..."
+            SKIPPED_SETUPS+=("$name")
             continue
         fi
+        
         echo "Starting $name setup..."
         setup_script="$worker_dir/setup.sh"
         if [ ! -f "$setup_script" ]; then
             echo "Warning: setup.sh not found in $worker_dir, skipping..."
+            FAILED_SETUPS+=("$name: setup.sh not found")
+            if [[ $CONTINUE_ON_ERROR -ne 1 ]]; then
+                echo "Setup failed for $name. Use --continue-on-error to continue with remaining workers."
+                exit 1
+            fi
             continue
         fi
+        
         if [[ $VERBOSE -eq 1 ]]; then
             bash -x "$setup_script"
             rc=$?
         else
+            echo "This may take several minutes depending on your internet connection..."
+            echo "Use --verbose to see detailed output."
             bash "$setup_script" >/dev/null 2>&1
             rc=$?
         fi
+        
         if [ $rc -eq 0 ]; then
-            echo "$name setup completed successfully!"
+            echo "✅ $name setup completed successfully!"
+            SUCCESSFUL_SETUPS+=("$name")
         else
-            echo "$name setup failed!"
-            exit 1
+            echo "❌ $name setup failed with exit code $rc!"
+            FAILED_SETUPS+=("$name: failed with exit code $rc")
+            if [[ $CONTINUE_ON_ERROR -ne 1 ]]; then
+                echo "Setup failed for $name. Use --continue-on-error to continue with remaining workers."
+                exit 1
+            else
+                echo "Setup failed for $name, but continuing with remaining workers..."
+            fi
         fi
     done
-    echo "All worker setup processes completed successfully!"
+    
+    # Display summary
+    echo ""
+    echo "=== Setup Summary ==="
+    
+    if [ ${#SUCCESSFUL_SETUPS[@]} -gt 0 ]; then
+        echo "✅ Successful setups (${#SUCCESSFUL_SETUPS[@]}):"
+        for success in "${SUCCESSFUL_SETUPS[@]}"; do
+            echo "  - $success"
+        done
+    fi
+    
+    if [ ${#FAILED_SETUPS[@]} -gt 0 ]; then
+        echo "❌ Failed setups (${#FAILED_SETUPS[@]}):"
+        for failure in "${FAILED_SETUPS[@]}"; do
+            echo "  - $failure"
+        done
+    fi
+    
+    if [ ${#SKIPPED_SETUPS[@]} -gt 0 ]; then
+        echo "⏭️  Skipped setups (${#SKIPPED_SETUPS[@]}):"
+        for skipped in "${SKIPPED_SETUPS[@]}"; do
+            echo "  - $skipped"
+        done
+    fi
+    
+    echo "==================="
+    
+    # Final status
+    if [ ${#FAILED_SETUPS[@]} -eq 0 ]; then
+        echo "All worker setup processes completed successfully!"
+        exit 0
+    else
+        echo "Some worker setups failed. Check the summary above for details."
+        exit 1
+    fi
 }
 
 main() {
@@ -209,6 +268,7 @@ SKIP_LLM=0
 SKIP_TTS=0
 VERBOSE=0
 SETUP_WORKERS=0
+CONTINUE_ON_ERROR=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -236,8 +296,13 @@ while [[ $# -gt 0 ]]; do
             SETUP_WORKERS=1
             shift
             ;;
+        --continue-on-error)
+            CONTINUE_ON_ERROR=1
+            shift
+            ;;
         *)
             echo "Unknown option: $1"
+            echo "Usage: $0 [--skip-stt] [--skip-embedding] [--skip-llm] [--skip-tts] [--verbose] [--setup-workers] [--continue-on-error]"
             exit 1
             ;;
     esac

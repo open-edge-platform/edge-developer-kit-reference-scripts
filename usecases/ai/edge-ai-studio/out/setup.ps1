@@ -4,39 +4,24 @@
 # Exit immediately if a command fails
 $ErrorActionPreference = "Stop"
 
-# Set default skip variables if not already set
-param(
-    [switch]$SkipFrontend = $false,
-    [switch]$SkipElectron = $false,
-    [switch]$SkipWorkers = $false
-)
-
 # Get the directory of this script
 $SCRIPT_DIR = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 # Resources directory in the packaged application
-$RESOURCES_DIR = Join-Path $SCRIPT_DIR "edge-ai-studio-win32-x64\resources"
+$RESOURCES_DIR = Join-Path $SCRIPT_DIR "win-unpacked\resources"
 $THIRDPARTY_DIR = Join-Path $RESOURCES_DIR "thirdparty"
 
 # Service configurations (Name -> Path:SkipFlag)
 $serviceConfigs = @{
     "Workers" = @{
         Path = "workers"
-        Skip = $SkipWorkers
     }
 }
-# Frontend setup is skipped - only setting up workers
 
 function Setup-Services {
     foreach ($serviceName in $serviceConfigs.Keys) {
         $config = $serviceConfigs[$serviceName]
         $servicePath = $config.Path
-        $skipService = $config.Skip
-        
-        if ($skipService) {
-            Write-Host "Skipping setup for $serviceName" -ForegroundColor Yellow
-            continue
-        }
         
         Set-Location $RESOURCES_DIR
         $serviceSetupFile = "setup.ps1"
@@ -98,22 +83,5 @@ function Main {
     
     Write-Host "Setup completed successfully!" -ForegroundColor Green
 }
-
-# Parse additional arguments for compatibility
-$remainingArgs = $args
-for ($i = 0; $i -lt $remainingArgs.Length; $i++) {
-    switch ($remainingArgs[$i]) {
-        "--skip-workers" { $SkipWorkers = $true }
-        "--skip-frontend" { $SkipFrontend = $true }
-        "--skip-electron" { $SkipElectron = $true }
-        default {
-            Write-Host "Unknown option: $($remainingArgs[$i])" -ForegroundColor Red
-            exit 1
-        }
-    }
-}
-
-# Update service configs with parsed flags
-$serviceConfigs["Workers"].Skip = $SkipWorkers
 
 Main

@@ -46,8 +46,11 @@ function Clone-KokoroRepo {
     Write-Host "Preparing kokoro at $DEST_DIR" -ForegroundColor Yellow
 
     # Check if git is available
-    if (-not (Test-Path "$PARENT_GIT_PATH")) {
-        Write-Host "Portable git is not found in thirdparty folder, ensure setup script is ran properly"
+    try {
+        & $PARENT_GIT_PATH --version | Out-Null
+        Write-Host "git found" -ForegroundColor Green
+    } catch {
+        Write-Host "git is required but not installed. Please install git and rerun this script." -ForegroundColor Red
         throw "Git not found"
     }
 

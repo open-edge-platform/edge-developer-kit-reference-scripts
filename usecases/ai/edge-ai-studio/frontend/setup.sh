@@ -87,6 +87,7 @@ main() {
         exit 0
     fi
     echo "Starting frontend setup..."
+    cd "$SCRIPT_DIR"
     ensure_env_file
     setup_frontend_dependencies
     echo "Frontend setup completed successfully."

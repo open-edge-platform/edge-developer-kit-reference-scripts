@@ -4,6 +4,7 @@
 # Exit on error, unset variable, or failed pipe
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 THIRDPARTY_DIR="${1:-$SCRIPT_DIR/../thirdparty}"
 NODE_ZIP_PATH="$THIRDPARTY_DIR/node.tar.xz"
 NODE_URL="https://nodejs.org/dist/v22.18.0/node-v22.18.0-linux-x64.tar.xz"
