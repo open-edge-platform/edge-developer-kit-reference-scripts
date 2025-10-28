@@ -5,10 +5,32 @@ param(
     [string]$ErrorActionPreference = "Stop"
 )
 
+$SCRIPT_DIR = $PSScriptRoot
 $ParentThirdPartyDir = Join-Path (Split-Path $PWD -Parent) "thirdparty"
 $UVPath = Join-Path $ParentThirdPartyDir "uv\uv.exe"
 $OvmsPath = Join-Path $ParentThirdPartyDir "ovms\ovms.exe"
 $script:uvCommand = $UVPath
+
+
+$ROOT_THIRDPARTY_DIR = "$SCRIPT_DIR\..\..\thirdparty"
+$PARENT_GIT_PATH = "$ROOT_THIRDPARTY_DIR\git\cmd"
+
+function Add-GitToPath {
+    if (Test-Path $PARENT_GIT_PATH) {
+        $script:originalPath = $env:PATH
+        $env:PATH = "$PARENT_GIT_PATH;$env:PATH"
+        Write-Host "Temporarily added Git to PATH: $PARENT_GIT_PATH" -ForegroundColor Green
+        return $true
+    }
+    return $false
+}
+
+function Remove-GitFromPath {
+    if ($script:originalPath) {
+        $env:PATH = $script:originalPath
+        Write-Host "Restored original PATH" -ForegroundColor Green
+    }
+}
 
 # Function to check if uv is installed
 function Test-UvInstalled {
@@ -66,6 +88,8 @@ function Install-PythonDependencies {
 # Main execution
 try {
     Write-Host "Starting Text Generation Setup..." -ForegroundColor Green
+    Push-Location -Path $PSScriptRoot
+    Add-GitToPath
     Test-UvInstalled
     Test-OVMSInstalled
     Install-PythonDependencies
@@ -75,4 +99,8 @@ try {
     Write-Host "Setup failed: $($_.Exception.Message)" -ForegroundColor Red
     Read-Host "Press Enter to continue..."
     exit 1
+}
+finally{
+    Remove-GitFromPath
+    Pop-Location
 }

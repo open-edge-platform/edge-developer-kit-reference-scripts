@@ -83,7 +83,7 @@ function Install-Wav2LipDependencies {
 function Install-MainDependencies {
     Write-Host "Install Digital Avatar Dependencies" -ForegroundColor Green
     Set-Location -Path $SCRIPT_DIR
-    & $UV_CMD pip install -r requirements.txt
+    & $UV_CMD sync
 }
 
 # Execute functions in order

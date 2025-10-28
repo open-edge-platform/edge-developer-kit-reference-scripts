@@ -41,7 +41,7 @@ install_python_dependencies() {
         echo -e "Virtual environment already exists."
     else
         echo -e "Creating virtual environment with uv..."
-        "$UV_CMD" venv
+        "$UV_CMD" venv --python 3.11
     fi
 
     echo -e "Installing Python dependencies with uv (this may take a few minutes)..."

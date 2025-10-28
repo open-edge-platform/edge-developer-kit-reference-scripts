@@ -7,7 +7,8 @@ param(
     [switch]$SkipEmbedding,
     [switch]$SkipLLM,
     [switch]$SkipTTS,
-    [switch]$Verbose
+    [switch]$Verbose,
+    [switch]$ContinueOnError  # Continue setup for remaining workers even if one fails
 )
 
 # Set error action preference
@@ -153,7 +154,7 @@ function Invoke-WorkerSetup {
     $setupScript = Join-Path $WorkerPath "setup.ps1"
     if (-not (Test-Path $setupScript)) {
         Write-ColorOutput "Warning: setup.ps1 not found in $WorkerPath, skipping..." "Yellow"
-        return
+        return @{ Success = $false; ErrorMessage = "setup.ps1 not found"; ExitCode = -1 }
     }
     
     try {
@@ -200,15 +201,17 @@ function Invoke-WorkerSetup {
         # Check the exit code
         if ($setupProcess.ExitCode -eq 0) {
             Write-ColorOutput "$WorkerName setup completed successfully!" "Green"
+            return @{ Success = $true; ErrorMessage = $null; ExitCode = $setupProcess.ExitCode }
         } else {
+            $errorMsg = "Setup failed with exit code $($setupProcess.ExitCode)"
             Write-ColorOutput "$WorkerName setup failed with exit code $($setupProcess.ExitCode)!" "Red"
-            throw "Setup failed for $WorkerName with exit code $($setupProcess.ExitCode)"
+            return @{ Success = $false; ErrorMessage = $errorMsg; ExitCode = $setupProcess.ExitCode }
         }
         
-        return $setupProcess
     } catch {
-        Write-ColorOutput "Setup failed for $WorkerName`: $($_.Exception.Message)" "Red"
-        throw
+        $errorMsg = $_.Exception.Message
+        Write-ColorOutput "Setup failed for $WorkerName`: $errorMsg" "Red"
+        return @{ Success = $false; ErrorMessage = $errorMsg; ExitCode = -1 }
     }
 }
 
@@ -244,28 +247,109 @@ foreach ($dir in $workerDirectories) {
 }
 Write-ColorOutput "=================" "Cyan"
 
+# Track setup results
+$setupResults = @()
+$successfulSetups = @()
+$failedSetups = @()
+
 try {    
     foreach ($workerDir in $workerDirectories) {
         $shouldSkip = $skipMapping[$workerDir.Name]
         
         if (-not $shouldSkip) {
             Write-ColorOutput "Starting $($workerDir.Name) setup..." "Yellow"
-            try {
-                $setupProcess = Invoke-WorkerSetup -WorkerPath $workerDir.FullName -WorkerName $workerDir.Name
-            } catch {
-                Write-ColorOutput "$($workerDir.Name) setup failed: $($_.Exception.Message)" "Red"
-                throw
+            
+            $result = Invoke-WorkerSetup -WorkerPath $workerDir.FullName -WorkerName $workerDir.Name
+            $setupResults += @{
+                WorkerName = $workerDir.Name
+                Success = $result.Success
+                ErrorMessage = $result.ErrorMessage
+                ExitCode = $result.ExitCode
+            }
+            
+            if ($result.Success) {
+                $successfulSetups += $workerDir.Name
+            } else {
+                $failedSetups += @{
+                    Name = $workerDir.Name
+                    Error = $result.ErrorMessage
+                    ExitCode = $result.ExitCode
+                }
+                
+                if (-not $ContinueOnError) {
+                    Write-ColorOutput "Setup failed for $($workerDir.Name). Use -ContinueOnError to continue with remaining workers." "Red"
+                    throw "Setup failed for $($workerDir.Name): $($result.ErrorMessage)"
+                } else {
+                    Write-ColorOutput "Setup failed for $($workerDir.Name), but continuing with remaining workers..." "Yellow"
+                }
             }
         } else {
             Write-ColorOutput "Skipping $($workerDir.Name) setup..." "Yellow"
+            $setupResults += @{
+                WorkerName = $workerDir.Name
+                Success = $null  # Indicates skipped
+                ErrorMessage = "Skipped by user"
+                ExitCode = 0
+            }
         }
     }
     
-    Write-ColorOutput "All worker setup processes completed successfully!" "Green"
+    # Display summary
+    Write-ColorOutput "`n=== Setup Summary ===" "Cyan"
+    
+    if ($successfulSetups.Count -gt 0) {
+        Write-ColorOutput "✅ Successful setups ($($successfulSetups.Count)):" "Green"
+        foreach ($success in $successfulSetups) {
+            Write-ColorOutput "  - $success" "Green"
+        }
+    }
+    
+    if ($failedSetups.Count -gt 0) {
+        Write-ColorOutput "❌ Failed setups ($($failedSetups.Count)):" "Red"
+        foreach ($failure in $failedSetups) {
+            Write-ColorOutput "  - $($failure.Name): $($failure.Error) (Exit Code: $($failure.ExitCode))" "Red"
+        }
+    }
+    
+    $skippedCount = ($setupResults | Where-Object { $_.Success -eq $null }).Count
+    if ($skippedCount -gt 0) {
+        Write-ColorOutput "⏭️  Skipped setups ($skippedCount):" "Yellow"
+        foreach ($result in ($setupResults | Where-Object { $_.Success -eq $null })) {
+            Write-ColorOutput "  - $($result.WorkerName)" "Yellow"
+        }
+    }
+    
+    Write-ColorOutput "===================" "Cyan"
+    
+    # Final status
+    if ($failedSetups.Count -eq 0) {
+        Write-ColorOutput "All worker setup processes completed successfully!" "Green"
+        exit 0
+    } else {
+        Write-ColorOutput "Some worker setups failed. Check the summary above for details." "Red"
+        exit 1
+    }
+    
 } catch {
     Write-ColorOutput "Error occurred: $($_.Exception.Message)" "Red"
     if ($Verbose) {
         Write-ColorOutput "Stack trace: $($_.ScriptStackTrace)" "Red"
     }
+    
+    # Display partial summary if any setups were completed
+    if ($setupResults.Count -gt 0) {
+        Write-ColorOutput "`n=== Partial Setup Summary ===" "Cyan"
+        foreach ($result in $setupResults) {
+            if ($result.Success -eq $true) {
+                Write-ColorOutput "✅ $($result.WorkerName): Success" "Green"
+            } elseif ($result.Success -eq $false) {
+                Write-ColorOutput "❌ $($result.WorkerName): $($result.ErrorMessage)" "Red"
+            } else {
+                Write-ColorOutput "⏭️  $($result.WorkerName): Skipped" "Yellow"
+            }
+        }
+        Write-ColorOutput "===================" "Cyan"
+    }
+    
     exit 1
 }

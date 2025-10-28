@@ -103,7 +103,7 @@ finalize_package() {
     echo "run_web.sh copied to EdgeAIStudio root successfully."
   fi
 
-  # Copy setup.sh to the root of EdgeAIStudio
+  # Copy run_web.sh to the root of EdgeAIStudio
   if [ -f "$SCRIPT_DIR/../out/setup.sh" ]; then
     cp "$SCRIPT_DIR/../out/setup.sh" EdgeAIStudio/ || { echo "Failed to copy setup.sh to EdgeAIStudio folder."; exit 1; }
     echo "setup.sh copied to EdgeAIStudio root successfully."
@@ -191,7 +191,7 @@ run_electron_package() {
 }
 
 main() {
-  cd "$SCRIPT_DIR"
+  cd "$SCRIPT_DIR" 
   create_temp_dir
   setup_node_env
   copy_workers

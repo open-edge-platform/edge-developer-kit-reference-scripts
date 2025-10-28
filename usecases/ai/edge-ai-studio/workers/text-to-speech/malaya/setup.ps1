@@ -1,5 +1,25 @@
 # Copyright (C) 2025 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
+$SCRIPT_DIR = $PSScriptRoot
+$ROOT_THIRDPARTY_DIR = "$SCRIPT_DIR\..\..\..\thirdparty"
+$PARENT_GIT_PATH = "$ROOT_THIRDPARTY_DIR\git\cmd"
+
+function Add-GitToPath {
+    if (Test-Path $PARENT_GIT_PATH) {
+        $script:originalPath = $env:PATH
+        $env:PATH = "$PARENT_GIT_PATH;$env:PATH"
+        Write-Host "Temporarily added Git to PATH: $PARENT_GIT_PATH" -ForegroundColor Green
+        return $true
+    }
+    return $false
+}
+
+function Remove-GitFromPath {
+    if ($script:originalPath) {
+        $env:PATH = $script:originalPath
+        Write-Host "Restored original PATH" -ForegroundColor Green
+    }
+}
 
 # Function to check if uv is installed
 function Test-UvInstalled {
@@ -22,6 +42,8 @@ function Test-UvInstalled {
 # Main execution
 try {
     Write-Host "Starting setup for Malaya FastAPI with Intel GPU support..." -ForegroundColor Green
+    Push-Location -Path $PSScriptRoot
+    Add-GitToPath
     Test-UvInstalled
 
     & $script:uvCommand sync
@@ -32,4 +54,8 @@ try {
     Write-Host "Setup failed: $($_.Exception.Message)" -ForegroundColor Red
     Read-Host "Press Enter to continue..."
     exit 1
+}
+finally{
+    Remove-GitFromPath
+    Pop-Location
 }

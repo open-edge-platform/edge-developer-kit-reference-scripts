@@ -38,7 +38,6 @@ export default function LipsyncPage() {
   const [resetIndex, setResetIndex] = useState(0)
 
   const { data: workload, isLoading } = useGetWorkloadByType(TYPE)
-  const { data: ttsWorkload } = useGetWorkloadByType('text-to-speech')
   const { isOpen, onClose, onOpen } = useDisclosure()
   const updateWorkload = useUpdateWorkload()
   const createWorkload = useCreateWorkload()

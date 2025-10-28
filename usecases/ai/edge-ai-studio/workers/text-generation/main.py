@@ -89,13 +89,13 @@ def signal_handler(signum, frame):
     os._exit(0)  # Use os._exit to avoid potential atexit issues
 
 
-def download_model(model_id: str, model_dir: str):
+def download_model(model_id: str):
     """
     Download the model from Hugging Face Hub if it is not already present.
     """
     try:
         print(f"Downloading model: {model_id}...")
-        path = snapshot_download(repo_id=model_id, cache_dir=model_dir)
+        path = snapshot_download(repo_id=model_id)
         return path
     except Exception as e:
         print(f"Error downloading {model_id}: {e}")
@@ -330,16 +330,12 @@ def main():
         project_root = os.path.abspath(os.path.join(script_dir, "..", ".."))
 
         # Set cache directories inside project root
-        model_cache_dir = os.path.join(project_root, "models", "huggingface")
-        os.environ["HF_HOME"] = model_cache_dir
         app_cache_dir = os.path.join(project_root, "models", "ovms")
 
         # Validate and sanitize the cache directories
-        model_cache_dir = validate_and_sanitize_cache_dir(model_cache_dir)
         app_cache_dir = validate_and_sanitize_cache_dir(app_cache_dir)
 
         # Create the directories if they don't exist
-        create_cache_directory(model_cache_dir)
         create_cache_directory(app_cache_dir)
 
         model_dir = app_cache_dir
@@ -348,7 +344,7 @@ def main():
         if not model_provider == "OpenVINO":
             try:
                 validated_model_id = validate_and_sanitize_model_id(model_id)
-                download_model(validated_model_id, model_cache_dir)
+                download_model(validated_model_id)
             except Exception as e:
                 print(f"Error downloading model {validated_model_id}: {e}")
                 raise RuntimeError(f"Failed to download model {validated_model_id}")

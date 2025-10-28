@@ -11,7 +11,7 @@ $SCRIPT_DIR = Split-Path -Parent $MyInvocation.MyCommand.Path
 $env:PORT = "8080"
 
 # Define paths relative to the script directory
-$RESOURCES_DIR = Join-Path $SCRIPT_DIR "edge-ai-studio-win32-x64\resources"
+$RESOURCES_DIR = Join-Path $SCRIPT_DIR "win-unpacked\resources"
 $FRONTEND_DIR = Join-Path $RESOURCES_DIR "frontend"
 $NODE_EXECUTABLE = Join-Path $RESOURCES_DIR "thirdparty\node\node.exe"
 $SERVER_JS = Join-Path $FRONTEND_DIR "server.js"
