@@ -1,0 +1,80 @@
+{
+    "name": "edge-ai-demo-studio",
+    "version": "1.0.0",
+    "main": "main.js",
+    "author": "Intel CASE CAT CENTRAL",
+    "scripts": {
+        "start": "electron .",
+        "build": "electron-builder",
+        "build:dir": "electron-builder --dir",
+        "build:linux": "electron-builder --linux",
+        "build:win": "electron-builder --win"
+    },
+    "license": "ISC",
+    "description": "Edge AI Demo Studio - Electron Builder Version",
+    "devDependencies": {
+        "electron": ">=37.5.0",
+        "electron-builder": "^25.1.8",
+        "@electron/fuses": "^1.8.0"
+    },
+    "dependencies": {
+        "electron-squirrel-startup": "^1.0.1"
+    },
+    "build": {
+        "appId": "com.intel.edge-ai-demo-studio",
+        "productName": "EdgeAIStudio",
+        "asar": true,
+        "directories": {
+            "output": "../out",
+            "buildResources": "."
+        },
+        "extraResources": [
+            {
+                "from": "../build/frontend",
+                "to": "frontend"
+            },
+            {
+                "from": "../build/workers",
+                "to": "workers"
+            },
+            {
+                "from": "../build/scripts",
+                "to": "scripts"
+            }
+        ],
+        "afterPack": "./electron-fuses.js",
+        "linux": {
+            "target": [
+                {
+                    "target": "zip",
+                    "arch": [
+                        "x64"
+                    ]
+                },
+                {
+                    "target": "deb",
+                    "arch": [
+                        "x64"
+                    ]
+                }
+            ],
+            "category": "Development",
+            "executableName": "edge-ai-studio"
+        },
+        "win": {
+            "target": [
+                {
+                    "target": "squirrel",
+                    "arch": [
+                        "x64"
+                    ]
+                }
+            ]
+        },
+        "files": [
+            "**/*",
+            "!**/node_modules/**/*",
+            "node_modules/**/*"
+        ]
+    }
+}

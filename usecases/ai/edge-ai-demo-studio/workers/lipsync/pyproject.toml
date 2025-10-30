@@ -1,0 +1,46 @@
+[project]
+name = "lipsync"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "accelerate==1.7.0",
+    "aiortc==1.13.0",
+    "cjk_textwrap==0.1.0",
+    "diffusers==0.33.1",
+    "einops==0.8.1",
+    "fastapi[standard]>=0.120.1",
+    "ffmpeg-python==0.2.0",
+    "huggingface-hub[cli]>=0.35.1",
+    "librosa==0.11.0",
+    "misaki==0.9.4",
+    "numpy>=2.2.6",
+    "omegaconf==2.3.0",
+    "openai==1.83.0",
+    "opencv-python==4.11.0.86",
+    "openvino==2025.2.0",
+    "python-multipart==0.0.20",
+    "pytorch-triton-xpu==3.4.0",
+    "requests==2.32.5",
+    "resampy==0.4.3",
+    "rich==14.0.0",
+    "torch>=2.8.0",
+    "torchaudio>=2.8.0",
+    "torchvision>=0.23.0",
+    "tqdm==4.67.1",
+    "transformers==4.53.0",
+    "uvicorn==0.34.3",
+    "websockets==15.0.1",
+]
+
+[tool.uv.sources]
+torch = { index = "pytorch" }
+torchaudio = { index = "pytorch" }
+torchvision = { index = "pytorch" }
+pytorch-triton-xpu = { index = "pytorch" }
+
+[[tool.uv.index]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/xpu"
+explicit = true
