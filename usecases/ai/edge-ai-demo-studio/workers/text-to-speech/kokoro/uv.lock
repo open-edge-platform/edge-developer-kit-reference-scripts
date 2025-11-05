@@ -742,7 +742,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "fastapi", extras = ["standard"], specifier = ">=0.117.1" },
+    { name = "fastapi", extras = ["standard"], specifier = ">=0.120.1" },
     { name = "huggingface-hub", specifier = ">=0.35.1" },
     { name = "loguru", specifier = ">=0.7.3" },
     { name = "misaki", extras = ["en", "ja", "zh"], specifier = "==0.9.3" },

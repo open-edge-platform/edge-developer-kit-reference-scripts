@@ -5,7 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "fastapi[standard]>=0.117.1",
+    "fastapi[standard]>=0.120.1",
     "huggingface-hub>=0.35.1",
     "loguru>=0.7.3",
     "misaki[en,ja,zh]==0.9.3",

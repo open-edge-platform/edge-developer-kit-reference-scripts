@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { EMBEDDING_WORKLOAD } from '@/lib/workloads/embedding'
+import { IMAGE_GENERATION_WORKLOAD } from '@/lib/workloads/image-generation'
 import { LIPSYNC_WORKLOAD } from '@/lib/workloads/lipsync'
 import { SPEECH_TO_TEXT_WORKLOAD } from '@/lib/workloads/speech-to-text'
 import { TEXT_GENERATION_WORKLOAD } from '@/lib/workloads/text-generation'
@@ -40,6 +41,8 @@ export function getDefaultWorkload(workloadType: Workload['type']) {
       return EMBEDDING_WORKLOAD
     case 'speech-to-text':
       return SPEECH_TO_TEXT_WORKLOAD
+    case 'image-generation':
+      return IMAGE_GENERATION_WORKLOAD
     default:
       return null
   }

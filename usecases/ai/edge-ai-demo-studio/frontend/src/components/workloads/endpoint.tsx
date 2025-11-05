@@ -24,6 +24,7 @@ export interface EndpointProps {
   exampleResponse: string
   queryParams?: string[]
   formData?: string[]
+  output?: string
 }
 
 export interface Parameter {
@@ -87,7 +88,7 @@ export default function Endpoint({
               (api.headers ? ' \\' : ''),
             api.headers
               ? `  -H "${api.headers}"` +
-                (api.formData || api.body ? ' \\' : '')
+                (api.formData || api.body || api.output ? ' \\' : '')
               : null,
             api.formData
               ? api.formData
@@ -95,11 +96,13 @@ export default function Endpoint({
                     (param, index) =>
                       `  -F "${param}"${index < api.formData!.length - 1 ? ' \\' : ''}`,
                   )
-                  .join('\n')
+                  .join('\n') + (api.output ? ' \\' : '')
               : null,
             api.body
-              ? `  -d ${`'${JSON.stringify(JSON.parse(api.body), null, 4)}'`.split("}'").join("  }'")}`
+              ? `  -d ${`'${JSON.stringify(JSON.parse(api.body), null, 4)}'`.split("}'").join("  }'")}` +
+                (api.output ? ' \\' : '')
               : null,
+            api.output ? `  -o ${api.output}` : null,
           ]
             .filter(Boolean)
             .join('\n')

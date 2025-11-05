@@ -849,7 +849,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "fastapi", extras = ["standard"], specifier = ">=0.117.1" },
+    { name = "fastapi", extras = ["standard"], specifier = ">=0.120.1" },
     { name = "malaya", git = "https://github.com/mesolitica/malaya.git" },
     { name = "malaya-speech", git = "https://github.com/mesolitica/malaya-speech" },
     { name = "markupsafe", specifier = "==2.1.5" },
