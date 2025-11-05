@@ -154,8 +154,7 @@ setup_frontend_package() {
   if [ -d "$FRONTEND_DIR" ]; then
     echo "Building frontend application..."
     cd "$FRONTEND_DIR"
-    npm install || { echo "Frontend dependencies installation failed."; exit 1; }
-    npm run build || { echo "Frontend build failed."; exit 1; }
+    ./setup.sh || { echo "Frontend setup failed."; exit 1; }
     rsync -av .next/standalone/ "$TEMP_DIR/frontend/" || { echo "Failed to copy standalone frontend build files to temp directory."; exit 1; }
     rsync -av .next/static/ "$TEMP_DIR/frontend/.next/static/" || { echo "Failed to copy static frontend build files to temp directory."; exit 1; }
     cd -

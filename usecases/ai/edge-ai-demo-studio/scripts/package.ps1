@@ -94,8 +94,7 @@ function Invoke-FrontendBuild {
         Write-Host "Building frontend application..." -ForegroundColor Green
         Push-Location $FRONTEND_DIR
         try {
-            npm install
-            npm run build
+            ./setup.ps1
             # Create frontend directory structure
             New-Item -ItemType Directory -Path "$TEMP_DIR/frontend" -Force | Out-Null
             New-Item -ItemType Directory -Path "$TEMP_DIR/frontend/.next" -Force | Out-Null
