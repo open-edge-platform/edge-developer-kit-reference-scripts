@@ -25,6 +25,7 @@ export const Workloads: CollectionConfig = {
         { label: 'Text Generation', value: 'text-generation' },
         { label: 'Text-To-Speech', value: 'text-to-speech' },
         { label: 'Lipsync', value: 'lipsync' },
+        { label: 'Image Generation', value: 'image-generation' },
       ],
       required: true,
     },

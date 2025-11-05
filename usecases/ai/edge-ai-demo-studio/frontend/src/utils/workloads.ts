@@ -1,7 +1,15 @@
 // Copyright (C) 2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-import { Brain, Speech, Volume2, FileSearch, User, Mic } from 'lucide-react'
+import {
+  Brain,
+  Speech,
+  Volume2,
+  FileSearch,
+  User,
+  Mic,
+  Image,
+} from 'lucide-react'
 
 export const samples = [
   {
@@ -58,5 +66,13 @@ export const workloads = [
     type: 'lipsync',
     href: '/lipsync',
     useCases: ['Virtual avatars', 'Video games', 'Accessibility'],
+  },
+  {
+    title: 'Image Generation',
+    description: 'Generate images from text prompts using diffusion models',
+    icon: Image,
+    href: '/image-generation',
+    type: 'image-generation',
+    useCases: ['Digital art', 'Content creation', 'Concept visualization'],
   },
 ]

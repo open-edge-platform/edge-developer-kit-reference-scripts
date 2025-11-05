@@ -8,6 +8,7 @@ const TEXT_TO_SPEECH_PORT = 5002
 const EMBEDDING_PORT = 5003
 const LIPSYNC_PORT = 5004
 const SPEECH_TO_TEXT_PORT = 5005
+const IMAGE_GENERATION_PORT = 5006
 const LOG_FILE_PATH = path.resolve(path.dirname(''), '../logs')
 const UINT32_RANGE = 2 ** 32
 
@@ -18,6 +19,7 @@ const ALLOWED_PORTS = [
   EMBEDDING_PORT, // Embedding service port
   LIPSYNC_PORT,
   SPEECH_TO_TEXT_PORT, // Speech to text service port
+  IMAGE_GENERATION_PORT, // Image generation service port
 ]
 
 const WORKER_DIR = path.resolve(path.dirname(''), '../workers')
@@ -32,4 +34,5 @@ export {
   ALLOWED_PORTS,
   WORKER_DIR,
   LIPSYNC_PORT,
+  IMAGE_GENERATION_PORT,
 }

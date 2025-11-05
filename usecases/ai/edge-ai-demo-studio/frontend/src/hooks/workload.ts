@@ -48,6 +48,9 @@ const typeHandlers: Record<
 
     return { params }
   },
+  'image-generation': (doc) => ({
+    params: `--model-id ${doc.model} --port ${doc.port} --device ${doc.device}`,
+  }),
 }
 
 const pathHandler = (doc: Workload) => {

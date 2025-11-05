@@ -14,8 +14,8 @@ UV_DIR="$THIRDPARTY_DIR/uv"
 UV_PATH="$UV_DIR/uv"
 
 OVMS_ZIP_PATH="$THIRDPARTY_DIR/ovms.tar.gz"
-OVMS_ZIP_URL_UBUNTU22="https://github.com/openvinotoolkit/model_server/releases/download/v2025.2.1/ovms_ubuntu22_python_on.tar.gz"
-OVMS_ZIP_URL_UBUNTU24="https://github.com/openvinotoolkit/model_server/releases/download/v2025.2.1/ovms_ubuntu24_python_on.tar.gz"
+OVMS_ZIP_URL_UBUNTU22="https://github.com/openvinotoolkit/model_server/releases/download/v2025.3/ovms_ubuntu22_python_on.tar.gz"
+OVMS_ZIP_URL_UBUNTU24="https://github.com/openvinotoolkit/model_server/releases/download/v2025.3/ovms_ubuntu24_python_on.tar.gz"
 OVMS_DIR="$THIRDPARTY_DIR/ovms"
 
 FFMPEG_TAR_PATH="$THIRDPARTY_DIR/ffmpeg-release-amd64-static.tar.xz"

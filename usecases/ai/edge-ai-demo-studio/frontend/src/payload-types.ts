@@ -155,7 +155,7 @@ export interface Device {
 export interface Workload {
   id: number;
   name: string;
-  type: 'speech-to-text' | 'embedding' | 'text-generation' | 'text-to-speech' | 'lipsync';
+  type: 'speech-to-text' | 'embedding' | 'text-generation' | 'text-to-speech' | 'lipsync' | 'image-generation';
   model: string;
   port: number;
   device: string;

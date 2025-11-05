@@ -325,6 +325,10 @@ def main():
                 f"Invalid device type: {device}. Supported devices are CPU, GPU, NPU, HETERO."
             )
 
+        # Temporary workaround for OVMS 2025.3 issue with GPU device naming
+        if base_device == "GPU":
+            device = "HETERO:" + device
+
         # Set project root as two levels above this script
         script_dir = os.path.dirname(os.path.abspath(__file__))
         project_root = os.path.abspath(os.path.join(script_dir, "..", ".."))

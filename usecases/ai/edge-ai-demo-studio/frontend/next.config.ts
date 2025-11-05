@@ -8,6 +8,7 @@ import {
   EMBEDDING_PORT,
   SPEECH_TO_TEXT_PORT,
   TEXT_TO_SPEECH_PORT,
+  IMAGE_GENERATION_PORT,
 } from '@/lib/constants'
 
 const nextConfig: NextConfig = {
@@ -16,6 +17,9 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ['openvino-node'],
   outputFileTracingIncludes: {
     '/': ['./node_modules/@libsql/win32-x64-msvc/**/*'],
+  },
+  experimental: {
+    proxyTimeout: 1000 * 120, // 120 seconds
   },
   webpack: (config, { isServer }) => {
     if (!isServer) {
@@ -52,6 +56,10 @@ const nextConfig: NextConfig = {
       {
         source: '/api/lipsync/:slug*',
         destination: `http://localhost:${LIPSYNC_PORT}/:slug*`,
+      },
+      {
+        source: '/api/images/v1/:slug*',
+        destination: `http://localhost:${IMAGE_GENERATION_PORT}/v3/images/:slug*`,
       },
     ]
   },
