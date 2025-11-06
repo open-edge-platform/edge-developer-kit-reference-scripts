@@ -23,7 +23,7 @@ import { SelectLanguage, SelectVoice } from './common'
 
 interface TextToSpeechDemoProps {
   disabled?: boolean
-  workload?: Workload
+  workload?: Workload | null
 }
 
 export default function TextToSpeechDemo({
@@ -37,7 +37,9 @@ export default function TextToSpeechDemo({
   const [speed, setSpeed] = useState<number>(1.0)
   const audioRef = useRef<HTMLAudioElement>(null)
   const tts = useTextToSpeech()
-  const { data: availableVoices, refetch: refetchVoices } = useGetVoices()
+  const { data: availableVoices, refetch: refetchVoices } = useGetVoices({
+    enabled: !disabled,
+  })
 
   // Use the model from workload or default to 'kokoro'
   const selectedModel = workload?.model || 'kokoro'

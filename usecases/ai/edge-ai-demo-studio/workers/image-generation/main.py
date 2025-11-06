@@ -296,7 +296,7 @@ async def get_config():
     """Get OVMS server configuration."""
     try:
         response = requests.get(
-            urlparse(f"http://localhost:{CONFIG['ovms_port']}/v1/config")
+            urlparse(f"http://localhost:{CONFIG['ovms_port']}/v1/config").geturl()
         )
         return response.json()
     except Exception as e:

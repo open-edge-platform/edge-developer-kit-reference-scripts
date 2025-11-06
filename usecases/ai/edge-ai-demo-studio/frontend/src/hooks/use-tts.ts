@@ -44,12 +44,13 @@ export const useTextToSpeech = () => {
   })
 }
 
-export const useGetVoices = () => {
+export const useGetVoices = ({ enabled }: { enabled: boolean }) => {
   return useQuery({
     queryKey: ['tts-voices'],
     queryFn: async () => {
       const response = await TTS_API.get('audio/voices')
       return response
     },
+    enabled,
   })
 }

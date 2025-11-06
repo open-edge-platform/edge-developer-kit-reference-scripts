@@ -43,7 +43,7 @@ export default function Workload({
   prerequisiteServices,
 }: {
   title: string
-  workload?: Workload
+  workload?: Workload | null
   workloadType: Workload['type']
   description: string
   demoElement: React.ReactNode
