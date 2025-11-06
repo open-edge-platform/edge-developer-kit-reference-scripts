@@ -18,12 +18,6 @@ export interface PrerequisiteService {
   status: string
 }
 
-/**
- * Gets the list of inactive prerequisite services
- * @param prerequisiteServices - Array of service names that are prerequisites
- * @param workloads - Array of current workload statuses
- * @returns Array of inactive prerequisite service names, or null if no prerequisites or workloads
- */
 export function getInactivePrerequisites(
   prerequisiteServices?: string[],
   workloads?: WorkloadStatus[],
@@ -44,12 +38,6 @@ export function getInactivePrerequisites(
   return []
 }
 
-/**
- * Gets the list of prerequisite services that are currently in preparing state
- * @param prerequisiteServices - Array of service names that are prerequisites
- * @param workloads - Array of current workload statuses
- * @returns Array of prerequisite service names that are currently preparing
- */
 export function getPreparingPrerequisites(
   prerequisiteServices?: string[],
   workloads?: WorkloadStatus[],
@@ -69,38 +57,22 @@ export function getPreparingPrerequisites(
   return []
 }
 
-/**
- * Checks if a workload is active but has inactive prerequisite services
- * @param workload - The current workload
- * @param prerequisiteServices - Array of service names that are prerequisites
- * @param workloads - Array of current workload statuses
- * @returns Array of inactive prerequisite service names if workload is active, empty array otherwise
- */
 export function getActiveWorkloadInactivePrerequisites(
-  workload?: Workload,
+  workload?: Workload | null,
   prerequisiteServices?: string[],
   workloads?: WorkloadStatus[],
 ) {
-  // Only check if the workload is active
   if (!workload || workload.status !== 'active') {
     return []
   }
 
-  // If no prerequisites defined, return empty array
   if (!prerequisiteServices || prerequisiteServices.length === 0) {
     return []
   }
 
-  // Get inactive prerequisites
   return getInactivePrerequisites(prerequisiteServices, workloads)
 }
 
-/**
- * Gets the prerequisite services that need to be started
- * @param prerequisiteServices - Array of service names that are prerequisites
- * @param workloads - Array of current workload statuses
- * @returns Array of PrerequisiteService objects for services that need to be started
- */
 export function getPrerequisitesToStart(
   prerequisiteServices?: string[],
   workloads?: WorkloadStatus[],
@@ -139,13 +111,6 @@ export function getPrerequisitesToStart(
   return []
 }
 
-/**
- * Starts prerequisite services by creating or updating workloads
- * @param prerequisiteServices - Array of service names that are prerequisites
- * @param workloads - Array of current workload statuses
- * @param createWorkload - Mutation function for creating workloads
- * @param updateWorkload - Mutation function for updating workloads
- */
 export function startPrerequisites(
   prerequisiteServices: string[] | undefined,
   workloads: WorkloadStatus[] | undefined,

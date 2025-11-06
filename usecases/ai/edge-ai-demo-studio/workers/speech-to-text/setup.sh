@@ -62,6 +62,7 @@ install_python_dependencies() {
 
 # Main execution
 echo "Starting Speech-to-Text Setup..."
+cd "$SCRIPT_DIR"
 check_uv_installed
 check_ffmpeg_available
 install_python_dependencies

@@ -34,6 +34,8 @@ import {
   SelectLanguage,
   SelectVoice,
 } from '@/components/workloads/text-to-speech/common'
+import Markdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 interface ConversationPanelProps {
   sessionId: string
@@ -54,7 +56,9 @@ export function ConversationPanel({
   const [currentMessage, setCurrentMessage] = useState('')
   const [selectedLanguage, setSelectedLanguage] = useState<string>('')
   const [selectedVoice, setSelectedVoice] = useState<string>('')
-  const { data: availableVoices, refetch: refetchVoices } = useGetVoices()
+  const { data: availableVoices, refetch: refetchVoices } = useGetVoices({
+    enabled: !disabled,
+  })
 
   const { messages, sendMessage, status, stop } = useChat({
     transport: new DefaultChatTransport({
@@ -267,13 +271,14 @@ export function ConversationPanel({
                   }`}
                 >
                   <div className="space-y-1">
-                    <p className="whitespace-pre-wrap">
-                      {message.parts.map((part, index) =>
-                        part.type === 'text' ? (
-                          <span key={index}>{part.text.trimStart()}</span>
-                        ) : null,
-                      )}
-                    </p>
+                    <div className="whitespace-pre-wrap">
+                      <Markdown remarkPlugins={[remarkGfm]}>
+                        {message.parts
+                          .filter((part) => part.type === 'text')
+                          .map((part) => part.text)
+                          .join('')}
+                      </Markdown>
+                    </div>
                   </div>
                 </div>
               </div>

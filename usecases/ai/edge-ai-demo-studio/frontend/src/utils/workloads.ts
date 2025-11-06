@@ -9,6 +9,7 @@ import {
   User,
   Mic,
   Image,
+  MessageCircle,
 } from 'lucide-react'
 
 export const samples = [
@@ -18,11 +19,13 @@ export const samples = [
     icon: User,
     href: '/digital-avatar',
     type: 'digital-avatar',
-    useCases: [
-      'Virtual assistants',
-      'Customer support',
-      'Interactive storytelling',
-    ],
+  },
+  {
+    title: 'RAG Chat',
+    description: 'A retrieval-augmented generation chat sample.',
+    icon: MessageCircle,
+    href: '/rag',
+    type: 'rag',
   },
 ]
 

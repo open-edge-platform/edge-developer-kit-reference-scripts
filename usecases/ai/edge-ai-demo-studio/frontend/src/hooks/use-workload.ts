@@ -73,7 +73,7 @@ export const useGetWorkloadByType = (type: string) => {
 
       const data = (await response.json()) as PaginatedDocs<Workload>
       if (!data.docs || data.docs.length === 0) {
-        return response.json() as Promise<undefined>
+        return null
       }
       // Return the first workload found
       if (data.docs.length > 1) {
