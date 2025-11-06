@@ -23,7 +23,6 @@
 # Source: https://github.com/intel/linux-npu-driver/releases/latest
 NPU_VERSION="1.23.0"
 NPU_BUILD_ID="20250827-17270089246"
-LEVEL_ZERO_VERSION="v1.22.4"
 
 # Auto-detect Ubuntu version
 UBUNTU_VERSION=""
@@ -50,7 +49,6 @@ detect_ubuntu_version() {
 display_version_info() {
    print_info "Using NPU Driver Version Information:"
    print_info "NPU Version: ${NPU_VERSION} | Build: ${NPU_BUILD_ID}"
-   print_info "Level Zero Version: ${LEVEL_ZERO_VERSION}"
    print_info "Ubuntu Package: ${UBUNTU_VERSION}"
    print_info ""
    print_info "Note: To update versions, edit the global variables at the top of this script"
@@ -108,12 +106,6 @@ cleanup_old_packages() {
    # Remove NPU packages with force to handle conflicts
    dpkg --purge --force-remove-reinstreq intel-driver-compiler-npu intel-fw-npu intel-level-zero-npu 2>/dev/null || true
    
-   # Remove conflicting libze1 package
-   apt remove -y libze1 2>/dev/null || true
-   
-   # Fix any broken dependencies
-   apt install --fix-broken -y
-   
    print_success "Old packages and conflicts cleaned up"
    return 0
 }
@@ -167,42 +159,6 @@ download_npu_packages() {
    return 0
 }
 
-# Check if Level Zero is installed
-check_level_zero() {
-   print_info "Checking Level Zero installation..."
-   if dpkg -l level-zero 2>/dev/null | grep -q "^ii"; then
-      print_success "Level Zero is already installed"
-      return 0
-   else
-      print_info "Level Zero not found, will need to install"
-      return 1
-   fi
-}
-
-# Download oneAPI Level Zero package
-download_level_zero_package() {
-   print_info "Downloading oneAPI Level Zero ${LEVEL_ZERO_VERSION}..."
-   print_info "DEBUG: Level Zero version variable: '${LEVEL_ZERO_VERSION}'"
-   
-   # Extract version number without 'v' prefix for filename
-   local lz_version_num
-   # shellcheck disable=SC2001
-   lz_version_num=$(echo "$LEVEL_ZERO_VERSION" | sed 's/^v//')
-   print_info "DEBUG: Extracted version number: '${lz_version_num}'"
-   
-   # Use Ubuntu 24.04 package
-   local lz_url="https://github.com/oneapi-src/level-zero/releases/download/${LEVEL_ZERO_VERSION}/level-zero_${lz_version_num}+u24.04_amd64.deb"
-   print_info "DEBUG: Download URL: ${lz_url}"
-   
-   if wget -q --timeout=30 "${lz_url}"; then
-      print_success "Downloaded Level Zero package"
-      return 0
-   else
-      print_error "Failed to download Level Zero from ${lz_url}"
-      return 1
-   fi
-}
-
 # Install NPU packages
 install_npu_packages() {
    print_info "Installing NPU driver packages..."
@@ -219,20 +175,6 @@ install_npu_packages() {
          return 1
       fi
    fi
-}
-
-# Install Level Zero package
-install_level_zero_package() {
-   print_info "Installing oneAPI Level Zero package..."
-   
-   if ! dpkg -i ./level-zero*.deb; then
-      print_warning "Level Zero installation failed, fixing dependencies..."
-      apt install --fix-broken -y
-      dpkg -i ./level-zero*.deb
-   fi
-   
-   print_success "Level Zero package installed"
-   return 0
 }
 
 # Setup device permissions
@@ -355,29 +297,18 @@ install_npu() {
    
    print_info "Step 4: Installing NPU packages..."
    install_npu_packages || { print_error "Failed to install NPU packages"; exit 1; }
-   
-   print_info "Step 5: Checking Level Zero installation..."
-   if ! check_level_zero; then
-      print_info "Step 6: Downloading Level Zero package..."
-      download_level_zero_package || { print_error "Failed to download Level Zero package"; exit 1; }
-      
-      print_info "Step 7: Installing Level Zero package..."
-      install_level_zero_package || { print_error "Failed to install Level Zero package"; exit 1; }
-   else
-      print_info "Step 6-7: Level Zero already installed, skipping download and installation"
-   fi
-   
-   print_info "Step 8: Setting up device permissions..."
+
+   print_info "Step 5: Setting up device permissions..."
    setup_device_permissions || { print_error "Failed to setup device permissions"; exit 1; }
    
    # Cleanup
-   print_info "Step 9: Cleaning up temporary files..."
+   print_info "Step 6: Cleaning up temporary files..."
    cd / || exit 1
    rm -rf "$temp_dir"
    print_success "Cleanup completed"
 
    # Verify installation
-   print_info "Step 10: Verifying installation..."
+   print_info "Step 7: Verifying installation..."
    verify_installation
    
    print_info ""

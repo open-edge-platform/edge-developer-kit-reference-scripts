@@ -1,6 +1,6 @@
 # Bill of Materials (BOM)
 
-**Generated:** 2025-10-24 03:18:36 UTC
+**Generated:** 2025-11-04 05:34:17 UTC
 **Tool:** Intel Edge Developer Kit Reference Scripts
 **Repository:** intel/edge-developer-kit-reference-scripts
 
@@ -20,8 +20,8 @@ Users can compare this with their local system using:
 ==================== System Installation Summary ====================
 Item                      | Value                                   
 ------------------------ -+-----------------------------------------
-Kernel Version            | 6.14.0-33-generic                       
-HWE Stack                 | Installed (6.14.0-33.33~24.04.1)        
+Kernel Version            | 6.14.0-34-generic                       
+HWE Stack                 | Installed (6.14.0-35.35~24.04.1)        
 Ubuntu Version            | Ubuntu 24.04.3 LTS                      
 NPU Status                | Detected                                
 ------------------------ -+-----------------------------------------
