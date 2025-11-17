@@ -10,7 +10,7 @@ Transform your Intel® hardware into powerful AI and edge computing solutions wi
 | -------------------------------------------------------------------------------------- | ----------------------------- | --------- | --------------------------------- |
 | [**🤖 Chat with Local LLMs**](../usecases/ai/openwebui-ollama/README.md)               | Private ChatGPT\* alternative | ⏱️ 10 min | LLM deployment, web interfaces    |
 | [**🎥 AI Video Analytics**](../usecases/ai/ai-video-analytics/README.md)               | Smart video content analysis  | ⏱️ 15 min | Computer vision, semantic search  |
-| [**💬 Edge AI Demo Studio (Digital Avatar)**](../usecases/ai/edge-ai-studio/README.md) | AI microservices              | ⏱️ 20 min | Multi-modal AI, speech processing |
+| [**💬 Edge AI Demo Studio (Digital Avatar)**](../usecases/ai/edge-ai-demo-studio/README.md) | AI microservices              | ⏱️ 20 min | Multi-modal AI, speech processing |
 
 ### 🟡 **Intermediate** _(Some AI/Development Experience)_
 
@@ -34,13 +34,13 @@ Transform your Intel® hardware into powerful AI and edge computing solutions wi
 
 - **Language Models:** [OpenWebUI + Ollama](../usecases/ai/openwebui-ollama/README.md), [RAG Toolkit](../usecases/ai/rag-toolkit/README.md)
 - **Computer Vision:** [AI Video Analytics](../usecases/ai/ai-video-analytics/README.md), [Smart Parking](../usecases/ai/smart-parking/README.md)
-- **Multi-Modal:** [Edge AI Demo Studio (Digital Avatar)](../usecases/ai/edge-ai-studio/README.md), [Video Summarization](../usecases/ai/video_summarization/README.md)
+- **Multi-Modal:** [Edge AI Demo Studio (Digital Avatar)](../usecases/ai/edge-ai-demo-studio/README.md), [Video Summarization](../usecases/ai/video_summarization/README.md)
 
 ### 📹 **Media & Content**
 
 - **Video Processing:** [Video Analytics](../usecases/ai/ai-video-analytics/README.md), [Video Summarization](../usecases/ai/video_summarization/README.md)
 - **Camera Systems:** [GMSL Cameras](../usecases/camera/gmsl/README.md), [MIPI Cameras](../usecases/camera/mipi/README.md)
-- **Interactive Media:** [Edge AI Demo Studio (Digital Avatar)](../usecases/ai/edge-ai-studio/README.md)
+- **Interactive Media:** [Edge AI Demo Studio (Digital Avatar)](../usecases/ai/edge-ai-demo-studio/README.md)
 
 ### 🏢 **Enterprise & IoT**
 
@@ -59,7 +59,7 @@ Transform your Intel® hardware into powerful AI and edge computing solutions wi
 
 1. Start with [OpenWebUI + Ollama](../usecases/ai/openwebui-ollama/README.md) - Learn LLM deployment
 2. Try [AI Video Analytics](../usecases/ai/ai-video-analytics/README.md) - Understand computer vision
-3. Explore [Edge AI Demo Studio (Digital Avatar)](../usecases/ai/edge-ai-studio/README.md) - Multi-modal AI concepts
+3. Explore [Edge AI Demo Studio (Digital Avatar)](../usecases/ai/edge-ai-demo-studio/README.md) - Multi-modal AI concepts
 
 ### **👨‍💼 For Professionals**
 
@@ -113,7 +113,7 @@ Transform your Intel® hardware into powerful AI and edge computing solutions wi
 2. [Open WebUI with Ollama](../usecases/ai/openwebui-ollama/README.md)
 3. [LLM RAG Toolkit](../usecases/ai/rag-toolkit/README.md)
 4. [AI Video Analytics](../usecases/ai/ai-video-analytics/README.md)
-5. [Edge AI Demo Studio (Digital Avatar)](../usecases/ai/edge-ai-studio/README.md)
+5. [Edge AI Demo Studio (Digital Avatar)](../usecases/ai/edge-ai-demo-studio/README.md)
    - A tool that simplifies deploying and managing AI microservices like TTS and STT in the edge.
 6. [Time Coordinated Computing (TCC)](../usecases/real-time/tcc_tutorial/README.md)
 7. [Smart Parking](../usecases/ai/smart-parking/README.md)
