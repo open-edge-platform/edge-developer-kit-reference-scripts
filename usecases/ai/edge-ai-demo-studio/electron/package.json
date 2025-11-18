@@ -59,7 +59,7 @@
                 }
             ],
             "category": "Development",
-            "executableName": "edge-ai-studio"
+            "executableName": "edge-ai-demo-studio"
         },
         "win": {
             "target": [

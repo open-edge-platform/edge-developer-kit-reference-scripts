@@ -80,7 +80,7 @@ Output is in `../out/`.
 
 The build configuration is in `package.json` under the `build` key. Key settings:
 
-- **appId**: `com.intel.edge-ai-studio`
+- **appId**: `com.intel.edge-ai-demo-studio`
 - **productName**: `EdgeAIDemoStudio`
 - **extraResources**: Copies `frontend`, `workers`, and `scripts` from `../build/`
 - **electronFuses**: Same security settings as Forge version

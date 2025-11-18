@@ -19,6 +19,12 @@ class OVKModel(KModel):
         torch.nn.Module.__init__(self)
 
         core = ov.Core()
+        if device == "CPU":
+            core = ov.Core()
+            device_name = core.get_property("CPU", "FULL_DEVICE_NAME")
+            if "Xeon" in device_name:
+                raise RuntimeError("Xeon CPU detected, falling back to PyTorch model")
+
         self.repo_id = repo_id
         self.model_dir = model_dir
 

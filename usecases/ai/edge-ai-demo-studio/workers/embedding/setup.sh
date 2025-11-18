@@ -5,6 +5,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VENV_DIR="$SCRIPT_DIR/.venv"
 
 PARENT_THIRDPARTY_DIR="$SCRIPT_DIR/../thirdparty"
 PARENT_UV_PATH="$PARENT_THIRDPARTY_DIR/uv/uv"
@@ -34,30 +35,17 @@ check_ovms_installed() {
     fi
 }
 
-# Function to install Python dependencies
-install_python_dependencies() {
-    echo -e "Checking for virtual environment..."
-    if [ -d ".venv" ]; then
-        echo -e "Virtual environment already exists."
+create_venv() {
+    if [[ -d "$VENV_DIR" ]]; then
+        echo "Virtual environment already exists at $VENV_DIR."
     else
-        echo -e "Creating virtual environment with uv..."
-        "$UV_CMD" venv --python 3.11
+        echo "Creating Python 3.11 virtual environment with uv ..."
+        "$UV_CMD" venv --seed --python 3.11 "$VENV_DIR"
     fi
-
-    echo -e "Installing Python dependencies with uv (this may take a few minutes)..."
-    echo -e "Note: If this seems stuck, it might be resolving PyTorch dependencies..."
-
-    if [ -f "requirements.txt" ]; then
-        echo -e "Installing requirements.txt dependencies..."
-        if "$UV_CMD" pip install -r requirements.txt --verbose --pre --refresh --index-strategy unsafe-best-match; then
-            echo -e "Python dependencies installed successfully."
-        else
-            echo -e "Failed to install Python dependencies."
-            exit 1
-        fi
-    else
-        echo -e "requirements.txt not found, skipping requirements installation."
-    fi
+    # shellcheck disable=SC1091
+    source "$VENV_DIR/bin/activate"
+    "$UV_CMD" sync
+    "$UV_CMD" run python -m ensurepip
 }
 
 
@@ -68,7 +56,7 @@ main() {
     cd "$SCRIPT_DIR"
     check_ovms_installed
     check_uv_installed
-    install_python_dependencies
+    create_venv
     echo "Setup completed successfully!"
 }
 

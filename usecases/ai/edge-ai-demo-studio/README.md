@@ -74,7 +74,7 @@ Once started, access the web UI at [http://localhost:8080](http://localhost:8080
 ## Project Structure
 
 ```
-applications.ai.tools.edge-ai-studio/
+applications.ai.tools.edge-ai-demo-studio/
 ├── electron/         # Electron app
 ├── frontend/         # Next.js web frontend
 ├── workers/          # Python/AI backend services
