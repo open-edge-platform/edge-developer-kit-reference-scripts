@@ -59,19 +59,19 @@ def get_model_directories():
     # Set cache directories inside project root
     model_dir = os.path.join(project_root, "models")
     hf_model_cache_dir = os.path.join(model_dir, "huggingface")
-    ov_model_cache_dir = os.path.join(model_dir, "ovms")
-    intel_model_cache_dir = os.path.join(model_dir, "intel")
+    stt_model_cache_dir = os.path.join(model_dir, "stt")
+    intel_model_cache_dir = os.path.join(stt_model_cache_dir, "intel")
 
     # Validate and sanitize the cache directories
     hf_model_cache_dir = validate_and_sanitize_cache_dir(hf_model_cache_dir)
-    ov_model_cache_dir = validate_and_sanitize_cache_dir(ov_model_cache_dir)
+    stt_model_cache_dir = validate_and_sanitize_cache_dir(stt_model_cache_dir)
     intel_model_cache_dir = validate_and_sanitize_cache_dir(intel_model_cache_dir)
 
     # Create the directories if they don't exist
     create_cache_directory(hf_model_cache_dir)
-    create_cache_directory(ov_model_cache_dir)
+    create_cache_directory(stt_model_cache_dir)
 
-    return model_dir, hf_model_cache_dir, ov_model_cache_dir, intel_model_cache_dir
+    return hf_model_cache_dir, stt_model_cache_dir, intel_model_cache_dir
 
 
 def initialize_stt_model():
@@ -80,14 +80,12 @@ def initialize_stt_model():
     stt_model_id = CONFIG["stt_model_id"]
     stt_model_provider = stt_model_id.split("/")[0] if "/" in stt_model_id else "local"
 
-    model_dir, hf_model_cache_dir, ov_model_cache_dir, intel_model_cache_dir = (
-        get_model_directories()
-    )
+    hf_model_cache_dir, stt_model_cache_dir, _ = get_model_directories()
     validated_stt_model_id = validate_and_sanitize_model_id(stt_model_id)
 
     try:
         if stt_model_provider == "OpenVINO":
-            stt_model_dir = os.path.join(ov_model_cache_dir, validated_stt_model_id)
+            stt_model_dir = os.path.join(stt_model_cache_dir, validated_stt_model_id)
             if not os.path.exists(stt_model_dir):
                 logger.info("OpenVINO model not found. Downloading model ...")
                 download_model(validated_stt_model_id, stt_model_dir)
@@ -114,9 +112,7 @@ def initialize_denoise_model():
     denoise_model = CONFIG["denoise_model_id"]
     validated_denoise_model = validate_and_sanitize_model_id(denoise_model)
 
-    model_dir, hf_model_cache_dir, ov_model_cache_dir, intel_model_cache_dir = (
-        get_model_directories()
-    )
+    _, stt_model_cache_dir, intel_model_cache_dir = get_model_directories()
 
     denoise_model_precision = "FP32" if CONFIG["denoise_device"] == "CPU" else "FP16"
     denoise_model_xml = os.path.join(
@@ -128,7 +124,9 @@ def initialize_denoise_model():
 
     if not os.path.exists(denoise_model_xml):
         logger.info("Denoise model not found. Downloading default model ...")
-        download_omz_model(model_dir, validated_denoise_model, denoise_model_precision)
+        download_omz_model(
+            stt_model_cache_dir, validated_denoise_model, denoise_model_precision
+        )
 
     denoise_compiled_model = load_denoise_model(
         denoise_model_xml,

@@ -76,7 +76,7 @@ clone_kokoro_repo() {
         if git apply --whitespace=fix "$PATCH_FILE"; then
             git add -A
             # Try to commit; if commit fails (e.g. no changes), continue
-            git commit -m "Apply local kokoro.patch" --author="Edge AI Demo Studio <no-reply@local>" || true
+            git commit -m "Apply local kokoro.patch" --author="Edge AI Studio <no-reply@local>" || true
             echo "Patch applied and committed."
         else
             echo "git apply failed; attempting git am fallback..."
@@ -129,12 +129,48 @@ clone_kokoro_repo() {
     echo "kokoro prepared at $DEST_DIR (kokoro files at top level)"
 }
 
+apply_espeakng_fix() {
+    echo "Applying espeakng_loader path fix..."
+    echo "This fix resolves: Error processing file '...espeakng_loader//phontab': No such file or directory"
+
+    # Get the Python site-packages directory for the current environment
+    PYTHON_SITE_PACKAGES=$("$UV_CMD" run python -c "import site; print(site.getsitepackages()[0])")
+    ESPEAKNG_LOADER_DIR="$PYTHON_SITE_PACKAGES/espeakng_loader"
+    
+    if [[ ! -d "$ESPEAKNG_LOADER_DIR" ]]; then
+        echo "Error: espeakng_loader directory not found at $ESPEAKNG_LOADER_DIR"
+        echo "Make sure espeakng_loader is installed in the current Python environment"
+        return 1
+    fi
+    
+    echo "Found espeakng_loader at: $ESPEAKNG_LOADER_DIR"
+    
+    # Create symlinks for all files in espeak-ng-data directory
+    # This works around the double slash path issue where the C library
+    # constructs paths like "/path/to/espeakng_loader//phontab" instead of 
+    # "/path/to/espeakng_loader/espeak-ng-data/phontab"
+    echo "Creating symlinks to work around double slash path issue..."
+    
+    pushd "$ESPEAKNG_LOADER_DIR" >/dev/null
+    for file in espeak-ng-data/*; do
+        filename=$(basename "$file")
+        if [[ ! -e "$filename" ]] && [[ ! -L "$filename" ]]; then
+            echo "  Creating symlink: $filename -> $file"
+            ln -sf "$file" "$filename"
+        fi
+    done
+    popd >/dev/null
+    
+    echo "espeakng_loader path fix applied successfully!"
+}
+
 main() {
     echo "Starting setup for Kokoro FastAPI with Intel GPU support ..."
     cd "$TTS_SCRIPT_DIR"
     check_uv_installed
     create_venv
     clone_kokoro_repo
+    apply_espeakng_fix
     echo "Setup completed successfully!"
 }
 

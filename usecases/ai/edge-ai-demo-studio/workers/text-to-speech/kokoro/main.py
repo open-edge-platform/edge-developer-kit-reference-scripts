@@ -15,10 +15,12 @@ from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+import openvino as ov
+from huggingface_hub import hf_hub_download
 
 from utils import create_cache_directory, validate_and_sanitize_cache_dir
 from ov_kokoro import OVKModel
-from kokoro import KPipeline
+from kokoro import KPipeline, KModel
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -91,15 +93,7 @@ class KokoroTTSService:
             create_cache_directory(model_dir)
             self.model_dir = model_dir
 
-            self.model = OVKModel(model_dir, self.device)
-
-            # Initialize default pipeline
-            self.pipelines["a"] = KPipeline(
-                lang_code="a",
-                repo_id="hexgrad/Kokoro-82M",
-                model=self.model,
-                model_dir=model_dir,
-            )
+            self.init_model_and_pipeline(model_dir)
 
             # Warm up the pipeline
             try:
@@ -119,16 +113,54 @@ class KokoroTTSService:
             logger.error(f"Failed to initialize Kokoro TTS: {e}")
             raise
 
+    def init_model_and_pipeline(self, model_dir: str):
+        try:
+            self.model = OVKModel(model_dir, self.device)
+
+            # Initialize default pipeline
+            self.pipelines["a"] = KPipeline(
+                lang_code="a",
+                repo_id="hexgrad/Kokoro-82M",
+                model=self.model,
+                model_dir=model_dir,
+            )
+        except Exception as e:
+            logger.warning(f"OVKModel initialization failed: {e}")
+            # Fallback to standard KModel (PyTorch) if OVKModel fails
+            # Download model files to the same model_dir
+            repo_id = "hexgrad/Kokoro-82M"
+            config_path = hf_hub_download(
+                repo_id=repo_id, filename="config.json", local_dir=model_dir
+            )
+            model_path = hf_hub_download(
+                repo_id=repo_id,
+                filename=KModel.MODEL_NAMES[repo_id],
+                local_dir=model_dir,
+            )
+
+            self.model = (
+                KModel(repo_id=repo_id, config=config_path, model=model_path)
+                .to("cpu")
+                .eval()
+            )
+
+            self.pipelines["a"] = KPipeline(
+                lang_code="a",
+                repo_id=repo_id,
+                model=self.model,
+                model_dir=model_dir,
+            )
+
     def get_results(self, pipeline: KPipeline, text: str, voice: str, speed: float = 1):
         """Helper to get results from a pipeline."""
         # Ensure self.model is initialized and has model_dir
-        if self.model is None or not hasattr(self.model, "model_dir"):
+        if self.model is None or not self.model_dir:
             raise RuntimeError(
                 "KokoroTTSService model is not initialized or missing 'model_dir' attribute."
             )
 
         # Check if voice is already available locally in the model directory
-        model_voice_path = os.path.join(self.model.model_dir, "voices", f"{voice}.pt")
+        model_voice_path = os.path.join(self.model_dir, "voices", f"{voice}.pt")
         if not os.path.exists(model_voice_path):
             logger.warning(f"Voice '{voice}' not found locally, downloading from hub")
         else:
