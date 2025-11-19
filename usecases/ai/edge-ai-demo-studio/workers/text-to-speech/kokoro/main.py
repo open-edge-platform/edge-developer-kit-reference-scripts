@@ -15,12 +15,17 @@ from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-import openvino as ov
 from huggingface_hub import hf_hub_download
 
 from utils import create_cache_directory, validate_and_sanitize_cache_dir
 from ov_kokoro import OVKModel
 from kokoro import KPipeline, KModel
+
+from misaki.espeak import EspeakWrapper
+
+# Disable espeakng-loader, use system wide espeak (should be installed)
+EspeakWrapper.set_library(None)
+EspeakWrapper.set_data_path(None)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
