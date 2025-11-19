@@ -20,6 +20,9 @@ Edge AI Demo Studio is a modern toolkit for deploying, managing, and serving AI 
 - **Samples:** Samples use cases that implements the ai services
   - Digital Avatar
 
+## Architecture Diagram
+![Archictecture Diagram](./docs/Architecture.png)
+
 ## Software Requirements
 
 - **Operating System:**
@@ -40,7 +43,7 @@ sudo ./install_dependencies.sh
 
 ### 2. Set Up Python & Node.js Dependencies
 
-For Linux/macOS:
+For Linux:
 ```bash
 ./setup.sh
 ```
@@ -57,7 +60,7 @@ This will:
 ---
 
 ### 3. Start the App
-For Linux/macOS:
+For Linux:
 ```bash
 ./start.sh
 ```
