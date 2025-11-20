@@ -1,0 +1,126 @@
+# Copyright (C) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0 
+
+import os
+import textwrap
+
+PORT = 5999
+PYTORCH_DEVICE = "xpu"
+OPENVINO_DEVICE = os.getenv("OPENVINO_DEVICE", "GPU")
+
+DOCUMENT_MODEL = "vidore/colqwen2.5-v0.2"
+VLM_MODEL = "Qwen/Qwen2.5-VL-3B-Instruct"
+
+DOCUMENT_INDEX_BATCH_SIZE = 3
+DOCUMENT_INDEX_MAX_PAGES = 550
+NO_HISTORY_ITEMS = 20
+
+APP_TITLE = "IPC Regulation Agent"
+
+chatbot_system_prompt_template = (
+    "You are an expert assistant trained strictly on the IPC-A-610 standard. "
+    "You are shown a page from the IPC regulation manual as an image, along with a user question related to a specific electronic component.\n\n"
+    "Your instructions are:\n"
+    "- Only answer the user's question if the provided page clearly and directly contains the relevant information.\n"
+    "- Do NOT infer, assume, or generate any information that is not explicitly written in the image.\n"
+    "- If the content of the image does NOT help answer the query, you must remain completely silent and return NO response.\n\n"
+    "Your role is to enforce compliance with the IPC-A-610 documentation, not to interpret or speculate beyond the provided material."
+)
+
+chatbot_query_template = """{query}\n\n[{page_label}]"""
+
+component_identification_system_prompt_template = textwrap.dedent(
+    """\
+    You are an expert IPC Regulation Agent.
+
+    You are given:
+    - A list of valid component names: {component_list}
+    - An image of a component
+    - An optional text description of the component
+
+    Your task is to **strictly identify** the single most relevant component from the list based solely on the visual and textual(optional) information provided.
+
+    ✱ Important Instructions:
+    - Only one component name **from the list** must be returned.
+    - Return the name **exactly as it appears** in the list — no paraphrasing, explanation, or additional text.
+    - If uncertain, select the best approximate match from the list. Do not say "uncertain", "not found", or return anything outside the list.
+    """
+)
+
+# Provide some components for the VLM to identify (works as a support mechanism for the embedding search)
+component_list = [
+    # Terminal connections
+    "Terminals",
+    "Bifurcated terminal",
+    "Rolled flange terminal",
+    "Flared flange terminal",
+    "Controlled split terminal",
+    "Slotted terminal",
+    # Connector pins
+    "Edge connector pins",
+    "Press fit pins",
+    "Soldered connector pins",
+    # Wires and bundles
+    "Wire bundles",
+    "Stranded wire",
+    "Solid wire",
+    "Coaxial cable",
+    # Soldering and anomalies
+    "Solder joints",
+    "Solder balls",
+    "Solder projections",
+    "Solder fillet",
+    "Lead-free hot tear",
+    "Pin holes",
+    "Blow holes",
+    "Excess solder",
+    "Bridging",
+    "Disturbed solder",
+    "Fractured solder",
+    "Nonwetting",
+    "Cold solder joint",
+    "Reflow solder joint",
+    # Hardware
+    "Fasteners",
+    "Heatsinks",
+    "Thermal compounds",
+    "Insulators",
+    "Threaded fasteners",
+    "Torque tools",
+    "Wires",
+    # Labels and markings
+    "Barcodes",
+    "Data matrix codes",
+    "RFID tags",
+    "Laser markings",
+    "Stamped markings",
+    "Etched markings",
+    # Conformal and solder mask coatings
+    "Conformal coating",
+    "Solder mask",
+    # Electrostatic and EOS protection
+    "ESD warning labels",
+    "Protective materials",
+    # Conductors
+    "Conductors",
+    "Damaged conductors",
+    "Wire plating",
+    # Soldered hardware features
+    "Turrets",
+    "Straight pins",
+    "Bifurcated pins",
+    "Staked wires",
+    "Side route attachments",
+    "Bottom and top route attachments",
+    # Misc
+    "Gloves",
+    "Finger cots",
+    "Wire wrap",
+    "Wire crossover",
+    "Wire slack",
+    "Splices and ferrules",
+    "Service loops",
+    "Stress relief",
+    "Lead wire bends",
+    "Cold solder connections",
+]

@@ -34,7 +34,7 @@ dependencies = [
     "langchainhub==0.1.21",
     # Document Processing
     "unstructured==0.18.3",
-    "pdfminer.six==20251107",
+    "pypdf>=6.3.0",
     # Database and Modeling
     "sqlmodel>=0.0.24",
 ]

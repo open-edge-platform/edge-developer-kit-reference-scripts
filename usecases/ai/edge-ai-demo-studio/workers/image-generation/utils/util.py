@@ -51,6 +51,7 @@ def validate_and_sanitize_cache_dir(cache_dir: str) -> str:
         "/tmp",  # Temporary directory
         "/var/cache",  # System cache directory
         "/opt",  # Optional software directory
+        "/mnt",  # Mounted drives
     ]
 
     # Check if the resolved path is within allowed directories
