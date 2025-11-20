@@ -62,7 +62,7 @@ export function AvatarStream({
 
       if (turnServerIp) {
         config.iceServers.push({
-          urls: [`turn:${turnServerIp}`],
+          urls: [`stun:${turnServerIp}`],
           username: 'dummy',
           credential: 'dummy',
         })

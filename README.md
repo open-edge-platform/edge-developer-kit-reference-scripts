@@ -1,58 +1,43 @@
 
 # Edge Developer Kit Reference Scripts
 
-
-**Transform your Intel® hardware into a powerful AI and edge computing platform in minutes, not hours.**
-
-
-Whether you're an ODM/OEM developer, AI/ML engineer, university student, or hardware enthusiast, this repository provides everything you need to unlock the full potential of Intel®'s latest processors and GPUs.
-
-
 This repository provides simplified developer kit reference setup scripts for various Intel® platforms and GPUs.
 
-> **⚡ Quick Start:** Get running in 5 minutes with our [one-line installer](#-5-minute-quick-start)
+> **First time:** Follow our [detailed setup guide](./docs/getting-started.md) for a guided experience.
 
-> **🚧 Note:** The main branch contains the latest development version of the project. It may include experimental features, work in progress, or unstable code.
+-> **Quick Start:** Get running in 5 minutes with our [one-line installer](#5-minute-quick-start).
 
-## 🎯 Who Is This For?
+> **Note:** The main branch contains the latest development version of the project. It may include experimental features, work in progress, or unstable code.
+
+- Officially Supported: Ubuntu 24.04 LTS (tested on `Ubuntu 24.04.3 LTS`) with the 6.14 HWE kernel (for example `6.14.0-33-generic`).
+- Kernel / HWE Guidance: The setup and reference scripts are validated against the Ubuntu 24.04 HWE stack (Linux 6.14). We recommend using the HWE kernel matching the tested version for best compatibility and to avoid driver/packaging mismatches.
+
+## Who Is This For?
 
 | **Your Background** | **What You'll Get** | **Start Here** |
 |-------------------|-------------------|----------------|
-| 🏭 **ODM/OEM Developer** | Production-ready platform setup with validated hardware configurations | [Hardware Setup Guide](#-validated-hardware--configurations) |
-| 🤖 **AI/ML Developer** | Ready-to-use AI workloads: LLMs, computer vision, speech processing | [AI Use Cases](#-ai--ml-use-cases) |
-| 🎓 **Student/Researcher** | Learning-oriented tutorials with step-by-step explanations | [Learning Path](./docs/getting-started/README.md) |
-| 🔧 **Hardware Enthusiast** | Experiment with cutting-edge Intel® hardware and software | [Quick Start](#-5-minute-quick-start) |
+| 🏭 **ODM/OEM Developer** | Production-ready platform setup with validated hardware configurations | [Hardware Setup Guide](#validated-hardware-configurations) |
+| 🤖 **AI/ML Developer** | Ready-to-use AI workloads: LLMs, computer vision, speech processing | [AI Use Cases](./docs/use-cases.md) |
+| 🎓 **Student/Researcher** | Learning-oriented tutorials with step-by-step explanations | [Learning Path](./docs/getting-started.md) |
+| 🔧 **Hardware Enthusiast** | Experiment with cutting-edge Intel® hardware and software | [Quick Start](#5-minute-quick-start) |
 | 🏆 **ESQ Users** | System validation and certification for hardware qualification | [ESQ Overview](https://github.com/open-edge-platform/edge-system-qualification)|
 
 
-## 🚀 5-Minute Quick Start
-
-**Just bought an Intel® developer kit?** Get up and running immediately:
+## 5-Minute Quick Start
 
 ```bash
-# One command to rule them all
 sudo bash -c "$(wget -qLO - https://raw.githubusercontent.com/intel/edge-developer-kit-reference-scripts/refs/heads/main/main_installer.sh)"
+
 ```
 
-> **First time?** → Follow our [detailed setup guide](./docs/getting-started.md) for a guided experience.
-
-### 🚀 **Next Steps**
+### Next Steps
 
 1. **Explore all use cases** from [our gallery](./docs/use-cases.md)
 2. **Discover more ingredients** in [Open Edge Platform Software Catalog](https://edgesoftwarecatalog.intel.com/) and [Open Edge Platform GitHub*](https://github.com/open-edge-platform) 
 3. **Join the community** on [GitHub* Discussions](https://github.com/intel/edge-developer-kit-reference-scripts/discussions)
 4. **Share your projects** and help others learn!
 
-## 📋 Table of Contents
-
-- [🎯 Who Is This For?](#-who-is-this-for)
-- [🚀 5-Minute Quick Start](#-5-minute-quick-start)
-- [💻 Validated Hardware & Configurations](#-validated-hardware--configurations)
-- [🤖 AI & ML Use Cases](./docs/use-cases.md)
-- [❓ Need Help?](#-need-help)
-- [⚠️ Important Notes](#️-important-notes)
-
-## 💻 Validated Hardware & Configurations
+## Validated Hardware & Configurations
 
 | Product Collection | Code Name | Support | Validated Hardware |
 |--------------|--------------|-------------------|--------------------|
@@ -79,43 +64,39 @@ The following table lists the validated hardware combinations using Developer Ki
 | **Raptor Lake (RPL)** | Arc B60 (dGPU) | ✅ Supported |
 
 
-## ❓ Need Help?
+## Community and Support
 
+If you need help, want to suggest a new feature, or report a bug, use the following channels:
 
-### 🚑 **Quick Solutions**
-- **Installation Issues?** → [Troubleshooting Guide](./docs/troubleshooting.md)
-- **Common Questions?** → [FAQ](./docs/faq.md)
-- **Community Support?** → [GitHub* Discussions](https://github.com/intel/edge-developer-kit-reference-scripts/discussions)
-
-### 📞 **Get Support**
-| Issue Type | Where to Go |
-|------------|-------------|
-| **Bug Reports** | [GitHub* Issues](https://github.com/intel/edge-developer-kit-reference-scripts/issues) |
-| **Feature Requests** | [GitHub* Discussions](https://github.com/intel/edge-developer-kit-reference-scripts/discussions) |
-| **General Questions** | [Community Forum](https://community.intel.com/) |
+- **Installation Issues** → [Troubleshooting Guide](./docs/troubleshooting.md)
+- **Common Questions** → [FAQ](./docs/faq.md)
+- **Community Support** → [GitHub* Discussions](https://github.com/intel/edge-developer-kit-reference-scripts/discussions)
+- **Bug Reports** → [GitHub* Issues](https://github.com/intel/edge-developer-kit-reference-scripts/issues)
+- **Feature Requests** → [GitHub* Discussions](https://github.com/intel/edge-developer-kit-reference-scripts/discussions)
+- **General Questions** →[Community Forum](https://community.intel.com/)
 
 
 ---
 
-## ⚠️ Important Notes
+## Important Notes
 
 
-### 🛡️ **Development Status**
+### Development Status
 This repository contains pre-production code and is intended for testing and evaluation purposes only. The code and features provided here are in development and may be incomplete, unstable, or subject to change without notice. Use this repository at your own risk.
 
 The reference scripts provided in this repository have been validated and tested on the hardware listed in the documentation. While we strive to ensure compatibility and performance, these scripts may not function as expected on other hardware configurations. Users may encounter issues or unexpected behavior when running the scripts on untested hardware. If you encounter any issues or have suggestions for improvements, we welcome you to open an issue.
 
-### 📄 **License Notes**
+### License Notes
 
-- **GStreamer*:** LGPL licensed - you're responsible for additional licenses if needed → [Learn more](https://gstreamer.freedesktop.org/documentation/frequently-asked-questions/licensing.html)
-- **Intel* Components:** Check individual component licenses in installation logs
+The Edge Developer Kit Reference Scripts project and its components is licensed under the [APACHE 2.0](./LICENSE) license, except for the following components:
 
-### 🤝 **Contributing**
+| Component | License |
+|:----------|:--------|
+| Real Time | BSD-3-Clause |
+| GStreamer | [LGPL](https://gstreamer.freedesktop.org/documentation/frequently-asked-questions/licensing.html) |
+
+
+### Contributing
 We welcome contributions! Check our [Contributing Guide](./CONTRIBUTING.md) to get started.
-
----
-
-
-**🎉 Ready to start building amazing AI applications with Intel® hardware? Let's go!** → [Choose your first project](./docs/use-cases.md)
 
 ---
