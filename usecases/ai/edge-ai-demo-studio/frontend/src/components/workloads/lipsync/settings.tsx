@@ -183,10 +183,10 @@ export function SettingsModal({
           <DeviceSelector />
           <div className="space-y-2">
             <Label htmlFor="turn-server-ip" className="text-base font-medium">
-              TURN Server IP
+              STUN/TURN Server IP
             </Label>
             <p className="text-sm text-gray-500">
-              Enter TURN server IP address with port for remote access
+              Enter STUN/TURN server IP address with port for remote access
               (optional, e.g., 192.168.1.100:3478 or turn.example.com:3478)
             </p>
             <Input
