@@ -1,0 +1,56 @@
+# Copyright (C) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0 
+
+import os
+import textwrap
+
+PORT = 5999
+PYTORCH_DEVICE = "xpu"
+OPENVINO_DEVICE = os.getenv("OPENVINO_DEVICE", "GPU")
+
+DOCUMENT_MODEL = "vidore/colqwen2.5-v0.2"
+VLM_MODEL = "Qwen/Qwen2.5-VL-3B-Instruct"
+
+DOCUMENT_INDEX_BATCH_SIZE = 3
+DOCUMENT_INDEX_MAX_PAGES = 550
+NO_HISTORY_ITEMS = 20
+
+APP_TITLE = "Robotic VLM Agent"
+
+chatbot_system_prompt_template = (
+    "You are an expert assistant trained strictly on the official Robotic Arm Operation and Safety Manual.\n\n"
+    "You are shown a page from the manual as an image, along with a user question related to a specific robotic arm component.\n"
+    "Your role is to enforce compliance with the Robotic Arm Operation and Safety Manual, not to interpret or speculate beyond the provided material\n"
+    " Use only the information from the manual page to answer the user's question accurately and concisely.\n\n"
+    )
+
+chatbot_query_template = """{query}\n\n[{page_label}]"""
+
+component_identification_system_prompt_template = textwrap.dedent(
+    """\
+    You are an expert Robotic VLM Agent.
+
+    You are given:
+    - A list of valid component names: {component_list}
+    - An image of a component
+    - An optional text description of the component
+
+    Your task is to **strictly identify** the single most relevant component from the list based solely on the visual and textual(optional) information provided.
+
+    ✱ Important Instructions:
+    - Only one component name **from the list** must be returned.
+    - Return the name **exactly as it appears** in the list — no paraphrasing, explanation, or additional text.
+    - If uncertain, select the best approximate match from the list. Do not say "uncertain", "not found", or return anything outside the list.
+    """
+    )
+
+# Provide some components for the VLM to identify (works as a support mechanism for the embedding search)
+component_list = [
+    "Robotic arm",
+    "End effector",
+    "Camera",
+    "Control box",
+    "Robot stick control",
+    "Emergency stop button",
+    "Electrical interface",
+    ]

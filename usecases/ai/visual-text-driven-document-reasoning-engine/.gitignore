@@ -1,0 +1,31 @@
+# Python virtual environment
+.venv
+
+# PyTorch model files
+*.pt
+
+# Python cache files
+__pycache__/
+
+# Test files and folders
+test/
+test*
+
+# Embeddings folder
+embeddings
+
+#Error logs
+*errors.txt
+
+#VLM Models
+models
+
+# VS Code cache
+.vscode
+
+# Config file
+config.py
+
+# History
+history
+history.json
