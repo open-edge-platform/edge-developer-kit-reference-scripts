@@ -28,13 +28,15 @@ tmp
 
 /tests/coverity/*
 !/tests/coverity/coverity_scan.sh
+/tests/shellcheck/*
+!/tests/shellcheck/shellcheck_scan.sh
 
 /build
 
 *.log
 /out/*
 !/out/README.md
-!/out/run_web.sh
+!/out/start_web.sh
 !/out/setup.sh
-!/out/run_web.ps1
-!/out/setup.ps1
+!/out/start_web.bat
+!/out/setup.bat

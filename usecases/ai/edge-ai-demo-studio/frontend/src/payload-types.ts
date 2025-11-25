@@ -68,8 +68,8 @@ export interface Config {
   blocks: {};
   collections: {
     users: User;
-    devices: Device;
     workloads: Workload;
+    'mcp-servers': McpServer;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -78,8 +78,8 @@ export interface Config {
   collectionsJoins: {};
   collectionsSelect: {
     users: UsersSelect<false> | UsersSelect<true>;
-    devices: DevicesSelect<false> | DevicesSelect<true>;
     workloads: WorkloadsSelect<false> | WorkloadsSelect<true>;
+    'mcp-servers': McpServersSelect<false> | McpServersSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -143,15 +143,6 @@ export interface User {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "devices".
- */
-export interface Device {
-  id: number;
-  updatedAt: string;
-  createdAt: string;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "workloads".
  */
 export interface Workload {
@@ -185,6 +176,19 @@ export interface Workload {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "mcp-servers".
+ */
+export interface McpServer {
+  id: number;
+  name: string;
+  url: string;
+  apiKey?: string | null;
+  disabled?: boolean | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
 export interface PayloadKv {
@@ -212,12 +216,12 @@ export interface PayloadLockedDocument {
         value: number | User;
       } | null)
     | ({
-        relationTo: 'devices';
-        value: number | Device;
-      } | null)
-    | ({
         relationTo: 'workloads';
         value: number | Workload;
+      } | null)
+    | ({
+        relationTo: 'mcp-servers';
+        value: number | McpServer;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -285,14 +289,6 @@ export interface UsersSelect<T extends boolean = true> {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "devices_select".
- */
-export interface DevicesSelect<T extends boolean = true> {
-  updatedAt?: T;
-  createdAt?: T;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "workloads_select".
  */
 export interface WorkloadsSelect<T extends boolean = true> {
@@ -306,6 +302,18 @@ export interface WorkloadsSelect<T extends boolean = true> {
   statusMessage?: T;
   healthUrl?: T;
   isHealthy?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "mcp-servers_select".
+ */
+export interface McpServersSelect<T extends boolean = true> {
+  name?: T;
+  url?: T;
+  apiKey?: T;
+  disabled?: T;
   updatedAt?: T;
   createdAt?: T;
 }

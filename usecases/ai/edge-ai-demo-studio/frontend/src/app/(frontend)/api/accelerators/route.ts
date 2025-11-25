@@ -13,7 +13,7 @@ export async function GET() {
         const fullName = core.getProperty(device, 'FULL_DEVICE_NAME')
         return {
           id: device,
-          name: `${fullName}${device === 'CPU' ? ' (CPU)' : ''}`,
+          name: `${fullName}${device === 'CPU' || device === 'NPU' ? ` (${device})` : ''}`,
         }
       } catch (err) {
         console.error(`Error fetching device property for ${device}:`, err)

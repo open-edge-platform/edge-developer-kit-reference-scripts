@@ -23,6 +23,7 @@ import {
 import { samples, workloads } from '@/utils/workloads'
 import { useGetWorkloadsStatus } from '@/hooks/use-workload'
 import { statusMap } from '@/utils/common'
+import { useMcpServerInfo } from '@/hooks/use-mcp-clients'
 
 // Navigation data
 const navigationData = {
@@ -51,9 +52,11 @@ const navigationData = {
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
   const { data } = useGetWorkloadsStatus()
+  const { isInitialized: mcpConnected, toolsLoading: mcpLoading } =
+    useMcpServerInfo()
 
   const workloads = React.useMemo(() => {
-    return (data || []).map((workload) => {
+    const cmsWorkloads = (data || []).map((workload) => {
       const statusKey = workload.status ?? 'inactive'
       const status = statusMap[statusKey] || {
         status: 'Unknown',
@@ -68,7 +71,22 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         },
       }
     })
-  }, [data])
+
+    const mcpWorkload = {
+      type: 'mcp-manager',
+      status: {
+        status: mcpConnected ? (mcpLoading ? 'loading' : 'active') : 'inactive',
+        text: mcpConnected ? (mcpLoading ? 'Loading' : 'Active') : 'Inactive',
+        color: mcpConnected
+          ? mcpLoading
+            ? 'bg-yellow-300'
+            : 'bg-green-500'
+          : 'bg-gray-300',
+      },
+    }
+
+    return [...cmsWorkloads, mcpWorkload]
+  }, [data, mcpConnected, mcpLoading])
 
   return (
     <Sidebar collapsible="icon" {...props}>

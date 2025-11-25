@@ -1,0 +1,78 @@
+#!/bin/bash
+set -euo pipefail
+
+# Copyright (C) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0 
+
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+NODE_PATH="$(cd "$SCRIPT_DIR/../thirdparty/node/bin" && pwd)"
+
+
+setup_node_env() {
+    OLD_PATH="$PATH"
+    echo " Setting up Node.js environment..."
+    if [ ! -d "$NODE_PATH" ]; then
+        echo "Error:Node.js not found in $NODE_PATH. Please run setup.sh in the project root first."
+        exit 1
+    fi
+    export PATH="$NODE_PATH:$PATH"
+    trap reset_env EXIT
+    # Check for node and npm
+    if ! command -v node >/dev/null 2>&1; then
+        echo "Error:node is not available in PATH."
+        exit 1
+    fi
+    if ! command -v npm >/dev/null 2>&1; then
+        echo "Error:npm is not available in PATH."
+        exit 1
+    fi
+    echo " Node.js version: $(node -v)"
+    echo " npm version: $(npm -v)"
+}
+
+reset_env() {
+    echo "Resetting environment variables..."
+    export PATH="$OLD_PATH"
+}
+
+start_dev_server() {
+    echo " Starting development server..."
+    setup_node_env
+    npm run dev
+    echo " Development server started."
+    reset_env
+}
+
+install_dependencies() {
+    echo " Setting up frontend dependencies..."
+    setup_node_env
+    npm install
+    echo " Frontend dependencies installed."
+    reset_env
+}
+
+
+clean_frontend() {
+    echo " Cleaning node_modules and build artifacts..."
+    rm -rf node_modules .next dist
+    echo " Clean complete."
+}
+
+main() {
+    cd "$SCRIPT_DIR"
+    if [[ "${1:-}" == "clean" ]]; then
+        clean_frontend
+        exit 0
+    fi
+    if [[ "${1:-}" == "install" ]]; then
+        install_dependencies
+        exit 0
+    fi
+    echo "Starting frontend setup..."
+    ensure_env_file
+    start_dev_server
+    echo "Frontend setup completed successfully."
+}
+
+main "$@"

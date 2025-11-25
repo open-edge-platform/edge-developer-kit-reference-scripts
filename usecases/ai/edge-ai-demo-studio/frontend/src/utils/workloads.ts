@@ -8,6 +8,7 @@ import {
   FileSearch,
   User,
   Mic,
+  ToolCase,
   Image,
   MessageCircle,
 } from 'lucide-react'
@@ -53,6 +54,14 @@ export const workloads = [
     href: '/text-generation',
     type: 'text-generation',
     useCases: ['Content creation', 'Code generation', 'Chatbots'],
+  },
+  {
+    title: 'MCP Manager',
+    description: 'Manage and connect to multiple MCP servers seamlessly',
+    icon: ToolCase,
+    href: '/mcp-manager',
+    type: 'mcp-manager',
+    useCases: ['Manage MCP servers connections'],
   },
   {
     title: 'Text-to-Speech',

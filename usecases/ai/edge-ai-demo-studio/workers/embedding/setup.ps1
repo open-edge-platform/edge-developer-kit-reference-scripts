@@ -6,6 +6,7 @@ param(
 )
 
 $SCRIPT_DIR = $PSScriptRoot
+$VENV_DIR = Join-Path $SCRIPT_DIR ".venv"
 $ParentThirdPartyDir = Join-Path (Split-Path $PWD -Parent) "thirdparty"
 $UVPath = Join-Path $ParentThirdPartyDir "uv\uv.exe"
 $OvmsPath = Join-Path $ParentThirdPartyDir "ovms\ovms.exe"
@@ -21,7 +22,7 @@ function Add-GitToPath {
         Write-Host "Temporarily added Git to PATH: $PARENT_GIT_PATH" -ForegroundColor Green
         return $true
     }
-    return $false
+   throw "Git not found in expected location: $PARENT_GIT_PATH"
 }
 
 function Remove-GitFromPath {
@@ -57,30 +58,23 @@ function Test-OVMSInstalled {
     }
 }
 
-# Function to install Python dependencies
-function Install-PythonDependencies {
-    Write-Host "Checking for virtual environment..." -ForegroundColor Yellow
-    if (Test-Path ".venv") {
-        Write-Host "Virtual environment already exists." -ForegroundColor Green
+function New-VirtualEnvironment {
+    if (Test-Path $VENV_DIR) {
+        Write-Host "Virtual environment already exists at $VENV_DIR." -ForegroundColor Green
     } else {
-        Write-Host "Creating virtual environment with uv..." -ForegroundColor Yellow
-        & $script:uvCommand venv --python 3.11
-    }
-    
-    Write-Host "Installing Python dependencies with uv (this may take a few minutes)..." -ForegroundColor Yellow
-    Write-Host "Note: If this seems stuck, it might be resolving PyTorch dependencies..." -ForegroundColor Cyan
-    
-    try {
-        if (Test-Path "requirements.txt") {
-            Write-Host "Installing requirements.txt dependencies..." -ForegroundColor Yellow
-            & $script:uvCommand pip install -r requirements.txt --refresh --pre --verbose --index-strategy unsafe-best-match
-        } else {
-            Write-Host "requirements.txt not found, skipping requirements installation." -ForegroundColor Yellow
+        Write-Host "Creating Python 3.11 virtual environment with uv ..." -ForegroundColor Yellow
+        & $script:uvCommand venv --python 3.11 --seed
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to create virtual environment. uv venv exited with code $LASTEXITCODE"
         }
-        Write-Host "Python dependencies installed successfully." -ForegroundColor Green
-    } catch {
-        Write-Host "Failed to install Python dependencies." -ForegroundColor Red
-        throw
+    }
+    & $script:uvCommand sync
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to sync dependencies. uv sync exited with code $LASTEXITCODE"
+    }
+    & $script:uvCommand run python -m ensurepip
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to ensure pip. uv run exited with code $LASTEXITCODE"
     }
 }
 
@@ -91,12 +85,11 @@ try {
     Add-GitToPath
     Test-UvInstalled
     Test-OVMSInstalled
-    Install-PythonDependencies
+    New-VirtualEnvironment
     Write-Host "Setup completed successfully!" -ForegroundColor Green
     exit 0
 } catch {
     Write-Host "Setup failed: $($_.Exception.Message)" -ForegroundColor Red
-    Read-Host "Press Enter to continue..."
     exit 1
 }
 finally{

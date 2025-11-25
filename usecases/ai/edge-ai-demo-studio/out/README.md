@@ -32,8 +32,8 @@ Before running Edge AI Demo Studio, you need to install system dependencies and 
 
    Then start the application:
 
-   - **Option 1:** Right-click the `EdgeAiStudio` file and select "Run as a program"
-   - **Option 2:** Run from terminal: `./EdgeAiStudio`
+   - **Option 1:** Right-click the `EdgeAIDemoStudio` file and select "Run as a program"
+   - **Option 2:** Run from terminal: `./EdgeAIDemoStudio`
 
    **Web Services Only (Browser-based):**
 
@@ -50,7 +50,7 @@ Before running Edge AI Demo Studio, you need to install system dependencies and 
    b. **Start the web server**
 
    ```bash
-   ./run_web.sh
+   ./start_web.sh
    ```
 
    This will start the web server and make it accessible at `http://localhost:8080`
@@ -64,7 +64,7 @@ Windows users have multiple options for running Edge AI Demo Studio:
 No additional setup is required. Simply:
 
 1. Navigate to the Edge AI Demo Studio folder
-2. Double-click the `EdgeAiStudio.bat` file to launch the application
+2. Double-click the `EdgeAIDemoStudio.bat` file to launch the application
 
 #### Option 2: Web Services Only (Browser-based)
 
@@ -75,14 +75,14 @@ If you prefer to run only the web services and access them through your browser:
    Open PowerShell as Administrator, navigate to the Edge AI Demo Studio directory, then run:
 
    ```powershell
-   .\setup.ps1
+   .\setup.bat
    ```
 
    This will install all necessary dependencies and configure the frontend and worker services.
 
 2. **Start the web server**
    ```powershell
-   .\run_web.ps1
+   .\start_web.bat
    ```
    This will start the web server and make it accessible at `http://localhost:8080`
 
@@ -117,8 +117,8 @@ If you prefer to run only the web services and access them through your browser:
 
 - Check that all dependencies were installed successfully
 - Make sure AppArmor is configured: `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`
-- Try right-clicking the `EdgeAiStudio` file and selecting "Run as a program"
-- If that doesn't work, try running from terminal to see error messages: `./EdgeAiStudio`
+- Try right-clicking the `EdgeAIDemoStudio` file and selecting "Run as a program"
+- If that doesn't work, try running from terminal to see error messages: `./EdgeAIDemoStudio`
 
 **Q: Desktop application crashes or shows namespace errors**
 
@@ -156,7 +156,7 @@ If you prefer to run only the web services and access them through your browser:
 **Q: Desktop application won't start**
 
 - Make sure you have the latest Windows updates installed
-- Try running the `EdgeAiStudio.bat` file instead of the .exe directly
+- Try running the `EdgeAIDemoStudio.bat` file instead of the .exe directly
 - Try running as administrator
 - Check that all dependencies were installed if you ran the setup
 

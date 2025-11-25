@@ -181,54 +181,6 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "devices": {
-      "name": "devices",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))"
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))"
-        }
-      },
-      "indexes": {
-        "devices_updated_at_idx": {
-          "name": "devices_updated_at_idx",
-          "columns": [
-            "updated_at"
-          ],
-          "isUnique": false
-        },
-        "devices_created_at_idx": {
-          "name": "devices_created_at_idx",
-          "columns": [
-            "created_at"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
     "workloads": {
       "name": "workloads",
       "columns": {
@@ -357,6 +309,122 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
+    "mcp_servers": {
+      "name": "mcp_servers",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "url": {
+          "name": "url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "api_key": {
+          "name": "api_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "disabled": {
+          "name": "disabled",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false,
+          "default": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))"
+        }
+      },
+      "indexes": {
+        "mcp_servers_updated_at_idx": {
+          "name": "mcp_servers_updated_at_idx",
+          "columns": [
+            "updated_at"
+          ],
+          "isUnique": false
+        },
+        "mcp_servers_created_at_idx": {
+          "name": "mcp_servers_created_at_idx",
+          "columns": [
+            "created_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "payload_kv": {
+      "name": "payload_kv",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "data": {
+          "name": "data",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "payload_kv_key_idx": {
+          "name": "payload_kv_key_idx",
+          "columns": [
+            "key"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
     "payload_locked_documents": {
       "name": "payload_locked_documents",
       "columns": {
@@ -457,15 +525,15 @@
           "notNull": false,
           "autoincrement": false
         },
-        "devices_id": {
-          "name": "devices_id",
+        "workloads_id": {
+          "name": "workloads_id",
           "type": "integer",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "workloads_id": {
-          "name": "workloads_id",
+        "mcp_servers_id": {
+          "name": "mcp_servers_id",
           "type": "integer",
           "primaryKey": false,
           "notNull": false,
@@ -501,17 +569,17 @@
           ],
           "isUnique": false
         },
-        "payload_locked_documents_rels_devices_id_idx": {
-          "name": "payload_locked_documents_rels_devices_id_idx",
-          "columns": [
-            "devices_id"
-          ],
-          "isUnique": false
-        },
         "payload_locked_documents_rels_workloads_id_idx": {
           "name": "payload_locked_documents_rels_workloads_id_idx",
           "columns": [
             "workloads_id"
+          ],
+          "isUnique": false
+        },
+        "payload_locked_documents_rels_mcp_servers_id_idx": {
+          "name": "payload_locked_documents_rels_mcp_servers_id_idx",
+          "columns": [
+            "mcp_servers_id"
           ],
           "isUnique": false
         }
@@ -543,12 +611,12 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "payload_locked_documents_rels_devices_fk": {
-          "name": "payload_locked_documents_rels_devices_fk",
+        "payload_locked_documents_rels_workloads_fk": {
+          "name": "payload_locked_documents_rels_workloads_fk",
           "tableFrom": "payload_locked_documents_rels",
-          "tableTo": "devices",
+          "tableTo": "workloads",
           "columnsFrom": [
-            "devices_id"
+            "workloads_id"
           ],
           "columnsTo": [
             "id"
@@ -556,12 +624,12 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "payload_locked_documents_rels_workloads_fk": {
-          "name": "payload_locked_documents_rels_workloads_fk",
+        "payload_locked_documents_rels_mcp_servers_fk": {
+          "name": "payload_locked_documents_rels_mcp_servers_fk",
           "tableFrom": "payload_locked_documents_rels",
-          "tableTo": "workloads",
+          "tableTo": "mcp_servers",
           "columnsFrom": [
-            "workloads_id"
+            "mcp_servers_id"
           ],
           "columnsTo": [
             "id"
@@ -816,6 +884,6 @@
   "internal": {
     "indexes": {}
   },
-  "id": "dfe3ffbe-ec12-49a9-b414-26edd12100d8",
+  "id": "f3bb5ba6-9b7d-45ce-a3bb-cc3c60f67a74",
   "prevId": "00000000-0000-0000-0000-000000000000"
 }

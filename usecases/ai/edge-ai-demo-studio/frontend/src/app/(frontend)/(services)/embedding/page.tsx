@@ -47,10 +47,7 @@ export default function EmbeddingPage() {
   const createWorkload = useCreateWorkload()
 
   const modelName = useMemo(() => {
-    const parts = (workload?.model ?? EMBEDDING_WORKLOAD.model).split('/')
-    return parts.length > 1
-      ? parts[1]
-      : (workload?.model ?? EMBEDDING_WORKLOAD.model)
+    return workload?.model ?? EMBEDDING_WORKLOAD.model
   }, [workload?.model])
 
   const data: DocumentationProps = {

@@ -47,12 +47,14 @@ try {
     Test-UvInstalled
 
     & $script:uvCommand sync
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to sync dependencies. uv sync exited with code $LASTEXITCODE"
+    }
     
     Write-Host "Setup completed successfully!" -ForegroundColor Green
     exit 0
 } catch {
     Write-Host "Setup failed: $($_.Exception.Message)" -ForegroundColor Red
-    Read-Host "Press Enter to continue..."
     exit 1
 }
 finally{

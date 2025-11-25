@@ -1,4 +1,4 @@
-# Copyright (C) 2025 Intel Corporation
+﻿# Copyright (C) 2025 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 # Parameters for switches and options
@@ -11,13 +11,62 @@ param(
     [switch]$ContinueOnError  # Continue setup for remaining workers even if one fails
 )
 
+# Set UTF-8 encoding for console output
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
 # Set error action preference
 $ErrorActionPreference = "Stop"
+
+# Define logging paths
+$SCRIPT_DIR = $PSScriptRoot
+$LOG_DIR = Join-Path (Split-Path $SCRIPT_DIR -Parent) "logs\setup"
+$TIMESTAMP = Get-Date -Format "yyyyMMdd_HHmmss"
 
 # Function to write colored output
 function Write-ColorOutput {
     param([string]$Message, [string]$Color = "White")
     Write-Host $Message -ForegroundColor $Color
+}
+
+# Function to cleanup old logs
+function Cleanup-OldLogs {
+    if (Test-Path $LOG_DIR) {
+        # Check if there are any logs with current timestamp (means we're called from parent setup)
+        # In that case, don't cleanup as it would delete the parent's log file
+        $currentTimestampLogs = Get-ChildItem -Path $LOG_DIR -Include "*_${TIMESTAMP}.log" -Recurse -File -ErrorAction SilentlyContinue
+        if ($currentTimestampLogs.Count -eq 0) {
+            Write-ColorOutput "Cleaning up old setup logs..." "Yellow"
+            # Remove all log files recursively from subdirectories
+            Get-ChildItem -Path $LOG_DIR -Include "*.log","*.log.*" -Recurse -File | Remove-Item -Force -ErrorAction SilentlyContinue
+            # Remove empty subdirectories
+            Get-ChildItem -Path $LOG_DIR -Directory -Recurse | Where-Object { @(Get-ChildItem -Path $_.FullName -Force).Count -eq 0 } | Remove-Item -Force -ErrorAction SilentlyContinue
+            Write-ColorOutput "Old logs removed." "Green"
+        } else {
+            Write-ColorOutput "Skipping log cleanup (running as part of main setup)" "Yellow"
+        }
+    }
+}
+
+# Function to setup logging
+function Setup-Logging {
+    if (-not $Verbose) {
+        if (-not (Test-Path $LOG_DIR)) {
+            New-Item -ItemType Directory -Path $LOG_DIR -Force | Out-Null
+        }
+        Cleanup-OldLogs
+        Write-ColorOutput "Detailed logs will be written to service-specific files in: $LOG_DIR" "White"
+    }
+}
+
+# Function to get service-specific log file
+function Get-ServiceLog {
+    param([string]$ServiceName)
+    $serviceLogDir = Join-Path $LOG_DIR $ServiceName
+    if (-not (Test-Path $serviceLogDir)) {
+        New-Item -ItemType Directory -Path $serviceLogDir -Force | Out-Null
+    }
+    return Join-Path $serviceLogDir "${ServiceName}_${TIMESTAMP}.log"
 }
 
 $thirdpartyDir = Join-Path $PWD "thirdparty"
@@ -38,106 +87,216 @@ $ffmpegPath = Join-Path $ffmpegDir "bin\ffmpeg.exe"
 
 # Function to check if uv is installed
 function Test-UvInstalled {
-    Write-Host "Checking if uv is installed..." -ForegroundColor Yellow
+    Write-ColorOutput "Checking if uv is installed..." "Yellow"
     
     # Check if uv exists in thirdparty folder (local to workers directory)
     if (Test-Path $uvPath) {
-        Write-Host "uv found in thirdparty folder." -ForegroundColor Green
+        Write-ColorOutput "✅ uv found in thirdparty folder." "Green"
         # Test uv directly without adding to PATH
-        & $uvPath --version | Out-Null
-        return $uvPath
+        try {
+            & $uvPath --version | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                Write-ColorOutput "❌ ERROR: uv binary found but not working properly" "Red"
+                exit 1
+            }
+            return $uvPath
+        } catch {
+            Write-ColorOutput "❌ ERROR: uv binary found but not working properly" "Red"
+            exit 1
+        }
     }
     
     # uv not found in thirdparty, download it
+    Write-ColorOutput "uv is not installed. Downloading uv binary..." "Yellow"
+    
+    $uvLogFile = Get-ServiceLog -ServiceName "uv"
+    if (-not $Verbose) {
+        "=== UV Setup Log - $(Get-Date) ===" | Out-File -FilePath $uvLogFile -Encoding utf8
+        "" | Out-File -FilePath $uvLogFile -Append -Encoding utf8
+        Write-ColorOutput "Logging UV setup to: $uvLogFile" "White"
+    }
+    
     try {
-        Write-Host "uv is not installed. Downloading uv binary..." -ForegroundColor Yellow
-        
         # Create thirdparty directory in workers folder if it doesn't exist
         if (-not (Test-Path $thirdpartyDir)) {
-            New-Item -ItemType Directory -Path $thirdpartyDir | Out-Null
+            New-Item -ItemType Directory -Path $thirdpartyDir -ErrorAction Stop | Out-Null
         }
         
         # Create uv subdirectory
         if (-not (Test-Path $uvDir)) {
-            New-Item -ItemType Directory -Path $uvDir | Out-Null
+            New-Item -ItemType Directory -Path $uvDir -ErrorAction Stop | Out-Null
         }
         
         # Download uv zip file        
-        Write-Host "Downloading uv from $uvZipUrl..." -ForegroundColor White
-        Invoke-WebRequest -Uri $uvZipUrl -OutFile $uvZipPath
+        Write-ColorOutput "Downloading uv from $uvZipUrl..." "White"
+        Invoke-WebRequest -Uri $uvZipUrl -OutFile $uvZipPath -ErrorAction Stop
         
         # Extract the zip file to uv subdirectory
-        Write-Host "Extracting uv binary..." -ForegroundColor White
-        Expand-Archive -Path $uvZipPath -DestinationPath $uvDir -Force
+        Write-ColorOutput "Extracting uv binary..." "White"
+        Expand-Archive -Path $uvZipPath -DestinationPath $uvDir -Force -ErrorAction Stop
         
         # Remove the zip file
-        Remove-Item $uvZipPath
+        Remove-Item $uvZipPath -Force -ErrorAction SilentlyContinue
+        
+        # Verify installation
+        if (-not (Test-Path $uvPath)) {
+            Write-ColorOutput "❌ ERROR: uv executable not found at $uvPath after extraction" "Red"
+            if (-not $Verbose) {
+                "UV setup failed at $(Get-Date)" | Out-File -FilePath $uvLogFile -Append -Encoding utf8
+            }
+            exit 1
+        }
         
         # Test if uv works directly
         & $uvPath --version | Out-Null
-        Write-Host "uv is successfully downloaded and extracted." -ForegroundColor Green
+        if ($LASTEXITCODE -ne 0) {
+            Write-ColorOutput "❌ ERROR: uv installation verification failed" "Red"
+            if (-not $Verbose) {
+                "UV setup failed at $(Get-Date)" | Out-File -FilePath $uvLogFile -Append -Encoding utf8
+            }
+            exit 1
+        }
+        
+        Write-ColorOutput "✅ uv is successfully downloaded and extracted." "Green"
+        if (-not $Verbose) {
+            "UV setup completed successfully at $(Get-Date)" | Out-File -FilePath $uvLogFile -Append -Encoding utf8
+        }
         return $uvPath
     } catch {
-        Write-Host "ERROR: Failed to download/extract uv." -ForegroundColor Red
-        Write-Host "Please manually download uv from: https://github.com/astral-sh/uv/releases" -ForegroundColor Yellow
-        Write-Host "Extract uv.exe to: $PWD\thirdparty\uv\" -ForegroundColor White
-        Read-Host "Press Enter to continue..."
+        Write-ColorOutput "❌ ERROR: Failed to download/extract uv." "Red"
+        Write-ColorOutput "Error: $($_.Exception.Message)" "Red"
+        Write-ColorOutput "Please check your internet connection and try again." "Yellow"
+        Write-ColorOutput "Or manually download uv from: https://github.com/astral-sh/uv/releases" "Yellow"
+        Write-ColorOutput "Extract uv.exe to: $PWD\thirdparty\uv\" "White"
+        if (-not $Verbose) {
+            "UV setup failed at $(Get-Date): $($_.Exception.Message)" | Out-File -FilePath $uvLogFile -Append -Encoding utf8
+        }
         exit 1
     }
 }
 
 # Function to download third-party dependencies
 function Get-ThirdPartyDependencies {
-    Write-Host "Creating thirdparty directory..." -ForegroundColor Yellow
-    if (-not (Test-Path $thirdpartyDir)) {
-        New-Item -ItemType Directory -Path $thirdpartyDir | Out-Null
+    Write-ColorOutput "Creating thirdparty directory..." "Yellow"
+    
+    try {
+        if (-not (Test-Path $thirdpartyDir)) {
+            New-Item -ItemType Directory -Path $thirdpartyDir -ErrorAction Stop | Out-Null
+        }
+    } catch {
+        Write-ColorOutput "❌ ERROR: Failed to create thirdparty directory" "Red"
+        exit 1
     }
 
     Set-Location $thirdpartyDir
 
     # Install OVMS
     if (Test-Path "ovms") {
-        Write-Host "OVMS directory already exists. Skipping download." -ForegroundColor Green
+        Write-ColorOutput "✅ OVMS directory already exists. Skipping download." "Green"
     } else {
-        Write-Host "Downloading OpenVINO Model Server for Windows..." -ForegroundColor Yellow
+        Write-ColorOutput "Downloading OpenVINO Model Server for Windows..." "Yellow"
+        
+        $ovmsLogFile = Get-ServiceLog -ServiceName "ovms"
+        if (-not $Verbose) {
+            "=== OVMS Setup Log - $(Get-Date) ===" | Out-File -FilePath $ovmsLogFile -Encoding utf8
+            "" | Out-File -FilePath $ovmsLogFile -Append -Encoding utf8
+            Write-ColorOutput "Logging OVMS setup to: $ovmsLogFile" "White"
+        }
+        
         try {
-            Invoke-WebRequest -Uri $ovmsZipUrl -OutFile $ovmsZipPath
-            Expand-Archive -Path $ovmsZipPath -DestinationPath $thirdpartyDir
-            Remove-Item $ovmsZipPath
-            Write-Host "OVMS downloaded and extracted successfully." -ForegroundColor Green
+            Write-ColorOutput "Downloading from $ovmsZipUrl..." "White"
+            Invoke-WebRequest -Uri $ovmsZipUrl -OutFile $ovmsZipPath -ErrorAction Stop
+            
+            Write-ColorOutput "Extracting OVMS..." "White"
+            Expand-Archive -Path $ovmsZipPath -DestinationPath $thirdpartyDir -ErrorAction Stop
+            Remove-Item $ovmsZipPath -Force -ErrorAction SilentlyContinue
+            
+            Write-ColorOutput "✅ OVMS downloaded and extracted successfully." "Green"
+            if (-not $Verbose) {
+                "OVMS setup completed successfully at $(Get-Date)" | Out-File -FilePath $ovmsLogFile -Append -Encoding utf8
+            }
         } catch {
-            Write-Host "Failed to download OVMS." -ForegroundColor Red
-            throw
+            Write-ColorOutput "❌ ERROR: Failed to download OVMS" "Red"
+            Write-ColorOutput "Error: $($_.Exception.Message)" "Red"
+            if (-not $Verbose) {
+                "OVMS setup failed at $(Get-Date): $($_.Exception.Message)" | Out-File -FilePath $ovmsLogFile -Append -Encoding utf8
+            }
+            Set-Location "..\"
+            exit 1
         }
     }
     
     # Install FFmpeg
     if (Test-Path "ffmpeg") {
-        Write-Host "FFmpeg directory already exists. Skipping download." -ForegroundColor Green
+        Write-ColorOutput "✅ FFmpeg directory already exists. Skipping download." "Green"
     } else {
-        Write-Host "Downloading FFmpeg for Windows..." -ForegroundColor Yellow
+        Write-ColorOutput "Downloading FFmpeg for Windows..." "Yellow"
+        
+        $ffmpegLogFile = Get-ServiceLog -ServiceName "ffmpeg"
+        if (-not $Verbose) {
+            "=== FFmpeg Setup Log - $(Get-Date) ===" | Out-File -FilePath $ffmpegLogFile -Encoding utf8
+            "" | Out-File -FilePath $ffmpegLogFile -Append -Encoding utf8
+            Write-ColorOutput "Logging FFmpeg setup to: $ffmpegLogFile" "White"
+        }
+        
         try {
-            Invoke-WebRequest -Uri $ffmpegZipUrl -OutFile $ffmpegZipPath
-            Expand-Archive -Path $ffmpegZipPath -DestinationPath $thirdpartyDir -Force
+            Write-ColorOutput "Downloading from $ffmpegZipUrl..." "White"
+            Invoke-WebRequest -Uri $ffmpegZipUrl -OutFile $ffmpegZipPath -ErrorAction Stop
+            
+            Write-ColorOutput "Extracting FFmpeg..." "White"
+            Expand-Archive -Path $ffmpegZipPath -DestinationPath $thirdpartyDir -Force -ErrorAction Stop
             
             # Find the extracted directory (it usually has a version number)
             $extractedDir = Get-ChildItem -Path $thirdpartyDir -Directory | Where-Object { $_.Name -like "ffmpeg-*" } | Select-Object -First 1
             
-            if ($extractedDir) {
-                # Rename to simply "ffmpeg"
-                Rename-Item -Path $extractedDir.FullName -NewName "ffmpeg"
+            if (-not $extractedDir) {
+                Write-ColorOutput "❌ ERROR: Could not find extracted FFmpeg directory" "Red"
+                Remove-Item $ffmpegZipPath -Force -ErrorAction SilentlyContinue
+                if (-not $Verbose) {
+                    "FFmpeg setup failed at $(Get-Date): Extracted directory not found" | Out-File -FilePath $ffmpegLogFile -Append -Encoding utf8
+                }
+                Set-Location "..\"
+                exit 1
             }
             
-            Remove-Item $ffmpegZipPath -Force
+            # Rename to simply "ffmpeg"
+            Rename-Item -Path $extractedDir.FullName -NewName "ffmpeg" -ErrorAction Stop
             
-            if (Test-Path $ffmpegPath) {
-                Write-Host "FFmpeg downloaded and extracted successfully." -ForegroundColor Green
-            } else {
-                Write-Host "FFmpeg installation verification failed." -ForegroundColor Red
+            Remove-Item $ffmpegZipPath -Force -ErrorAction SilentlyContinue
+            
+            # Verify installation
+            if (-not (Test-Path $ffmpegPath)) {
+                Write-ColorOutput "❌ ERROR: FFmpeg installation verification failed - binary not found" "Red"
+                if (-not $Verbose) {
+                    "FFmpeg setup failed at $(Get-Date): Binary not found" | Out-File -FilePath $ffmpegLogFile -Append -Encoding utf8
+                }
+                Set-Location "..\"
+                exit 1
+            }
+            
+            # Test FFmpeg
+            & $ffmpegPath -version | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                Write-ColorOutput "❌ ERROR: FFmpeg binary found but not working properly" "Red"
+                if (-not $Verbose) {
+                    "FFmpeg setup failed at $(Get-Date): Binary not working" | Out-File -FilePath $ffmpegLogFile -Append -Encoding utf8
+                }
+                Set-Location "..\"
+                exit 1
+            }
+            
+            Write-ColorOutput "✅ FFmpeg downloaded and extracted successfully." "Green"
+            if (-not $Verbose) {
+                "FFmpeg setup completed successfully at $(Get-Date)" | Out-File -FilePath $ffmpegLogFile -Append -Encoding utf8
             }
         } catch {
-            Write-Host "Failed to download FFmpeg." -ForegroundColor Red
-            throw
+            Write-ColorOutput "❌ ERROR: Failed to download FFmpeg" "Red"
+            Write-ColorOutput "Error: $($_.Exception.Message)" "Red"
+            if (-not $Verbose) {
+                "FFmpeg setup failed at $(Get-Date): $($_.Exception.Message)" | Out-File -FilePath $ffmpegLogFile -Append -Encoding utf8
+            }
+            Set-Location "..\"
+            exit 1
         }
     }
     
@@ -157,6 +316,10 @@ function Invoke-WorkerSetup {
         return @{ Success = $false; ErrorMessage = "setup.ps1 not found"; ExitCode = -1 }
     }
     
+    # Create worker-specific log file
+    $workerLogFile = Get-ServiceLog -ServiceName $WorkerName
+    $workerErrorLogFile = "${workerLogFile}.err"
+    
     try {
         Write-ColorOutput "=== $WorkerName Setup Started ===" "Cyan"
         
@@ -168,51 +331,64 @@ function Invoke-WorkerSetup {
         }
         
         if ($Verbose) {
-            # In verbose mode, show output directly in the same window
-            $setupProcess = Start-Process -FilePath "powershell.exe" -ArgumentList $scriptArgs -WorkingDirectory $WorkerPath -PassThru -NoNewWindow -Wait
+            # In verbose mode, show output directly in the console and log to file
+            Write-ColorOutput "Logging to: $workerLogFile" "DarkGray"
+            $setupProcess = Start-Process -FilePath "powershell.exe" `
+                -ArgumentList $scriptArgs `
+                -WorkingDirectory $WorkerPath `
+                -PassThru `
+                -NoNewWindow `
+                -Wait `
+                -RedirectStandardOutput $workerLogFile `
+                -RedirectStandardError $workerErrorLogFile
+            
+            # Display log content to console
+            if (Test-Path $workerLogFile) {
+                Get-Content $workerLogFile | Write-Host
+            }
+            if (Test-Path $workerErrorLogFile) {
+                Get-Content $workerErrorLogFile | Write-Host
+            }
         } else {
-            # In non-verbose mode, show filtered/summarized output
+            # In non-verbose mode, log to file and show progress
             Write-ColorOutput "This may take several minutes depending on your internet connection..." "White"
-            Write-ColorOutput "Use -Verbose to see detailed output." "White"
+            Write-ColorOutput "Logging to: $workerLogFile" "DarkGray"
             
-            # Create a job to run the setup script so we can monitor it
-            $job = Start-Job -ScriptBlock {
-                param($ScriptArgs, $WorkingDirectory)
-                $process = Start-Process -FilePath "powershell.exe" -ArgumentList $ScriptArgs -WorkingDirectory $WorkingDirectory -PassThru -WindowStyle Hidden -Wait
-                return $process.ExitCode
-            } -ArgumentList $scriptArgs, $WorkerPath
+            "=== $WorkerName Setup Log - $(Get-Date) ===" | Out-File -FilePath $workerLogFile -Encoding utf8
+            "" | Out-File -FilePath $workerLogFile -Append -Encoding utf8
             
-            # Show progress dots while waiting
-            $dotCount = 0
-            while ($job.State -eq "Running") {
-                Start-Sleep -Seconds 2
-                Write-Host "." -NoNewline -ForegroundColor Yellow
-                $dotCount++
-                if ($dotCount % 30 -eq 0) {
-                    Write-Host "`n$WorkerName setup still running..." -ForegroundColor Yellow
-                }
-            }
-            
-            # Get the result
-            $exitCode = Receive-Job -Job $job
-            Remove-Job -Job $job
-            
-            # Create a mock process object for consistency
-            $setupProcess = New-Object PSObject -Property @{
-                ExitCode = $exitCode
-            }
-            
-            Write-Host ""  # New line after dots
+            # Run setup with output redirection
+            $setupProcess = Start-Process -FilePath "powershell.exe" `
+                -ArgumentList $scriptArgs `
+                -WorkingDirectory $WorkerPath `
+                -PassThru `
+                -WindowStyle Hidden `
+                -Wait `
+                -RedirectStandardOutput $workerLogFile `
+                -RedirectStandardError $workerErrorLogFile
         }
         
         # Check the exit code
         if ($setupProcess.ExitCode -eq 0) {
-            Write-ColorOutput "$WorkerName setup completed successfully!" "Green"
+            Write-ColorOutput "✅ $WorkerName setup completed successfully!" "Green"
+            if (-not $Verbose) {
+                Write-ColorOutput "📋 Log: $workerLogFile" "DarkGray"
+            }
             return @{ Success = $true; ErrorMessage = $null; ExitCode = $setupProcess.ExitCode }
         } else {
+            Write-Host ""
+            Write-Host "╔════════════════════════════════════════════════════════════════╗" -ForegroundColor Red
+            Write-Host "║  ❌ WORKER SETUP FAILED: $WorkerName" -ForegroundColor Red
+            Write-Host "║  Exit Code: $($setupProcess.ExitCode)" -ForegroundColor Red
+            Write-Host "╚════════════════════════════════════════════════════════════════╝" -ForegroundColor Red
+            Write-Host ""
+            Write-ColorOutput "📋 Log: $workerLogFile" "Yellow"
+            if (Test-Path $workerErrorLogFile) {
+                Write-ColorOutput "📋 Error Log: $workerErrorLogFile" "Yellow"
+            }
+            
             $errorMsg = "Setup failed with exit code $($setupProcess.ExitCode)"
-            Write-ColorOutput "$WorkerName setup failed with exit code $($setupProcess.ExitCode)!" "Red"
-            return @{ Success = $false; ErrorMessage = $errorMsg; ExitCode = $setupProcess.ExitCode }
+            return @{ Success = $false; ErrorMessage = $errorMsg; ExitCode = $setupProcess.ExitCode; WorkerName = $WorkerName }
         }
         
     } catch {
@@ -222,11 +398,14 @@ function Invoke-WorkerSetup {
     }
 }
 
-Test-UvInstalled
-Get-ThirdPartyDependencies
-
 # Main script
 Write-ColorOutput "=== Workers Setup ===" "Cyan"
+
+# Setup logging
+Setup-Logging
+
+Test-UvInstalled
+Get-ThirdPartyDependencies
 
 # Discover all subdirectories with setup.ps1 files
 $workerDirectories = Get-ChildItem -Path $PWD -Directory | Where-Object {
@@ -277,17 +456,28 @@ try {
             if ($result.Success) {
                 $successfulSetups += $workerDir.Name
             } else {
+                $workerLogFile = Get-ServiceLog -ServiceName $workerDir.Name
                 $failedSetups += @{
                     Name = $workerDir.Name
                     Error = $result.ErrorMessage
                     ExitCode = $result.ExitCode
+                    LogFile = $workerLogFile
+                }
+                
+                if (-not $Verbose -and (Test-Path $workerLogFile)) {
+                    Write-ColorOutput "Log File: $workerLogFile" "Yellow"
+                    Write-Host ""
+                    Write-ColorOutput "To view the error details, run:" "White"
+                    Write-ColorOutput "  Get-Content $workerLogFile" "Cyan"
+                    Write-Host ""
                 }
                 
                 if (-not $ContinueOnError) {
                     Write-ColorOutput "Setup failed for $($workerDir.Name). Use -ContinueOnError to continue with remaining workers." "Red"
                     throw "Setup failed for $($workerDir.Name): $($result.ErrorMessage)"
                 } else {
-                    Write-ColorOutput "Setup failed for $($workerDir.Name), but continuing with remaining workers..." "Yellow"
+                    Write-ColorOutput "⚠️  Setup failed for $($workerDir.Name), but continuing with remaining workers..." "Yellow"
+                    Write-Host ""
                 }
             }
         } else {
@@ -315,6 +505,9 @@ try {
         Write-ColorOutput "❌ Failed setups ($($failedSetups.Count)):" "Red"
         foreach ($failure in $failedSetups) {
             Write-ColorOutput "  - $($failure.Name): $($failure.Error) (Exit Code: $($failure.ExitCode))" "Red"
+            if (-not $Verbose -and $failure.LogFile -and (Test-Path $failure.LogFile)) {
+                Write-ColorOutput "    Log: $($failure.LogFile)" "Yellow"
+            }
         }
     }
     
@@ -333,7 +526,19 @@ try {
         Write-ColorOutput "All worker setup processes completed successfully!" "Green"
         exit 0
     } else {
+        # Print failed worker names prominently for parent script
+        $failedWorkerNames = ($failedSetups | ForEach-Object { $_.Name }) -join ", "
+        Write-Host ""
+        Write-ColorOutput "╔════════════════════════════════════════════════════════════════╗" "Red"
+        Write-ColorOutput "║  WORKERS SETUP FAILED - The following workers had errors:" "Red"
+        Write-ColorOutput "║  → $failedWorkerNames" "Red"
+        Write-ColorOutput "╚════════════════════════════════════════════════════════════════╝" "Red"
+        Write-Host ""
+        
         Write-ColorOutput "Some worker setups failed. Check the summary above for details." "Red"
+        if (-not $Verbose) {
+            Write-ColorOutput "Check individual service logs in $LOG_DIR for detailed error information." "Yellow"
+        }
         exit 1
     }
     

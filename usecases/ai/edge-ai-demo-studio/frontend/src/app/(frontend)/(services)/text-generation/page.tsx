@@ -46,9 +46,7 @@ export default function TextGenerationPage() {
   const createWorkload = useCreateWorkload()
 
   const modelName = useMemo(() => {
-    const model = workload?.model ?? TEXT_GENERATION_MODELS[0].value
-    const parts = model.split('/')
-    return parts.length > 1 ? parts[1] : model
+    return workload?.model ?? TEXT_GENERATION_MODELS[0].value
   }, [workload?.model])
 
   const data: DocumentationProps = {
