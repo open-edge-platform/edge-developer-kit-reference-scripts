@@ -6,6 +6,8 @@ set -euo pipefail
 
 # Variables
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LOG_DIR="$SCRIPT_DIR/../logs/setup"
+TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 
 THIRDPARTY_DIR="$SCRIPT_DIR/thirdparty"
 UV_ZIP_PATH="$THIRDPARTY_DIR/uv.zip"
@@ -23,33 +25,127 @@ FFMPEG_TAR_URL="https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-s
 FFMPEG_DIR="$THIRDPARTY_DIR/ffmpeg"
 FFMPEG_PATH="$FFMPEG_DIR/bin/ffmpeg"
 
+# Function to cleanup old logs
+cleanup_old_logs() {
+    if [ -d "$LOG_DIR" ]; then
+        # Check if there are any logs with current timestamp (means we're called from parent setup)
+        # In that case, don't cleanup as it would delete the parent's log file
+        local current_timestamp_logs
+        current_timestamp_logs=$(find "$LOG_DIR" -name "*_${TIMESTAMP}.log" 2>/dev/null | wc -l)
+        if [ "$current_timestamp_logs" -eq 0 ]; then
+            echo "Cleaning up old setup logs..."
+            rm -f "$LOG_DIR"/*_*.log
+            echo "Old logs removed."
+        else
+            echo "Skipping log cleanup (running as part of main setup)"
+        fi
+    fi
+}
+
+# Function to setup logging
+setup_logging() {
+    if [[ $VERBOSE -eq 0 ]]; then
+        mkdir -p "$LOG_DIR"
+        cleanup_old_logs
+        echo "Detailed logs will be written to service-specific files in: $LOG_DIR"
+    fi
+}
+
+# Function to get service-specific log file
+get_service_log() {
+    local service_name="$1"
+    echo "$LOG_DIR/${service_name}_${TIMESTAMP}.log"
+}
+
+# Function to log messages
+log_message() {
+    local message="$1"
+    if [[ $VERBOSE -eq 1 ]]; then
+        echo "$message"
+    else
+        echo "$message"
+        echo "$message" >> "$LOG_FILE"
+    fi
+}
+
 # Function to check if uv is installed
 check_uv_installed() {
     echo "Checking if uv is installed..."
     if [ -x "$UV_PATH" ]; then
-        echo "uv found in thirdparty folder."
-        "$UV_PATH" --version >/dev/null 2>&1
-        return 0
+        echo "✅ uv found in thirdparty folder."
+        if "$UV_PATH" --version >/dev/null 2>&1; then
+            return 0
+        else
+            echo "❌ ERROR: uv binary found but not working properly"
+            exit 1
+        fi
     fi
     echo "uv is not installed. Downloading uv binary..."
-    mkdir -p "$THIRDPARTY_DIR"
-    mkdir -p "$UV_DIR"
+    
+    local uv_log_file
+    uv_log_file="$(get_service_log "uv")"
+    if [[ $VERBOSE -eq 0 ]]; then
+        echo "=== UV Setup Log - $(date) ===" > "$uv_log_file"
+        echo "" >> "$uv_log_file"
+        echo "Logging UV setup to: $uv_log_file"
+    fi
+    
+    if ! mkdir -p "$THIRDPARTY_DIR"; then
+        echo "❌ ERROR: Failed to create thirdparty directory"
+        exit 1
+    fi
+    
+    if ! mkdir -p "$UV_DIR"; then
+        echo "❌ ERROR: Failed to create UV directory"
+        exit 1
+    fi
+    
     echo "Downloading uv from $UV_ZIP_URL..."
     if [[ $VERBOSE -eq 1 ]]; then
-        wget -O "$UV_ZIP_PATH" "$UV_ZIP_URL"
+        if ! wget -O "$UV_ZIP_PATH" "$UV_ZIP_URL"; then
+            echo "❌ ERROR: Failed to download uv from $UV_ZIP_URL"
+            echo "Please check your internet connection and try again."
+            exit 1
+        fi
     else
-        wget -q -O "$UV_ZIP_PATH" "$UV_ZIP_URL"
+        if ! wget -q -O "$UV_ZIP_PATH" "$UV_ZIP_URL" 2>> "$uv_log_file"; then
+            echo "❌ ERROR: Failed to download uv"
+            echo "Check log file: $uv_log_file"
+            exit 1
+        fi
     fi
+    
     echo "Extracting uv binary..."
-    tar --strip-components=1 -xzf "$UV_ZIP_PATH" -C "$UV_DIR"
-    rm "$UV_ZIP_PATH"
+    if [[ $VERBOSE -eq 1 ]]; then
+        if ! tar --strip-components=1 -xzf "$UV_ZIP_PATH" -C "$UV_DIR"; then
+            echo "❌ ERROR: Failed to extract uv archive"
+            rm -f "$UV_ZIP_PATH"
+            exit 1
+        fi
+    else
+        if ! tar --strip-components=1 -xzf "$UV_ZIP_PATH" -C "$UV_DIR" 2>> "$uv_log_file"; then
+            echo "❌ ERROR: Failed to extract uv archive"
+            echo "Check log file: $uv_log_file"
+            rm -f "$UV_ZIP_PATH"
+            exit 1
+        fi
+    fi
+    
+    rm -f "$UV_ZIP_PATH"
+    
     if "$UV_PATH" --version >/dev/null 2>&1; then
-        echo "uv is successfully downloaded and extracted."
+        echo "✅ uv is successfully downloaded and extracted."
+        if [[ $VERBOSE -eq 0 ]]; then
+            echo "UV setup completed successfully at $(date)" >> "$uv_log_file"
+        fi
         return 0
     else
-        echo "ERROR: Failed to download/extract uv."
+        echo "❌ ERROR: Failed to download/extract uv."
         echo "Please manually download uv from: https://github.com/astral-sh/uv/releases"
         echo "Extract uv to: $SCRIPT_DIR/thirdparty/uv/"
+        if [[ $VERBOSE -eq 0 ]]; then
+            echo "UV setup failed at $(date)" >> "$uv_log_file"
+        fi
         exit 1
     fi
 }
@@ -57,12 +153,24 @@ check_uv_installed() {
 # Function to download third-party dependencies
 get_thirdparty_dependencies() {
     echo "Creating thirdparty directory..."
-    mkdir -p "$THIRDPARTY_DIR"
+    if ! mkdir -p "$THIRDPARTY_DIR"; then
+        echo "❌ ERROR: Failed to create thirdparty directory"
+        exit 1
+    fi
 
     if [ -d "$OVMS_DIR" ]; then
-        echo "OVMS directory already exists. Skipping download."
+        echo "✅ OVMS directory already exists. Skipping download."
     else
         echo "Downloading OpenVINO Model Server for Linux..."
+        
+        local ovms_log_file
+        ovms_log_file="$(get_service_log "ovms")"
+        if [[ $VERBOSE -eq 0 ]]; then
+            echo "=== OVMS Setup Log - $(date) ===" > "$ovms_log_file"
+            echo "" >> "$ovms_log_file"
+            echo "Logging OVMS setup to: $ovms_log_file"
+        fi
+        
         # Detect Ubuntu version
         UBUNTU_VERSION="$(lsb_release -rs | cut -d. -f1)"
         if [ "$UBUNTU_VERSION" = "22" ]; then
@@ -70,59 +178,153 @@ get_thirdparty_dependencies() {
         elif [ "$UBUNTU_VERSION" = "24" ]; then
             OVMS_ZIP_URL="$OVMS_ZIP_URL_UBUNTU24"
         else
-            echo "Unsupported Ubuntu version: $UBUNTU_VERSION. Only 22 and 24 are supported."
+            echo "❌ ERROR: Unsupported Ubuntu version: $UBUNTU_VERSION. Only 22 and 24 are supported."
             exit 1
         fi
+        
+        echo "Downloading from $OVMS_ZIP_URL..."
         if [[ $VERBOSE -eq 1 ]]; then
-            wget -O "$OVMS_ZIP_PATH" "$OVMS_ZIP_URL"
+            if ! wget -O "$OVMS_ZIP_PATH" "$OVMS_ZIP_URL"; then
+                echo "❌ ERROR: Failed to download OVMS"
+                exit 1
+            fi
         else
-            wget -q -O "$OVMS_ZIP_PATH" "$OVMS_ZIP_URL"
+            if ! wget -q -O "$OVMS_ZIP_PATH" "$OVMS_ZIP_URL" 2>> "$ovms_log_file"; then
+                echo "❌ ERROR: Failed to download OVMS"
+                echo "Check log file: $ovms_log_file"
+                exit 1
+            fi
         fi
-        mkdir -p "$OVMS_DIR"
-        tar -xzf "$OVMS_ZIP_PATH" -C "$OVMS_DIR" --strip-components=1
-        rm "$OVMS_ZIP_PATH"
-        echo "OVMS downloaded and extracted successfully."
+        
+        if ! mkdir -p "$OVMS_DIR"; then
+            echo "❌ ERROR: Failed to create OVMS directory"
+            rm -f "$OVMS_ZIP_PATH"
+            exit 1
+        fi
+        
+        echo "Extracting OVMS..."
+        if [[ $VERBOSE -eq 1 ]]; then
+            if ! tar -xzf "$OVMS_ZIP_PATH" -C "$OVMS_DIR" --strip-components=1; then
+                echo "❌ ERROR: Failed to extract OVMS archive"
+                rm -f "$OVMS_ZIP_PATH"
+                exit 1
+            fi
+        else
+            if ! tar -xzf "$OVMS_ZIP_PATH" -C "$OVMS_DIR" --strip-components=1 2>> "$ovms_log_file"; then
+                echo "❌ ERROR: Failed to extract OVMS archive"
+                echo "Check log file: $ovms_log_file"
+                rm -f "$OVMS_ZIP_PATH"
+                exit 1
+            fi
+        fi
+        
+        rm -f "$OVMS_ZIP_PATH"
+        echo "✅ OVMS downloaded and extracted successfully."
+        if [[ $VERBOSE -eq 0 ]]; then
+            echo "OVMS setup completed successfully at $(date)" >> "$ovms_log_file"
+        fi
     fi
 
     # Install FFmpeg
     if [ -d "$FFMPEG_DIR" ]; then
-        echo "FFmpeg directory already exists. Skipping download."
+        echo "✅ FFmpeg directory already exists. Skipping download."
     else
         echo "Downloading FFmpeg for Linux..."
+        
+        local ffmpeg_log_file
+        ffmpeg_log_file="$(get_service_log "ffmpeg")"
+        if [[ $VERBOSE -eq 0 ]]; then
+            echo "=== FFmpeg Setup Log - $(date) ===" > "$ffmpeg_log_file"
+            echo "" >> "$ffmpeg_log_file"
+            echo "Logging FFmpeg setup to: $ffmpeg_log_file"
+        fi
+        
+        echo "Downloading from $FFMPEG_TAR_URL..."
         if [[ $VERBOSE -eq 1 ]]; then
-            wget -O "$FFMPEG_TAR_PATH" "$FFMPEG_TAR_URL"
+            if ! wget -O "$FFMPEG_TAR_PATH" "$FFMPEG_TAR_URL"; then
+                echo "❌ ERROR: Failed to download FFmpeg"
+                exit 1
+            fi
         else
-            wget -q -O "$FFMPEG_TAR_PATH" "$FFMPEG_TAR_URL"
+            if ! wget -q -O "$FFMPEG_TAR_PATH" "$FFMPEG_TAR_URL" 2>> "$ffmpeg_log_file"; then
+                echo "❌ ERROR: Failed to download FFmpeg"
+                echo "Check log file: $ffmpeg_log_file"
+                exit 1
+            fi
         fi
         
         # Extract FFmpeg
-        tar -xf "$FFMPEG_TAR_PATH" -C "$THIRDPARTY_DIR"
+        echo "Extracting FFmpeg..."
+        if [[ $VERBOSE -eq 1 ]]; then
+            if ! tar -xf "$FFMPEG_TAR_PATH" -C "$THIRDPARTY_DIR"; then
+                echo "❌ ERROR: Failed to extract FFmpeg archive"
+                rm -f "$FFMPEG_TAR_PATH"
+                exit 1
+            fi
+        else
+            if ! tar -xf "$FFMPEG_TAR_PATH" -C "$THIRDPARTY_DIR" 2>> "$ffmpeg_log_file"; then
+                echo "❌ ERROR: Failed to extract FFmpeg archive"
+                echo "Check log file: $ffmpeg_log_file"
+                rm -f "$FFMPEG_TAR_PATH"
+                exit 1
+            fi
+        fi
         
         # Find the extracted directory and set up ffmpeg structure
         EXTRACTED_DIR=$(find "$THIRDPARTY_DIR" -maxdepth 1 -type d -name "ffmpeg-*" | head -1)
-        if [ -n "$EXTRACTED_DIR" ]; then
-            # Create ffmpeg directory structure
-            mkdir -p "$FFMPEG_DIR/bin"
-            
-            # Copy ffmpeg binaries
-            cp "$EXTRACTED_DIR/ffmpeg" "$FFMPEG_DIR/bin/"
-            cp "$EXTRACTED_DIR/ffprobe" "$FFMPEG_DIR/bin/"
-            
-            # Make executable
-            chmod +x "$FFMPEG_DIR/bin/ffmpeg"
-            chmod +x "$FFMPEG_DIR/bin/ffprobe"
-            
-            # Clean up extracted directory
-            rm -rf "$EXTRACTED_DIR"
+        if [ -z "$EXTRACTED_DIR" ]; then
+            echo "❌ ERROR: Could not find extracted FFmpeg directory"
+            rm -f "$FFMPEG_TAR_PATH"
+            exit 1
         fi
+        
+        # Create ffmpeg directory structure
+        if ! mkdir -p "$FFMPEG_DIR/bin"; then
+            echo "❌ ERROR: Failed to create FFmpeg bin directory"
+            rm -rf "$EXTRACTED_DIR"
+            rm -f "$FFMPEG_TAR_PATH"
+            exit 1
+        fi
+        
+        # Copy ffmpeg binaries
+        if ! cp "$EXTRACTED_DIR/ffmpeg" "$FFMPEG_DIR/bin/" || \
+           ! cp "$EXTRACTED_DIR/ffprobe" "$FFMPEG_DIR/bin/"; then
+            echo "❌ ERROR: Failed to copy FFmpeg binaries"
+            rm -rf "$EXTRACTED_DIR"
+            rm -f "$FFMPEG_TAR_PATH"
+            exit 1
+        fi
+        
+        # Make executable
+        chmod +x "$FFMPEG_DIR/bin/ffmpeg"
+        chmod +x "$FFMPEG_DIR/bin/ffprobe"
+        
+        # Clean up extracted directory
+        rm -rf "$EXTRACTED_DIR"
         
         # Clean up tar file
         rm -f "$FFMPEG_TAR_PATH"
         
-        if [ -x "$FFMPEG_PATH" ]; then
-            echo "FFmpeg downloaded and extracted successfully."
-        else
-            echo "FFmpeg installation verification failed."
+        # Verify installation
+        if [ ! -x "$FFMPEG_PATH" ]; then
+            echo "❌ ERROR: FFmpeg installation verification failed - binary not found or not executable"
+            if [[ $VERBOSE -eq 0 ]]; then
+                echo "FFmpeg setup failed at $(date)" >> "$ffmpeg_log_file"
+            fi
+            exit 1
+        fi
+        
+        if ! "$FFMPEG_PATH" -version >/dev/null 2>&1; then
+            echo "❌ ERROR: FFmpeg binary found but not working properly"
+            if [[ $VERBOSE -eq 0 ]]; then
+                echo "FFmpeg setup failed at $(date)" >> "$ffmpeg_log_file"
+            fi
+            exit 1
+        fi
+        
+        echo "✅ FFmpeg downloaded and extracted successfully."
+        if [[ $VERBOSE -eq 0 ]]; then
+            echo "FFmpeg setup completed successfully at $(date)" >> "$ffmpeg_log_file"
         fi
     fi
 }
@@ -183,27 +385,56 @@ setup_workers() {
             continue
         fi
         
+        local worker_log_file
+        worker_log_file="$(get_service_log "$name")"
         if [[ $VERBOSE -eq 1 ]]; then
+            set +e 
             bash -x "$setup_script"
             rc=$?
+            set -e  
         else
+            echo "=== $name Worker Setup Log - $(date) ===" > "$worker_log_file"
+            echo "" >> "$worker_log_file"
             echo "This may take several minutes depending on your internet connection..."
             echo "Use --verbose to see detailed output."
-            bash "$setup_script" >/dev/null 2>&1
+            echo "Output is being logged to: $worker_log_file"
+            set +e  
+            bash "$setup_script" >> "$worker_log_file" 2>&1
             rc=$?
+            set -e  
         fi
         
         if [ $rc -eq 0 ]; then
             echo "✅ $name setup completed successfully!"
             SUCCESSFUL_SETUPS+=("$name")
+            if [[ $VERBOSE -eq 0 ]]; then
+                echo "$name setup completed successfully at $(date)" >> "$worker_log_file"
+            fi
         else
-            echo "❌ $name setup failed with exit code $rc!"
+            echo ""
+            echo "╔════════════════════════════════════════════════════════════════╗"
+            echo "║  ❌ WORKER SETUP FAILED: $name"
+            echo "║  Exit Code: $rc"
+            if [[ $VERBOSE -eq 0 ]]; then
+                echo "║  Log File: $worker_log_file"
+            fi
+            echo "╚════════════════════════════════════════════════════════════════╝"
+            echo ""
+            
             FAILED_SETUPS+=("$name: failed with exit code $rc")
+            if [[ $VERBOSE -eq 0 ]]; then
+                echo "$name setup failed with exit code $rc at $(date)" >> "$worker_log_file"
+                echo ""
+                echo "To view the error details, run:"
+                echo "  cat $worker_log_file"
+                echo ""
+            fi
             if [[ $CONTINUE_ON_ERROR -ne 1 ]]; then
                 echo "Setup failed for $name. Use --continue-on-error to continue with remaining workers."
                 exit 1
             else
-                echo "Setup failed for $name, but continuing with remaining workers..."
+                echo "⚠️  Setup failed for $name, but continuing with remaining workers..."
+                echo ""
             fi
         fi
     done
@@ -222,7 +453,16 @@ setup_workers() {
     if [ ${#FAILED_SETUPS[@]} -gt 0 ]; then
         echo "❌ Failed setups (${#FAILED_SETUPS[@]}):"
         for failure in "${FAILED_SETUPS[@]}"; do
+            # Extract worker name from failure message
+            worker_name=$(echo "$failure" | cut -d':' -f1)
             echo "  - $failure"
+            if [[ $VERBOSE -eq 0 ]]; then
+                local failed_log_file
+                failed_log_file="$(get_service_log "$worker_name")"
+                if [ -f "$failed_log_file" ]; then
+                    echo "    Log: $failed_log_file"
+                fi
+            fi
         done
     fi
     
@@ -241,6 +481,7 @@ setup_workers() {
         exit 0
     else
         echo "Some worker setups failed. Check the summary above for details."
+        echo "Check individual service logs in $LOG_DIR for detailed error information."
         exit 1
     fi
 }
@@ -248,6 +489,9 @@ setup_workers() {
 main() {
     # Main script
     echo "=== Workers Setup ==="
+    
+    # Setup logging
+    setup_logging
 
     cd "$SCRIPT_DIR"
     check_uv_installed

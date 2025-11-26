@@ -1,6 +1,3 @@
-// Copyright (C) 2025 Intel Corporation
-// SPDX-License-Identifier: Apache-2.0
-
 import { MigrateUpArgs, MigrateDownArgs, sql } from '@payloadcms/db-sqlite'
 
 export async function up({ db }: MigrateUpArgs): Promise<void> {
@@ -41,18 +38,6 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
   await db.run(
     sql`CREATE UNIQUE INDEX \`users_email_idx\` ON \`users\` (\`email\`);`,
   )
-  await db.run(sql`CREATE TABLE \`devices\` (
-  	\`id\` integer PRIMARY KEY NOT NULL,
-  	\`updated_at\` text DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) NOT NULL,
-  	\`created_at\` text DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) NOT NULL
-  );
-  `)
-  await db.run(
-    sql`CREATE INDEX \`devices_updated_at_idx\` ON \`devices\` (\`updated_at\`);`,
-  )
-  await db.run(
-    sql`CREATE INDEX \`devices_created_at_idx\` ON \`devices\` (\`created_at\`);`,
-  )
   await db.run(sql`CREATE TABLE \`workloads\` (
   	\`id\` integer PRIMARY KEY NOT NULL,
   	\`name\` text NOT NULL,
@@ -78,6 +63,31 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
   await db.run(
     sql`CREATE INDEX \`workloads_created_at_idx\` ON \`workloads\` (\`created_at\`);`,
   )
+  await db.run(sql`CREATE TABLE \`mcp_servers\` (
+  	\`id\` integer PRIMARY KEY NOT NULL,
+  	\`name\` text NOT NULL,
+  	\`url\` text NOT NULL,
+  	\`api_key\` text,
+  	\`disabled\` integer DEFAULT false,
+  	\`updated_at\` text DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) NOT NULL,
+  	\`created_at\` text DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) NOT NULL
+  );
+  `)
+  await db.run(
+    sql`CREATE INDEX \`mcp_servers_updated_at_idx\` ON \`mcp_servers\` (\`updated_at\`);`,
+  )
+  await db.run(
+    sql`CREATE INDEX \`mcp_servers_created_at_idx\` ON \`mcp_servers\` (\`created_at\`);`,
+  )
+  await db.run(sql`CREATE TABLE \`payload_kv\` (
+  	\`id\` integer PRIMARY KEY NOT NULL,
+  	\`key\` text NOT NULL,
+  	\`data\` text NOT NULL
+  );
+  `)
+  await db.run(
+    sql`CREATE UNIQUE INDEX \`payload_kv_key_idx\` ON \`payload_kv\` (\`key\`);`,
+  )
   await db.run(sql`CREATE TABLE \`payload_locked_documents\` (
   	\`id\` integer PRIMARY KEY NOT NULL,
   	\`global_slug\` text,
@@ -100,12 +110,12 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
   	\`parent_id\` integer NOT NULL,
   	\`path\` text NOT NULL,
   	\`users_id\` integer,
-  	\`devices_id\` integer,
   	\`workloads_id\` integer,
+  	\`mcp_servers_id\` integer,
   	FOREIGN KEY (\`parent_id\`) REFERENCES \`payload_locked_documents\`(\`id\`) ON UPDATE no action ON DELETE cascade,
   	FOREIGN KEY (\`users_id\`) REFERENCES \`users\`(\`id\`) ON UPDATE no action ON DELETE cascade,
-  	FOREIGN KEY (\`devices_id\`) REFERENCES \`devices\`(\`id\`) ON UPDATE no action ON DELETE cascade,
-  	FOREIGN KEY (\`workloads_id\`) REFERENCES \`workloads\`(\`id\`) ON UPDATE no action ON DELETE cascade
+  	FOREIGN KEY (\`workloads_id\`) REFERENCES \`workloads\`(\`id\`) ON UPDATE no action ON DELETE cascade,
+  	FOREIGN KEY (\`mcp_servers_id\`) REFERENCES \`mcp_servers\`(\`id\`) ON UPDATE no action ON DELETE cascade
   );
   `)
   await db.run(
@@ -121,10 +131,10 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
     sql`CREATE INDEX \`payload_locked_documents_rels_users_id_idx\` ON \`payload_locked_documents_rels\` (\`users_id\`);`,
   )
   await db.run(
-    sql`CREATE INDEX \`payload_locked_documents_rels_devices_id_idx\` ON \`payload_locked_documents_rels\` (\`devices_id\`);`,
+    sql`CREATE INDEX \`payload_locked_documents_rels_workloads_id_idx\` ON \`payload_locked_documents_rels\` (\`workloads_id\`);`,
   )
   await db.run(
-    sql`CREATE INDEX \`payload_locked_documents_rels_workloads_id_idx\` ON \`payload_locked_documents_rels\` (\`workloads_id\`);`,
+    sql`CREATE INDEX \`payload_locked_documents_rels_mcp_servers_id_idx\` ON \`payload_locked_documents_rels\` (\`mcp_servers_id\`);`,
   )
   await db.run(sql`CREATE TABLE \`payload_preferences\` (
   	\`id\` integer PRIMARY KEY NOT NULL,
@@ -184,8 +194,9 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
 export async function down({ db }: MigrateDownArgs): Promise<void> {
   await db.run(sql`DROP TABLE \`users_sessions\`;`)
   await db.run(sql`DROP TABLE \`users\`;`)
-  await db.run(sql`DROP TABLE \`devices\`;`)
   await db.run(sql`DROP TABLE \`workloads\`;`)
+  await db.run(sql`DROP TABLE \`mcp_servers\`;`)
+  await db.run(sql`DROP TABLE \`payload_kv\`;`)
   await db.run(sql`DROP TABLE \`payload_locked_documents\`;`)
   await db.run(sql`DROP TABLE \`payload_locked_documents_rels\`;`)
   await db.run(sql`DROP TABLE \`payload_preferences\`;`)

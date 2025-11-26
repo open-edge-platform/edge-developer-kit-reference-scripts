@@ -3,6 +3,7 @@
 
 import path from 'path'
 
+const FRONTEND_PORT = 8080
 const TEXT_GENERATION_PORT = 5001
 const TEXT_TO_SPEECH_PORT = 5002
 const EMBEDDING_PORT = 5003
@@ -25,6 +26,7 @@ const ALLOWED_PORTS = [
 const WORKER_DIR = path.resolve(path.dirname(''), '../workers')
 
 export {
+  FRONTEND_PORT,
   TEXT_GENERATION_PORT,
   TEXT_TO_SPEECH_PORT,
   SPEECH_TO_TEXT_PORT,

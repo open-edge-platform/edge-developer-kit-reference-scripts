@@ -217,7 +217,7 @@ export default function Workload({
                   variant="default"
                   className="border-orange-200 bg-orange-50"
                 >
-                  <AlertCircleIcon className="text-orange-600" />
+                  <AlertCircleIcon className="stroke-orange-600" />
                   <AlertTitle className="text-orange-800">
                     Prerequisites Required
                   </AlertTitle>
@@ -233,7 +233,7 @@ export default function Workload({
               preparingPrerequisites &&
               preparingPrerequisites.length > 0 && (
                 <Alert variant="default" className="border-blue-200 bg-blue-50">
-                  <AlertCircleIcon className="text-blue-600" />
+                  <AlertCircleIcon className="stroke-blue-600" />
                   <AlertTitle className="text-blue-800">
                     Prerequisites Starting
                   </AlertTitle>
@@ -251,7 +251,7 @@ export default function Workload({
                   variant="destructive"
                   className="border-red-200 bg-red-50"
                 >
-                  <AlertCircleIcon className="text-red-600" />
+                  <AlertCircleIcon className="stroke-red-600" />
                   <AlertTitle className="text-red-800">
                     Prerequisites Turned Off
                   </AlertTitle>

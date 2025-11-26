@@ -39,6 +39,7 @@ export default function DigitalAvatarPage() {
   const [useEmbedding, setUseEmbedding] = useState(false)
   const [selectedKnowledgeBase, setSelectedKnowledgeBase] =
     useState<KnowledgeBase | null>(null)
+  const [useMcpTools, setUseMcpTools] = useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
 
   const prerequisiteServices = useMemo(() => {
@@ -56,9 +57,11 @@ export default function DigitalAvatarPage() {
   const handleSettingsUpdate = (settings: {
     useEmbedding: boolean
     selectedKnowledgeBase: KnowledgeBase | null
+    useMcpTools: boolean
   }) => {
     setUseEmbedding(settings.useEmbedding)
     setSelectedKnowledgeBase(settings.selectedKnowledgeBase)
+    setUseMcpTools(settings.useMcpTools)
   }
 
   const SettingsButton = () => (
@@ -121,6 +124,15 @@ export default function DigitalAvatarPage() {
               >
                 <div className="h-2 w-2 animate-pulse rounded-full bg-blue-500"></div>
                 RAG On • {selectedKnowledgeBase.name}
+              </Badge>
+            )}
+            {useMcpTools && (
+              <Badge
+                variant="secondary"
+                className="flex items-center gap-1.5 border-green-200 bg-green-100 px-3 py-1 text-green-800 dark:border-green-800 dark:bg-green-900/20 dark:text-green-200"
+              >
+                <div className="h-2 w-2 animate-pulse rounded-full bg-green-500"></div>
+                MCP Tools On
               </Badge>
             )}
             <SettingsButton />
@@ -211,6 +223,7 @@ export default function DigitalAvatarPage() {
               selectedModel={
                 ttsService?.model || TEXT_GENERATION_WORKLOAD.model
               }
+              useMcpTools={useMcpTools}
             />
           </div>
         </div>
@@ -221,6 +234,7 @@ export default function DigitalAvatarPage() {
           onClose={() => setIsSettingsOpen(false)}
           useEmbedding={useEmbedding}
           selectedKnowledgeBase={selectedKnowledgeBase}
+          useMcpTools={useMcpTools}
           onSettingsUpdate={handleSettingsUpdate}
         />
       </div>

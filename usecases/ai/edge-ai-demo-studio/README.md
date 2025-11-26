@@ -17,8 +17,11 @@ Edge AI Demo Studio is a modern toolkit for deploying, managing, and serving AI 
   - Speech to Text (STT)
   - Embedding 
   - Lipsync
+  - Image Generation
+  - MCP Manager
 - **Samples:** Samples use cases that implements the ai services
   - Digital Avatar
+  - RAG Chat
 
 ## Architecture Diagram
 ![Archictecture Diagram](./docs/Architecture.png)
@@ -47,9 +50,9 @@ For Linux:
 ```bash
 ./setup.sh
 ```
-For Windows (PowerShell):
+For Windows (PowerShell/Command Prompt):
 ```bash
-./setup.ps1
+./setup_win.bat
 ```
 
 This will:
@@ -64,9 +67,9 @@ For Linux:
 ```bash
 ./start.sh
 ```
-For Windows (PowerShell):
+For Windows (PowerShell/Command Prompt):
 ```bash
-./start.ps1
+./start_win.bat
 ```
 
 Once started, access the web UI at [http://localhost:8080](http://localhost:8080).
@@ -108,18 +111,6 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for deployment guidelines.
 
 ## FAQ
 
-**Q: PowerShell script is not able to run. What should I do?**
+**Q: Why is Electron Skipped by default**
 
-This is usually due to Windows PowerShell's execution policy restrictions. To allow scripts to run, open PowerShell as Administrator and run:
-
-```powershell
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope LocalMachine
-```
-
-When prompted, type `Y` to confirm.
-
-**Note:** Only change the execution policy if you understand the security implications. You can revert to the default policy later with:
-
-```powershell
-Set-ExecutionPolicy Restricted
-```
+This is because Electron is being used to create a packaged release only. If you need a packaged release, please refer to [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)

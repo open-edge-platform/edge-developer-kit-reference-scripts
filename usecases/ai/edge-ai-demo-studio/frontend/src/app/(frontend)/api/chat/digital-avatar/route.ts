@@ -15,14 +15,31 @@ import {
   extractReasoningMiddleware,
   streamText,
   wrapLanguageModel,
+  ToolSet,
+  stepCountIs,
 } from 'ai'
+import { hermesToolMiddleware } from '@ai-sdk-tool/parser'
+import { getMcpManager } from '@/lib/mcp-manager'
+
+const TOOL_USAGE_GUIDELINES = `\nIMPORTANT - Tool Usage Guidelines:
+- If the context doesn't have the answer, use available tools silently to get more information
+- NEVER mention tool names, function calls, or technical details
+- NEVER show JSON, code, or function syntax in your responses
+- After getting tool results, provide a natural conversational answer
+- Speak as if you naturally know the information
+- Focus on answering the question directly and naturally`
 
 // Configuration constants
-const createDefaultSystemPrompt = (language: string) => {
+const createDefaultSystemPrompt = (
+  language: string,
+  hasTools: boolean = false,
+) => {
+  const toolInstruction = hasTools ? TOOL_USAGE_GUIDELINES : ''
+
   return `/no_think You are a human-like conversational AI. 
 Your goal is to communicate in a way that is natural, empathetic, and engaging. 
 Prioritize clarity and warmth in your responses.
-You always response in ${language} ISO 639-1 language code standard.
+You always respond in ${language} ISO 639-1 language code standard.${toolInstruction}
 You only reply in plain natural language, Do not produce any HIGHLIGHT, Markdown format, programming codes, formatted structured output`
 }
 
@@ -187,6 +204,7 @@ const createRAGContextPrompt = async (
   knowledgeBaseId: number,
   query: string,
   language: string,
+  hasTools: boolean = false,
 ) => {
   const searchParams = {
     query,
@@ -218,10 +236,12 @@ const createRAGContextPrompt = async (
       .map((result: { content: string }) => result.content)
       .join('\n\n---\n\n')
 
+    const toolInstruction = hasTools ? TOOL_USAGE_GUIDELINES : ''
+
     const systemMessage = `/no_think
 Use the following pieces of retrieved context to answer the question. 
-If you don't know the answer, just say that you do not know the answer.
-Always response in ${language} ISO language standard
+If you don't know the answer from the context, use available tools if needed, but never mention using them.
+Always respond in ${language} ISO language standard${toolInstruction}
 
 Context: ${contextContent}
 Answer:`
@@ -229,7 +249,29 @@ Answer:`
   } catch (error) {
     console.error('RAG search error:', error)
     // Return default system prompt if search fails
-    return createDefaultSystemPrompt(language)
+    return createDefaultSystemPrompt(language, hasTools)
+  }
+}
+
+const getMcpTools = async (tools: string[]): Promise<ToolSet> => {
+  // Get MCP tools from server-side manager
+  let mcpTools: ToolSet = {}
+
+  try {
+    const mcpManager = getMcpManager()
+
+    if (tools && tools.length > 0) {
+      // Get specific tools by names
+      mcpTools = await mcpManager.getToolsByNames(tools)
+    } else {
+      // Get all available tools when no specific tools requested
+      mcpTools = await mcpManager.getAllTools()
+    }
+  } catch (error) {
+    console.error('Error loading MCP tools:', error)
+    // Continue without tools rather than failing completely
+  } finally {
+    return mcpTools
   }
 }
 
@@ -241,6 +283,9 @@ export async function POST(req: Request) {
     language,
     knowledgeBaseId,
     ttsModel,
+    useMcpTools = false,
+    tools = [],
+    maxSteps = 3,
   }: {
     messages: UIMessage[]
     sessionId: string
@@ -248,6 +293,9 @@ export async function POST(req: Request) {
     language: string
     knowledgeBaseId: number
     ttsModel: string
+    useMcpTools: boolean
+    tools?: string[]
+    maxSteps?: number
   } = await req.json()
   if (
     !TTS_MODELS.map((model) => model.languages)
@@ -276,6 +324,12 @@ export async function POST(req: Request) {
     name: 'ovms',
   })
 
+  // Get MCP tools first to determine if tools are available
+  const mcpTools = useMcpTools ? await getMcpTools(tools) : {}
+  const hasTools = Object.keys(mcpTools).length > 0
+  const toolChoice = hasTools ? ('auto' as const) : ('none' as const)
+
+  // Create RAG context with tool awareness
   const ragContext = knowledgeBaseId
     ? await createRAGContextPrompt(
         knowledgeBaseId,
@@ -286,18 +340,25 @@ export async function POST(req: Request) {
           })
           .join(''),
         language,
+        hasTools,
       )
     : undefined
 
   const wrappedModel = wrapLanguageModel({
     model: provider(model),
-    middleware: extractReasoningMiddleware({ tagName: 'think' }),
+    middleware: [
+      hermesToolMiddleware,
+      extractReasoningMiddleware({ tagName: 'think' }),
+    ],
   })
 
   const result = streamText({
     model: wrappedModel,
-    system: ragContext ?? createDefaultSystemPrompt(language),
+    system: ragContext ?? createDefaultSystemPrompt(language, hasTools),
     messages: convertToModelMessages(messages),
+    stopWhen: stepCountIs(maxSteps),
+    toolChoice,
+    tools: mcpTools,
     onChunk({ chunk }) {
       if (chunk.type === 'text-delta') {
         const completedSentences = sentenceProcessor.addTextChunk(chunk.text)

@@ -6,16 +6,18 @@ This directory contains the Deployment instructions for Edge AI Demo Studio.
 
 ### Packaging the Electron App
 
-For Linux/macOS:
+For Linux:
 ```bash
-../scripts/package.sh
+../scripts/bash/package.sh
 ```
-For Windows (PowerShell):
+For Windows (PowerShell/Command Prompt):
 ```bash
-../scripts/package.ps1
+../scripts/win/package.ps1
 ```
 
 This script will help ensure all dependencies are installed and configured correctly before packaging and then it will create the package in [electron/out](../electron/out).
+
+If you have permission issue running the package script in Windows, please refer to [FAQ](#faq)
 
 ## Running on Ubuntu 24.04
 
@@ -29,3 +31,46 @@ This command disables AppArmor restrictions on unprivileged user namespaces, whi
 ## Prerequisites
 
 Make sure you have ran the root setup script before running the commands above.
+
+## FAQ
+
+**Q: Why is Electron failed to install**
+
+If you are running behind a proxy, please ensure you set proxy for Electron as below:
+
+For Linux:
+```bash
+export ELECTRON_GET_USE_PROXY=http://proxy:port
+```
+
+For Windows (PowerShell):
+
+```powershell
+$env:ELECTRON_GET_USE_PROXY="http://proxy:port"
+```
+
+**Q: Why do I not have permission to run PowerShell scripts?**
+
+This is usually due to Windows PowerShell's execution policy restrictions. 
+
+**Quick Solution (Recommended):** Run the script with the `-ExecutionPolicy Bypass` flag each time:
+
+```powershell
+powershell -ExecutionPolicy Bypass -NoProfile -File package.ps1
+```
+
+This bypasses the execution policy for that single command without changing system settings.
+
+**Alternative (Persistent Solution):** If you don't want to type the long command every time, you can change the execution policy for your entire PC. Open PowerShell as Administrator and run:
+
+```powershell
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope LocalMachine
+```
+
+When prompted, type `Y` to confirm.
+
+**Note:** Only change the execution policy if you understand the security implications. `RemoteSigned` allows locally created scripts to run but requires downloaded scripts to be signed by a trusted publisher. You can revert to the default policy later with:
+
+```powershell
+Set-ExecutionPolicy Restricted
+```

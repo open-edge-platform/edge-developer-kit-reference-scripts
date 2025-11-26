@@ -46,8 +46,7 @@ export default function ImageGenerationPage() {
   const createWorkload = useCreateWorkload()
 
   const modelName = useMemo(() => {
-    const model = workload?.model ?? IMAGE_GENERATION_MODELS[0].value
-    return model
+    return workload?.model ?? IMAGE_GENERATION_MODELS[0].value
   }, [workload?.model])
 
   const data: DocumentationProps = {

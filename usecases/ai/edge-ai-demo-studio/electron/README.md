@@ -16,7 +16,7 @@ This directory contains the Electron Builder implementation of Edge AI Demo Stud
 From the project root, run:
 
 ```bash
-# Linux/macOS
+# Linux
 ./setup.sh
 
 # Windows PowerShell
@@ -26,7 +26,7 @@ From the project root, run:
 Or setup just this directory:
 
 ```bash
-# Linux/macOS
+# Linux
 cd electron-builder
 ./setup.sh
 

@@ -13,9 +13,9 @@
     "license": "ISC",
     "description": "Edge AI Demo Studio - Electron Builder Version",
     "devDependencies": {
-        "electron": ">=37.5.0",
-        "electron-builder": "^25.1.8",
-        "@electron/fuses": "^1.8.0"
+        "electron": ">=39.2.1",
+        "electron-builder": "^26.2.0",
+        "@electron/fuses": "^2.0.0"
     },
     "dependencies": {
         "electron-squirrel-startup": "^1.0.1"
@@ -30,16 +30,8 @@
         },
         "extraResources": [
             {
-                "from": "../build/frontend",
-                "to": "frontend"
-            },
-            {
-                "from": "../build/workers",
-                "to": "workers"
-            },
-            {
-                "from": "../build/scripts",
-                "to": "scripts"
+                "from": "../build/",
+                "to": "./"
             }
         ],
         "afterPack": "./electron-fuses.js",
@@ -76,5 +68,8 @@
             "!**/node_modules/**/*",
             "node_modules/**/*"
         ]
+    },
+    "overrides": {
+        "glob": ">=11.0.3"
     }
 }

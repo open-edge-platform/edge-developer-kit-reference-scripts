@@ -8,7 +8,6 @@ import { BasePayload, buildConfig } from 'payload'
 import { fileURLToPath } from 'url'
 import { sqliteAdapter } from '@payloadcms/db-sqlite'
 import { Users } from './collections/Users'
-import { Devices } from './collections/Devices'
 import { Workloads } from './collections/Workloads'
 import { migrations } from './migrations'
 import { init, killAllProcesses } from './lib/processHandler'
@@ -16,6 +15,8 @@ import {
   initHealthCheckService,
   stopHealthCheckService,
 } from './lib/healthcheck'
+import { checkAndHandlePortConflicts } from './lib/portManager'
+import { McpServers } from './collections/McpServers'
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
@@ -41,7 +42,7 @@ export default buildConfig({
       baseDir: path.resolve(dirname),
     },
   },
-  collections: [Users, Devices, Workloads],
+  collections: [Users, Workloads, McpServers],
   editor: lexicalEditor(),
   secret: process.env.PAYLOAD_SECRET || '',
   typescript: {
@@ -49,6 +50,22 @@ export default buildConfig({
   },
   onInit: async (payload) => {
     init()
+    // Check port availability and handle conflicts
+    const portCheck = await checkAndHandlePortConflicts()
+
+    if (portCheck.killedPorts.length > 0) {
+      console.log(
+        `✅ Cleaned up stale processes on ports: ${portCheck.killedPorts.join(', ')}\n`,
+      )
+    }
+
+    if (portCheck.conflicts.length > 0) {
+      console.log(
+        `⚠️  ${portCheck.conflicts.length} external process(es) detected on required ports.`,
+      )
+      console.log('Services on those ports may fail to start.\n')
+    }
+
     await inactivateWorkloads(payload)
 
     // Initialize health check service with 10 second interval

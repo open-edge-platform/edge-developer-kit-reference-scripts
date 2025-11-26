@@ -43,6 +43,7 @@ interface ConversationPanelProps {
   disabled: boolean
   knowledgeBaseId?: number
   selectedModel?: string
+  useMcpTools?: boolean
 }
 
 export function ConversationPanel({
@@ -51,6 +52,7 @@ export function ConversationPanel({
   disabled,
   knowledgeBaseId,
   selectedModel,
+  useMcpTools,
 }: ConversationPanelProps) {
   const chatEndRef = useRef<HTMLDivElement>(null)
   const [currentMessage, setCurrentMessage] = useState('')
@@ -62,7 +64,7 @@ export function ConversationPanel({
 
   const { messages, sendMessage, status, stop } = useChat({
     transport: new DefaultChatTransport({
-      api: '/api/lipsync_chat',
+      api: '/api/chat/digital-avatar',
     }),
   })
   const stopAvatar = useStopAvatar()
@@ -150,6 +152,7 @@ export function ConversationPanel({
           knowledgeBaseId,
           voice: selectedVoice,
           ttsModel: selectedModel,
+          useMcpTools: useMcpTools || false,
         },
       },
     ).then(() => {

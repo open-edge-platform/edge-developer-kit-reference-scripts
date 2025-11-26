@@ -37,9 +37,18 @@ function New-VirtualEnvironment {
     } else {
         Write-Host "Creating Python 3.11 virtual environment with uv ..." -ForegroundColor Yellow
         & $script:uvCommand venv --python 3.11 --seed
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to create virtual environment. uv venv exited with code $LASTEXITCODE"
+        }
     }
     & $script:uvCommand sync
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to sync dependencies. uv sync exited with code $LASTEXITCODE"
+    }
     & $script:uvCommand run python -m ensurepip
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to ensure pip. uv run exited with code $LASTEXITCODE"
+    }
 }
 
 function Clone-KokoroRepo {
@@ -62,22 +71,43 @@ function Clone-KokoroRepo {
     # Initialize a repository and fetch only the specific commit (shallow)
     Write-Host "Cloning specific commit $REPO_COMMIT from $REPO_URL into $DEST_DIR" -ForegroundColor Yellow
     & $PARENT_GIT_PATH init $DEST_DIR
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to initialize git repository. git init exited with code $LASTEXITCODE"
+    }
     Push-Location $DEST_DIR
     
     try {
         & $PARENT_GIT_PATH remote add origin $REPO_URL
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to add git remote. git remote add exited with code $LASTEXITCODE"
+        }
 
         # Try to fetch the specific commit shallowly. If that fails, fall back to a shallow branch fetch.
         try {
             & $PARENT_GIT_PATH fetch --depth 1 origin $REPO_COMMIT
+            if ($LASTEXITCODE -ne 0) {
+                throw "git fetch failed"
+            }
             & $PARENT_GIT_PATH checkout FETCH_HEAD
+            if ($LASTEXITCODE -ne 0) {
+                throw "git checkout failed"
+            }
         } catch {
             Write-Host "Warning: could not fetch commit $REPO_COMMIT directly. Falling back to shallow clone of default branch." -ForegroundColor Yellow
             & $PARENT_GIT_PATH fetch --depth 1 origin
+            if ($LASTEXITCODE -ne 0) {
+                throw "Failed to fetch git repository. git fetch exited with code $LASTEXITCODE"
+            }
             try {
                 & $PARENT_GIT_PATH checkout --detach FETCH_HEAD
+                if ($LASTEXITCODE -ne 0) {
+                    throw "git checkout --detach failed"
+                }
             } catch {
                 & $PARENT_GIT_PATH checkout --force
+                if ($LASTEXITCODE -ne 0) {
+                    throw "Failed to checkout git repository. git checkout exited with code $LASTEXITCODE"
+                }
             }
         }
 
@@ -169,6 +199,5 @@ try {
     exit 0
 } catch {
     Write-Host "Setup failed: $($_.Exception.Message)" -ForegroundColor Red
-    Read-Host "Press Enter to continue..."
     exit 1
 }

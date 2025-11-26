@@ -66,22 +66,23 @@ function Install-PythonDependencies {
     } else {
         Write-Host "Creating virtual environment with uv..." -ForegroundColor Yellow
         & $script:uvCommand venv
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to create virtual environment. uv venv exited with code $LASTEXITCODE"
+        }
     }
     
     Write-Host "Installing Python dependencies with uv (this may take a few minutes)..." -ForegroundColor Yellow
     Write-Host "Note: If this seems stuck, it might be resolving PyTorch dependencies..." -ForegroundColor Cyan
     
-    try {
-        if (Test-Path "requirements.txt") {
-            Write-Host "Installing requirements.txt dependencies..." -ForegroundColor Yellow
-            & $script:uvCommand pip install -r requirements.txt --refresh --pre --verbose --index-strategy unsafe-best-match
-        } else {
-            Write-Host "requirements.txt not found, skipping requirements installation." -ForegroundColor Yellow
+    if (Test-Path "requirements.txt") {
+        Write-Host "Installing requirements.txt dependencies..." -ForegroundColor Yellow
+        & $script:uvCommand pip install -r requirements.txt --refresh --pre --verbose --index-strategy unsafe-best-match
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to install Python dependencies. uv pip install exited with code $LASTEXITCODE"
         }
         Write-Host "Python dependencies installed successfully." -ForegroundColor Green
-    } catch {
-        Write-Host "Failed to install Python dependencies." -ForegroundColor Red
-        throw
+    } else {
+        Write-Host "requirements.txt not found, skipping requirements installation." -ForegroundColor Yellow
     }
 }
 
@@ -97,7 +98,6 @@ try {
     exit 0
 } catch {
     Write-Host "Setup failed: $($_.Exception.Message)" -ForegroundColor Red
-    Read-Host "Press Enter to continue..."
     exit 1
 }
 finally{

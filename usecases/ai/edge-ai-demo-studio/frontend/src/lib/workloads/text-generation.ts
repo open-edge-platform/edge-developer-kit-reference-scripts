@@ -21,11 +21,6 @@ export const TEXT_GENERATION_MODELS: Model[] = [
     type: 'predefined',
   },
   {
-    name: 'OpenVINO/DeepSeek-R1-Distill-Qwen-7B-int4-ov',
-    value: 'OpenVINO/DeepSeek-R1-Distill-Qwen-7B-int4-ov',
-    type: 'predefined',
-  },
-  {
     name: 'OpenVINO/Qwen2.5-1.5B-Instruct-int4-ov',
     value: 'OpenVINO/Qwen2.5-1.5B-Instruct-int4-ov',
     type: 'predefined',
@@ -40,8 +35,6 @@ export const TEXT_GENERATION_MODELS: Model[] = [
     value: 'OpenVINO/Qwen3-4B-int4-ov',
     type: 'predefined',
   },
-  { name: 'Qwen/Qwen2.5-3B', value: 'Qwen/Qwen2.5-3B', type: 'predefined' },
-  { name: 'Qwen/Qwen3-8B', value: 'Qwen/Qwen3-8B', type: 'predefined' },
 ]
 
 export const TEXT_GENERATION_WORKLOAD = {

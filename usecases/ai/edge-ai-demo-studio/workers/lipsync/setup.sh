@@ -62,6 +62,7 @@ wav2lip_dependencies_installation() {
 
 main() {
   echo "Starting setup for Lipsync with Intel GPU support ..."
+  cd "$SCRIPT_DIR" || exit 1
   check_uv_installed
   create_venv
   wav2lip_dependencies_installation

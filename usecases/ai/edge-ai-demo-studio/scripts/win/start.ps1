@@ -3,7 +3,10 @@
 
 # Save the original location
 $script:originalLocation = Get-Location
-Push-Location -Path "frontend"
+$SCRIPT_DIR = $PSScriptRoot
+$PROJECT_ROOT = Split-Path (Split-Path $SCRIPT_DIR -Parent) -Parent
+$FRONTEND_DIR = Join-Path $PROJECT_ROOT "frontend"
+Push-Location -Path $FRONTEND_DIR
 
 
 # Global variables to track PATH changes
@@ -12,8 +15,8 @@ $script:nodePathAdded = $false
 
 function Add-FrontendEnv() {
     # Ensure .env is created based on .env.example in frontend
-    $envPath = Join-Path $PSScriptRoot ".env"
-    $envExamplePath = Join-Path $PSScriptRoot ".env.example"
+    $envPath = Join-Path $FRONTEND_DIR ".env"
+    $envExamplePath = Join-Path $FRONTEND_DIR ".env.example"
     if (-not (Test-Path $envPath)) {
         if (Test-Path $envExamplePath) {
             Copy-Item $envExamplePath $envPath
@@ -106,7 +109,7 @@ function Start-Frontend {
     
     # Start the frontend server
     try {
-        npm start | Out-Null
+        npm run start
         Write-Host "Frontend started successfully." -ForegroundColor Green
     } catch {
         Write-Host "ERROR: Failed to start frontend." -ForegroundColor Red

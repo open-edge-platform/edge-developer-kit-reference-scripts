@@ -2,34 +2,47 @@
 # Copyright (C) 2025 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
-# Exit on error, unset variable, or failed pipe
 set -euo pipefail
 
-
-# Set default skip variables if not already set
 SkipFrontend="${SkipFrontend:-false}"
-SkipElectron="${SkipElectron:-false}"
+SkipElectron="${SkipElectron:-true}"
 SkipWorkers="${SkipWorkers:-false}"
-# Verbose flag (can also be enabled with --verbose or -v)
 Verbose="${Verbose:-false}"
-# Continue on error flag
 ContinueOnError="${ContinueOnError:-false}"
-# Track setup results
 SUCCESSFUL_SETUPS=()
 FAILED_SETUPS=()
 SKIPPED_SETUPS=()
 
-
-# Get the directory of this script
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-
-# Node.js installation variables
 THIRDPARTY_DIR="$SCRIPT_DIR/thirdparty"
+LOG_DIR="$SCRIPT_DIR/logs/setup"
+TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 
-# Set up each service by running its setup.sh unless skipped
+# Function to cleanup old logs
+cleanup_old_logs() {
+  if [ -d "$LOG_DIR" ]; then
+    echo "Cleaning up old setup logs..."
+    rm -f "$LOG_DIR"/*_*.log
+    echo "Old logs removed."
+  fi
+}
+
+# Function to setup logging
+setup_logging() {
+  if [ "$Verbose" != "true" ]; then
+    mkdir -p "$LOG_DIR"
+    cleanup_old_logs
+    echo "Detailed logs will be written to service-specific files in: $LOG_DIR"
+  fi
+}
+
+# Function to get service-specific log file
+get_service_log() {
+  local service_name="$1"
+  echo "$LOG_DIR/${service_name}_${TIMESTAMP}.log"
+}
+
 setup_services() {
-  # List of services to set up (Name, Path, Skip flag)
   services=(
     "Name=Workers;Path=workers;Skip=${SkipWorkers}"
     "Name=Frontend;Path=frontend;Skip=${SkipFrontend}"
@@ -38,7 +51,6 @@ setup_services() {
 
 
   for svc in "${services[@]}"; do
-    # Parse key=value;key=value strings without eval for safety
     Name=""
     Path=""
     Skip="false"
@@ -65,7 +77,6 @@ setup_services() {
     echo "Setting up $Name at $Path"
     
     if [ -f "$SERVICE_SETUP_PATH" ]; then
-      # Build argument list for the child setup script
       args=()
       if [ "$Name" = "Workers" ] && [ "$SkipWorkers" = "false" ]; then
         args+=("--setup-workers")
@@ -73,23 +84,51 @@ setup_services() {
       if [ "$Verbose" = "true" ]; then
         args+=("--verbose")
       fi
-      if [ "$ContinueOnError" = "true" ] && [ "$Name" = "Workers" ]; then
+      if [ "$ContinueOnError" = "true" ]; then
         args+=("--continue-on-error")
       fi
 
-      # Invoke the child setup script with the assembled args
-      if bash "$SERVICE_SETUP_PATH" "${args[@]}"; then
-        echo "✅ $Name setup completed successfully!"
-        SUCCESSFUL_SETUPS+=("$Name")
-      else
-        exit_code=$?
-        echo "❌ $Name setup failed with exit code $exit_code"
-        FAILED_SETUPS+=("$Name: failed with exit code $exit_code")
-        if [ "$ContinueOnError" != "true" ]; then
-          echo "Setup failed for $Name. Use --continue-on-error to continue with remaining services."
-          exit 1
+      # Create service-specific log file
+      local service_log_file
+      service_log_file="$(get_service_log "$Name")"
+      
+      if [ "$Verbose" = "true" ]; then
+        if bash "$SERVICE_SETUP_PATH" "${args[@]}"; then
+          echo "✅ $Name setup completed successfully!"
+          SUCCESSFUL_SETUPS+=("$Name")
         else
-          echo "Setup failed for $Name, but continuing with remaining services..."
+          exit_code=$?
+          echo "❌ $Name setup failed with exit code $exit_code"
+          FAILED_SETUPS+=("$Name: failed with exit code $exit_code")
+          if [ "$ContinueOnError" != "true" ]; then
+            echo "Setup failed for $Name. Use --continue-on-error to continue with remaining services."
+            exit 1
+          else
+            echo "Setup failed for $Name, but continuing with remaining services..."
+          fi
+        fi
+      else
+        echo "=== $Name Setup Log - $(date) ===" > "$service_log_file"
+        echo "" >> "$service_log_file"
+
+        echo "Output is being logged to: $service_log_file"
+        
+        if bash "$SERVICE_SETUP_PATH" "${args[@]}" >> "$service_log_file" 2>&1; then
+          echo "✅ $Name setup completed successfully!"
+          echo "$Name setup completed successfully at $(date)" >> "$service_log_file"
+          SUCCESSFUL_SETUPS+=("$Name")
+        else
+          exit_code=$?
+          echo "❌ $Name setup failed with exit code $exit_code"
+          echo "$Name setup failed with exit code $exit_code at $(date)" >> "$service_log_file"
+          FAILED_SETUPS+=("$Name: failed with exit code $exit_code")
+          echo "📋 Check log file: $service_log_file"
+          if [ "$ContinueOnError" != "true" ]; then
+            echo "Setup failed for $Name. Use --continue-on-error to continue with remaining services."
+            exit 1
+          else
+            echo "Setup failed for $Name, but continuing with remaining services..."
+          fi
         fi
       fi
     else
@@ -103,8 +142,7 @@ setup_services() {
       fi
     fi
   done
-  
-  # Display summary
+
   echo ""
   echo "=== Setup Summary ==="
   
@@ -130,19 +168,19 @@ setup_services() {
   fi
   
   echo "==================="
-  
-  # Final status
+
   if [ ${#FAILED_SETUPS[@]} -eq 0 ]; then
     echo "All service setup processes completed successfully!"
     exit 0
   else
     echo "Some service setups failed. Check the summary above for details."
+    if [ "$Verbose" != "true" ]; then
+      echo "Check individual service logs in $LOG_DIR for detailed error information."
+    fi
     exit 1
   fi
 }
 
-
-# Argument parsing for --setup-all-workers
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --verbose|-v)
@@ -161,26 +199,40 @@ while [[ $# -gt 0 ]]; do
       SkipElectron="true"
       shift
       ;;
+    --enable-electron)
+      SkipElectron="false"
+      shift
+      ;;
     --continue-on-error)
       ContinueOnError="true"
       shift
       ;;
     *)
       echo "Unknown option: $1"
-      echo "Usage: $0 [--verbose|-v] [--skip-workers] [--skip-frontend] [--skip-electron] [--continue-on-error]"
+      echo "Usage: $0 [--verbose|-v] [--skip-workers] [--skip-frontend] [--skip-electron] [--enable-electron] [--continue-on-error]"
       exit 1
       ;;
   esac
 done
 
-# If verbose enabled, turn on shell xtrace for detailed tracing
 if [ "${Verbose:-false}" = "true" ]; then
   set -x
 fi
-# Main entry point
+
 main() {
   cd "$SCRIPT_DIR"
-  bash "$SCRIPT_DIR/scripts/setup_thirdparty.sh" "$THIRDPARTY_DIR"
+  
+  # Setup logging
+  setup_logging
+  
+  echo "=== Setting up thirdparty dependencies ==="
+  if ! bash "$SCRIPT_DIR/scripts/bash/setup_thirdparty.sh" "$THIRDPARTY_DIR"; then
+    echo "❌ ERROR: Thirdparty setup failed. Cannot continue with service setup."
+    echo "Please resolve the thirdparty setup issues and try again."
+    exit 1
+  fi
+  echo ""
+  
   setup_services
 }
 
