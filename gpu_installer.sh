@@ -15,7 +15,6 @@ readonly S_VALID="[✓]"
 readonly S_INFO="[INFO]"
 
 # Global variables
-HAS_DGPU=0
 
 # Package arrays - exported for external use
 export COMPUTE_PACKAGES=(
@@ -83,6 +82,10 @@ log_success() {
    echo "$S_VALID $1"
 }
 
+# Global status flags
+DRIVER_INSTALL_OK=0
+DRIVER_VERIFY_OK=0
+
 # System verification functions
 check_privileges() {
    if [ "$EUID" -ne 0 ]; then
@@ -136,25 +139,28 @@ verify_kernel() {
 # GPU detection functions
 detect_gpu() {
    echo -e "\n# Detecting GPU devices"
-   
+
    if ! command -v lspci >/dev/null 2>&1; then
       error_exit "lspci command not found. Install pciutils: apt-get install pciutils"
    fi
-   
-   local lspci_output
-   lspci_output=$(lspci -nn | grep -Ei 'VGA|DISPLAY')
-   
-   if [ -n "$lspci_output" ]; then
-      log_info "Detected GPU device(s):"
-      echo "$lspci_output"
-      log_success "GPU detected - proceeding with Intel GPU driver installation"
-      
-      # Set global flag for any GPU found
-      HAS_DGPU=1
-      return 0
-   else
-      error_exit "No GPU found. This script installs Intel GPU drivers"
+
+   local gpu_lines
+   gpu_lines=$(lspci -nn | grep -Ei 'VGA|DISPLAY' || true)
+
+   if [ -z "$gpu_lines" ]; then
+      error_exit "No GPU (VGA/DISPLAY) devices found. This installer targets Intel GPUs."  
    fi
+
+   log_info "Detected GPU device(s):"
+   echo "$gpu_lines"
+
+   # If any Intel vendor (8086) present, proceed; else exit.
+   if echo "$gpu_lines" | grep -Fq "[8086:"; then
+      log_success "Intel GPU vendor (8086) detected; proceeding with installation"
+      return 0
+   fi
+
+   error_exit "Non-Intel GPU(s) vendor detected (no PCI vendor 8086 present). Unsupported devices:$(printf "\n%s" "$gpu_lines")"
 }
 
 # Repository and package management
@@ -280,10 +286,10 @@ install_gpu_drivers() {
    # Post-installation configuration (previously post_installation_fixes)
    echo -e "\n# Post-installation configuration"
    
-   # Verify critical packages
+   # Verify critical packages strictly
    local critical_packages=("intel-opencl-icd" "libze-intel-gpu1")
    local missing_packages=()
-   
+   local install_errors=0
    for pkg in "${critical_packages[@]}"; do
       if dpkg -l "$pkg" 2>/dev/null | grep -q "^ii"; then
          log_success "$pkg is installed"
@@ -292,55 +298,100 @@ install_gpu_drivers() {
          missing_packages+=("$pkg")
       fi
    done
-   
    if [ ${#missing_packages[@]} -gt 0 ]; then
-      log_info "Reinstalling missing critical packages"
-      install_packages "${missing_packages[@]}"
+      log_info "Attempting reinstall of missing critical packages: ${missing_packages[*]}"
+      if ! install_packages "${missing_packages[@]}"; then
+         echo "$S_ERROR Reinstall attempt failed for: ${missing_packages[*]}"
+         install_errors=1
+      fi
+      # Re-check after reinstall
+      for pkg in "${missing_packages[@]}"; do
+         if ! dpkg -l "$pkg" 2>/dev/null | grep -q "^ii"; then
+            echo "$S_ERROR Critical package still missing: $pkg"
+            install_errors=1
+         fi
+      done
    fi
-   
-   # Fix DRI device permissions
+
+   # DRI device check (required for runtime)
    if [ -e "/dev/dri" ]; then
       log_info "Checking DRI devices: $(find /dev/dri/ -maxdepth 1 -type f -printf '%f ' 2>/dev/null)"
-      
-      if ls /dev/dri/render* >/dev/null 2>&1; then
-         chmod 666 /dev/dri/render*
-         log_success "Updated render device permissions"
+      if ! ls /dev/dri/render* >/dev/null 2>&1; then
+         echo "$S_ERROR No /dev/dri/render* devices found"
+         install_errors=1
+      else
+         chmod 666 /dev/dri/render* || echo "$S_ERROR Failed to adjust permissions on render devices"
+         log_success "Render devices present"
       fi
    else
       echo "$S_ERROR /dev/dri directory not found"
+      install_errors=1
    fi
-   
-   log_success "Intel GPU driver installation and configuration completed"
+
+   if [ $install_errors -eq 0 ]; then
+      log_success "Intel GPU driver installation prerequisites validated"
+      DRIVER_INSTALL_OK=1
+   else
+      echo "$S_ERROR Driver installation encountered errors"
+      DRIVER_INSTALL_OK=0
+   fi
 }
 
 # Verify driver installation
 verify_drivers() {
    echo -e "\n# Verifying driver installation"
-   
-   # OpenCL verification
-   if command -v clinfo >/dev/null 2>&1; then
-      if clinfo >/dev/null 2>&1; then
-         log_success "OpenCL runtime working"
-         
-         local device_names
-         device_names=$(clinfo 2>/dev/null | grep "Device Name" | grep -i intel)
-         
-         if [ -n "$device_names" ]; then
-            log_success "Intel GPU devices detected by OpenCL:"
-            echo "$device_names"
-            
-            if [ "$HAS_DGPU" -eq 1 ] && echo "$device_names" | grep -qi "arc\|bmg\|battlemage\|dg2\|alchemist"; then
-               log_success "Intel Arc discrete GPU working with OpenCL"
-            fi
-         else
-            echo "$S_ERROR No Intel GPU devices found in OpenCL"
-         fi
-      else
-         echo "$S_ERROR clinfo failed to run"
-      fi
-   else
-      echo "$S_ERROR clinfo not found"
+
+   # Step 1: clinfo presence
+   if ! command -v clinfo >/dev/null 2>&1; then
+      echo "$S_ERROR clinfo not found (OpenCL runtime not installed)"
+      DRIVER_VERIFY_OK=0
+      return 1
    fi
+
+   # Step 2: clinfo -l device enumeration
+   local clinfo_list
+   if ! clinfo_list=$(clinfo -l 2>/dev/null); then
+      echo "$S_ERROR clinfo -l failed to execute"
+      DRIVER_VERIFY_OK=0
+      return 1
+   fi
+
+   # Guard against empty or whitespace-only output
+   if [ -z "$(printf "%s" "$clinfo_list" | sed -n '/\S/p')" ]; then
+      echo "$S_ERROR clinfo -l returned no device/platform information"
+      DRIVER_VERIFY_OK=0
+      return 1
+   fi
+
+   # Determine device count robustly (avoid duplicate '0 0' from grep fallback)
+   local device_count
+   device_count=$(printf "%s" "$clinfo_list" | awk '/Device[[:space:]]*#/{c++} END{print c+0}')
+
+   if ! [[ "$device_count" =~ ^[0-9]+$ ]]; then
+      echo "$S_ERROR OpenCL device count not an integer: '$device_count'"
+      DRIVER_VERIFY_OK=0
+      return 1
+   fi
+   if [ "$device_count" -eq 0 ]; then
+      echo "$S_ERROR No OpenCL runtime devices reported (clinfo -l empty)"
+      DRIVER_VERIFY_OK=0
+      return 1
+   fi
+
+   log_success "OpenCL runtime working (devices: $device_count)"
+
+   # Optional: show Intel devices (non-fatal if none)
+   local intel_devices
+   intel_devices=$(printf "%s" "$clinfo_list" | grep -iE '(^|[[:space:]])Intel(|\(R\))' || true)
+   if [ -n "$intel_devices" ]; then
+      log_success "Intel OpenCL device entries detected"
+      echo "$intel_devices"
+   else
+      log_info "No explicit Intel entries found in clinfo -l (non-fatal)"
+   fi
+
+   DRIVER_VERIFY_OK=1
+   return 0
 }
 
 
@@ -385,9 +436,18 @@ main() {
    # Apply temporary fix for Arc B60 on Series 2 CPUs
    apply_arc_b60_fix
 
-   install_gpu_drivers
-   verify_drivers
-   echo -e "\n# $S_VALID GPU installation completed. Please reboot your system."
+   install_gpu_drivers || echo "$S_ERROR install_gpu_drivers reported failure"
+   if ! verify_drivers; then
+      # Avoid literal \n in output; use printf for portability
+      printf "\n%s GPU installation verification failed. See errors above.\n" "$S_ERROR"
+      exit 1
+   fi
+   if [ $DRIVER_INSTALL_OK -eq 1 ] && [ $DRIVER_VERIFY_OK -eq 1 ]; then
+      echo -e "\n# $S_VALID GPU installation completed successfully. Please reboot your system."
+   else
+      echo -e "\n# $S_ERROR GPU installation incomplete (install_ok=$DRIVER_INSTALL_OK verify_ok=$DRIVER_VERIFY_OK)."
+      exit 1
+   fi
 }
 
 # Execute main function

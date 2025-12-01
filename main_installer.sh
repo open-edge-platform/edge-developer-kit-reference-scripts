@@ -217,16 +217,26 @@ check_intel_arc_gpu() {
     # Find any VGA/DISPLAY devices
     local lspci_output
     lspci_output=$(lspci -nn | grep -Ei 'VGA|DISPLAY')
-    
-    if [ -n "$lspci_output" ]; then
-        echo "GPU devices detected:"
-        echo "$lspci_output"
-        echo "$S_VALID GPU found - proceeding with Intel GPU driver installation"
-        return 0
-    else
+
+    if [ -z "$lspci_output" ]; then
         echo "$S_WARNING No GPU devices detected"
         echo "GPU driver installation will be skipped"
         return 1
+    fi
+
+    echo "GPU devices detected:"
+    echo "$lspci_output"
+
+    # Enforce Intel vendor (8086) for GPU install; exit if non-Intel only
+    if echo "$lspci_output" | grep -Fq "[8086:"; then
+        echo "$S_VALID Intel (8086) GPU found - proceeding with Intel GPU driver installation"
+        return 0
+    else
+        echo "$S_ERROR Non-Intel GPU(s) detected (no PCI vendor 8086 present)"
+        echo "Detected devices:"
+        echo "$lspci_output"
+        echo "$S_ERROR Exiting: this installer supports Intel GPUs only"
+        exit 1
     fi
 }
 
@@ -240,13 +250,15 @@ install_gpu_drivers() {
         # shellcheck disable=SC1091
         if bash "$SCRIPT_DIR/gpu_installer.sh"; then
             echo "$S_VALID GPU drivers installed successfully"
-            
-            # Verify OpenCL setup after installation
-            # verify_opencl_setup
+            # Optional: post verification hook could go here
             return 0
         else
+            # gpu_installer.sh already emitted detailed errors including
+            # OpenCL verification failures. Provide consolidated high-level status and exit.
             echo "$S_ERROR GPU driver installation failed"
-            return 1
+            echo "$S_WARNING GPU driver installation had issues"
+            echo "$S_ERROR Exiting due to GPU installation failure"
+            exit 1
         fi
     else
         echo "$S_WARNING Skipping GPU driver installation - no GPU devices detected"
@@ -507,8 +519,8 @@ main() {
         echo "NPU Support: Available and will be installed"
         echo ""
         
-        # Install GPU drivers (will check for GPU presence)
-        install_gpu_drivers || echo "$S_WARNING GPU driver installation had issues"
+        # Install GPU drivers (will check for GPU presence). Any failure will exit.
+        install_gpu_drivers
         
         # Install NPU drivers (Core Ultra only)
         install_npu_drivers || echo "$S_WARNING NPU driver installation had issues"
@@ -529,8 +541,8 @@ main() {
         echo "NPU Support: Not available (Core Ultra only)"
         echo ""
         
-        # Install GPU drivers (will check for GPU presence)
-        install_gpu_drivers || echo "$S_WARNING GPU driver installation had issues"
+        # Install GPU drivers (will check for GPU presence). Any failure will exit.
+        install_gpu_drivers
         
         # Install OpenVINO with error handling
         if ! install_openvino; then
