@@ -294,6 +294,10 @@ async def chat_completion(request: Request, data: ICreateChatCompletions):
     if 'rag' in data:
         data.pop('rag')
 
+    if 'max_tokens' in data:
+        data['max_completion_tokens'] = data.pop('max_tokens')
+
+    print(f"Data: {data}")
     try:
         llm = requests.post(
             endpoint,

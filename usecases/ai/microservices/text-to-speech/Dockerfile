@@ -54,7 +54,7 @@ RUN mkdir -p /usr/src/app/data/models \
 # Install Melo TTS
 COPY requirements.txt .
 RUN python3 -m pip install --upgrade pip \
-    && python3 -m pip install git+https://github.com/zhaohb/MeloTTS-OV.git@1962eee \
+    && python3 -m pip install git+https://github.com/zhaohb/MeloTTS-OV.git@1962eee --extra-index-url https://download.pytorch.org/whl/cpu \
     && python3 -m pip install -r requirements.txt \
     && python3 -m unidic download
     

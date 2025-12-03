@@ -23,8 +23,8 @@ install_dependencies(){
 install_python_dependencies(){
     echo -e "Installing Python dependencies ..."
     python3 -m pip install --extra-index-url https://download.pytorch.org/whl/cpu \
-        openvino==2025.1 \
-        "optimum-intel[openvino,nncf]==1.22.0" 
+        openvino==2025.3 \
+        "optimum-intel[openvino,nncf]==1.26.1" 
 }
 
 # Validate docker installation
@@ -54,6 +54,8 @@ validate_and_activate_python_venv_available(){
 
 # Check if LLM model available
 validate_model_path(){
+    # shellcheck source=/dev/null
+    source "$VENV_PATH/bin/activate"
     echo -e "Checking model availability ..."
     if [ ! -f "$MODEL_PATH/llm/openvino_model.xml" ]; then
         echo -e "Model not found. Downloading default model ..."

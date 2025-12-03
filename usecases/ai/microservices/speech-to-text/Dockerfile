@@ -47,7 +47,8 @@ ENV PATH="/usr/src/.venv/bin:$PATH"
 
 # Install python dependencies
 COPY --chown=openvino:openvino requirements.txt .
-RUN python3 -m pip install -r requirements.txt
+RUN python3 -m pip install -U pip \
+    && python3 -m pip install -r requirements.txt
 
 COPY --chown=openvino:openvino main.py .
 COPY --chown=openvino:openvino utils.py .

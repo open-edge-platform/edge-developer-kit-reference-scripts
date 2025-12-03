@@ -1,14 +1,15 @@
 // Copyright (C) 2024 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-import React, { useEffect, useRef, memo, useCallback } from 'react';
+import React, { memo, useCallback, useEffect, useRef } from 'react';
 import { Avatar, Box, CircularProgress, Paper, Stack, Typography } from '@mui/material';
+import { UIMessage } from 'ai';
+
 import Markdown from '../common/markdown';
-import { type Message } from 'ai';
 import AnimatedDots from './AnimatedDots';
 
 interface ChatMessageProps {
-  message: Message;
+  message: UIMessage;
   isLoading?: boolean;
 }
 
@@ -50,7 +51,7 @@ const ChatMessage = memo(({ message, isLoading }: ChatMessageProps) => {
               <AnimatedDots />
             </Box>
           ) : (
-            <Markdown content={message.content} />
+            <Markdown content={message.parts.map((part, index) => (part.type === 'text' ? part.text : '')).join('')} />
           )}
         </Stack>
       </Paper>
@@ -63,16 +64,11 @@ ChatMessage.displayName = 'ChatMessage';
 interface ChatHistoryProps {
   isLoading: boolean;
   isError: boolean;
-  messages: Message[];
+  messages: UIMessage[];
   isGettingResponse: boolean;
 }
 
-const ChatHistory: React.FC<ChatHistoryProps> = memo(({
-  isLoading,
-  isError,
-  messages,
-  isGettingResponse,
-}) => {
+const ChatHistory: React.FC<ChatHistoryProps> = memo(({ isLoading, isError, messages, isGettingResponse }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = useCallback(() => {
@@ -84,31 +80,29 @@ const ChatHistory: React.FC<ChatHistoryProps> = memo(({
   }, [scrollToBottom, messages.length]);
 
   if (isError || isLoading) {
-    return (
-      <ErrorDisplay isLoading={isLoading} />
-    );
+    return <ErrorDisplay isLoading={isLoading} />;
   }
 
   if (messages.length < 1) {
-    return (
-      <EmptyStateDisplay />
-    );
+    return <EmptyStateDisplay />;
   }
 
   return (
-    <Box
-      flexGrow={1}
-      overflow="auto"
-      sx={{ border: 1, borderRadius: 2, mt: 2, mb: 2 }}
-    >
+    <Box flexGrow={1} overflow="auto" sx={{ border: 1, borderRadius: 2, mt: 2, mb: 2 }}>
       {messages.map((message) => (
-        <ChatMessage key={message.id || `${message.role}_${message.content.substring(0, 10)}`} message={message} />
+        <ChatMessage key={message.id} message={message} />
       ))}
-      {isGettingResponse && messages[messages.length - 1].role !== 'assistant' ? <ChatMessage
-        key="ChatMessage_loading"
-        message={{ role: 'assistant', content: 'Loading...' } as Message}
-        isLoading
-      /> : null}
+      {isGettingResponse && messages[messages.length - 1].role !== 'assistant' ? (
+        <ChatMessage
+          key="ChatMessage_loading"
+          message={{
+            id: 'loading',
+            role: 'assistant',
+            parts: [{ type: 'text', text: 'Loading...' }],
+          }}
+          isLoading
+        />
+      ) : null}
       <div ref={messagesEndRef} />
     </Box>
   );
