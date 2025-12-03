@@ -15,7 +15,7 @@ services:
     networks:
       - app-network
     ports:
-      - "127.0.0.1:8010:3000"
+      - "${HOST:-127.0.0.1}:8010:3000"
 
   backend:
     build:
@@ -31,10 +31,10 @@ services:
     networks:
       - app-network
     ports:
-      - "127.0.0.1:8011:8011"
+      - "${HOST:-127.0.0.1}:8011:8011"
     environment:
       - OPENAI_BASE_URL=http://serving:8000/v1
-      - ALLOWED_CORS=["http://localhost:8010"]
+      - ALLOWED_CORS=["http://localhost:8010","http://localhost:3000"]
       - EMBEDDING_DEVICE=${EMBEDDING_DEVICE:-CPU}
       - RERANKER_DEVICE=${RERANKER_DEVICE:-CPU}
     depends_on:
@@ -61,7 +61,7 @@ services:
     networks:
       - app-network
     ports:
-      - "127.0.0.1:8012:8000"
+      - "${HOST:-127.0.0.1}:8012:8000"
     environment:
       - DEFAULT_MODEL_ID=Qwen/Qwen2.5-7B-Instruct
       - MODEL_PATH=./data/models/llm
@@ -92,7 +92,7 @@ services:
       - BERT_DEVICE=${BERT_DEVICE:-CPU}
       - ALLOWED_CORS=["*"]
     ports:
-      - 127.0.0.1:8013:5995
+      - ${HOST:-127.0.0.1}:8013:5995
     devices:
       - /dev/dri:/dev/dri
     volumes:
@@ -110,11 +110,11 @@ services:
     networks:
       - app-network
     environment:
-      - DEFAULT_MODEL_ID=openai/whisper-tiny 
+      - DEFAULT_MODEL_ID=openai/whisper-base
       - STT_DEVICE=CPU
       - ALLOWED_CORS=["*"]
     ports:
-      - 127.0.0.1:8014:5996
+      - ${HOST:-127.0.0.1}:8014:5996
     devices:
       - /dev/dri:/dev/dri
     volumes:

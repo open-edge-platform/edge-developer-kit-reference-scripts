@@ -1,62 +1,69 @@
 // Copyright (C) 2024 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-import { createOpenAI } from '@ai-sdk/openai';
-import { type CoreMessage, StreamData, streamText } from 'ai';
 import { type NextRequest } from 'next/server';
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
+import { convertToModelMessages, streamText, UIMessage } from 'ai';
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type -- disable for route handler
 export async function POST(req: NextRequest) {
-    const { messages, modelID, max_tokens: maxTokens, temperature, conversationCount, rag, systemPrompt }: { messages: CoreMessage[], modelID: string, max_tokens: number, temperature: number, conversationCount: number, rag: boolean, systemPrompt: string } = await req.json();
-    const url = `http://${process.env.NEXT_PUBLIC_LLM_API_URL ?? "localhost"}:${process.env.NEXT_PUBLIC_LLM_API_PORT ?? "8011"}`
-    const apiVersion = process.env.NEXT_PUBLIC_API_VERSION ?? "v1"
-    const baseURL = new URL(`${apiVersion}/`, url).toString()
-    const openai = createOpenAI({
-        baseURL,
-        apiKey: "-",
-        compatibility: "compatible"
-    })
+  const {
+    id,
+    messages,
+    modelID,
+    max_tokens: maxTokens,
+    temperature,
+    conversationCount,
+    rag,
+    systemPrompt,
+  }: {
+    id: string;
+    messages: UIMessage[];
+    modelID: string;
+    max_tokens: number;
+    temperature: number;
+    conversationCount: number;
+    rag: boolean;
+    systemPrompt: string;
+  } = await req.json();
 
-    let conversationMessages = messages
+  const url = `http://${process.env.NEXT_PUBLIC_LLM_API_URL ?? 'localhost'}:${process.env.NEXT_PUBLIC_LLM_API_PORT ?? '8011'}`;
+  const apiVersion = process.env.NEXT_PUBLIC_API_VERSION ?? 'v1';
+  const baseURL = new URL(`${apiVersion}/`, url).toString();
+  const provider = createOpenAICompatible({
+    name: 'openai',
+    apiKey: '-',
+    baseURL: baseURL,
+  });
 
-    if (conversationCount >= 0 && conversationCount * 2 < messages.length) {
-        conversationMessages = messages.slice(-(conversationCount * 2 + 1))
-    }
+  let conversationMessages = messages;
 
-    if (!messages.some((message) => message.role === 'system')) {
-        if (systemPrompt) {
-            conversationMessages = [{ role: 'system', content: systemPrompt }, ...messages];
-        }
-    }
+  if (conversationCount >= 0 && conversationCount * 2 < messages.length) {
+    conversationMessages = conversationMessages.slice(-(conversationCount * 2 + 1));
+  }
 
-    let message = '';
-    const punctuations = ',.!?;:';
-    const data = new StreamData()
+  try {
     const result = streamText({
-        model: openai(modelID),
-        messages: conversationMessages,
-        maxTokens,
-        temperature,
-        headers: {
-            rag: rag ? "ON" : "OFF"
-        },
-        onChunk({ chunk }) {
-            if (chunk.type === 'text-delta') {
-                message += chunk.textDelta;
-                if (punctuations.includes(chunk.textDelta)) {
-                    data.append({ message, processed: false });
-                    message = '';
-                }
-            }
-
-        },
-        onFinish() {
-            if (message) {
-                data.append({ message, processed: false });
-                message = '';
-            }
-            void data.close();
-        }
+      model: provider(modelID),
+      system: systemPrompt,
+      messages: convertToModelMessages(conversationMessages),
+      maxOutputTokens: maxTokens,
+      temperature,
+      headers: {
+        rag: rag ? 'ON' : 'OFF',
+      },
     });
-    return result.toDataStreamResponse({ data });
+    return result.toUIMessageStreamResponse();
+  } catch (error) {
+    return new Response(
+      JSON.stringify({
+        error: 'Failed to process chat request',
+        details: error instanceof Error ? error.message : 'Unknown error',
+      }),
+      {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
+  }
 }

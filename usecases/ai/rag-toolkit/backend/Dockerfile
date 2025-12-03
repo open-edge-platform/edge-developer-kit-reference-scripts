@@ -3,7 +3,7 @@
 
 FROM debian:12-slim
 ARG DEBIAN_FRONTEND=noninteractive
-ARG OPENVINO_VERSION=2025.1.0
+ARG OPENVINO_VERSION=2025.3.0
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 USER root
@@ -58,7 +58,7 @@ RUN python3 -m venv /usr/src/.venv
 ENV PATH="/usr/src/.venv/bin:$PATH"
 
 # Install python dependencies
-RUN python3 -m pip install fastapi[all]==0.111.0 \
+RUN python3 -m pip install fastapi[all] \
         sse_starlette==2.1.2 \
         scipy \
         soundfile \
@@ -75,10 +75,10 @@ RUN python3 -m pip install fastapi[all]==0.111.0 \
         cached_path==1.6.3 \
         python-magic
 RUN python3 -m pip install --extra-index-url https://download.pytorch.org/whl/cpu \
-        'torch>=2.6.0' \
-        'torchaudio>=2.6.0' \
-        openvino==2025.1.0 \
-        optimum-intel[openvino,nncf]==1.22.0
+        torch==2.8.0 \
+        torchaudio==2.8.0 \
+        openvino==2025.3.0 \
+        optimum-intel[openvino,nncf]==1.26.1
 
 COPY --chown=openvino:openvino backend .
 
