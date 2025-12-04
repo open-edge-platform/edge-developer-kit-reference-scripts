@@ -1,4 +1,3 @@
 venv/
 llama*
-chroma_db/
 __pycache__/
