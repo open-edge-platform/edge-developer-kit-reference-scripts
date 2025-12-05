@@ -2,6 +2,8 @@
 
 This application provides AI-powered video summarization to generate concise summaries of key events and enables real-time interaction and queries via a chatbot interface.
 
+![demo](./docs/demo.gif)
+
 ## Features
 
 - **AI Video Summarization:** Automatically extract and summarize key events from video streams using OpenCV for frame analysis and Vision-Language Models (VLM) for semantic understanding. Supports generating concise textual summaries and highlights for efficient review.
