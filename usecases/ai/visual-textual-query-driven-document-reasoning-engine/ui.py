@@ -48,7 +48,7 @@ def load_history():
             data = json.load(f)
     else:
         # Default test item
-        default_data = [["This is a test example", str(dir_ / "assets" / "sample.jpg")]]
+        default_data = [["This is a test example", str(dir_ / "assets" / "sample.png")]]
 
         with open(HISTORY_FILE, "w") as f:
             json.dump(default_data, f, indent=2)

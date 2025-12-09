@@ -19,7 +19,7 @@ Transform your Intel® hardware into powerful AI and edge computing solutions wi
 | [**📚 RAG Knowledge Base**](../usecases/ai/rag-toolkit/README.md)          | Enterprise AI knowledge system | ⏱️ 30 min | RAG patterns, vector databases       |
 | [**🚗 Smart Parking**](../usecases/ai/smart-parking/README.md)             | IoT-powered parking management | ⏱️ 45 min | IoT integration, real-time analytics |
 | [**📹 Video Summarization**](../usecases/ai/video_summarization/README.md) | AI-powered video insights      | ⏱️ 60 min | Multi-modal AI, content analysis     |
-| [**📄 Visual Text Driven Document Reasoning Engine**](../usecases/ai/visual-text-driven-document-reasoning-engine/README.md) | Document Search & Retrieval Engine | ⏱️ 30 min | Document embedding, VLM |
+| [**📄 Visual & Textual Query-driven Document Reasoning Engine**](../usecases/ai/visual-textual-query-driven-document-reasoning-engine/README.md) | Document Search & Retrieval Engine | ⏱️ 30 min | Document embedding, VLM |
 | [**🎬 VLM Video Summarization and Interactive Chat**](../usecases/ai/vlm-video-summarization-and-interactive-chat/README.md) | AI video analysis with interactive chat | ⏱️ 30 min | VLM, vector embeddings, semantic search |
 
 ### 🔴 **Advanced** _(Experienced Developers)_
@@ -37,7 +37,7 @@ Transform your Intel® hardware into powerful AI and edge computing solutions wi
 - **Language Models:** [OpenWebUI + Ollama](../usecases/ai/openwebui-ollama/README.md), [RAG Toolkit](../usecases/ai/rag-toolkit/README.md)
 - **Computer Vision:** [AI Video Analytics](../usecases/ai/ai-video-analytics/README.md), [Smart Parking](../usecases/ai/smart-parking/README.md)
 - **Multi-Modal:** [Edge AI Demo Studio (Digital Avatar)](../usecases/ai/edge-ai-demo-studio/README.md), [Video Summarization](../usecases/ai/video_summarization/README.md), [VLM Video Summarization and Interactive Chat](../usecases/ai/vlm-video-summarization-and-interactive-chat/README.md)
-- **Document Embedding:** [Visual Text Driven Document Reasoning Engine](../usecases/ai/visual-text-driven-document-reasoning-engine/README.md)
+- **Document Embedding:** [Visual & Textual Query-driven Document Reasoning Engine](../usecases/ai/visual-textual-query-driven-document-reasoning-engine/README.md)
 
 ### 📹 **Media & Content**
 
@@ -67,7 +67,7 @@ Transform your Intel® hardware into powerful AI and edge computing solutions wi
 ### **👨‍💼 For Professionals**
 
 1. Deploy [RAG Toolkit](../usecases/ai/rag-toolkit/README.md) - Enterprise AI patterns
-2. Explore [Visual Text Driven Document Reasoning Engine](../usecases/ai/visual-text-driven-document-reasoning-engine/README.md) - Document embedding models & VLMs
+2. Explore [Visual & Textual Query-driven Document Reasoning Engine](../usecases/ai/visual-textual-query-driven-document-reasoning-engine/README.md) - Document embedding models & VLMs
 3. Try [VLM Video Summarization and Interactive Chat](../usecases/ai/vlm-video-summarization-and-interactive-chat/README.md) - Advanced video analysis with VLM
 4. Implement [Smart Parking](../usecases/ai/smart-parking/README.md) - IoT + AI integration
 5. Master [Real-Time Computing](../usecases/real-time/tcc_tutorial/README.md) - Performance optimization
@@ -125,4 +125,4 @@ Transform your Intel® hardware into powerful AI and edge computing solutions wi
 8. [Video Summarization & Visual RAG](../usecases/ai/video_summarization/README.md)
 9. [GMSL Camera Enablement](../usecases/camera/gmsl/README.md)
 10. [MIPI Camera Enablement](../usecases/camera/mipi/README.md)
-11. [Visual Text Driven Document Reasoning Engine](../usecases/ai/visual-text-driven-document-reasoning-engine/README.md)
+11. [Visual & Textual Query-driven Document Reasoning Engine](../usecases/ai/visual-textual-query-driven-document-reasoning-engine/README.md)

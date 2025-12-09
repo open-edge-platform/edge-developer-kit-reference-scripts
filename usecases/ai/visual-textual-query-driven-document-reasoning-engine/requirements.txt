@@ -1,0 +1,14 @@
+# Copyright (C) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0 
+
+colpali-engine==0.3.13
+gradio==5.49.1
+imagehash==4.3.2
+nncf==2.18.0
+openvino==2025.3.0
+optimum-intel==1.26.1
+pdf2image==1.17.0
+pillow==11.3.0
+qwen-vl-utils==0.0.14
+tqdm==4.67.1
+transformers==4.55.4
