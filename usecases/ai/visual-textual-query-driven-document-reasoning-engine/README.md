@@ -61,12 +61,12 @@ Ensure the GPU drivers are installed using the [`gpu_installer.sh`](https://gith
    source .venv/bin/activate
    ```
 
-3. **Install remaining Python dependencies:**
+3. **Install the Python dependencies:**
    ```bash
    pip install -r requirements.txt
    ```
    
-4. **Install PyTorch and Intel Extension for XPU support first:**
+4. **Install PyTorch and Intel Extension for XPU support:**
    ```bash
    pip install -U --force-reinstall --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu   
    ```
