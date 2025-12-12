@@ -278,7 +278,7 @@ class KokoroTTSService:
         if lang_code not in self.pipelines:
             try:
                 self.pipelines[lang_code] = KPipeline(
-                    lang_code=lang_code, repo_id="hexgrad/Kokoro-82M", model=self.model
+                    lang_code=lang_code, repo_id="hexgrad/Kokoro-82M", model=self.model, model_dir=self.model_dir
                 )
             except Exception as e:
                 logger.warning(
@@ -444,9 +444,14 @@ def is_windows():
 
 def setup_environment():
     """Setup environment variables for Kokoro TTS."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+
+    # Add ffmpeg to PATH
+    ffmpeg_path = os.path.join(script_dir, "..", "..", "thirdparty", "ffmpeg", "bin")
+    os.environ["PATH"] = ffmpeg_path + os.pathsep + os.environ.get("PATH", "")
+
     if is_windows():
         os.environ["PYTHONUTF8"] = "1"
-        script_dir = os.path.dirname(os.path.abspath(__file__))
         os.environ["PHONEMIZER_ESPEAK_LIBRARY"] = os.path.join(
             script_dir,
             os.path.pardir,
@@ -455,11 +460,6 @@ def setup_environment():
             "libespeak-ng",
             "libespeak-ng.dll",
         )
-        ffmpeg_path = os.path.join(
-            script_dir, "..", "..", "thirdparty", "ffmpeg", "bin"
-        )
-        os.environ["PATH"] += os.pathsep + ffmpeg_path
-        print(os.environ["PATH"])
     else:
         os.environ["PHONEMIZER_ESPEAK_PATH"] = "/usr/bin"
         os.environ["PHONEMIZER_ESPEAK_DATA"] = "/usr/share/espeak-ng-data"

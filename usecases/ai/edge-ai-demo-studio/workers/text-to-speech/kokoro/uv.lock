@@ -1564,11 +1564,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/d4/60/30cc3d6947160b988f56680ba607dfdfd9d8301bd7c329795a052099bc96/pyopenjtalk_plus-0.4.1.post4-cp314-cp314-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:6782724d7a0317f5f005c6f6ea1d78402358577afd81ef01b20e8b1482f570b9", size = 30751836, upload-time = "2025-09-21T15:33:53.331Z" },
     { url = "https://files.pythonhosted.org/packages/ed/ea/7901b1607b2318d022aba791076c72c5e642d3f2faffb2eca2032f105ca0/pyopenjtalk_plus-0.4.1.post4-cp314-cp314-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:92ed77eeaf495bc2eef35ca5cb8349d7e4204c540ba0c7b66c7661603ad819bc", size = 30823701, upload-time = "2025-09-21T15:33:56.089Z" },
     { url = "https://files.pythonhosted.org/packages/76/6e/db0894730f36ac4f8856f1b1ab2f58b6b9bfc472b834312f4cd776d637ef/pyopenjtalk_plus-0.4.1.post4-cp314-cp314-win_amd64.whl", hash = "sha256:ebe392322f30ef36dfebb1eafb7ca996580b0344bece51e83d69f53c183c1bc1", size = 25456864, upload-time = "2025-09-21T15:33:58.848Z" },
-    { url = "https://files.pythonhosted.org/packages/a8/ad/49bc4a5059779e3cc0ad92efd4348df1268afb401a9f224414cc6157bc68/pyopenjtalk_plus-0.4.1.post4-cp314-cp314t-macosx_10_13_x86_64.whl", hash = "sha256:7de0d8edf12ac5ea292a76a04736a248c52d1550f615c965ce023025c1ca4093", size = 24892641, upload-time = "2025-09-21T15:34:01.589Z" },
-    { url = "https://files.pythonhosted.org/packages/cc/6b/6c3cec2a4f7ef6866624405013d712d69fc6fb2f5c9cb0655f42bd648771/pyopenjtalk_plus-0.4.1.post4-cp314-cp314t-macosx_11_0_arm64.whl", hash = "sha256:3d8c24e615a4ad96b45b08b7e8baba80dcea0f56d064afecd5233cc8d722aa0a", size = 24867415, upload-time = "2025-09-21T15:34:04.902Z" },
-    { url = "https://files.pythonhosted.org/packages/91/09/291bc9bdf12ab2bf5287c366be01e3a0240eb72c8f066114f28ba184a3cf/pyopenjtalk_plus-0.4.1.post4-cp314-cp314t-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:b315f0195eec43bc04db7dd0edc15eea75839ff3eb3f66869f174fd1c061997a", size = 30790153, upload-time = "2025-09-21T15:34:07.515Z" },
-    { url = "https://files.pythonhosted.org/packages/27/8a/8927a5a8c90bde8474ebcd1ef7322afb14b8624ed231e31eaaef6bbecbd1/pyopenjtalk_plus-0.4.1.post4-cp314-cp314t-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:1437e18319c5ec079862381755379785031ac336bee9cae45088ba5f3d99f7f1", size = 30823158, upload-time = "2025-09-21T15:34:10.389Z" },
-    { url = "https://files.pythonhosted.org/packages/15/3e/a6fbdb7f9d64f54c6061a9d0fc7781ce0d6560ed96ceed9dced7b464d9e9/pyopenjtalk_plus-0.4.1.post4-cp314-cp314t-win_amd64.whl", hash = "sha256:7ed14c3b64c99940e19ada3bf76201a4595518b2ade60ece47b13a3bad4faf37", size = 25489595, upload-time = "2025-09-21T15:34:13.016Z" },
 ]
 
 [[package]]
@@ -2555,11 +2550,11 @@ wheels = [
 
 [[package]]
 name = "urllib3"
-version = "2.5.0"
+version = "2.6.1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/15/22/9ee70a2574a4f4599c47dd506532914ce044817c7752a79b6a51286319bc/urllib3-2.5.0.tar.gz", hash = "sha256:3fc47733c7e419d4bc3f6b3dc2b4f890bb743906a30d56ba4a5bfa4bbff92760", size = 393185, upload-time = "2025-06-18T14:07:41.644Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5e/1d/0f3a93cca1ac5e8287842ed4eebbd0f7a991315089b1a0b01c7788aa7b63/urllib3-2.6.1.tar.gz", hash = "sha256:5379eb6e1aba4088bae84f8242960017ec8d8e3decf30480b3a1abdaa9671a3f", size = 432678, upload-time = "2025-12-08T15:25:26.773Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a7/c2/fe1e52489ae3122415c51f387e221dd0773709bad6c6cdaa599e8a2c5185/urllib3-2.5.0-py3-none-any.whl", hash = "sha256:e6b01673c0fa6a13e374b50871808eb3bf7046c4b125b216f6bf1cc604cff0dc", size = 129795, upload-time = "2025-06-18T14:07:40.39Z" },
+    { url = "https://files.pythonhosted.org/packages/bc/56/190ceb8cb10511b730b564fb1e0293fa468363dbad26145c34928a60cb0c/urllib3-2.6.1-py3-none-any.whl", hash = "sha256:e67d06fe947c36a7ca39f4994b08d73922d40e6cca949907be05efa6fd75110b", size = 131138, upload-time = "2025-12-08T15:25:25.51Z" },
 ]
 
 [[package]]
