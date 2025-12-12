@@ -225,8 +225,10 @@ export interface ImageGenerationFormData {
   showAdvanced: boolean
 }
 
-export interface ImageEditFormData
-  extends Omit<ImageGenerationFormData, 'numImages'> {
+export interface ImageEditFormData extends Omit<
+  ImageGenerationFormData,
+  'numImages'
+> {
   numImages: number
   sourceImage: File | null
   sourceImagePreview: string

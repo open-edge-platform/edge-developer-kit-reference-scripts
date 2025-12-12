@@ -6,9 +6,14 @@
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Textarea } from '@/components/ui/textarea'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
-import { Bot, Send, User, Square, Loader2 } from 'lucide-react'
+import { Bot, Send, User, Square, Loader2, Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -26,7 +31,7 @@ export function ChatPanel({
   const chatEndRef = useRef<HTMLDivElement>(null)
   const [currentMessage, setCurrentMessage] = useState('')
 
-  const { messages, sendMessage, status, stop } = useChat({
+  const { messages, sendMessage, status, stop, setMessages } = useChat({
     transport: new DefaultChatTransport({
       api: '/api/chat/rag',
     }),
@@ -64,6 +69,11 @@ export function ChatPanel({
 
   const handleStopChat = () => {
     stop()
+  }
+
+  const handleClearChat = () => {
+    handleStopChat() // Stop any ongoing generation
+    setMessages([])
   }
 
   return (
@@ -146,7 +156,7 @@ export function ChatPanel({
               className="max-h-[120px] min-h-[56px] resize-none rounded-xl border-slate-300 bg-slate-50 px-4 py-3 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-600 dark:bg-slate-800"
               disabled={disabled || status !== 'ready'}
             />
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-row gap-2">
               {status === 'streaming' ? (
                 <Button
                   type="button"
@@ -176,6 +186,23 @@ export function ChatPanel({
                   <Send className="h-5 w-5" />
                 </Button>
               )}
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline-destructive"
+                    size="icon"
+                    onClick={handleClearChat}
+                    hidden={messages.length === 0}
+                    className="h-[56px] w-14 rounded-xl"
+                  >
+                    <Trash2 className="h-5 w-5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top" align="center">
+                  <p className="text-sm">Clear chat history</p>
+                </TooltipContent>
+              </Tooltip>
             </div>
           </div>
         </div>
