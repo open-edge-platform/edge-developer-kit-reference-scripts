@@ -6,15 +6,6 @@ import { getPayload } from 'payload'
 import configPromise from '@payload-config'
 import { McpServer } from '@/payload-types'
 
-// export interface McpServerDoc {
-//   id: number
-//   name: string
-//   url: string
-//   apiKey?: string
-//   disabled?: boolean | null
-//   description?: string
-// }
-
 let payload: Awaited<ReturnType<typeof getPayload>> | null = null
 
 async function getPayloadInstance() {

@@ -25,6 +25,7 @@ import {
   Square,
   Languages,
   Mic,
+  Trash2,
 } from 'lucide-react'
 import { useEffect, useRef, useState, useMemo } from 'react'
 import { toast } from 'sonner'
@@ -36,6 +37,11 @@ import {
 } from '@/components/workloads/text-to-speech/common'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 
 interface ConversationPanelProps {
   sessionId: string
@@ -62,7 +68,7 @@ export function ConversationPanel({
     enabled: !disabled,
   })
 
-  const { messages, sendMessage, status, stop } = useChat({
+  const { messages, sendMessage, status, stop, setMessages } = useChat({
     transport: new DefaultChatTransport({
       api: '/api/chat/digital-avatar',
     }),
@@ -182,16 +188,42 @@ export function ConversationPanel({
     }
   }
 
+  const handleClearChat = () => {
+    handleStopChat() // Stop any ongoing generation
+    setMessages([])
+    toast.success('Chat history cleared')
+  }
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <MessageCircle className="h-5 w-5 text-blue-500" />
-          Conversation
-        </CardTitle>
-        <CardDescription>
-          Chat with your digital avatar in multiple languages
-        </CardDescription>
+        <div className="flex items-center justify-between">
+          <div className="space-y-1.5">
+            <CardTitle className="flex items-center gap-2">
+              <MessageCircle className="h-5 w-5 text-blue-500" />
+              Conversation
+            </CardTitle>
+            <CardDescription>
+              Chat with your digital avatar in multiple languages
+            </CardDescription>
+          </div>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline-destructive"
+                size="sm"
+                onClick={handleClearChat}
+                hidden={messages.length === 0}
+                className="flex items-center gap-2"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" align="center">
+              <p className="text-sm">Clear chat history</p>
+            </TooltipContent>
+          </Tooltip>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Language and Voice Settings */}
