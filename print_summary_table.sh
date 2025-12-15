@@ -41,6 +41,21 @@ main() {
     print_footer
 }
 
+# Extract installed HWE version and apt status tag (returns two lines: version, tag)
+get_installed_hwe_info() {
+    local output="$1"
+    local installed_line version tag
+    installed_line=$(echo "$output" | grep -E "\[installed" | head -n1 || true)
+    if [ -n "$installed_line" ]; then
+        version=$(echo "$installed_line" | awk '{print $2}' || true)
+        tag=$(echo "$installed_line" | grep -o "\[installed[^]]*\]" || true)
+    else
+        version=$(echo "$output" | grep -E "linux-image-generic-hwe-" | head -n1 | awk '{print $2}' || true)
+        tag=""
+    fi
+    printf "%s\n%s\n" "$version" "$tag"
+}
+
 # Print summary header
 print_header() {
     printf "\n==================== System Installation Summary ====================\n"
@@ -55,14 +70,17 @@ detect_system_info() {
     kernel_version=$(timeout_cmd 3 uname -r)
     
     # HWE stack detection using apt list with timeout
-    local hwe_kernel_output hwe_version
+    local hwe_kernel_output hwe_version hwe_tag
     hwe_kernel_output=$(timeout_cmd 5 apt list -a --installed linux-image-generic-hwe-* 2>/dev/null || true)
     
     if [ -n "$hwe_kernel_output" ]; then
-        # Extract version from apt list output
-        hwe_version=$(echo "$hwe_kernel_output" | grep -E "linux-image-generic-hwe-" | head -n1 | awk '{print $2}' || true)
+        read -r hwe_version hwe_tag < <(get_installed_hwe_info "$hwe_kernel_output")
         if [ -n "$hwe_version" ]; then
-            hwe_stack="Installed ($hwe_version)"
+            if [ -n "$hwe_tag" ]; then
+                hwe_stack="Installed ($hwe_version) $hwe_tag"
+            else
+                hwe_stack="Installed ($hwe_version)"
+            fi
         else
             hwe_stack="Installed"
         fi
@@ -331,19 +349,22 @@ validate_configuration() {
     fi
     
     # HARD CHECK 3: HWE kernel requirement with 6.14 version check
-    local hwe_stack hwe_kernel_output hwe_version hwe_kernel_major hwe_kernel_minor
+    local hwe_stack hwe_kernel_output hwe_version hwe_kernel_major hwe_kernel_minor hwe_tag
     hwe_kernel_output=$(timeout_cmd 5 apt list -a --installed linux-image-generic-hwe-* 2>/dev/null || true)
     
     if [ -n "$hwe_kernel_output" ]; then
-        # Extract version from apt list output
-        hwe_version=$(echo "$hwe_kernel_output" | grep -E "linux-image-generic-hwe-" | head -n1 | awk '{print $2}' || true)
+        read -r hwe_version hwe_tag < <(get_installed_hwe_info "$hwe_kernel_output")
         if [ -n "$hwe_version" ]; then
             # Extract major.minor version from HWE kernel (e.g., "6.14" from "6.14.0-33.33~24.04.1")
             hwe_kernel_major=$(echo "$hwe_version" | cut -d. -f1)
             hwe_kernel_minor=$(echo "$hwe_version" | cut -d. -f2)
             
             if [ "$hwe_kernel_major" = "6" ] && [ "$hwe_kernel_minor" = "14" ]; then
-                hwe_stack="Installed (6.14 HWE)"
+                if [ -n "$hwe_tag" ]; then
+                    hwe_stack="Installed (6.14 HWE) $hwe_tag"
+                else
+                    hwe_stack="Installed (6.14 HWE)"
+                fi
                 
                 # Check if current running kernel matches HWE kernel version
                 if [[ ! "$kernel_version" =~ ^6\.14 ]]; then
@@ -401,7 +422,20 @@ validate_configuration() {
     else
         printf "%-25s | %-40s\n" "Platform Status" "$S_ERROR Incorrect platform configuration"
         if [ ${#missing_items[@]} -gt 0 ]; then
-            printf "%-25s | %-40s\n" "Missing/Invalid Items" "$(IFS=', '; echo "${missing_items[*]}")"
+            # Dedupe missing_items to avoid repeated entries
+            declare -A _seen
+            declare -a _unique
+            for _item in "${missing_items[@]}"; do
+                if [ -n "$_item" ] && [ -z "${_seen[$_item]}" ]; then
+                    _seen[$_item]=1
+                    _unique+=("$_item")
+                fi
+            done
+            # Print header once, then each missing item on its own line
+            printf "%-25s | %-40s\n" "Missing/Invalid Items" "${_unique[0]}"
+            for ((i=1; i<${#_unique[@]}; i++)); do
+                printf "%-25s | %-40s\n" "" "${_unique[$i]}"
+            done
         fi
     fi
     
