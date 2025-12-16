@@ -6,4 +6,4 @@ gym-hil
 opencv-python
 pyrealsense2
 feetech-servo-sdk
-
+openvino==2025.4.0
