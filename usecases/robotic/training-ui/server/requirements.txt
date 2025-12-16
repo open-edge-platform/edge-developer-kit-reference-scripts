@@ -1,0 +1,9 @@
+uvicorn
+fastapi>=0.118.0
+lerobot==0.4.1
+zmq
+gym-hil
+opencv-python
+pyrealsense2
+feetech-servo-sdk
+
