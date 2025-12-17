@@ -7,8 +7,8 @@ set -e
 
 rm -rf /home/user/.cache/huggingface/lerobot/lerobot/eval_pick888
 
-CAMERA_CONFIG='{ hand: {type: opencv, index_or_path: /dev/video0, width: 640, height: 480, fps: 25}, front: {type: opencv, index_or_path: /dev/video2, width: 640, height: 480, fps: 15}}'
-POLICY_PATH="./output/a6a9bee0-627b-428e-b049-dad237d880cc/pick888/checkpoints/last/pretrained_model"
+POLICY_PATH=""
+CAMERA_CONFIG='{ hand: {type: opencv, index_or_path: /dev/video0, width: 640, height: 480, fps: 30}, front: {type: opencv, index_or_path: /dev/video2, width: 640, height: 480, fps: 25}}'
 OPENVINO_MODEL_PATH="./data/ov_models/ov_model.xml"
 OPENVINO_DEVICE="${OPENVINO_DEVICE:-CPU}"
 
@@ -33,6 +33,12 @@ run_openvino() {
   echo "Running inference.py (OpenVINO backend)..."
   python3 inference.py "${COMMON_ARGS[@]}" --openvino_model_path="$OPENVINO_MODEL_PATH" --openvino_device="$OPENVINO_DEVICE"
 }
+
+if [ -z "$POLICY_PATH" ]; then
+    echo "Please put the pretrained model path in POLICY_PATH first before running the script. Rerun the script after making the changes."
+    exit 1
+fi
+echo "Make sure you have the correct configurations of camera as your training setup. Edit the CAMERA_CONFIG if required."
 
 read -rp "Select inference backend (openvino/pytorch) [openvino]: " backend
 backend=${backend:-openvino}
