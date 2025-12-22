@@ -12,21 +12,10 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Textarea } from '@/components/ui/textarea'
-import { useStopAvatar } from '@/hooks/use-lipsync'
+import { useLipsyncStatus, useStopAvatar } from '@/hooks/use-lipsync'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
-import {
-  Bot,
-  Loader2,
-  Send,
-  User,
-  MessageCircle,
-  Square,
-  Languages,
-  Mic,
-  Trash2,
-} from 'lucide-react'
+import { Bot, User, MessageCircle, Languages, Mic, Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState, useMemo } from 'react'
 import { toast } from 'sonner'
 import { TTS_MODELS } from '@/lib/workloads/text-to-speech'
@@ -42,11 +31,14 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { InputArea } from './input-area'
 
 interface ConversationPanelProps {
   sessionId: string
   connectionStatus: string
   disabled: boolean
+  isSTTEnabled: boolean
+  isDenoiseEnabled: boolean
   knowledgeBaseId?: number
   selectedModel?: string
   useMcpTools?: boolean
@@ -56,17 +48,20 @@ export function ConversationPanel({
   sessionId,
   connectionStatus,
   disabled,
+  isSTTEnabled,
+  isDenoiseEnabled,
   knowledgeBaseId,
   selectedModel,
   useMcpTools,
 }: ConversationPanelProps) {
   const chatEndRef = useRef<HTMLDivElement>(null)
-  const [currentMessage, setCurrentMessage] = useState('')
   const [selectedLanguage, setSelectedLanguage] = useState<string>('')
   const [selectedVoice, setSelectedVoice] = useState<string>('')
+  const [clearChat, setClearChat] = useState<boolean>(false)
   const { data: availableVoices, refetch: refetchVoices } = useGetVoices({
     enabled: !disabled,
   })
+  const { setStatus, isProcessing } = useLipsyncStatus(sessionId)
 
   const { messages, sendMessage, status, stop, setMessages } = useChat({
     transport: new DefaultChatTransport({
@@ -147,10 +142,11 @@ export function ConversationPanel({
     }
   }, [selectedLanguage, availableLanguages])
 
-  const handleSendMessage = () => {
-    if (!currentMessage) return
+  const handleSendMessage = (text: string) => {
+    if (!text) return
+    setStatus('processing')
     sendMessage(
-      { text: currentMessage },
+      { text: text },
       {
         body: {
           sessionId,
@@ -166,31 +162,18 @@ export function ConversationPanel({
         refetchVoices()
       }
     })
-    setCurrentMessage('')
   }
 
   const handleStopChat = () => {
     stop()
     stopAvatar.mutate({ sessionId })
-    toast.info('Chat generation stopped')
-  }
-
-  const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      if (
-        currentMessage.trim() &&
-        connectionStatus === 'connected' &&
-        status === 'ready'
-      ) {
-        handleSendMessage()
-      }
-    }
+    toast.info('Response stopped')
   }
 
   const handleClearChat = () => {
     handleStopChat() // Stop any ongoing generation
     setMessages([])
+    setClearChat(true)
     toast.success('Chat history cleared')
   }
 
@@ -322,46 +305,17 @@ export function ConversationPanel({
           </div>
         </ScrollArea>
 
-        {/* Message Input */}
-        <div className="space-y-3">
-          <div className="flex gap-2">
-            <Textarea
-              placeholder="Ask me anything or start a conversation..."
-              value={currentMessage}
-              onChange={(e) => setCurrentMessage(e.target.value)}
-              onKeyDown={handleKeyPress}
-              className="h-[80px] max-h-[80px] resize-none overflow-y-auto"
-              disabled={connectionStatus !== 'connected' || status !== 'ready'}
-            />
-            <div className="flex flex-col gap-2">
-              {status === 'streaming' ? (
-                <Button
-                  onClick={handleStopChat}
-                  variant="destructive"
-                  size="icon"
-                  className="h-[80px] w-12"
-                  disabled={disabled}
-                >
-                  <Square className="h-4 w-4" />
-                </Button>
-              ) : status !== 'ready' ? (
-                <Button disabled size="icon" className="h-[80px] w-12">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                </Button>
-              ) : (
-                <Button
-                  disabled={
-                    !currentMessage.trim() || connectionStatus !== 'connected'
-                  }
-                  onClick={handleSendMessage}
-                  className="h-[80px] w-12"
-                >
-                  <Send className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
-          </div>
-        </div>
+        <InputArea
+          disabled={disabled || connectionStatus !== 'connected'}
+          clearChat={clearChat}
+          setClearChat={setClearChat}
+          isSTTEnabled={isSTTEnabled}
+          isDenoiseEnabled={isDenoiseEnabled}
+          sendMessage={handleSendMessage}
+          onStop={handleStopChat}
+          isStreaming={status === 'streaming' || isProcessing}
+          isReady={status === 'ready'}
+        />
       </CardContent>
     </Card>
   )

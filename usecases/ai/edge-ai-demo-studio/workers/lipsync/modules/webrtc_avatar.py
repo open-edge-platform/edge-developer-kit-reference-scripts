@@ -6,6 +6,7 @@ import copy
 import numpy as np
 import asyncio
 import time
+import json
 
 from openai import OpenAI
 from threading import Event, Thread
@@ -19,11 +20,17 @@ from modules.texttospeech.openaicompatible_tts import OpenAICompatibleTTSModule
 
 
 class WebRTCAvatar(WebRTCStreamer):
-    def __init__(self, avatar_id, configs, tts_port, device):
+    def __init__(self, avatar_id, configs, tts_port, device, ws_manager=None):
         super().__init__()
 
         self.configs = configs
         self.history = []
+        self.ws_manager = ws_manager
+        self.session_id = avatar_id
+        self.is_processing = False
+        self.last_queue_check_time = 0
+        self.queue_check_interval = 0.5  # Check every 500ms
+        self.loop = None  # Event loop will be set when stream starts
 
         if self.configs.get("avatar_type", "wav2lip") == "wav2lip":
             self.avatar = Wav2lipAvatar(
@@ -88,6 +95,8 @@ class WebRTCAvatar(WebRTCStreamer):
         self.avatar.stop()
 
     def echo(self, text, voice, model, speed):
+        self._notify_status("processing_started")
+        self.is_processing = True
         self.tts.speak(text, {"voice": voice, "model": model, "speed": speed})
 
     def process_audio(self, audio_data, metadata=None):
@@ -112,6 +121,8 @@ class WebRTCAvatar(WebRTCStreamer):
             audio_chunks.append(chunk)
 
         # Queue the audio chunks for processing
+        self._notify_status("processing_started")
+        self.is_processing = True
         for chunk in audio_chunks:
             self.avatar.audio_input_queue.put((chunk, metadata))
 
@@ -126,6 +137,8 @@ class WebRTCAvatar(WebRTCStreamer):
                     block=True, timeout=1
                 )
             except:
+                # Check if queues are empty and we were processing
+                self._check_queue_status()
                 continue
 
             image = video_frame
@@ -145,7 +158,50 @@ class WebRTCAvatar(WebRTCStreamer):
                 new_frame.sample_rate = 16000
                 asyncio.run_coroutine_threadsafe(audio_track.queue.put(new_frame), loop)
 
+    def _notify_status(self, status: str):
+        """Send status update via WebSocket if manager is available."""
+        if self.ws_manager and self.session_id and self.loop:
+            try:
+                message = json.dumps(
+                    {
+                        "type": "lipsync_status",
+                        "status": status,
+                        "timestamp": time.time(),
+                    }
+                )
+                asyncio.run_coroutine_threadsafe(
+                    self.ws_manager.send_message(self.session_id, message), self.loop
+                )
+            except Exception as e:
+                getLogger(__name__).debug(f"Failed to send WebSocket status: {e}")
+
+    def _check_queue_status(self):
+        """Check if all queues are empty and notify if processing is complete."""
+        current_time = time.time()
+
+        # Only check at intervals to avoid excessive checks
+        if current_time - self.last_queue_check_time < self.queue_check_interval:
+            return
+
+        self.last_queue_check_time = current_time
+
+        if not self.is_processing:
+            return
+
+        # Check if all queues are empty
+        audio_empty = self.avatar.audio_input_queue.empty()
+        message_empty = self.avatar.message_queue.empty()
+        frame_empty = self.avatar.combined_frame_queue.empty()
+
+        if audio_empty and message_empty and frame_empty:
+            self.is_processing = False
+            self._notify_status("processing_complete")
+            getLogger(__name__).info(
+                f"Lipsync processing complete for session {self.session_id}"
+            )
+
     def stream(self, signal_event, loop=None, video_track=None, audio_track=None):
+        self.loop = loop  # Store the event loop for use in _notify_status
         Thread(target=self.tts.inference, args=(signal_event,)).start()
         Thread(target=self.avatar.start, args=(signal_event,)).start()
         Thread(
@@ -155,3 +211,4 @@ class WebRTCAvatar(WebRTCStreamer):
         while not signal_event.is_set():
             self.avatar.text_to_speech()
             self.sleep_track(video_track)
+            self._check_queue_status()

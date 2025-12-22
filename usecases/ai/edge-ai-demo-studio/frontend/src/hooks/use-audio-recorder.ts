@@ -22,6 +22,7 @@ export default function useAudioRecorder() {
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null)
   const animationFrameRef = useRef<number | null>(null)
   const hasSoundRef = useRef<boolean>(false)
+  const wasAutomaticallyStoppedRef = useRef<boolean>(false)
 
   // Function to calculate the RMS level from time domain data
   const calculateRMS = (data: Uint8Array) => {
@@ -41,12 +42,40 @@ export default function useAudioRecorder() {
     return Math.min(1.0, Math.max(0.01, scaledRMS))
   }
 
+  const stopRecording = useCallback(
+    (auto: boolean = false) => {
+      wasAutomaticallyStoppedRef.current = auto
+      const stopDurationCounter = () => {
+        if (durationCounter !== null) {
+          clearInterval(durationCounter)
+        }
+        setDurationSeconds(0)
+      }
+
+      if (mediaRecorder) {
+        stopDurationCounter()
+        setRecording(false)
+        mediaRecorder.stop()
+      }
+    },
+    [durationCounter, mediaRecorder],
+  )
+
+  const clearRecording = useCallback(() => {
+    setAudioBlob(null)
+    hasSoundRef.current = false
+  }, [])
+
   const analyseAudio = useCallback(() => {
     if (!analyser) return
 
     const bufferLength = analyser.frequencyBinCount
     const domainData = new Uint8Array(bufferLength)
     const timeDomainData = new Uint8Array(analyser.fftSize)
+
+    // Track for auto stop
+    let lastSoundTime = Date.now()
+    let hasStartedSpeaking = false
 
     // Clear any existing animation frame before starting a new one
     if (animationFrameRef.current !== null) {
@@ -75,10 +104,26 @@ export default function useAudioRecorder() {
           return [...prev, normalizeRMS(rmsLevel)]
         })
 
-        // Check if sound is detected
+        // Check if initial speech/noise has started
         const hasSound = domainData.some((value) => value > 0)
         if (hasSound) {
           hasSoundRef.current = true
+          if (!hasStartedSpeaking) {
+            hasStartedSpeaking = true
+          }
+
+          lastSoundTime = Date.now()
+        }
+
+        // Start silence detection only after initial speech/noise has been detected
+        // and stop recording after 2 seconds of silence
+        if (hasStartedSpeaking) {
+          if (Date.now() - lastSoundTime > 2000) {
+            if (mediaRecorder) {
+              stopRecording(true)
+              return
+            }
+          }
         }
 
         // Store the animation frame ID for cleanup
@@ -98,7 +143,7 @@ export default function useAudioRecorder() {
         animationFrameRef.current = null
       }
     }
-  }, [analyser, recording])
+  }, [analyser, mediaRecorder, recording, stopRecording])
 
   const initiateMediaRecoder = useCallback(
     (stream: MediaStream) => {
@@ -140,7 +185,7 @@ export default function useAudioRecorder() {
   )
 
   const startRecording = useCallback(() => {
-    hasSoundRef.current = false
+    setAudioBlob(null)
     const startDurationCounter = () => {
       setDurationCounter(
         setInterval(() => {
@@ -162,24 +207,6 @@ export default function useAudioRecorder() {
 
     setVisualizerData(Array(VISUALIZER_BUFFER_LENGTH).fill(0))
   }, [mediaRecorder])
-
-  const stopRecording = useCallback(() => {
-    const stopDurationCounter = () => {
-      if (durationCounter !== null) {
-        clearInterval(durationCounter)
-      }
-      setDurationSeconds(0)
-    }
-
-    if (mediaRecorder) {
-      stopDurationCounter()
-      mediaRecorder.stop()
-    }
-  }, [durationCounter, mediaRecorder])
-
-  const clearRecording = useCallback(() => {
-    setAudioBlob(null)
-  }, [])
 
   useEffect(() => {
     async function loadRecorder(): Promise<void> {
@@ -240,5 +267,7 @@ export default function useAudioRecorder() {
     durationSeconds,
     isDeviceFound,
     audioBlob,
+    hasSoundRef,
+    wasAutomaticallyStoppedRef,
   }
 }

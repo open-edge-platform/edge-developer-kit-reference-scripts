@@ -281,7 +281,7 @@ export default function SpeechToTextDemo({ disabled }: SpeechToTextDemoProps) {
                   <div className="space-y-2">
                     <Button
                       variant="destructive"
-                      onClick={stopRecording}
+                      onClick={() => stopRecording()}
                       className="w-full"
                     >
                       <MicOff className="mr-2 h-4 w-4" />

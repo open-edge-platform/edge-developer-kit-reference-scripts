@@ -183,13 +183,21 @@ class SentenceHandler {
     // const wordCount = countWords(sentence)
     // console.log(`Sentence (${wordCount} words):`, sentence)
 
+    // Remove special characters and emojis
+    const processedSentence = sentence
+      .replace(
+        /[*#]|[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F700}-\u{1F77F}\u{1F780}-\u{1F7FF}\u{1F800}-\u{1F8FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu,
+        '',
+      )
+      .trim()
+
     fetch(`http://localhost:${LIPSYNC_PORT}/v1/lipsync/chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        text: sentence,
+        text: processedSentence,
         session_id: sessionId,
         chat_type: 'echo',
         voice: voice,

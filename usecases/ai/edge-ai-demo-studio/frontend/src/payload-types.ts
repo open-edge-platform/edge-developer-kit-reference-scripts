@@ -88,6 +88,7 @@ export interface Config {
   db: {
     defaultIDType: number;
   };
+  fallbackLocale: null;
   globals: {};
   globalsSelect: {};
   locale: null;
@@ -148,7 +149,14 @@ export interface User {
 export interface Workload {
   id: number;
   name: string;
-  type: 'speech-to-text' | 'embedding' | 'text-generation' | 'text-to-speech' | 'lipsync' | 'image-generation';
+  type:
+    | 'wake-word-detection'
+    | 'speech-to-text'
+    | 'embedding'
+    | 'text-generation'
+    | 'text-to-speech'
+    | 'lipsync'
+    | 'image-generation';
   model: string;
   port: number;
   device: string;
@@ -165,6 +173,10 @@ export interface Workload {
      * Language Code for TTS
      */
     languageCode?: string;
+    /**
+     * VAD Threshold for Wake Word Detection
+     */
+    vadThreshold?: number;
     [k: string]: unknown;
   };
   status?: ('prepare' | 'active' | 'inactive' | 'restart' | 'error') | null;

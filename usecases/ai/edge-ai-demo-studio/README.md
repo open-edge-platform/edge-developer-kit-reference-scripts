@@ -19,6 +19,7 @@ Edge AI Demo Studio is a modern toolkit for deploying, managing, and serving AI 
   - Lipsync
   - Image Generation
   - MCP Manager
+  - Wake Word Detection
 - **Samples:** Samples use cases that implements the ai services
   - Digital Avatar
   - RAG Chat

@@ -20,9 +20,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from pydantic import BaseModel
 from typing import Optional
-import numpy as np
 import librosa
 import io
+import uvicorn
 
 from modules.base.logger import getLogger
 from modules.webrtc_avatar import WebRTCAvatar
@@ -388,7 +388,11 @@ def setup_routes(
                 )
 
         avatar_streamer = WebRTCAvatar(
-            session_id, configs=configs, device=args.device, tts_port=args.tts_port
+            session_id,
+            configs=configs,
+            device=args.device,
+            tts_port=args.tts_port,
+            ws_manager=manager,
         )
         audio, video = avatar_streamer.get_av_tracks()
         _ = pc.addTrack(audio)
@@ -419,8 +423,6 @@ def setup_routes(
 
 def run_server(app: FastAPI, port: int):
     """Run the FastAPI server."""
-    import uvicorn
-
     uvicorn.run(app, host="0.0.0.0", port=port)
 
 

@@ -36,6 +36,8 @@ export default function DigitalAvatarPage() {
 
   const [sessionId, setSessionId] = useState('')
   const [connectionStatus, setConnectionStatus] = useState('disconnected')
+  const [useSTT, setUseSTT] = useState(false)
+  const [useDenoise, setUseDenoise] = useState(true)
   const [useEmbedding, setUseEmbedding] = useState(false)
   const [selectedKnowledgeBase, setSelectedKnowledgeBase] =
     useState<KnowledgeBase | null>(null)
@@ -45,20 +47,25 @@ export default function DigitalAvatarPage() {
   const prerequisiteServices = useMemo(() => {
     const ps = ['text-generation', 'text-to-speech', 'lipsync']
 
+    if (useSTT) ps.push('speech-to-text')
     if (useEmbedding) ps.push('embedding')
 
     return ps
-  }, [useEmbedding])
+  }, [useEmbedding, useSTT])
 
   const handleSessionIdChange = (newSessionId: string) => {
     setSessionId(newSessionId)
   }
 
   const handleSettingsUpdate = (settings: {
+    useSTT: boolean
+    useDenoise: boolean
     useEmbedding: boolean
     selectedKnowledgeBase: KnowledgeBase | null
     useMcpTools: boolean
   }) => {
+    setUseSTT(settings.useSTT)
+    setUseDenoise(settings.useDenoise)
     setUseEmbedding(settings.useEmbedding)
     setSelectedKnowledgeBase(settings.selectedKnowledgeBase)
     setUseMcpTools(settings.useMcpTools)
@@ -217,6 +224,8 @@ export default function DigitalAvatarPage() {
                 inactivePrerequisites.length > 0 ||
                 (preparingPrerequisites && preparingPrerequisites.length > 0)
               }
+              isSTTEnabled={useSTT}
+              isDenoiseEnabled={useDenoise}
               sessionId={sessionId}
               connectionStatus={connectionStatus}
               knowledgeBaseId={selectedKnowledgeBase?.id || undefined}
@@ -232,6 +241,8 @@ export default function DigitalAvatarPage() {
         <DigitalAvatarSettings
           isOpen={isSettingsOpen}
           onClose={() => setIsSettingsOpen(false)}
+          useSTT={useSTT}
+          useDenoise={useDenoise}
           useEmbedding={useEmbedding}
           selectedKnowledgeBase={selectedKnowledgeBase}
           useMcpTools={useMcpTools}

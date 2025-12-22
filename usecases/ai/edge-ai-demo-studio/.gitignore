@@ -20,6 +20,7 @@ __pycache__
 /workers/lipsync/build
 
 /workers/embedding/data
+/workers/wake-word-detection/data
 
 /models
 

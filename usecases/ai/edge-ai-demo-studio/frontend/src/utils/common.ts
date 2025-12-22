@@ -7,6 +7,7 @@ import { LIPSYNC_WORKLOAD } from '@/lib/workloads/lipsync'
 import { SPEECH_TO_TEXT_WORKLOAD } from '@/lib/workloads/speech-to-text'
 import { TEXT_GENERATION_WORKLOAD } from '@/lib/workloads/text-generation'
 import { TEXT_TO_SPEECH_WORKLOAD } from '@/lib/workloads/text-to-speech'
+import { WAKE_WORD_DETECTION_WORKLOAD } from '@/lib/workloads/wake-word-detection'
 import { Workload } from '@/payload-types'
 
 export const createResponse = <T>(
@@ -43,6 +44,8 @@ export function getDefaultWorkload(workloadType: Workload['type']) {
       return SPEECH_TO_TEXT_WORKLOAD
     case 'image-generation':
       return IMAGE_GENERATION_WORKLOAD
+    case 'wake-word-detection':
+      return WAKE_WORD_DETECTION_WORKLOAD
     default:
       return null
   }

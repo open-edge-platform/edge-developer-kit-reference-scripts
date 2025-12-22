@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { FetchAPI } from '@/lib/api'
+import { LipsyncStatus, LipsyncStatusTracker } from '@/lib/lipsync-status'
 import { useMutation } from '@tanstack/react-query'
+import { useEffect, useRef, useState } from 'react'
 
 const LIPSYNC_API = new FetchAPI(`/api/lipsync`, 'v1')
 
@@ -97,4 +99,30 @@ export const useStopAvatar = () => {
       return result
     },
   })
+}
+
+export function useLipsyncStatus(sessionId: string | undefined) {
+  const [status, setStatus] = useState<LipsyncStatus>('idle')
+  const trackerRef = useRef<LipsyncStatusTracker | null>(null)
+
+  useEffect(() => {
+    if (!sessionId) return
+
+    const tracker = new LipsyncStatusTracker(sessionId)
+    tracker.connectWebSocket((newStatus) => {
+      setStatus(newStatus)
+    })
+
+    trackerRef.current = tracker
+
+    return () => {
+      tracker.disconnect()
+    }
+  }, [sessionId])
+
+  return {
+    status,
+    setStatus,
+    isProcessing: status === 'processing',
+  }
 }
