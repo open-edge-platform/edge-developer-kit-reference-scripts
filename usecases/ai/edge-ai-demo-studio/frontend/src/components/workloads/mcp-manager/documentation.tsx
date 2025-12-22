@@ -11,7 +11,7 @@ export default function McpManagerDocumentation({ port }: { port: number }) {
       code: `import requests
 
 response = requests.post(
-    "http://localhost:8080/api/mcp/completions",
+    "http://localhost:${port}/api/mcp/completions",
     json={
         "prompt": "What is the weather like in New York?",
         "stream": False,
@@ -48,7 +48,7 @@ console.log(result.text)`,
       code: `import requests
 
 response = requests.post(
-    "http://localhost:8080/api/mcp/chat/completions",
+    "http://localhost:${port}/api/mcp/chat/completions",
     json={
         "messages": [
             {"role": "system", "content": "You are a helpful assistant."},
@@ -91,7 +91,7 @@ console.log(result.text)`,
       code: `import requests
 
 # Get available MCP servers and tools
-servers_response = requests.get("http://localhost:8080/api/mcp/clients")
+servers_response = requests.get("http://localhost:${port}/api/mcp/clients")
 servers = servers_response.json()
 
 print(f"Total tools available: {servers['totalTools']}")
@@ -125,7 +125,7 @@ servers.servers.forEach((server) => {
 
 # Use specific MCP tools in completion
 response = requests.post(
-    "http://localhost:8080/api/mcp/completions",
+    "http://localhost:${port}/api/mcp/completions",
     json={
         "prompt": "What is the weather in New York?",
         "stream": False,

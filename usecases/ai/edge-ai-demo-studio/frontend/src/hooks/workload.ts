@@ -24,6 +24,9 @@ const typeHandlers: Record<
   string,
   (doc: Workload) => { params: string } | undefined
 > = {
+  'wake-word-detection': (doc) => ({
+    params: `--model ${doc.model} --vad-threshold ${doc.metadata?.vadThreshold} --port ${doc.port}`,
+  }),
   'speech-to-text': (doc) => ({
     params: `--stt-model-id ${doc.model} --stt-device ${doc.device} --denoise-model-id ${doc.metadata?.denoise_model} --denoise-device ${doc.metadata?.denoise_device} --port ${doc.port}`,
   }),

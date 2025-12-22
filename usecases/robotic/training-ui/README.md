@@ -2,7 +2,9 @@
 
 A lightweight UI and server for robotic imitation learning—covering data capture, conversion, and inference—for a robotic arm demo integrated with Intel® Robotics AI Suite components. The project provides a Python server for data handling and a web UI for interaction.
 
-Robotic imitation learning demo showing a web dashboard controlling a robotic arm during a training session in a lab with UI panels displaying camera view controls, movement controls, and status indicators in a focused technical setting
+Robotic imitation learning demo showing a web dashboard controlling a robotic arm during a training session in a lab with UI panels displaying camera view controls, movement controls, and status indicators in a focused technical setting. 
+
+![Robot Imitation Demo](./docs/demo.gif)
 
 ## Features
 
@@ -16,7 +18,7 @@ Robotic imitation learning demo showing a web dashboard controlling a robotic ar
 ## Architecture Diagram
 
 ![User Flow Diagram](./docs/userflow.jpg)
-![Archictecture Diagram](./docs/archdiagram.jpg)
+![Architecture Diagram](./docs/archdiagram.jpg)
 
 ## Directory Structure
 

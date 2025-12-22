@@ -19,7 +19,7 @@ export interface EndpointProps {
   path: string
   headers?: string
   body?: string
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE'
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'
   parameters?: Parameter[]
   exampleResponse: string
   queryParams?: string[]

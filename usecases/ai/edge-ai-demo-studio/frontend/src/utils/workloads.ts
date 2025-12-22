@@ -11,6 +11,7 @@ import {
   ToolCase,
   Image,
   MessageCircle,
+  MessageCircleWarning,
 } from 'lucide-react'
 
 export const samples = [
@@ -31,6 +32,14 @@ export const samples = [
 ]
 
 export const workloads = [
+  {
+    title: 'Wake Word Detection',
+    description: 'Wake word detection for voice-activated applications',
+    icon: MessageCircleWarning,
+    type: 'wake-word-detection',
+    href: '/wake-word-detection',
+    useCases: ['Voice assistants', 'Smart devices', 'Hands-free control'],
+  },
   {
     title: 'Speech-to-Text',
     description: 'Convert spoken words into accurate text transcriptions',

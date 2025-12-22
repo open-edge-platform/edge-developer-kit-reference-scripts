@@ -20,6 +20,7 @@ export const Workloads: CollectionConfig = {
       name: 'type',
       type: 'select',
       options: [
+        { label: 'Wake Word Detection', value: 'wake-word-detection' },
         { label: 'Speech-To-Text', value: 'speech-to-text' },
         { label: 'Embedding', value: 'embedding' },
         { label: 'Text Generation', value: 'text-generation' },
@@ -75,6 +76,11 @@ export const Workloads: CollectionConfig = {
             languageCode: {
               type: 'string',
               description: 'Language Code for TTS',
+            },
+            vadThreshold: {
+              type: 'number',
+              default: 0.2,
+              description: 'VAD Threshold for Wake Word Detection',
             },
           },
         },

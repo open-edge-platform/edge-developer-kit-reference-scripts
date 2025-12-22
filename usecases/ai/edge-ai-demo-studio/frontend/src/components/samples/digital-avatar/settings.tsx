@@ -31,10 +31,14 @@ import { useMcpServerInfo } from '@/hooks/use-mcp-clients'
 interface DigitalAvatarSettingsProps {
   isOpen: boolean
   onClose: () => void
+  useSTT: boolean
+  useDenoise: boolean
   useEmbedding: boolean
   selectedKnowledgeBase: KnowledgeBase | null
   useMcpTools: boolean
   onSettingsUpdate: (settings: {
+    useDenoise: boolean
+    useSTT: boolean
     useEmbedding: boolean
     selectedKnowledgeBase: KnowledgeBase | null
     useMcpTools: boolean
@@ -44,12 +48,17 @@ interface DigitalAvatarSettingsProps {
 export function DigitalAvatarSettings({
   isOpen,
   onClose,
+  useSTT,
+  useDenoise,
   useEmbedding,
   selectedKnowledgeBase,
   useMcpTools,
   onSettingsUpdate,
 }: DigitalAvatarSettingsProps) {
   const { data: embeddingService } = useGetWorkloadByType('embedding')
+  const { data: sttService } = useGetWorkloadByType('speech-to-text')
+  const [localUseSTT, setLocalUseSTT] = useState(useSTT)
+  const [localUseDenoise, setLocalUseDenoise] = useState(useDenoise)
   const [localUseEmbedding, setLocalUseEmbedding] = useState(useEmbedding)
   const [localSelectedKnowledgeBase, setLocalSelectedKnowledgeBase] =
     useState<KnowledgeBase | null>(selectedKnowledgeBase)
@@ -69,13 +78,24 @@ export function DigitalAvatarSettings({
   } = useMcpServerInfo()
 
   useEffect(() => {
+    setLocalUseSTT(useSTT)
+    setLocalUseDenoise(useDenoise)
     setLocalUseEmbedding(useEmbedding)
     setLocalSelectedKnowledgeBase(selectedKnowledgeBase)
     setLocalUseMcpToolsTools(useMcpTools)
-  }, [useEmbedding, selectedKnowledgeBase, useMcpTools, isOpen])
+  }, [
+    useSTT,
+    useDenoise,
+    useEmbedding,
+    selectedKnowledgeBase,
+    useMcpTools,
+    isOpen,
+  ])
 
   const handleApplySettings = () => {
     onSettingsUpdate({
+      useSTT: localUseSTT,
+      useDenoise: localUseDenoise,
       useEmbedding: localUseEmbedding,
       selectedKnowledgeBase: localSelectedKnowledgeBase,
       useMcpTools: localUseMcpTools,
@@ -100,6 +120,14 @@ export function DigitalAvatarSettings({
     }
   }
 
+  const handleSTTToggle = (checked: boolean) => {
+    setLocalUseSTT(checked)
+  }
+
+  const handleDenoiseToggle = (checked: boolean) => {
+    setLocalUseDenoise(checked)
+  }
+
   const handleEmbeddingToggle = (checked: boolean) => {
     setLocalUseEmbedding(checked)
     if (!checked) {
@@ -115,6 +143,7 @@ export function DigitalAvatarSettings({
   }
 
   const isEmbeddingServiceActive = embeddingService?.status === 'active'
+  const isSTTServiceActive = sttService?.status === 'active'
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -131,6 +160,75 @@ export function DigitalAvatarSettings({
         </DialogHeader>
 
         <div className="space-y-6">
+          <div className="space-y-2">
+            {/* STT Section */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <Label className="text-sm font-medium">
+                    Enable Speech-to-Text
+                  </Label>
+                  <p className="text-muted-foreground text-xs">
+                    Allow audio input to be transcribed for conversations
+                  </p>
+                </div>
+                <Switch
+                  checked={localUseSTT}
+                  onCheckedChange={handleSTTToggle}
+                  disabled={!isSTTServiceActive}
+                />
+              </div>
+
+              {!isSTTServiceActive && (
+                <Alert>
+                  <Info className="h-4 w-4" />
+                  <AlertDescription className="text-sm">
+                    The speech-to-text service is not active. Please start the
+                    speech-to-text service in the{' '}
+                    <Button
+                      variant="link"
+                      className="h-auto p-0 text-sm"
+                      onClick={() => window.open('/speech-to-text', '_blank')}
+                    >
+                      Speech-to-Text page
+                      <ExternalLink className="ml-1 h-3 w-3" />
+                    </Button>{' '}
+                    before enabling speech-to-text functionality.
+                  </AlertDescription>
+                </Alert>
+              )}
+            </div>
+
+            {/* Denoise Section (under STT) */}
+            {localUseSTT && isSTTServiceActive && (
+              <div className="space-y-4 rounded-lg rounded-md border bg-slate-50 p-4 px-4 dark:bg-slate-900">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <Label className="text-sm font-medium">
+                      Enable Denoise
+                    </Label>
+                    <p className="text-muted-foreground text-xs">
+                      Improve audio quality by reducing background noise
+                    </p>
+                  </div>
+                  <Switch
+                    checked={localUseDenoise}
+                    onCheckedChange={handleDenoiseToggle}
+                    disabled={!isSTTServiceActive}
+                  />
+                </div>
+
+                <Alert>
+                  <Info className="h-4 w-4" />
+                  <AlertDescription className="text-sm">
+                    On first use, denoising may take a few extra seconds as the
+                    model is downloaded and loaded into memory.
+                  </AlertDescription>
+                </Alert>
+              </div>
+            )}
+          </div>
+
           <div className="space-y-2">
             {/* Embedding Section */}
             <div className="space-y-4">

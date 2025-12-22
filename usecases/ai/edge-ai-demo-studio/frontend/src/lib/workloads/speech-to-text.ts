@@ -11,6 +11,11 @@ export const SPEECH_TO_TEXT_DESCRIPTION =
 
 export const SPEECH_TO_TEXT_MODELS: Model[] = [
   {
+    name: 'OpenVINO/whisper-base-int8-ov',
+    value: 'OpenVINO/whisper-base-int8-ov',
+    type: 'predefined',
+  },
+  {
     name: 'OpenVINO/whisper-tiny-int8-ov',
     value: 'OpenVINO/whisper-tiny-int8-ov',
     type: 'predefined',
