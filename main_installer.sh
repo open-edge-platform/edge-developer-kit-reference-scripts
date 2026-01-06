@@ -4,14 +4,14 @@
 # Copyright (C) 2025 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
-# NPU Driver Version Information
-# https://github.com/intel/linux-npu-driver/releases/tag/v1.19.0
-export NPU_VERSION="v1.19.0"
-export NPU_BUILD_ID="20250707-16111289554"
-export NPU_COMMIT_ID="0deed959591f2c3868781bcd5210c67861953f08"
-export LEVEL_ZERO_VERSION="v1.22.4"
+#
+# ----------------------------------------------------------------------------
+# Global reboot/resume state management
+# ----------------------------------------------------------------------------
+# (state management removed)
 
-set -e
+# Fail fast, treat unset variables as errors, and catch pipeline failures
+set -euo pipefail
 
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -20,6 +20,19 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 S_ERROR="[ERROR]"
 S_VALID="[✓]"
 S_WARNING="[!]"
+
+# Error handler: reports failing command and line number
+error_trap() {
+    local exit_code=$?
+    local cmd="${BASH_COMMAND:-unknown}"
+    local line_no=${BASH_LINENO[0]:-?}
+    echo "${S_ERROR} Script exited with code ${exit_code} at line ${line_no} (command: ${cmd})"
+    echo "See log for details: ${LOG_FILE:-/var/log/intel-platform-installer.log}"
+    exit ${exit_code}
+}
+
+trap 'error_trap' ERR
+trap 'echo "Script interrupted"; exit 130' INT TERM
 
 # Default values
 export INSTALL_CAMERA=false
@@ -71,8 +84,6 @@ usage() {
     echo ""
     echo "Usage: $0"
     echo ""
-    echo "Supported OS: Ubuntu 24.04 LTS with kernel 6.14.x (HWE) only"
-    echo ""
 }
 
 # Check if running with appropriate privileges
@@ -107,7 +118,10 @@ download_scripts() {
         if curl -fsSL "$url" -o "$path"; then
             echo "Downloaded: $script"
         else
-            echo "Failed to download: $script"
+        if ! apt-get install -y curl; then
+            echo "$S_ERROR Failed to install 'curl' needed to download scripts"
+            return 1
+        fi
             return 1
         fi
     done
@@ -153,31 +167,84 @@ verify_ubuntu_24() {
         exit 1
     fi
 
-   # Check kernel version (Ubuntu 24.04 LTS - require 6.14.x)
-   local kernel_major
-   local kernel_minor
-   kernel_major=$(uname -r | cut -d'.' -f1)
-   kernel_minor=$(uname -r | cut -d'.' -f2)
+   # Kernel policy: Accept 6.14.x (standard) OR 6.17.x (OEM) when PTL_PLATFORM=true
+   local kernel_major kernel_minor running_kernel
+   running_kernel=$(uname -r)
+   kernel_major=$(echo "$running_kernel" | cut -d'.' -f1)
+   kernel_minor=$(echo "$running_kernel" | cut -d'.' -f2)
 
-   # Check for supported kernel versions (6.14.x)
-   if ! { [ "$kernel_major" = "6" ] && { [ "$kernel_minor" = "14" ] ; }; }; then
-      echo "$S_WARNING Unsupported kernel version: $(uname -r)"
-      echo "This installer requires Ubuntu 24.04 LTS with kernel 6.14.x"
-      
-      # Check HWE support status if command is available
-      if command -v hwe-support-status >/dev/null 2>&1; then
-         echo "Checking HWE support status..."
-         hwe-support-status --verbose
-      fi
-      
-      # Install HWE kernel regardless of hwe-support-status result
-      echo "Installing HWE kernel..."
-      apt update && apt install -y linux-generic-hwe-24.04
-      echo "$S_VALID HWE kernel installed. Please reboot and run this installer again."
-      exit 0
+   if { [ "$kernel_major" = "6" ] && [ "$kernel_minor" = "14" ]; }; then
+       echo "$S_VALID Ubuntu 24.04 LTS with supported HWE kernel $running_kernel detected"
+   elif { [ "${PTL_PLATFORM:-false}" = true ] && [ "$kernel_major" = "6" ] && [ "$kernel_minor" = "17" ]; }; then
+       echo "$S_VALID PTL platform OEM kernel $running_kernel accepted"
+   else
+       echo "$S_WARNING Unsupported kernel version: $running_kernel"
+       if [ "${PTL_PLATFORM:-false}" = true ]; then
+           echo "PTL platform detected; proceeding to install OEM 6.17 kernel via prerequisites phase."
+           # Do not exit; apply_ptl_platform_prereqs will manage kernel upgrade & reboot gate.
+       else
+           echo "This installer requires Ubuntu 24.04 LTS with kernel 6.14.x"
+           if command -v hwe-support-status >/dev/null 2>&1; then
+              echo "Checking HWE support status..."
+              hwe-support-status --verbose || true
+           fi
+           echo "Installing HWE kernel..."
+           apt update && apt install -y linux-generic-hwe-24.04
+           echo "$S_VALID HWE kernel installed. Please reboot and run this installer again."
+           exit 0
+       fi
    fi
+}
 
-   echo "$S_VALID Ubuntu 24.04 LTS with supported kernel $(uname -r) detected"
+# Apply PTL platform prerequisites before standard GPU driver installation
+apply_ptl_platform_prereqs() {
+    echo "# Applying PTL platform prerequisites..."
+
+    # 1. Install OEM 6.17 kernel (24.04d stream)
+    echo "Checking available OEM kernel packages (linux-image-oem-24.04d / linux-headers-oem-24.04d)"
+    apt-get update
+    if ! dpkg -l | grep -q 'linux-image-oem-24.04d'; then
+        echo "Installing OEM 6.17 kernel packages..."
+        apt-get install -y linux-image-oem-24.04d linux-headers-oem-24.04d || {
+            echo "$S_ERROR Failed to install OEM kernel packages"; exit 1; }
+    else
+        echo "$S_VALID OEM kernel already installed"
+    fi
+
+    # 2. Add Kisak Mesa PPA for updated Mesa stack
+    if ! grep -R "kisak-mesa" /etc/apt/sources.list /etc/apt/sources.list.d 2>/dev/null | grep -q kisak; then
+        echo "Adding Kisak Mesa PPA..."
+        apt-get install -y software-properties-common
+        add-apt-repository -y ppa:kisak/kisak-mesa || { echo "$S_ERROR Failed to add Kisak Mesa PPA"; exit 1; }
+    else
+        echo "$S_VALID Kisak Mesa PPA already configured"
+    fi
+
+    # 3. Update & upgrade packages
+    echo "Updating and upgrading packages (this may take a while)..."
+    apt-get update
+    DEBIAN_FRONTEND=noninteractive apt-get -y upgrade || echo "$S_WARNING Some packages failed to upgrade"
+
+    # 4. Reinstall Xorg core (requested workaround)
+    echo "Reinstalling xserver-xorg-core..."
+    apt-get install -y --reinstall xserver-xorg-core || echo "$S_WARNING Failed to reinstall xserver-xorg-core"
+
+    # 5. Configure any pending dpkg states & fix broken packages
+    dpkg --configure -a || echo "$S_WARNING dpkg configure reported issues"
+    apt-get -y --fix-broken install || echo "$S_WARNING fix-broken reported issues"
+
+    # Reboot gate: if running kernel not yet 6.17 after install, instruct reboot & exit early
+    local running_kernel new_kernel_info
+    running_kernel=$(uname -r)
+    new_kernel_info=$(dpkg -l | grep '^ii' | grep 'linux-image-oem-24.04d' | awk '{print $2"="$3}' || true)
+    if ! echo "$running_kernel" | grep -q '^6\.17'; then
+        echo "$S_WARNING Running kernel ($running_kernel) differs from installed OEM 6.17 kernel ($new_kernel_info)."
+        echo "Please reboot now, then re-run this installer to continue driver installations."
+        echo "$S_VALID PTL stage 1 complete (kernel + mesa). Exiting early."
+        exit 0
+    else
+        echo "$S_VALID PTL platform prerequisites applied; OEM kernel already active ($running_kernel)."
+    fi
 }
 
 # Install NPU drivers (Core Ultra only)
@@ -187,7 +254,7 @@ install_npu_drivers() {
         echo "$S_ERROR NPU drivers are only supported on Core Ultra platforms"
         echo "Current platform: $CPU_MODEL"
         echo "Skipping NPU driver installation"
-        return 1
+            return 0
     fi
     
     echo "Installing NPU drivers for Core Ultra platform..."
@@ -373,6 +440,7 @@ verify_opencl_setup() {
 PLATFORM_FAMILY=""
 CPU_MODEL=""
 IS_COREULTRA=false
+PTL_PLATFORM=false
 
 # Detect platform information
 detect_platform() {
@@ -406,11 +474,32 @@ detect_platform() {
     
     echo "  CPU Model: $CPU_MODEL"
     echo "  Platform Family: $PLATFORM_FAMILY"
+
+    # PTL platform detection:
+    # Matches Intel Core Ultra 3xx U/P/H SKUs (e.g. 325U, 355H, 385P, 358H)
+    # Regex explanation:
+    #   Intel(R) Core(TM) Ultra  ...  space + '3' + two digits + one of U/P/H
+    local ptl_regex='Intel\(R\) Core\(TM\) Ultra .* 3[0-9]{2}[UPH]'
+    PTL_PLATFORM=false
+    if echo "$CPU_MODEL" | grep -Eq "$ptl_regex"; then
+        PTL_PLATFORM=true
+        echo "$S_VALID PTL platform detected"
+    else
+        if [ "$IS_COREULTRA" = true ]; then
+            echo "$S_WARNING Core Ultra platform (non-PTL SKU)"
+        fi
+    fi
+    export PTL_PLATFORM
 }
 
 # Check if Core Ultra platform
 is_coreultra() {
     [ "$IS_COREULTRA" = true ]
+}
+
+# Check if PTL platform
+is_ptl_platform() {
+    [ "$PTL_PLATFORM" = true ]
 }
 
 install_openvino(){
@@ -486,23 +575,32 @@ install_build_essentials() {
 main() {
     check_privileges
     setup_logging "$@"
+    # (resume check removed)
     
     echo "Intel Platform Installer"
     echo "========================"
     echo ""
     download_scripts
-    # 1. Verify Ubuntu 24.04 LTS with Canonical kernel
-    verify_ubuntu_24
-    echo ""
-    
-    # 2. Install essential development tools
-    install_build_essentials
-    echo ""
-    
-    # 3. Detect platform
+    # 1. Detect platform first (needed for kernel policy in verify step)
     echo "# Detecting platform..."
     detect_platform
     echo ""
+
+    # 2. Verify Ubuntu version & kernel (allows 6.17 if PTL)
+    verify_ubuntu_24
+    echo ""
+
+    # 3. Install essential development tools
+    install_build_essentials
+    echo ""
+
+    # 4. Apply PTL prerequisites only if PTL platform and not already on 6.17
+    if [ "${PTL_PLATFORM}" = true ] && ! uname -r | grep -q '^6\.17'; then
+        echo "# PTL platform prerequisites detected (kernel upgrade path) ..."
+        apply_ptl_platform_prereqs
+        # Function may exit early; if it doesn't, continue with flow
+        echo ""
+    fi
     
     # 5. Platform Installation Flow
     echo "# Platform Installation Flow..."

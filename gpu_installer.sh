@@ -136,6 +136,20 @@ verify_kernel() {
    fi
 }
 
+# PTL platform detection for Core Ultra 3xx U/P/H SKUs
+detect_ptl_platform() {
+   local cpu_model
+   cpu_model=$(grep -m1 "model name" /proc/cpuinfo | cut -d: -f2 | sed 's/^[ \t]*//' || true)
+   local ptl_regex='Intel\(R\) Core\(TM\) Ultra .* 3[0-9]{2}[UPH]'
+   if echo "$cpu_model" | grep -Eq "$ptl_regex"; then
+      PTL_PLATFORM=true
+      log_success "PTL platform detected"
+   else
+      : "${PTL_PLATFORM:=false}"
+   fi
+   export PTL_PLATFORM
+}
+
 # GPU detection functions
 detect_gpu() {
    echo -e "\n# Detecting GPU devices"
@@ -419,6 +433,30 @@ apply_arc_b60_fix() {
    fi
 }
 
+# Temporary fix for PTL platform (Intel Core Ultra X7 358H + GPU 8086:b08f)
+apply_xe_ptl_fix() {
+   # Apply fix only when regex-based PTL detection is true and target GPU is present
+   local gpu_match
+   gpu_match=$(lspci -nn | grep -Ei 'VGA|DISPLAY' | grep '8086:b08f' || true)
+
+   if [ "${PTL_PLATFORM:-false}" = true ] && [ -n "$gpu_match" ]; then
+      log_info "Detected PTL platform with GPU 8086:b08f. Applying kernel command line fix for xe/i915 force_probe."
+      local grub_file="/etc/default/grub"
+      local param="xe.force_probe=b08f i915.force_probe=!b08f"
+      if grep -q "GRUB_CMDLINE_LINUX" "$grub_file"; then
+         if ! grep -q "xe.force_probe=b08f" "$grub_file"; then
+            sed -i "/^GRUB_CMDLINE_LINUX=/ s/\"$/ $param\"/" "$grub_file"
+            log_success "Added '$param' to GRUB_CMDLINE_LINUX. Updating GRUB. Please reboot after installation."
+            update-grub || log_info "update-grub failed; please run manually."
+         else
+            log_info "Kernel parameters for PTL platform already present."
+         fi
+      else
+         log_info "GRUB_CMDLINE_LINUX not found in $grub_file. Skipping PTL fix."
+      fi
+   fi
+}
+
 # Main function
 
 main() {
@@ -433,8 +471,12 @@ main() {
    verify_os
    verify_kernel
 
-   # Apply temporary fix for Arc B60 on Series 2 CPUs
+   # Detect PTL platform across Core Ultra 3xx U/P/H SKUs
+   detect_ptl_platform
+
+   # Apply temporary fixes
    apply_arc_b60_fix
+   apply_xe_ptl_fix
 
    install_gpu_drivers || echo "$S_ERROR install_gpu_drivers reported failure"
    if ! verify_drivers; then
@@ -450,5 +492,7 @@ main() {
    fi
 }
 
-# Execute main function
-main "$@"
+# Allow sourcing without auto-running main (e.g. from main_installer.sh special flow)
+if [[ "${GPU_INSTALLER_NO_MAIN:-0}" != "1" ]]; then
+   main "$@"
+fi

@@ -5,24 +5,72 @@
 # Copyright (C) 2025 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 #
-# Features:
-# - Installs specific NPU driver versions (manually configured)
-# - Downloads packages from GitHub releases
-# - Supports Ubuntu 24.04 LTS only
-# - Requires Ubuntu 24.04 for dependency compatibility
-#
 # Version Management:
-# - Update the global version variables below when new releases are available
-# - Check for latest releases at: https://github.com/intel/linux-npu-driver/releases
-# - Level Zero compatibility matrix: https://github.com/intel/linux-npu-driver/releases/tag/v<version>
+# - Automatically resolves the latest release from GitHub
+# - Override is supported ONLY via environment variables passed to this script
+#   * NPU_ASSET_URL: full browser download URL to the desired tar.gz
+#   * OR NPU_VERSION + NPU_BUILD_ID: constructs asset URL for Ubuntu 24.04
+# - Latest releases: https://github.com/intel/linux-npu-driver/releases
 #
 # Usage:
 #   sudo ./npu_installer.sh
 
-# Global version variables - Update these when new releases are available
-# Source: https://github.com/intel/linux-npu-driver/releases/latest
-NPU_VERSION="1.23.0"
-NPU_BUILD_ID="20250827-17270089246"
+# Version resolution variables (auto or overridden)
+# If unset, the script will query GitHub for the latest release and the
+# Ubuntu 24.04 tarball asset URL.
+NPU_VERSION="${NPU_VERSION:-}"
+NPU_BUILD_ID="${NPU_BUILD_ID:-}"
+NPU_ASSET_URL="${NPU_ASSET_URL:-}"
+
+# Resolve latest release and asset URL from GitHub (no jq required)
+resolve_latest_release() {
+   local json url tag asset_name
+   json=$(curl -fsSL https://api.github.com/repos/intel/linux-npu-driver/releases/latest 2>/dev/null || true)
+   if [ -n "$json" ]; then
+      tag=$(echo "$json" | grep -m1 '"tag_name"' | sed -E 's/.*"v?([^"]+)".*/\1/' )
+      url=$(echo "$json" | grep '"browser_download_url"' | grep -E 'tar\.gz' | grep -E 'ubuntu2404|ubuntu24\.04|ubuntu24' | head -1 | sed -E 's/.*"(https:[^"]+)".*/\1/')
+      if [ -z "$url" ]; then
+         # Fallback to any tar.gz if ubuntu-specific not found
+         url=$(echo "$json" | grep '"browser_download_url"' | grep -E 'tar\.gz' | head -1 | sed -E 's/.*"(https:[^"]+)".*/\1/')
+      fi
+      if [ -n "$url" ]; then
+         NPU_ASSET_URL="$url"
+         NPU_VERSION="$tag"
+         asset_name=$(basename "$url")
+         # Expected: linux-npu-driver-v<version>.<build>-<ubuntu>.tar.gz
+         NPU_BUILD_ID=$(echo "$asset_name" | sed -E 's/^linux-npu-driver-v[^.]+\.([^-]+)-.*/\1/' )
+         return 0
+      fi
+   fi
+   return 1
+}
+
+# Derive/resolve versions honoring overrides
+resolve_versions() {
+   # If user provided a direct asset URL, prefer it
+   if [ -n "${NPU_ASSET_URL:-}" ]; then
+      local asset_name
+      asset_name=$(basename "$NPU_ASSET_URL")
+      NPU_VERSION=${NPU_VERSION:-$(echo "$asset_name" | sed -E 's/^linux-npu-driver-v([^\.]+)\..*/\1/')}
+      NPU_BUILD_ID=${NPU_BUILD_ID:-$(echo "$asset_name" | sed -E 's/^linux-npu-driver-v[^.]+\.([^-]+)-.*/\1/')}
+      return 0
+   fi
+
+   # If user provided version + build id, construct the URL
+   if [ -n "${NPU_VERSION:-}" ] && [ -n "${NPU_BUILD_ID:-}" ]; then
+      NPU_ASSET_URL="https://github.com/intel/linux-npu-driver/releases/download/v${NPU_VERSION}/linux-npu-driver-v${NPU_VERSION}.${NPU_BUILD_ID}-${UBUNTU_VERSION}.tar.gz"
+      return 0
+   fi
+
+   # Otherwise, query latest
+   if resolve_latest_release; then
+      return 0
+   fi
+
+   print_error "Unable to resolve latest NPU release from GitHub"
+   print_error "You can override via NPU_ASSET_URL or NPU_VERSION+NPU_BUILD_ID"
+   return 1
+}
 
 # Auto-detect Ubuntu version
 UBUNTU_VERSION=""
@@ -48,11 +96,16 @@ detect_ubuntu_version() {
 # Simple version display function (replaces complex GitHub scraping)
 display_version_info() {
    print_info "Using NPU Driver Version Information:"
-   print_info "NPU Version: ${NPU_VERSION} | Build: ${NPU_BUILD_ID}"
+   if [ -n "${NPU_ASSET_URL:-}" ]; then
+      local asset_name
+      asset_name=$(basename "$NPU_ASSET_URL")
+      print_info "Asset: ${asset_name}"
+   fi
+   print_info "NPU Version: ${NPU_VERSION:-auto} | Build: ${NPU_BUILD_ID:-auto}"
    print_info "Ubuntu Package: ${UBUNTU_VERSION}"
    print_info ""
-   print_info "Note: To update versions, edit the global variables at the top of this script"
-   print_info "Latest releases: https://github.com/intel/linux-npu-driver/releases"
+   print_info "Auto-resolved latest release from GitHub."
+   print_info "Override (optional): export NPU_ASSET_URL, or NPU_VERSION+NPU_BUILD_ID before running."
 }
 
 # Status indicators - using ASCII for better compatibility (conditional definition)
@@ -117,7 +170,7 @@ install_dependencies() {
       print_warning "apt update failed, continuing anyway..."
    fi
    
-   if apt install -y libtbb12 wget; then
+   if apt install -y libtbb12 wget curl; then
       print_success "Dependencies installed"
       return 0
    else
@@ -128,17 +181,14 @@ install_dependencies() {
 
 # Download NPU driver packages
 download_npu_packages() {
-   print_info "Downloading NPU driver packages ${NPU_VERSION}..."
-   
-   local base_url="https://github.com/intel/linux-npu-driver/releases/download/v${NPU_VERSION}"
-   
-   # Download tar.gz archive format
-   print_info "Downloading NPU driver archive..."
-   local archive_name="linux-npu-driver-v${NPU_VERSION}.${NPU_BUILD_ID}-${UBUNTU_VERSION}.tar.gz"
-   local url="${base_url}/${archive_name}"
-   
+   print_info "Resolving NPU driver package URL..."
+   if [ -z "${NPU_ASSET_URL:-}" ]; then
+      resolve_versions || return 1
+   fi
+   local archive_name
+   archive_name=$(basename "$NPU_ASSET_URL")
    print_info "  Downloading ${archive_name}..."
-   if wget -q --timeout=30 "${url}"; then
+   if wget -q --timeout=30 "${NPU_ASSET_URL}"; then
       print_success "  Downloaded ${archive_name}"
       
       # Extract the archive
@@ -151,7 +201,7 @@ download_npu_packages() {
          return 1
       fi
    else
-      print_error "  Failed to download ${archive_name} from ${url}"
+      print_error "  Failed to download asset from ${NPU_ASSET_URL}"
       return 1
    fi
    
@@ -270,6 +320,9 @@ install_npu() {
    
    # Detect Ubuntu version
    detect_ubuntu_version
+   
+   # Resolve versions and asset URL (auto or overridden)
+   resolve_versions || { print_error "Failed to resolve NPU versions"; exit 1; }
    
    # Display version information
    display_version_info

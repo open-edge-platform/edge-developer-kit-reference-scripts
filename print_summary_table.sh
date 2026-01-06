@@ -216,12 +216,13 @@ detect_gpu() {
         local intel_gpu_count
         intel_gpu_count=$(timeout_cmd 3 lspci | grep -i 'vga\|3d\|display' | grep -i -c intel)
         gpu_info="$intel_gpu_count Intel graphics device(s) detected"
-        
-        # Get i915 driver info from lsmod if available
-        if timeout_cmd 3 lsmod | grep -q i915; then
+        # Determine driver module (xe preferred over i915)
+        if timeout_cmd 3 lsmod | grep -q '^xe'; then
+            gpu_driver="xe (loaded)"
+        elif timeout_cmd 3 lsmod | grep -q i915; then
             gpu_driver="i915 (loaded)"
         else
-            gpu_driver="i915 (not loaded)"
+            gpu_driver="xe/i915 (not loaded)"
         fi
         
         gpu_devices=$(timeout_cmd 3 lspci | grep -i 'vga\|3d\|display' | grep -i intel)
@@ -331,7 +332,7 @@ validate_configuration() {
         missing_items+=("OS Release Information Missing")
     fi
     
-    # HARD CHECK 2: Kernel 6.14 requirement
+    # HARD CHECK 2: Kernel 6.14 or 6.17 requirement
     local kernel_version kernel_major kernel_minor
     kernel_version=$(uname -r 2>/dev/null)
     if [ -n "$kernel_version" ]; then
@@ -339,16 +340,18 @@ validate_configuration() {
         kernel_major=$(echo "$kernel_version" | cut -d. -f1)
         kernel_minor=$(echo "$kernel_version" | cut -d. -f2)
         
-        if [ "$kernel_major" != "6" ] || [ "$kernel_minor" != "14" ]; then
+        if [ "$kernel_major" = "6" ] && { [ "$kernel_minor" = "14" ] || [ "$kernel_minor" = "17" ]; }; then
+            : # acceptable
+        else
             validation_passed=false
-            missing_items+=("Kernel 6.14.x Required (Current: $kernel_version)")
+            missing_items+=("Kernel 6.14.x or 6.17.x Required (Current: $kernel_version)")
         fi
     else
         validation_passed=false
         missing_items+=("Kernel Version Detection Failed")
     fi
     
-    # HARD CHECK 3: HWE kernel requirement with 6.14 version check
+    # HARD CHECK 3: HWE kernel requirement with 6.14/6.17 version check
     local hwe_stack hwe_kernel_output hwe_version hwe_kernel_major hwe_kernel_minor hwe_tag
     hwe_kernel_output=$(timeout_cmd 5 apt list -a --installed linux-image-generic-hwe-* 2>/dev/null || true)
     
@@ -359,22 +362,22 @@ validate_configuration() {
             hwe_kernel_major=$(echo "$hwe_version" | cut -d. -f1)
             hwe_kernel_minor=$(echo "$hwe_version" | cut -d. -f2)
             
-            if [ "$hwe_kernel_major" = "6" ] && [ "$hwe_kernel_minor" = "14" ]; then
+            if [ "$hwe_kernel_major" = "6" ] && { [ "$hwe_kernel_minor" = "14" ] || [ "$hwe_kernel_minor" = "17" ]; }; then
                 if [ -n "$hwe_tag" ]; then
-                    hwe_stack="Installed (6.14 HWE) $hwe_tag"
+                    hwe_stack="Installed (6.$hwe_kernel_minor HWE) $hwe_tag"
                 else
-                    hwe_stack="Installed (6.14 HWE)"
+                    hwe_stack="Installed (6.$hwe_kernel_minor HWE)"
                 fi
                 
-                # Check if current running kernel matches HWE kernel version
-                if [[ ! "$kernel_version" =~ ^6\.14 ]]; then
+                # Check if current running kernel matches HWE kernel version (6.14 or 6.17)
+                if [[ ! "$kernel_version" =~ ^6\.(14|17) ]]; then
                     validation_passed=false
-                    missing_items+=("Reboot Required: HWE 6.14 kernel installed but not running (Current: $kernel_version)")
+                    missing_items+=("Reboot Required: HWE 6.14/6.17 kernel installed but not running (Current: $kernel_version)")
                 fi
             else
                 hwe_stack="Installed (Wrong Version: $hwe_version)"
                 validation_passed=false
-                missing_items+=("HWE Kernel 6.14 Required (Current HWE: $hwe_version)")
+                missing_items+=("HWE Kernel 6.14 or 6.17 Required (Current HWE: $hwe_version)")
             fi
         else
             hwe_stack="Installed (Version Unknown)"
