@@ -31,7 +31,7 @@ Please ensure that you have these ports available before running the application
 - [Docker](https://docs.docker.com/engine/install/)
 
 ### 2. Install GPU driver
-- [Intel® Arc™ A-Series Graphics](../../../README.md#-5-minute-quick-start)
+- [Intel® Arc™ A-Series Graphics](../../../README.md#5-minute-quick-start)
 
 ### 3. Run Script to Setup and Install Docker
 ```
@@ -56,8 +56,8 @@ Navigate to http://localhost:8010
 
 ### 3. Follow the document and install the following services in the microservices folder.
 - Ollama: [doc](../microservices/ollama/windows/README.md)
-- Text to speech: [doc](../microservices/speech-to-text/windows/README.md)
-- Speech to text: [doc](../microservices/text-to-speech/windows/README.md)
+- Text to speech: [doc](../microservices/text-to-speech/windows/README.md)
+- Speech to text: [doc](../microservices/speech-to-text/windows/README.md)
 
 ### 4. Install RAG Toolkit 
 #### 4.1 Install backend
@@ -69,9 +69,9 @@ Double click on the `install-ui.bat`
 ### 5. Run application
 #### 5.1 Start Ollama by following the [doc](../microservices/ollama/windows/README.md)
 
-#### 5.2 Start Text to speech by following the [doc](../microservices/speech-to-text/windows/README.md)
+#### 5.2 Start Text to speech by following the [doc](../microservices/text-to-speech/windows/README.md)
 
-#### 5.3 Start Speech to text by following the [doc](../microservices/text-to-speech/windows/README.md)
+#### 5.3 Start Speech to text by following the [doc](../microservices/speech-to-text/windows/README.md)
 
 #### 5.4 Start RAG Toolkit
 Double click on the `run.bat`
