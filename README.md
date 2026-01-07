@@ -16,7 +16,7 @@ This repository provides simplified developer kit reference setup scripts for va
 
 | **Your Background** | **What You'll Get** | **Start Here** |
 |-------------------|-------------------|----------------|
-| 🏭 **ODM/OEM Developer** | Production-ready platform setup with validated hardware configurations | [Hardware Setup Guide](#validated-hardware-configurations) |
+| 🏭 **ODM/OEM Developer** | Production-ready platform setup with validated hardware configurations | [Hardware Setup Guide](#validated-hardware--configurations) |
 | 🤖 **AI/ML Developer** | Ready-to-use AI workloads: LLMs, computer vision, speech processing | [AI Use Cases](./docs/use-cases.md) |
 | 🎓 **Student/Researcher** | Learning-oriented tutorials with step-by-step explanations | [Learning Path](./docs/getting-started.md) |
 | 🔧 **Hardware Enthusiast** | Experiment with cutting-edge Intel® hardware and software | [Quick Start](#5-minute-quick-start) |
@@ -26,7 +26,7 @@ This repository provides simplified developer kit reference setup scripts for va
 ## 5-Minute Quick Start
 
 ```bash
-sudo bash -c "$(wget -qLO - https://raw.githubusercontent.com/intel/edge-developer-kit-reference-scripts/refs/heads/main/main_installer.sh)"
+sudo bash -c "$(wget -qLO - https://raw.githubusercontent.com/open-edge-platform/edge-developer-kit-reference-scripts/refs/heads/main/main_installer.sh)"
 
 ```
 
@@ -34,7 +34,7 @@ sudo bash -c "$(wget -qLO - https://raw.githubusercontent.com/intel/edge-develop
 
 1. **Explore all use cases** from [our gallery](./docs/use-cases.md)
 2. **Discover more ingredients** in [Open Edge Platform Software Catalog](https://edgesoftwarecatalog.intel.com/) and [Open Edge Platform GitHub*](https://github.com/open-edge-platform) 
-3. **Join the community** on [GitHub* Discussions](https://github.com/intel/edge-developer-kit-reference-scripts/discussions)
+3. **Join the community** on [GitHub* Discussions](https://github.com/open-edge-platform/edge-developer-kit-reference-scripts/discussions)
 4. **Share your projects** and help others learn!
 
 ## Validated Hardware & Configurations
@@ -42,14 +42,14 @@ sudo bash -c "$(wget -qLO - https://raw.githubusercontent.com/intel/edge-develop
 | Product Collection | Code Name | Support | Validated Hardware |
 |--------------|--------------|-------------------|--------------------|
 | Intel® Arc™ Pro B-Series Graphics | Products formerly Battlemage | ✅ Supported | [Intel® Arc™ Pro B60 Creator 24GB](https://www.asrock.com/Graphics-Card/Intel/Intel%20Arc%20Pro%20B60%20Creator%2024GB/) |
-| Intel® Arc™ B-Series Graphics | Products formerly Battlemage | ✅ Supported  | |
-| Intel® Arc™ A-Series Graphics | Products formerly Alchemist | ✅ Supported  | |
+| Intel® Arc™ B-Series Graphics | Products formerly Battlemage | ✅ Supported  |[Intel® Arc™ B580 Challenger 12GB](https://www.asrock.com/Graphics-Card/Intel/Intel%20Arc%20B580%20Challenger%2012GB%20OC/) |
+| Intel® Arc™ A-Series Graphics | Products formerly Alchemist | ✅ Supported  | [Intel® Arc™ A770 Challenger 16GB](https://www.asrock.com/Graphics-Card/Intel/Intel%20Arc%20A770%20Challenger%2016GB%20OC/index.us.asp)|
 | Intel® Core™ Ultra Processors (Series 3) | Products formerly Panther Lake | ✅ Supported | |
 | Intel® Core™ Ultra Processors (Series 2) | Products formerly Arrow Lake | ✅ Supported | [Innodisk Intel® Core™ Ultra Series 2 Reference Kit](https://www.innodisk.com/en/blog/intel-core-ultra-series2-reference-kit)<br>[IEI TANK-XM813](https://www.ieiworld.com/tw/product/model.php?II=1099)<br>[AAEON UP Xtreme ARL](https://up-board.org/up-xtreme-arl/)<br>[ASRock Industrial NUC BOX-255H](https://www.asrockind.com/en-gb/NUC%20BOX-255H) |
 | Intel® Core™ Ultra Processors (Series 1) | Products formerly Meteor Lake | ✅ Supported | [Seavo* PIR-1014A AIoT Developer Kit](https://www.seavo.com/en/pir_devkit/)<br>[AAEON* UP Xtreme i14](https://up-board.org/up-xtreme-i14/)<br>[ASRock Industrial* NUC BOX-155H](https://www.asrockind.com/en-gb/NUC%20BOX-155H)<br>[Asus* NUC 14 Pro](https://www.asus.com/displays-desktops/nucs/nuc-mini-pcs/asus-nuc-14-pro/) |
 | Intel® Core™ Processors (Series 2) | Products formerly Bartlett Lake | ✅ Supported | [ASRock Industrial* iEPF-100000S Series](https://www.asrockind.com/en-gb/iEPF-10000S%20Series) |
 | Intel® 14th Gen Core™ Processors | Products formerly Raptor Lake | ✅ Supported | [ASRock Industrial* iEPF-9030S-EW4](https://www.asrockind.com/en-gb/iEPF-9030S-EW4)|
-| Intel® Core™ Processor N-Series | Products formerly Twin Lake | ✅ Supported | AAEON RS-UPN-ADLN355-A10-0864 |
+| Intel® Core™ Processor N-Series | Products formerly Twin Lake | ✅ Supported | [AAEON RS-UPN-ADLN355-A10-0864](https://www.aaeon.com/en/product/detail/up-boards-up-squared-pro-twl) |
 
 ## Edge Design Combinations Matrix
 
@@ -71,9 +71,9 @@ If you need help, want to suggest a new feature, or report a bug, use the follow
 
 - **Installation Issues** → [Troubleshooting Guide](./docs/troubleshooting.md)
 - **Common Questions** → [FAQ](./docs/faq.md)
-- **Community Support** → [GitHub* Discussions](https://github.com/intel/edge-developer-kit-reference-scripts/discussions)
-- **Bug Reports** → [GitHub* Issues](https://github.com/intel/edge-developer-kit-reference-scripts/issues)
-- **Feature Requests** → [GitHub* Discussions](https://github.com/intel/edge-developer-kit-reference-scripts/discussions)
+- **Community Support** → [GitHub* Discussions](https://github.com/open-edge-platform/edge-developer-kit-reference-scripts/discussions)
+- **Bug Reports** → [GitHub* Issues](https://github.com/open-edge-platform/edge-developer-kit-reference-scripts/issues)
+- **Feature Requests** → [GitHub* Discussions](https://github.com/open-edge-platform/edge-developer-kit-reference-scripts/discussions)
 - **General Questions** →[Community Forum](https://community.intel.com/)
 
 

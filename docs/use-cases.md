@@ -82,7 +82,7 @@ Transform your Intel® hardware into powerful AI and edge computing solutions wi
 
 ### **System Requirements**
 
-- ✅ Completed [platform setup](../README.md#-5-minute-quick-start)
+- ✅ Completed [platform setup](../README.md#5-minute-quick-start)
 - ✅ Docker installed and running
 - ✅ Sufficient disk space (varies by use case)
 
@@ -99,14 +99,14 @@ Transform your Intel® hardware into powerful AI and edge computing solutions wi
 
 ### **Before You Start**
 
-- ⚡ Complete the [platform installation](../README.md#-5-minute-quick-start)
-- 🔧 Ensure your [hardware is supported](../README.md#-validated-hardware--configurations)
+- ⚡ Complete the [platform installation](../README.md#5-minute-quick-start)
+- 🔧 Ensure your [hardware is supported](../README.md#validated-hardware--configurations)
 
 ### **During Development**
 
 - Check [Troubleshooting Guide](troubleshooting.md) for common issues
-- Ask questions in [GitHub\* Discussions](https://github.com/intel/edge-developer-kit-reference-scripts/discussions)
-- Report bugs via [GitHub\* Issues](https://github.com/intel/edge-developer-kit-reference-scripts/issues)
+- Ask questions in [GitHub\* Discussions](https://github.com/open-edge-platform/edge-developer-kit-reference-scripts/discussions)
+- Report bugs via [GitHub\* Issues](https://github.com/open-edge-platform/edge-developer-kit-reference-scripts/issues)
 
 ---
 

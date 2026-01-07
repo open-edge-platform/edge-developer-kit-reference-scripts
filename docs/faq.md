@@ -15,10 +15,10 @@ Quick answers to common questions about Intel® Edge Developer Kits.
 
 ### **Q: I'm new to AI development. Where should I start?**
 **A:** Follow this learning path:
-1. Complete our [Getting Started Guide](getting-started/README.md)
+1. Complete our [Getting Started Guide](./getting-started.md)
 2. Try the [OpenWebUI + Ollama](../usecases/ai/openwebui-ollama/README.md) use case (10 minutes)
-3. Read [AI Development Basics](guides/ai-development-basics.md) for concepts
-4. Join our [community discussions](https://github.com/intel/edge-developer-kit-reference-scripts/discussions) to ask questions
+3. Read [AI Development Basics](./use-cases.md) for concepts
+4. Join our [community discussions](https://github.com/open-edge-platform/edge-developer-kit-reference-scripts/discussions) to ask questions
 
 ### **Q: Do I need to buy specific hardware?**
 **A:** The scripts work with many Intel® platforms, but we recommend:
@@ -26,7 +26,7 @@ Quick answers to common questions about Intel® Edge Developer Kits.
 - **Professionals:** Intel® Core™ Ultra + Intel® Arc™ GPU (B580 or better)
 - **Researchers:** High-end CPU + Intel® Arc™ B60 Pro for maximum performance
 
-Check our [Hardware Selection Guide](getting-started/hardware-selection.md) for detailed recommendations.
+Check our [Hardware Selection Guide](../README.md#validated-hardware--configurations) for detailed recommendations.
 
 ### **Q: How long does installation take?**
 **A:** 
@@ -37,7 +37,7 @@ Check our [Hardware Selection Guide](getting-started/hardware-selection.md) for 
 ## Hardware Compatibility
 
 ### **Q: Is my Intel® hardware supported?**
-**A:** Check the [compatibility matrix](../README.md#-validated-hardware--configurations). Supported platforms include:
+**A:** Check the [compatibility matrix](../README.md#validated-hardware--configurations). Supported platforms include:
 - Intel® Core™ Ultra (Series 1 & 2)
 - Intel® Arc™ Graphics (A-Series, B-Series)
 - Intel® 14th Gen Core™ processors
@@ -50,7 +50,7 @@ Check our [Hardware Selection Guide](getting-started/hardware-selection.md) for 
 - **Older Intel® GPUs:** Limited AI acceleration
 - **Very old systems:** May require manual driver installation
 
-For best results, use hardware from our [validated list](../README.md#-validated-hardware--configurations).
+For best results, use hardware from our [validated list](../README.md#validated-hardware--configurations).
 
 ## Installation Issues
 
@@ -160,11 +160,11 @@ sudo usermod -aG docker $USER
 ## Still Need Help?
 
 ### **Found a Bug?**
-- **Report it:** [GitHub Issues](https://github.com/intel/edge-developer-kit-reference-scripts/issues)
+- **Report it:** [GitHub Issues](https://github.com/open-edge-platform/edge-developer-kit-reference-scripts/issues)
 - **Include:** System info, error messages, steps to reproduce
 
 ### **Have a Question?**
-- **Community:** [GitHub Discussions](https://github.com/intel/edge-developer-kit-reference-scripts/discussions)
+- **Community:** [GitHub Discussions](https://github.com/open-edge-platform/edge-developer-kit-reference-scripts/discussions)
 - **Documentation:** [Troubleshooting Guide](troubleshooting.md)
 
 ### **Want to Contribute?**
@@ -174,4 +174,4 @@ sudo usermod -aG docker $USER
 
 ---
 
-**Didn't find your answer?** Ask in our [community discussions](https://github.com/intel/edge-developer-kit-reference-scripts/discussions) - we're here to help!
+**Didn't find your answer?** Ask in our [community discussions](https://github.com/open-edge-platform/edge-developer-kit-reference-scripts/discussions) - we're here to help!

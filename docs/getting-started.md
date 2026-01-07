@@ -20,7 +20,7 @@ Welcome to Intel®'s edge computing ecosystem! This guide will help you get up a
 **Recommended:**
 - 16GB RAM minimum
 - 100GB free disk space
-- Supported Intel® hardware ([Check compatibility](../README.md/#-validated-hardware--configurations))
+- Supported Intel® hardware ([Check compatibility](../README.md/#validated-hardware--configurations))
 
 ### Step 2: Enable Hardware Features
 
@@ -35,13 +35,13 @@ Welcome to Intel®'s edge computing ecosystem! This guide will help you get up a
 
 **Option A: One-Line Install (Recommended)**
 ```bash
-sudo bash -c "$(wget -qLO - https://raw.githubusercontent.com/intel/edge-developer-kit-reference-scripts/refs/heads/main/main_installer.sh)"
+sudo bash -c "$(wget -qLO - https://raw.githubusercontent.com/open-edge-platform/edge-developer-kit-reference-scripts/refs/heads/main/main_installer.sh)"
 ```
 
 **Option B: Step-by-Step Install**
 ```bash
 # Download the repository
-git clone https://github.com/intel/edge-developer-kit-reference-scripts.git
+git clone https://github.com/open-edge-platform/edge-developer-kit-reference-scripts.git
 cd edge-developer-kit-reference-scripts
 
 # Run main installer
@@ -140,15 +140,15 @@ docker compose up -d
 
 | **Difficulty** | **Project** | **What You'll Learn** |
 |----------------|-------------|-----------------------|
-| 🟢 **Beginner** | [AI Video Analytics](../../usecases/ai/ai-video-analytics/README.md) | Computer vision basics |
-| 🟡 **Intermediate** | [RAG Knowledge Base](../../usecases/ai/rag-toolkit/README.md) | Enterprise AI patterns |
-| 🔴 **Advanced** | [Real-Time Computing](../../usecases/real-time/tcc_tutorial/README.md) | Ultra-low latency systems |
+| 🟢 **Beginner** | [AI Video Analytics](../usecases/ai/ai-video-analytics/README.md) | Computer vision basics |
+| 🟡 **Intermediate** | [RAG Knowledge Base](../usecases/ai/rag-toolkit/README.md) | Enterprise AI patterns |
+| 🔴 **Advanced** | [Real-Time Computing](../usecases/real-time/tcc_tutorial/README.md) | Ultra-low latency systems |
 
 
 ### 🤝 **Join the Community**
 
-- **Questions?** → [GitHub* Discussions](https://github.com/intel/edge-developer-kit-reference-scripts/discussions)
-- **Issues?** → [GitHub* Issues](https://github.com/intel/edge-developer-kit-reference-scripts/issues)
+- **Questions?** → [GitHub* Discussions](https://github.com/open-edge-platform/edge-developer-kit-reference-scripts/discussions)
+- **Issues?** → [GitHub* Issues](https://github.com/open-edge-platform/edge-developer-kit-reference-scripts/issues)
 - **Show & Tell** → Share your projects in discussions!
 
 ---

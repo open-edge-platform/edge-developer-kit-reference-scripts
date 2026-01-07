@@ -51,7 +51,7 @@ During installation, logs are displayed in real time. For deeper troubleshooting
 - Review relevant log files for error details
 - Confirm your hardware matches the supported platforms
 - Test individual installer scripts (e.g., `gpu_installer.sh`, `npu_installer.sh`)
-- Search for known issues in [GitHub Issues](https://github.com/intel/edge-developer-kit-reference-scripts/issues)
+- Search for known issues in [GitHub Issues](https://github.com/open-edge-platform/edge-developer-kit-reference-scripts/issues)
 - When reporting a bug, include platform model, OS version, and log excerpts
 
 For further assistance, open an issue on GitHub with detailed information.
