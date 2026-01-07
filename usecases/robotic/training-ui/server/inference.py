@@ -843,7 +843,11 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
             )
             cfg.openvino_device = "CPU"
 
-        action_chunk_size = getattr(cfg.policy, "n_action_steps", 1)
+        # TODO: allow user to configure the n_action_steps
+        # action_chunk_size = getattr(cfg.policy, "n_action_steps", 1)
+        action_chunk_size = 50
+        print(f"Action chunk size is set to {action_chunk_size}. Please configure in inference.py if required.")
+
         ov_session = OpenVINOInference(
             model_path=cfg.openvino_model_path,
             device=cfg.openvino_device,
