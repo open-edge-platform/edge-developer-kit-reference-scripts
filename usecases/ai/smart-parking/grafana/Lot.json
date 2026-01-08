@@ -44,7 +44,7 @@
     {
       "datasource": {
         "type": "influxdb",
-        "uid": "DsgkYTpNz"
+        "uid": null
       },
       "description": "",
       "fieldConfig": {
@@ -134,7 +134,7 @@
         {
           "datasource": {
             "type": "influxdb",
-            "uid": "DsgkYTpNz"
+            "uid": null
           },
           "groupBy": [
             {
@@ -226,7 +226,7 @@
     {
       "datasource": {
         "type": "influxdb",
-        "uid": "DsgkYTpNz"
+        "uid": null
       },
       "fieldConfig": {
         "defaults": {
@@ -503,7 +503,7 @@
         {
           "datasource": {
             "type": "influxdb",
-            "uid": "DsgkYTpNz"
+            "uid": null
           },
           "groupBy": [
             {
@@ -629,7 +629,7 @@
     {
       "datasource": {
         "type": "influxdb",
-        "uid": "DsgkYTpNz"
+        "uid": null
       },
       "fieldConfig": {
         "defaults": {
@@ -870,7 +870,7 @@
         {
           "datasource": {
             "type": "influxdb",
-            "uid": "DsgkYTpNz"
+            "uid": null
           },
           "groupBy": [
             {
@@ -1061,7 +1061,7 @@
     "list": []
   },
   "time": {
-    "from": "now-5s",
+    "from": "now-15m",
     "to": "now"
   },
   "timepicker": {},
