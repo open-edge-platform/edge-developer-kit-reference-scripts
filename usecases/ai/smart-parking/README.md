@@ -19,7 +19,7 @@ The smart parking application is an AI-based solution to monitor individual car 
 * **Docker and Docker Compose**: Ensure Docker and Docker Compose are installed. Refer to [Docker installation guide](https://docs.docker.com/engine/install/).
 
 * **Intel GPU Drivers**:
-Refer to [here](../../../README.md#-5-minute-quick-start) to install Intel GPU Drivers
+Refer to [here](../../../README.md#5-minute-quick-start) to install Intel GPU Drivers
 
 ### Generate SSL certs
 
@@ -71,7 +71,7 @@ docker compose down
     - Password: admin
 
 2. Add data source
-
+    - Go to Settings -> Data Sources -> Add new data source
     - Choose InfluxDB as the data source
     - Fill in URL
       - http://influxdb:8086
@@ -87,7 +87,8 @@ docker compose down
     - Save and test
 
 3. Import template from grafana folder
-
+    - Import template `Lot.json` and `Summary.json` from [grafana folder](./grafana/)
+    
     ![import_dashboard](./docs/import_dashboard.png)
 
 ## Notes
