@@ -20,7 +20,7 @@ This directory contains scripts for setting up Intel IPU6 camera support on Ubun
 2. **Download and run the setup script:**
    ```bash
    # Download and execute the main setup script directly
-   wget -O- https://raw.githubusercontent.com/intel/applications.platforms.network-and-edge-developer-kits/main/usecases/camera/mipi/setup_ipu6_camera.sh | bash
+   wget -O- https://raw.githubusercontent.com/open-edge-platform/edge-developer-kit-reference-scripts/refs/heads/main/usecases/camera/mipi/mipi.sh | bash
    ```
 
 ### Multiple Camera Support

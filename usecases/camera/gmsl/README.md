@@ -97,7 +97,7 @@ Before running the script, ensure:
 1. **Download the Script**
    ```bash
    # Clone or download the script
-   wget https://raw.githubusercontent.com/intel/applications.platforms.network-and-edge-developer-kits/main/usecases/camera/gmsl/gmsl.sh | bash
+   wget https://raw.githubusercontent.com/open-edge-platform/edge-developer-kit-reference-scripts/refs/heads/main/usecases/camera/gmsl/gmsl.sh | bash
    ```
 
 2. **Monitor Installation**
