@@ -1,4 +1,4 @@
-fastapi[all]
+fastapi>=0.115.0
 uvicorn
 pydantic<2
 soxr
