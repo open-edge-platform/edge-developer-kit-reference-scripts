@@ -1,0 +1,6 @@
+pyodbc
+pandas
+requests
+numpy
+# For natural language queries
+openai>=1.0.0          # Used to connect to llama.cpp server or OpenAI API
