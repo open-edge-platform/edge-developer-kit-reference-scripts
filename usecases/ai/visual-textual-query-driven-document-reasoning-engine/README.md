@@ -51,8 +51,8 @@ Ensure the GPU drivers are installed using the [`gpu_installer.sh`](https://gith
 ## Installation
 1. **Install the necessary dependencies.**
    ```bash
-   apt-get update
-   apt-get install -y python3-venv poppler-utils
+   sudo apt update
+   sudo apt install -y python3-venv poppler-utils
    ```
 
 2. **Create and activate a Python virtual environment:**
