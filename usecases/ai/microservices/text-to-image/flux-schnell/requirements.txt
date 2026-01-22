@@ -9,7 +9,7 @@ diffusers==0.32.1
 typing_extensions==4.12.2
 nncf==2.14.1
 accelerate==1.2.1
-sentencepiece==0.2.0
+sentencepiece==0.2.1
 
 # Additional index URL for PyTorch dependencies
 --extra-index-url https://download.pytorch.org/whl/cpu
