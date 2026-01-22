@@ -12,7 +12,7 @@ dependencies = [
     "openvino-tokenizers==2025.3.0.0rc1",
     "openvino==2025.3.0rc1",
     "nncf>=2.11.0",
-    "sentencepiece==0.2.0",
+    "sentencepiece==0.2.1",
     "transformers<4.54",
     "einops",
     "timm==1.0.15",
