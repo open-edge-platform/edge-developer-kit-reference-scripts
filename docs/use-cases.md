@@ -126,3 +126,4 @@ Transform your Intel® hardware into powerful AI and edge computing solutions wi
 9. [GMSL Camera Enablement](../usecases/camera/gmsl/README.md)
 10. [MIPI Camera Enablement](../usecases/camera/mipi/README.md)
 11. [Visual & Textual Query-driven Document Reasoning Engine](../usecases/ai/visual-textual-query-driven-document-reasoning-engine/README.md)
+12. [LLM Database Query using Intel AI Assistant Builder](../usecases/ai/llm_dbquery/README.md)
