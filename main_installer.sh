@@ -13,8 +13,8 @@
 # Fail fast, treat unset variables as errors, and catch pipeline failures
 set -euo pipefail
 
-# Script directory
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Script directory (where main_installer.sh is located)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 
 # Status indicators - using ASCII for better compatibility
 S_ERROR="[ERROR]"
