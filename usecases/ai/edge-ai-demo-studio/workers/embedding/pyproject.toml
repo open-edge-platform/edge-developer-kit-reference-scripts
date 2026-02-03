@@ -33,7 +33,7 @@ dependencies = [
     "langchain-community==0.3.27",
     "langchainhub==0.1.21",
     # Document Processing
-    "unstructured==0.18.3",
+    "unstructured==0.18.18",
     "pypdf>=6.4.0",
     # Database and Modeling
     "sqlmodel>=0.0.24",
