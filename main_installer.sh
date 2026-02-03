@@ -238,8 +238,18 @@ apply_ptl_platform_prereqs() {
     running_kernel=$(uname -r)
     new_kernel_info=$(dpkg -l | grep '^ii' | grep 'linux-image-oem-24.04d' | awk '{print $2"="$3}' || true)
     if ! echo "$running_kernel" | grep -q '^6\.17'; then
+        # Install GPU drivers before reboot
+        # shellcheck disable=SC1091
+        GPU_INSTALLER_NO_MAIN=1 source "${SCRIPT_DIR}/gpu_installer.sh"
+        apply_xe_ptl_fix
+        remove_conflicting_packages
+        configure_kobuk_repository
+        install_packages "${DEPENDENCIES[@]}"
+        install_packages "${COMMON_GPU_PACKAGES[@]}"
+        install_packages "${MEDIA_GPU_PACKAGES[@]}"
+
         echo "$S_WARNING Running kernel ($running_kernel) differs from installed OEM 6.17 kernel ($new_kernel_info)."
-        echo "Please reboot now, then re-run this installer to continue driver installations."
+        echo "Please reboot and run this installer again."
         echo "$S_VALID PTL stage 1 complete (kernel + mesa). Exiting early."
         exit 0
     else
