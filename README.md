@@ -29,6 +29,7 @@ This repository provides simplified developer kit reference setup scripts for va
 sudo bash -c "$(wget -qLO - https://raw.githubusercontent.com/open-edge-platform/edge-developer-kit-reference-scripts/refs/heads/main/main_installer.sh)"
 
 ```
+Follow the on-screen instructions to complete installation until you see the `Platform configured` message.
 
 ### Next Steps
 

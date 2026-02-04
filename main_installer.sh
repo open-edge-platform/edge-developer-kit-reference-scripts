@@ -95,7 +95,7 @@ check_privileges() {
 }
 
 download_scripts() {
-    local REPO_OWNER="intel"
+    local REPO_OWNER="open-edge-platform"
     local REPO_NAME="edge-developer-kit-reference-scripts"
     local BRANCH="main"
     local BASE_URL="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/refs/heads/${BRANCH}"
@@ -103,13 +103,13 @@ download_scripts() {
     DOWNLOAD_DIR="$(pwd)"
 
     local REQUIRED_SCRIPTS=(
+        "eef_installer.sh"
         "gpu_installer.sh"
         "npu_installer.sh"
         "openvino_installer.sh"
         "print_summary_table.sh"
     )
 
-    # Download scripts
     apt install -y curl
     mkdir -p "$DOWNLOAD_DIR"
     for script in "${REQUIRED_SCRIPTS[@]}"; do
@@ -215,7 +215,7 @@ apply_ptl_platform_prereqs() {
     if ! grep -R "kisak-mesa" /etc/apt/sources.list /etc/apt/sources.list.d 2>/dev/null | grep -q kisak; then
         echo "Adding Kisak Mesa PPA..."
         apt-get install -y software-properties-common
-        add-apt-repository -y ppa:kisak/kisak-mesa || { echo "$S_ERROR Failed to add Kisak Mesa PPA"; exit 1; }
+        apt-add-repository -y ppa:kisak/kisak-mesa || { echo "$S_ERROR Failed to add Kisak Mesa PPA"; exit 1; }
     else
         echo "$S_VALID Kisak Mesa PPA already configured"
     fi
@@ -560,6 +560,40 @@ install_openvino(){
       echo "========================================================================"
 }
 
+install_eef(){
+      echo ""
+      echo "========================================================================"
+      echo "# Installing Intel® Edge Device Enablement Framework (EEF)..."
+      echo "========================================================================"
+      
+      if [ -f "$SCRIPT_DIR/eef_installer.sh" ]; then
+         echo "Found EEF installer at: $SCRIPT_DIR/eef_installer.sh"
+         echo "Starting EEF installation process..."
+         
+         if bash "$SCRIPT_DIR/eef_installer.sh"; then
+            echo ""
+            echo "$S_VALID EEF installed successfully"
+         else
+            local exit_code=$?
+            echo ""
+            echo "$S_ERROR EEF installation failed"
+            echo "Exit code: $exit_code"
+            echo "Please check the installation logs for details"
+            echo "Log file location: $SCRIPT_DIR/output.log"
+            return 1
+         fi
+      else
+         echo "$S_ERROR EEF installer not found at $SCRIPT_DIR/eef_installer.sh"
+         echo "Expected location: $SCRIPT_DIR/eef_installer.sh"
+         echo "Current directory: $(pwd)"
+         echo "Available files in $SCRIPT_DIR:"
+         ls -la "$SCRIPT_DIR"/*.sh 2>/dev/null || echo "No .sh files found"
+         return 1
+      fi
+      
+      echo "========================================================================"
+}
+
 summary(){
       echo "Running Installation Summary"
       # Execute the script instead of sourcing it to avoid context issues
@@ -609,36 +643,29 @@ main() {
         echo "# PTL platform prerequisites detected (kernel upgrade path) ..."
         apply_ptl_platform_prereqs
         # Function may exit early; if it doesn't, continue with flow
-        echo ""
-    fi
+        echo "# Platform Installation Flow..."
+        echo "$S_VALID Platform detected: $CPU_MODEL"
     
-    # 5. Platform Installation Flow
-    echo "# Platform Installation Flow..."
-    echo "$S_VALID Platform detected: $CPU_MODEL"
-    
-    # Determine platform family and execute appropriate flow
-    if is_coreultra; then
-        echo ""
-        echo "========================================================================"
-        echo "# CORE ULTRA PLATFORM INSTALLATION"
-        echo "========================================================================"
-        echo "Platform: Core Ultra CPU"
-        echo "Components: GPU Drivers + NPU Drivers + OpenVINO"
-        echo "NPU Support: Available and will be installed"
-        echo ""
-        
-        # Install GPU drivers (will check for GPU presence). Any failure will exit.
-        install_gpu_drivers
-        
-        # Install NPU drivers (Core Ultra only)
-        install_npu_drivers || echo "$S_WARNING NPU driver installation had issues"
-        
-        # Install OpenVINO with error handling
-        if ! install_openvino; then
-            echo "$S_ERROR Core Ultra platform setup incomplete due to OpenVINO installation failure"
-            echo "You may retry OpenVINO installation manually: bash $SCRIPT_DIR/openvino_installer.sh"
-        fi
-        
+            echo ""
+            echo "========================================================================"
+            echo "# PTL PLATFORM INSTALLATION"
+            echo "========================================================================"
+            echo "Platform: Core Ultra CPU"
+            echo "Components: GPU Drivers + NPU Drivers + OpenVINO"
+            echo "NPU Support: Available and will be installed"
+            echo ""
+            
+            # Install GPU drivers (will check for GPU presence). Any failure will exit.
+            install_gpu_drivers
+            
+            # Install NPU drivers (Core Ultra only)
+            install_npu_drivers || echo "$S_WARNING NPU driver installation had issues"
+            
+            # Install OpenVINO with error handling
+            if ! install_openvino; then
+                echo "$S_ERROR Core Ultra platform setup incomplete due to OpenVINO installation failure"
+                echo "You may retry OpenVINO installation manually: bash $SCRIPT_DIR/openvino_installer.sh"
+            fi
     else
         echo ""
         echo "========================================================================"
@@ -648,14 +675,44 @@ main() {
         echo "Components: GPU Drivers (if GPU present) + OpenVINO"
         echo "NPU Support: Not available (Core Ultra only)"
         echo ""
-        
-        # Install GPU drivers (will check for GPU presence). Any failure will exit.
-        install_gpu_drivers
-        
-        # Install OpenVINO with error handling
-        if ! install_openvino; then
-            echo "$S_ERROR Platform setup incomplete due to OpenVINO installation failure"
-            echo "You may retry OpenVINO installation manually: bash $SCRIPT_DIR/openvino_installer.sh"
+
+        # Check if install_pkgs_status file exists. If not exist, proceed to install EEF.
+        # If the file exists, check its content if everything installed successfully.
+        # If EEF install successfully, proceed add user to groups and run OpenVINO validation.
+        if [ -f "$SCRIPT_DIR/install_pkgs_status" ]; then
+           if grep -q '=0' "$SCRIPT_DIR/install_pkgs_status"; then
+               echo "EEF installation failed. Check log file $SCRIPT_DIR/output.log for more details or submit Github issue."
+               exit 1
+           else
+               echo "Successfully installed EEF packages."
+               echo "Add render, video, and docker groups to current user."
+               local groups=("video" "render" "docker")
+               local users=("$USER")
+                
+               # Add native user if running via sudo
+               if [ -n "${SUDO_USER:-}" ]; then
+                   users+=("$SUDO_USER")
+               fi
+               
+               for user in "${users[@]}"; do
+                   for group in "${groups[@]}"; do
+                       if ! id -nG "$user" | grep -q -w "$group"; then
+                           echo "Adding user $user to group $group"
+                           usermod -aG "$group" "$user"
+                       else
+                           echo "User $user already in group $group"
+                       fi
+                   done
+               done
+               # Install OpenVINO with error handling
+                if ! install_openvino; then
+                    echo "$S_ERROR Platform setup incomplete due to OpenVINO installation failure"
+                    echo "You may retry OpenVINO installation manually: bash $SCRIPT_DIR/openvino_installer.sh"
+                fi
+           fi
+        else
+            # Else install EEF      
+            install_eef
         fi
     fi
     
