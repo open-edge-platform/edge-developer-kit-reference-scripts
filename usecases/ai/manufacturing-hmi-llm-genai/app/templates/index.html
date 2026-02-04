@@ -1,0 +1,184 @@
+<!-- Copyright (C) 2025 Intel Corporation -->
+<!-- SPDX-License-Identifier: Apache-2.0  -->
+<!DOCTYPE html> 
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Robotic LLM Manufacturing Agent Demo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+        }
+        h1 {
+            color: #333;
+        }
+        .video-container {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        img {
+            border: 3px solid #333;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        .controls {
+            margin-top: 30px;
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        .controls button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 15px 32px;
+            text-align: center;
+            font-size: 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+        .controls button:hover {
+            background-color: #45a049;
+        }
+        #inference-button:disabled {
+            background-color: grey;
+            cursor: not-allowed;
+        }
+        .focus-buttons form {
+            display: inline;
+        }
+        .focus-buttons button {
+            margin: 0 10px;
+        }
+        .message {
+            color: #333;
+            font-size: 16px;
+            margin-top: 20px;
+        }
+        .status-message {
+            margin-top: 20px;
+            color: #4CAF50;
+        }
+    </style>
+</head>
+<body>
+    <h1>Robotic LLM Manufacturing Agent Demo</h1>
+
+    <!-- Display the video streams -->
+    <div class="video-container">
+        <div>
+            <h2>Live Video Stream</h2>
+            <img src="/video_feed" width="640" height="480"/>
+        </div>
+        <div>
+            <h2>Defect Detection</h2>
+            <img src="/video_feed_annotated" width="640" height="480"/>
+        </div>
+    </div>
+
+    <!-- Control buttons -->
+    <div class="controls">
+        <!-- Focus Adjustment Buttons -->
+        <div class="focus-buttons">
+            <button type="button" onclick="adjustFocus('increase')">Increase Focus</button>
+            <button type="button" onclick="adjustFocus('decrease')">Decrease Focus</button>
+        </div>
+
+        <!-- Start Inference Button -->
+        <button id="inference-button" onclick="startInference()" {% if is_inference_in_progress %} disabled {% endif %}>Start Inference</button>
+    </div>
+
+    <!-- Message section for updates -->
+    <div class="message">
+        <p id="inference-status">Inference Status: {% if is_inference_in_progress %} In Progress {% else %} Idle {% endif %}</p>
+    </div>
+
+    <div class="status-message" id="status-message"></div>
+
+    <script>
+        // Flag to track whether inference is running
+        let isInferenceRunning = {{ is_inference_in_progress | tojson }};
+        
+        // Update button state based on inference status
+        const inferenceButton = document.getElementById("inference-button");
+        if (isInferenceRunning) {
+            inferenceButton.disabled = true;
+        } else {
+            inferenceButton.disabled = false;
+        }
+
+        // Periodically check the inference status from the backend
+        setInterval(async function() {
+            const response = await fetch('/inference_status');
+            const data = await response.json();
+            const statusElement = document.getElementById('inference-status');
+            
+            if (data.is_inference_in_progress) {
+                statusElement.textContent = "Inference Status: In Progress";
+                inferenceButton.disabled = true;
+            } else {
+                statusElement.textContent = "Inference Status: Idle";
+                inferenceButton.disabled = false;
+            }
+        }, 2000);  // Check every 2 seconds
+
+        // Start Inference function
+        function startInference() {
+            if (isInferenceRunning) {
+                document.getElementById('status-message').textContent = "Inference is already running.";
+                return;
+            }
+
+            // Disable the Start Inference button while inference is running
+            inferenceButton.disabled = true;
+            isInferenceRunning = true;  // Update the flag
+
+            // Make an asynchronous POST request to start inference
+            fetch('/start_inference', {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('status-message').textContent = data.message;
+                // Enable the button once inference is complete
+                isInferenceRunning = false;
+                inferenceButton.disabled = false;
+            })
+            .catch(error => {
+                document.getElementById('status-message').textContent = "Error occurred: " + error;
+                // Enable the button if there was an error
+                isInferenceRunning = false;
+                inferenceButton.disabled = false;
+            });
+        }
+
+        // Adjust Focus function (Increase/Decrease)
+        function adjustFocus(action) {
+            // Send an AJAX POST request to adjust focus
+            fetch('/focus', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ action: action })
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('status-message').textContent = `Focus ${data.message}`;
+            })
+            .catch(error => {
+                document.getElementById('status-message').textContent = "Error occurred: " + error;
+            });
+        }
+    </script>
+</body>
+</html>
