@@ -12,9 +12,18 @@ import {
 import { Button } from '../ui/button'
 import { useLogs } from '@/hooks/use-logs'
 import { useEffect, useState, useRef } from 'react'
-import { LogEntry } from '@/app/(frontend)/api/logs/route'
+import { LogEntry } from '@/types/log'
+import { Workload } from '@/payload-types'
 
-export default function Logs({ name }: { name: string }) {
+export default function Logs({
+  id,
+  engine,
+  type,
+}: {
+  id: number
+  engine: Workload['engine']
+  type: Workload['type']
+}) {
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [logIndex, setLogIndex] = useState<{
     since: string | null
@@ -25,14 +34,17 @@ export default function Logs({ name }: { name: string }) {
   })
   const scrollRef = useRef<HTMLDivElement>(null)
   const { data } = useLogs(
-    name,
+    `${engine === 'custom' ? `${type}_${id}` : `${type}_${engine}_${id}`}`,
+    engine,
+    type,
     logIndex.since ?? undefined,
     logIndex.offset ?? undefined,
   )
+
   const MAX_LINES = 500
 
   useEffect(() => {
-    if (data?.logs) {
+    if (data?.logs && data.logs.length > 0) {
       setLogs((prev) => {
         return [...prev, ...data.logs].slice(-MAX_LINES)
       })
@@ -59,7 +71,7 @@ export default function Logs({ name }: { name: string }) {
             </CardTitle>
             <CardDescription>Real-time console output log</CardDescription>
           </div>
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" disabled>
             Export
           </Button>
         </div>
@@ -85,7 +97,7 @@ export default function Logs({ name }: { name: string }) {
             >
               {logs.length === 0 ? (
                 <div className="text-slate-500">
-                  <div>Waiting for service logs...</div>
+                  <div>No service logs currently...</div>
                 </div>
               ) : (
                 <div className="space-y-1">

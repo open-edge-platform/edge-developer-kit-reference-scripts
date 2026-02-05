@@ -3,6 +3,7 @@
 
 import { Model } from '@/components/workloads/wake-word-detection/settings'
 import { WAKE_WORD_DETECTION_PORT } from '@/lib/constants'
+import { CreateWorkload } from '@/types/workload'
 
 export const WAKE_WORD_DETECTION_TYPE = 'wake-word-detection' as const
 
@@ -42,14 +43,18 @@ export const WAKE_WORD_DETECTION_MODELS: Model[] = [
   },
 ]
 
-export const WAKE_WORD_DETECTION_WORKLOAD = {
+export const WAKE_WORD_DETECTION_URL = `/api/wake-word-detection`
+
+export const WAKE_WORD_DETECTION_WORKLOAD: CreateWorkload = {
   name: WAKE_WORD_DETECTION_TYPE,
   type: WAKE_WORD_DETECTION_TYPE,
-  model: WAKE_WORD_DETECTION_MODELS[0].value,
-  device: 'CPU',
+  models: {
+    default: { name: WAKE_WORD_DETECTION_MODELS[0].value, device: 'CPU' },
+  },
   port: WAKE_WORD_DETECTION_PORT,
   metadata: {
     vadThreshold: 0.2,
   },
-  healthUrl: '/healthcheck',
+  engine: 'custom' as const,
+  healthCheck: { url: '/healthcheck' },
 }

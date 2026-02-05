@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { LIPSYNC_PORT } from '@/lib/constants'
+import { logger } from '@/utils/logger'
 
 export type LipsyncStatus = 'idle' | 'processing' | 'complete'
 
@@ -33,7 +34,7 @@ export class LipsyncStatusTracker {
     // Don't attempt to reconnect if we've exceeded max attempts
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       if (this.reconnectAttempts === this.maxReconnectAttempts) {
-        console.warn(
+        logger.warn(
           `[LipsyncStatusTracker] Max reconnection attempts reached. Lipsync status tracking disabled.`,
         )
         this.reconnectAttempts++
@@ -53,7 +54,7 @@ export class LipsyncStatusTracker {
 
       this.ws.onopen = () => {
         this.reconnectAttempts = 0 // Reset on successful connection
-        console.log(
+        logger.log(
           `[LipsyncStatusTracker] WebSocket connected for session ${this.sessionId}`,
         )
       }
@@ -73,7 +74,7 @@ export class LipsyncStatusTracker {
             this.updateStatus(newStatus)
           }
         } catch (error) {
-          console.error(
+          logger.error(
             '[LipsyncStatusTracker] Error parsing WebSocket message:',
             error,
           )
@@ -83,7 +84,7 @@ export class LipsyncStatusTracker {
       this.ws.onerror = (error) => {
         // Log detailed error information for debugging
         if (this.reconnectAttempts === 0) {
-          console.warn(
+          logger.warn(
             `[LipsyncStatusTracker] WebSocket connection failed for session ${this.sessionId}.`,
             'URL:',
             wsUrl,
@@ -97,7 +98,7 @@ export class LipsyncStatusTracker {
 
         // Only log if we had a successful connection before
         if (this.reconnectAttempts === 0) {
-          console.log(
+          logger.log(
             `[LipsyncStatusTracker] WebSocket closed for session ${this.sessionId}`,
           )
         }
@@ -107,7 +108,7 @@ export class LipsyncStatusTracker {
       }
     } catch (error) {
       if (this.reconnectAttempts === 0) {
-        console.warn(
+        logger.warn(
           `[LipsyncStatusTracker] WebSocket not available. Lipsync status tracking disabled. Error: ${error}`,
         )
       }
@@ -140,7 +141,7 @@ export class LipsyncStatusTracker {
       try {
         this.statusCallback(newStatus)
       } catch (error) {
-        console.error('[LipsyncStatusTracker] Error in status callback:', error)
+        logger.error('[LipsyncStatusTracker] Error in status callback:', error)
       }
     }
   }

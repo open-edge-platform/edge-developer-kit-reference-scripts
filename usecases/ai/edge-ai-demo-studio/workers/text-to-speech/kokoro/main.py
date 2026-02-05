@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from huggingface_hub import hf_hub_download
+from modelscope.hub.file_download import model_file_download as ms_hub_download
 
 from utils import create_cache_directory, validate_and_sanitize_cache_dir
 from ov_kokoro import OVKModel
@@ -78,12 +79,13 @@ class SpeechRequest(BaseModel):
 
 
 class KokoroTTSService:
-    def __init__(self, device: str = "CPU"):
+    def __init__(self, device: str = "CPU", source: str = "huggingface"):
         self.device = device.upper()
         self.model = None
         self.pipelines: Dict[str, KPipeline] = {}
         self.model_dir = None
         self._voices_cache = None
+        self.source = source
 
     def initialize(self):
         """Initialize the Kokoro TTS model and pipelines."""
@@ -98,7 +100,7 @@ class KokoroTTSService:
             create_cache_directory(model_dir)
             self.model_dir = model_dir
 
-            self.init_model_and_pipeline(model_dir)
+            self.init_model_and_pipeline(model_dir, self.source)
 
             # Warm up the pipeline
             try:
@@ -118,9 +120,24 @@ class KokoroTTSService:
             logger.error(f"Failed to initialize Kokoro TTS: {e}")
             raise
 
-    def init_model_and_pipeline(self, model_dir: str):
+    def _download_file(self, repo_id: str, file_path: str, local_dir: str) -> str:
+        print("Downloading", repo_id, "from", repo_id)
+        print(local_dir, file_path)
+        if self.source == "modelscope":
+            res = ms_hub_download(
+                model_id=repo_id,
+                file_path=file_path,
+                local_dir=local_dir,
+            )
+        else:
+            res = hf_hub_download(
+                repo_id=repo_id, local_dir=local_dir, filename=file_path
+            )
+        return res
+
+    def init_model_and_pipeline(self, model_dir: str, source: str = "huggingface"):
         try:
-            self.model = OVKModel(model_dir, self.device)
+            self.model = OVKModel(model_dir, self.device, source=source)
 
             # Initialize default pipeline
             self.pipelines["a"] = KPipeline(
@@ -134,12 +151,13 @@ class KokoroTTSService:
             # Fallback to standard KModel (PyTorch) if OVKModel fails
             # Download model files to the same model_dir
             repo_id = "hexgrad/Kokoro-82M"
-            config_path = hf_hub_download(
-                repo_id=repo_id, filename="config.json", local_dir=model_dir
+
+            config_path = self._download_file(
+                repo_id=repo_id, file_path="config.json", local_dir=model_dir
             )
-            model_path = hf_hub_download(
+            model_path = self._download_file(
                 repo_id=repo_id,
-                filename=KModel.MODEL_NAMES[repo_id],
+                file_path=KModel.MODEL_NAMES[repo_id],
                 local_dir=model_dir,
             )
 
@@ -168,6 +186,11 @@ class KokoroTTSService:
         model_voice_path = os.path.join(self.model_dir, "voices", f"{voice}.pt")
         if not os.path.exists(model_voice_path):
             logger.warning(f"Voice '{voice}' not found locally, downloading from hub")
+            voice = self._download_file(
+                repo_id="hexgrad/Kokoro-82M",
+                file_path=f"voices/{voice}.pt",
+                local_dir=self.model_dir,
+            )
         else:
             # Return path to local voice file
             voice = os.path.join(self.model_dir, "voices", f"{voice}.pt")
@@ -278,7 +301,10 @@ class KokoroTTSService:
         if lang_code not in self.pipelines:
             try:
                 self.pipelines[lang_code] = KPipeline(
-                    lang_code=lang_code, repo_id="hexgrad/Kokoro-82M", model=self.model, model_dir=self.model_dir
+                    lang_code=lang_code,
+                    repo_id="hexgrad/Kokoro-82M",
+                    model=self.model,
+                    model_dir=self.model_dir,
                 )
             except Exception as e:
                 logger.warning(
@@ -446,8 +472,10 @@ def setup_environment():
     """Setup environment variables for Kokoro TTS."""
     script_dir = os.path.dirname(os.path.abspath(__file__))
 
-    # Add ffmpeg to PATH
-    ffmpeg_path = os.path.join(script_dir, "..", "..", "thirdparty", "ffmpeg", "bin")
+    # Add ffmpeg to PATH (FFmpeg is installed at project root thirdparty)
+    # Navigate from workers/text-to-speech/kokoro to project root
+    project_root = os.path.join(script_dir, "..", "..", "..")
+    ffmpeg_path = os.path.join(project_root, "thirdparty", "ffmpeg", "bin")
     os.environ["PATH"] = ffmpeg_path + os.pathsep + os.environ.get("PATH", "")
 
     if is_windows():
@@ -543,6 +571,13 @@ def parse_arguments():
         default="CPU",
         help="Device to use for inference (default: CPU)",
     )
+    parser.add_argument(
+        "--source",
+        type=str,
+        default="huggingface",
+        choices=["huggingface", "modelscope"],
+        help="Source to use for model (default: huggingface)",
+    )
     return parser.parse_args()
 
 
@@ -561,7 +596,7 @@ def main():
 
     # Initialize TTS service
     logger.info("Initializing Kokoro TTS service...")
-    tts_service = KokoroTTSService(device=args.device)
+    tts_service = KokoroTTSService(device=args.device, source=args.source)
 
     try:
         tts_service.initialize()

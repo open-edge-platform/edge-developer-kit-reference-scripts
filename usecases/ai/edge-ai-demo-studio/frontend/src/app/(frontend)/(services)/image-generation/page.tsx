@@ -3,10 +3,7 @@
 
 'use client'
 
-import {
-  DocumentationTemplate,
-  DocumentationProps,
-} from '@/components/workloads/documentation'
+import { DocumentationTemplate } from '@/components/workloads/documentation'
 import Logs from '@/components/workloads/log'
 import { imageGenerationEndpoints } from '@/components/workloads/image-generation/api'
 import ImageGenerationDemo from '@/components/workloads/image-generation/demo'
@@ -20,10 +17,7 @@ import {
 import { useMemo } from 'react'
 
 import useDisclosure from '@/hooks/use-disclosure'
-import {
-  Model,
-  SettingsModal,
-} from '@/components/workloads/image-generation/settings'
+import { SettingsModal } from '@/components/workloads/image-generation/settings'
 import { Button } from '@/components/ui/button'
 import { Settings } from 'lucide-react'
 import {
@@ -31,47 +25,44 @@ import {
   IMAGE_GENERATION_TYPE,
   IMAGE_GENERATION_DESCRIPTION,
   IMAGE_GENERATION_MODELS,
+  IMAGE_GENERATION_URL,
 } from '@/lib/workloads/image-generation'
 import Endpoint from '@/components/workloads/endpoint'
-import { IMAGE_GENERATION_PORT } from '@/lib/constants'
+import { DocumentationProps, ImageGenerationSettings } from '@/types/workload'
+import { getBaseURL } from '@/utils/common'
 
 const TYPE = IMAGE_GENERATION_TYPE
 const DESCRIPTION = IMAGE_GENERATION_DESCRIPTION
 
 export default function ImageGenerationPage() {
-  const { data: workload, isLoading } = useGetWorkloadByType('image-generation')
+  const { data: workload, isLoading } = useGetWorkloadByType(
+    IMAGE_GENERATION_TYPE,
+  )
   const { isOpen, onClose, onOpen } = useDisclosure()
+  const url = getBaseURL(IMAGE_GENERATION_URL)
 
   const updateWorkload = useUpdateWorkload()
   const createWorkload = useCreateWorkload()
 
+  const workloadModel = useMemo(() => {
+    return workload?.models.default ?? IMAGE_GENERATION_MODELS[0]
+  }, [workload?.models.default])
   const modelName = useMemo(() => {
-    return workload?.model ?? IMAGE_GENERATION_MODELS[0].value
-  }, [workload?.model])
+    return workloadModel.name
+  }, [workloadModel])
 
   const data: DocumentationProps = {
-    overview: (
-      <ImageGenerationDocumentation
-        port={workload?.port ?? IMAGE_GENERATION_PORT}
-        model={modelName}
-      />
-    ),
-    endpoints: (
-      <Endpoint
-        apis={imageGenerationEndpoints}
-        port={workload?.port ?? IMAGE_GENERATION_PORT}
-      />
-    ),
+    overview: <ImageGenerationDocumentation url={url} model={modelName} />,
+    endpoints: <Endpoint apis={imageGenerationEndpoints} url={url} />,
   }
 
-  const updateSettings = (device: string, model: Model) => {
+  const updateSettings = (settings: ImageGenerationSettings) => {
     return new Promise((resolve) => {
       if (!workload) {
         createWorkload.mutate(
           {
             ...IMAGE_GENERATION_WORKLOAD,
-            device,
-            model: model.value,
+            models: { default: settings.model },
             status: 'inactive',
           },
           {
@@ -84,8 +75,7 @@ export default function ImageGenerationPage() {
           {
             id: workload?.id || 0,
             data: {
-              device,
-              model: model.value,
+              models: { default: settings.model },
               status: workload?.status === 'active' ? 'restart' : 'inactive',
             },
           },
@@ -121,8 +111,7 @@ export default function ImageGenerationPage() {
         onClose={onClose}
         availableModels={IMAGE_GENERATION_MODELS}
         updateSettings={updateSettings}
-        selectedDevice={workload?.device || IMAGE_GENERATION_WORKLOAD.device}
-        selectedModel={workload?.model || IMAGE_GENERATION_WORKLOAD.model}
+        currentSettings={{ model: workloadModel }}
       />
       <WorkloadComponent
         title="Image Generation"
@@ -133,11 +122,17 @@ export default function ImageGenerationPage() {
         demoElement={
           <ImageGenerationDemo
             disabled={!workload || workload.status !== 'active'}
-            selectedModel={workload?.model || IMAGE_GENERATION_WORKLOAD.model}
+            selectedModel={workloadModel.name}
           />
         }
         docsElement={<DocumentationTemplate data={data} />}
-        logsElement={<Logs name={`${workload?.name}_${workload?.id}`} />}
+        logsElement={
+          <Logs
+            id={workload?.id || 0}
+            type={workload?.type || IMAGE_GENERATION_TYPE}
+            engine={workload?.engine ?? 'custom'}
+          />
+        }
         isLoading={isLoading}
       />
     </>

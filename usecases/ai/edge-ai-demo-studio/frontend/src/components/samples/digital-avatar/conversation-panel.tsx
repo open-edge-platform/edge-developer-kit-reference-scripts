@@ -31,12 +31,13 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { InputArea } from './input-area'
+import { InputArea } from '@/components/common/input-area'
 
 interface ConversationPanelProps {
   sessionId: string
   connectionStatus: string
   disabled: boolean
+  useWakeWordDetection: boolean
   isSTTEnabled: boolean
   isDenoiseEnabled: boolean
   knowledgeBaseId?: number
@@ -48,6 +49,7 @@ export function ConversationPanel({
   sessionId,
   connectionStatus,
   disabled,
+  useWakeWordDetection,
   isSTTEnabled,
   isDenoiseEnabled,
   knowledgeBaseId,
@@ -142,11 +144,14 @@ export function ConversationPanel({
     }
   }, [selectedLanguage, availableLanguages])
 
-  const handleSendMessage = (text: string) => {
+  const handleSendMessage = (
+    text: string,
+    isWakeWordDetected: boolean = false,
+  ) => {
     if (!text) return
     setStatus('processing')
     sendMessage(
-      { text: text },
+      { text: text, metadata: { isWakeWordDetected } },
       {
         body: {
           sessionId,
@@ -261,46 +266,50 @@ export function ConversationPanel({
                 </p>
               </div>
             )}
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex items-start gap-3 ${
-                  message.role === 'user' ? 'flex-row-reverse' : 'flex-row'
-                }`}
-              >
-                <div
-                  className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full ${
-                    message.role === 'user'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400'
-                  }`}
-                >
-                  {message.role === 'user' ? (
-                    <User className="h-4 w-4" />
-                  ) : (
-                    <Bot className="h-4 w-4" />
-                  )}
-                </div>
-                <div
-                  className={`max-w-[calc(100%-3rem)] flex-1 rounded-lg px-4 py-2 text-sm break-words ${
-                    message.role === 'user'
-                      ? 'ml-12 bg-blue-600 text-white'
-                      : 'mr-12 bg-white text-slate-900 shadow-sm dark:bg-slate-800 dark:text-slate-100'
-                  }`}
-                >
-                  <div className="space-y-1">
-                    <div className="whitespace-pre-wrap">
-                      <Markdown remarkPlugins={[remarkGfm]}>
-                        {message.parts
-                          .filter((part) => part.type === 'text')
-                          .map((part) => part.text)
-                          .join('')}
-                      </Markdown>
+            {messages.map(
+              (message) =>
+                !(message.metadata as { isWakeWordDetected?: boolean })
+                  ?.isWakeWordDetected && (
+                  <div
+                    key={message.id}
+                    className={`flex items-start gap-3 ${
+                      message.role === 'user' ? 'flex-row-reverse' : 'flex-row'
+                    }`}
+                  >
+                    <div
+                      className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full ${
+                        message.role === 'user'
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400'
+                      }`}
+                    >
+                      {message.role === 'user' ? (
+                        <User className="h-4 w-4" />
+                      ) : (
+                        <Bot className="h-4 w-4" />
+                      )}
+                    </div>
+                    <div
+                      className={`max-w-[calc(100%-3rem)] flex-1 rounded-lg px-4 py-2 text-sm break-words ${
+                        message.role === 'user'
+                          ? 'ml-12 bg-blue-600 text-white'
+                          : 'mr-12 bg-white text-slate-900 shadow-sm dark:bg-slate-800 dark:text-slate-100'
+                      }`}
+                    >
+                      <div className="space-y-1">
+                        <div className="whitespace-pre-wrap">
+                          <Markdown remarkPlugins={[remarkGfm]}>
+                            {message.parts
+                              .filter((part) => part.type === 'text')
+                              .map((part) => part.text)
+                              .join('')}
+                          </Markdown>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </div>
-            ))}
+                ),
+            )}
             <div ref={chatEndRef} />
           </div>
         </ScrollArea>
@@ -309,6 +318,7 @@ export function ConversationPanel({
           disabled={disabled || connectionStatus !== 'connected'}
           clearChat={clearChat}
           setClearChat={setClearChat}
+          useWakeWordDetection={useWakeWordDetection}
           isSTTEnabled={isSTTEnabled}
           isDenoiseEnabled={isDenoiseEnabled}
           sendMessage={handleSendMessage}

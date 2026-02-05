@@ -10,115 +10,390 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
-import { ExternalLink, Loader2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
-import { useAccelerator } from '@/hooks/use-accelerators'
-
-export interface Model {
-  name: string
-  value: string
-  type: string
-}
-
-export interface EmbeddingSettings {
-  embeddingModel: Model
-  embeddingDevice: string
-  rerankerModel: Model
-  rerankerDevice: string
-}
+import { Loader2 } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  EmbeddingSettings,
+  InferenceEngine,
+  Model,
+  ModelList,
+} from '@/types/workload'
+import { Workload } from '@/payload-types'
+import { getModelNameWithQuant } from '@/utils/common'
+import { EngineSelector } from '@/components/common/engine-selector'
+import { EMBEDDING_TYPE, RERANKER_TYPE } from '@/lib/workloads/embedding'
+import {
+  useDeleteWorkloadModel,
+  useGetWorkloadModels,
+} from '@/hooks/use-workload'
+import { ConfirmationDialog } from '@/components/common/confirmation-dialog'
+import { toast } from 'sonner'
+import { Skeleton } from '@/components/ui/skeleton'
+import { WorkloadModelConfiguration } from '@/components/common/multiserve/multiserve-model-configuration'
+import { CurrentSelectionBadge } from '@/components/common/model-selector'
 
 interface EmbeddingSettingsModalProps {
   isOpen: boolean
   onClose: () => void
-  selectedEmbeddingModel: string
-  selectedEmbeddingDevice: string
-  selectedRerankerModel: string
-  selectedRerankerDevice: string
-  availableEmbeddingModels: Model[]
-  availableRerankerModels: Model[]
+  currentSettings: EmbeddingSettings
+  engines: InferenceEngine[]
   updateSettings: (settings: EmbeddingSettings) => Promise<unknown>
 }
 
 export function EmbeddingSettingsModal({
   isOpen,
   onClose,
-  selectedEmbeddingModel,
-  selectedEmbeddingDevice,
-  selectedRerankerModel,
-  selectedRerankerDevice,
-  availableEmbeddingModels,
-  availableRerankerModels,
+  currentSettings: {
+    embeddingModel: selectedEmbeddingModel,
+    rerankerModel: selectedRerankerModel,
+    engine: selectedEngine,
+  },
+  engines,
   updateSettings,
 }: EmbeddingSettingsModalProps) {
-  // Embedding model states
-  const [tempEmbeddingModel, setTempEmbeddingModel] = useState(
-    selectedEmbeddingModel || '',
+  const getModelName = useCallback(
+    (type: 'embedding' | 'reranker') => {
+      return getModelNameWithQuant(
+        type === 'embedding' ? selectedEmbeddingModel : selectedRerankerModel,
+        selectedEngine,
+      )
+    },
+    [selectedEngine, selectedEmbeddingModel, selectedRerankerModel],
   )
+
+  const [tempEngine, setTempEngine] = useState<Workload['engine']>(
+    selectedEngine || 'ovms',
+  )
+
+  // Fetch models
+  const { data: embeddingModelsList, isLoading: isEmbeddingLoading } =
+    useGetWorkloadModels(EMBEDDING_TYPE, tempEngine)
+  const { data: rerankerModelsList, isLoading: isRerankerLoading } =
+    useGetWorkloadModels(RERANKER_TYPE, tempEngine)
+
+  const { mutate: deleteModel, isPending: isDeleting } =
+    useDeleteWorkloadModel()
+  const [modelToDelete, setModelToDelete] = useState<{
+    id: string
+    type: Workload['type'] | 'rerank'
+  } | null>(null)
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false)
+
+  // Embedding state
+  const [tempEmbeddingModel, setTempEmbeddingModel] = useState('')
   const [tempEmbeddingDevice, setTempEmbeddingDevice] = useState(
-    selectedEmbeddingDevice || 'CPU',
+    selectedEmbeddingModel?.device || 'CPU',
+  )
+  const [tempEmbeddingParams, setTempEmbeddingParams] = useState(
+    selectedEmbeddingModel?.params || '',
   )
   const [embeddingTabValue, setEmbeddingTabValue] = useState('predefined')
+  const [isEmbeddingValid, setIsEmbeddingValid] = useState(true)
+  const [embeddingSource, setEmbeddingSource] = useState<
+    'huggingface' | 'modelscope' | 'custom'
+  >(selectedEmbeddingModel?.source ?? 'huggingface')
 
-  // Reranker model states
-  const [tempRerankerModel, setTempRerankerModel] = useState(
-    selectedRerankerModel || '',
-  )
+  // Reranker state
+  const [tempRerankerModel, setTempRerankerModel] = useState('')
   const [tempRerankerDevice, setTempRerankerDevice] = useState(
-    selectedRerankerDevice || 'CPU',
+    selectedRerankerModel?.device || 'CPU',
+  )
+  const [tempRerankerParams, setTempRerankerParams] = useState(
+    selectedRerankerModel?.params || '',
   )
   const [rerankerTabValue, setRerankerTabValue] = useState('predefined')
+  const [isRerankerValid, setIsRerankerValid] = useState(true)
+  const [rerankerSource, setRerankerSource] = useState<
+    'huggingface' | 'modelscope' | 'custom'
+  >(selectedRerankerModel?.source ?? 'huggingface')
+
+  const [verifiedEmbedding, setVerifiedEmbedding] = useState<ModelList>([])
+  const [customEmbedding, setCustomEmbedding] = useState<ModelList>([])
+  const [verifiedReranker, setVerifiedReranker] = useState<ModelList>([])
+  const [customReranker, setCustomReranker] = useState<ModelList>([])
 
   const [isLoading, setIsLoading] = useState(false)
-  const { data: devices } = useAccelerator()
+  const [hasInitialized, setHasInitialized] = useState(false)
+
+  // Temp file paths (unused in final logic but needed for state)
+  const [, setTempEmbeddingLocalFilePath] = useState('')
+  const [, setTempRerankerLocalFilePath] = useState('')
+
+  // Process models
+  useEffect(() => {
+    if (embeddingModelsList) {
+      const verified: ModelList = []
+      const custom: ModelList = []
+      embeddingModelsList.forEach((m) => {
+        if (m.verified) verified.push(m)
+        else custom.push(m)
+      })
+      setVerifiedEmbedding(verified)
+      setCustomEmbedding(custom)
+    }
+  }, [embeddingModelsList])
+
+  useEffect(() => {
+    if (rerankerModelsList) {
+      const verified: ModelList = []
+      const custom: ModelList = []
+      rerankerModelsList.forEach((m) => {
+        if (m.verified) verified.push(m)
+        else custom.push(m)
+      })
+      setVerifiedReranker(verified)
+      setCustomReranker(custom)
+    }
+  }, [rerankerModelsList])
+
+  const embeddingSavedModelType = useMemo(() => {
+    const name = getModelName('embedding')
+    const isVerified = verifiedEmbedding.some((m) => m.id === name)
+    return isVerified ? 'verified' : 'custom'
+  }, [getModelName, verifiedEmbedding])
+
+  const rerankerSavedModelType = useMemo(() => {
+    const name = getModelName('reranker')
+    const isVerified = verifiedReranker.some((m) => m.id === name)
+    return isVerified ? 'verified' : 'custom'
+  }, [getModelName, verifiedReranker])
+
+  // Initialization
+  useEffect(() => {
+    if (!isOpen) {
+      setHasInitialized(false)
+      return
+    }
+
+    if (!hasInitialized && embeddingModelsList && rerankerModelsList) {
+      setTempEngine(selectedEngine || 'ovms')
+
+      // Embedding Init
+      setTempEmbeddingDevice(selectedEmbeddingModel?.device || 'CPU')
+      setEmbeddingSource(selectedEmbeddingModel?.source || 'huggingface')
+      const embeddingName = getModelName('embedding')
+      const isEmbeddingVerified = verifiedEmbedding.some(
+        (m) => m.id === embeddingName,
+      )
+      if (isEmbeddingVerified) {
+        setEmbeddingTabValue('predefined')
+        setTempEmbeddingModel(embeddingName)
+      } else if (embeddingName) {
+        setEmbeddingTabValue('custom')
+        setTempEmbeddingModel(embeddingName)
+      } else {
+        setEmbeddingTabValue('predefined')
+        setTempEmbeddingModel(verifiedEmbedding[0]?.id || '')
+      }
+
+      // Reranker Init
+      setTempRerankerDevice(selectedRerankerModel?.device || 'CPU')
+      setRerankerSource(selectedRerankerModel?.source || 'huggingface')
+      const rerankerName = getModelName('reranker')
+      const isRerankerVerified = verifiedReranker.some(
+        (m) => m.id === rerankerName,
+      )
+      if (isRerankerVerified) {
+        setRerankerTabValue('predefined')
+        setTempRerankerModel(rerankerName)
+      } else if (rerankerName) {
+        setRerankerTabValue('custom')
+        setTempRerankerModel(rerankerName)
+      } else {
+        setRerankerTabValue('predefined')
+        setTempRerankerModel(verifiedReranker[0]?.id || '')
+      }
+
+      setHasInitialized(true)
+    }
+  }, [
+    isOpen,
+    hasInitialized,
+    selectedEngine,
+    selectedEmbeddingModel,
+    selectedRerankerModel,
+    getModelName,
+    embeddingModelsList,
+    rerankerModelsList,
+    verifiedEmbedding,
+    verifiedReranker,
+  ])
+
+  // Handlers
+  const handleEngineSelect = (value: Workload['engine']) => {
+    setTempEngine(value)
+    // Devices reset to CPU handled by state init if needed, or user selecting
+    setTempEmbeddingDevice('CPU')
+    setTempRerankerDevice('CPU')
+  }
+
+  const handleDeleteModel = async (
+    id: string,
+    type: Workload['type'] | 'rerank',
+    e: React.MouseEvent,
+  ) => {
+    e.stopPropagation()
+    setModelToDelete({ id, type })
+    setIsDeleteConfirmOpen(true)
+  }
+
+  const confirmDeleteModel = () => {
+    if (modelToDelete) {
+      deleteModel(
+        {
+          engine: tempEngine,
+          type: modelToDelete.type as Workload['type'],
+          name: modelToDelete.id,
+        },
+        {
+          onSuccess: () => {
+            setIsDeleteConfirmOpen(false)
+            if (
+              modelToDelete.type === EMBEDDING_TYPE &&
+              tempEmbeddingModel === modelToDelete.id
+            ) {
+              setTempEmbeddingModel('')
+            }
+            if (
+              modelToDelete.type === RERANKER_TYPE &&
+              tempRerankerModel === modelToDelete.id
+            ) {
+              setTempRerankerModel('')
+            }
+            setModelToDelete(null)
+          },
+        },
+      )
+    }
+  }
+
+  const validateModelName = (
+    name: string,
+    type: 'embedding' | 'reranker',
+    tab: string,
+    source: string,
+  ) => {
+    const verified = type === 'embedding' ? verifiedEmbedding : verifiedReranker
+    const custom = type === 'embedding' ? customEmbedding : customReranker
+    const selectedName = getModelName(type)
+
+    if (name.trim() === '') return false
+
+    if (tab === 'custom') {
+      if (
+        source === 'custom' &&
+        !custom.find((m) => m.id === name)?.downloaded &&
+        [...verified, ...custom].some(
+          (m) => m.id === name && m.id !== selectedName,
+        )
+      ) {
+        toast.error(`${type} model name already exists.`)
+        return false
+      }
+    }
+    return true
+  }
 
   const handleSave = () => {
-    // Handle embedding model
-    let embeddingModel = {
-      name: tempEmbeddingModel,
-      value: tempEmbeddingModel,
-      type: 'custom',
+    if (
+      !validateModelName(
+        tempEmbeddingModel,
+        'embedding',
+        embeddingTabValue,
+        embeddingSource,
+      ) ||
+      !validateModelName(
+        tempRerankerModel,
+        'reranker',
+        rerankerTabValue,
+        rerankerSource,
+      )
+    ) {
+      return
     }
+
+    // Embedding Model Construction
+    let embeddingModel: Model = {
+      name: tempEmbeddingModel,
+      source: embeddingSource,
+      device: tempEmbeddingDevice,
+      params: tempEmbeddingParams,
+    }
+
     if (embeddingTabValue !== 'custom') {
-      const selected = availableEmbeddingModels.find(
-        (model) => model.value === tempEmbeddingModel,
+      const selected = verifiedEmbedding.find(
+        (m) => m.id === tempEmbeddingModel,
       )
       if (selected) {
-        embeddingModel = selected
+        let id = { ...selected }.id
+        const colonIndex = id.indexOf(':')
+        if (colonIndex !== -1) {
+          id = id.substring(0, colonIndex)
+        }
+        embeddingModel = {
+          name: id,
+          quant: selected.quant,
+          device: tempEmbeddingDevice,
+          source: embeddingSource,
+          params: tempEmbeddingParams,
+        }
+      }
+    } else {
+      const colonIndex = tempEmbeddingModel.indexOf(':')
+      if (colonIndex !== -1) {
+        embeddingModel = {
+          name: tempEmbeddingModel.substring(0, colonIndex),
+          quant: tempEmbeddingModel.substring(colonIndex + 1),
+          source: embeddingSource,
+          device: tempEmbeddingDevice,
+          params: tempEmbeddingParams,
+        }
       }
     }
 
-    // Handle reranker model
-    let rerankerModel = {
+    // Reranker Model Construction
+    let rerankerModel: Model = {
       name: tempRerankerModel,
-      value: tempRerankerModel,
-      type: 'custom',
+      source: rerankerSource,
+      device: tempRerankerDevice,
+      params: tempRerankerParams,
     }
+
     if (rerankerTabValue !== 'custom') {
-      const selected = availableRerankerModels.find(
-        (model) => model.value === tempRerankerModel,
-      )
+      const selected = verifiedReranker.find((m) => m.id === tempRerankerModel)
       if (selected) {
-        rerankerModel = selected
+        let id = { ...selected }.id
+        const colonIndex = id.indexOf(':')
+        if (colonIndex !== -1) {
+          id = id.substring(0, colonIndex)
+        }
+        rerankerModel = {
+          name: id,
+          quant: selected.quant,
+          device: tempRerankerDevice,
+          source: rerankerSource,
+          params: tempRerankerParams,
+        }
+      }
+    } else {
+      const colonIndex = tempRerankerModel.indexOf(':')
+      if (colonIndex !== -1) {
+        rerankerModel = {
+          name: tempRerankerModel.substring(0, colonIndex),
+          quant: tempRerankerModel.substring(colonIndex + 1),
+          source: rerankerSource,
+          device: tempRerankerDevice,
+          params: tempRerankerParams,
+        }
       }
     }
 
     setIsLoading(true)
     updateSettings({
       embeddingModel,
-      embeddingDevice: tempEmbeddingDevice,
       rerankerModel,
-      rerankerDevice: tempRerankerDevice,
+      engine: tempEngine,
     })
       .then(() => {
         setIsLoading(false)
@@ -129,231 +404,157 @@ export function EmbeddingSettingsModal({
       })
   }
 
-  const handleEmbeddingTabChange = (value: string) => {
-    setEmbeddingTabValue(value)
-    if (value === 'predefined') {
-      if (!tempEmbeddingModel) setTempEmbeddingModel(selectedEmbeddingModel)
-    } else {
-      setTempEmbeddingModel('')
-    }
-  }
-
-  const handleRerankerTabChange = (value: string) => {
-    setRerankerTabValue(value)
-    if (value === 'predefined') {
-      if (!tempRerankerModel) setTempRerankerModel(selectedRerankerModel)
-    } else {
-      setTempRerankerModel('')
-    }
-  }
-
-  useEffect(() => {
-    setTempEmbeddingModel(
-      selectedEmbeddingModel || availableEmbeddingModels[0]?.value || '',
-    )
-    setTempEmbeddingDevice(selectedEmbeddingDevice || 'CPU')
-    setTempRerankerModel(
-      selectedRerankerModel || availableRerankerModels[0]?.value || '',
-    )
-    setTempRerankerDevice(selectedRerankerDevice || 'CPU')
-  }, [
-    selectedEmbeddingModel,
-    selectedEmbeddingDevice,
-    selectedRerankerModel,
-    selectedRerankerDevice,
-    availableEmbeddingModels,
-    availableRerankerModels,
-  ])
-
-  const DeviceSelector = ({
-    value,
-    onChange,
-  }: {
-    value: string
-    onChange: (value: string) => void
-  }) => {
-    return (
-      <div>
-        <Label htmlFor="device-select" className="text-base font-medium">
-          Device
-        </Label>
-        <Select value={value} onValueChange={onChange}>
-          <SelectTrigger className="mt-2 w-full">
-            <SelectValue placeholder="Choose a device" />
-          </SelectTrigger>
-          <SelectContent>
-            {(devices ?? []).map((device) => (
-              <SelectItem key={device.id} value={device.id}>
-                <div className="flex flex-col">
-                  <span className="font-medium">{device.name}</span>
-                </div>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-    )
-  }
-
-  const ModelSelector = ({
-    models,
-    selectedModel,
-    onModelSelect,
-    tabValue,
-    onTabChange,
-    modelType,
-  }: {
-    models: Model[]
-    selectedModel: string
-    onModelSelect: (value: string) => void
-    tabValue: string
-    onTabChange: (value: string) => void
-    modelType: string
-  }) => {
-    return (
-      <div>
-        <Label className="text-base font-medium">{modelType}</Label>
-        <Tabs value={tabValue} onValueChange={onTabChange} className="mt-2">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="predefined">Verified</TabsTrigger>
-            <TabsTrigger value="custom">Custom</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="predefined" className="space-y-4">
-            <div>
-              <Label htmlFor="model-select" className="text-base font-medium">
-                Model
-              </Label>
-              <Select value={selectedModel} onValueChange={onModelSelect}>
-                <SelectTrigger className="mt-2 w-full">
-                  <SelectValue
-                    placeholder={`Choose a ${modelType.toLowerCase()} model`}
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {models.map((model) => (
-                    <SelectItem key={model.value} value={model.name}>
-                      <div className="flex flex-col">
-                        <span className="font-medium">{model.name}</span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="custom" className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor={`custom-${modelType.toLowerCase()}-model`}>
-                Model Name
-              </Label>
-              <Input
-                id={`custom-${modelType.toLowerCase()}-model`}
-                placeholder={models[0].value}
-                value={selectedModel}
-                onChange={(e) => onModelSelect(e.target.value)}
-              />
-              <p className="mt-1 text-sm text-gray-500">
-                Enter the Hugging Face Model name for your model
-              </p>
-            </div>
-          </TabsContent>
-        </Tabs>
-      </div>
-    )
-  }
+  const canSave =
+    tempEmbeddingModel &&
+    tempRerankerModel &&
+    isEmbeddingValid &&
+    isRerankerValid &&
+    tempEmbeddingDevice &&
+    tempRerankerDevice
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[600px]">
+      <DialogContent className="flex max-h-[90vh] flex-col sm:max-w-[700px]">
         <DialogHeader>
-          <DialogTitle>Embedding Service Settings</DialogTitle>
+          <DialogTitle className="text-xl">
+            Embedding Service Settings
+          </DialogTitle>
+          {selectedEmbeddingModel && selectedRerankerModel && (
+            <div className="space-y-1.5 pt-3 text-sm">
+              <CurrentSelectionBadge
+                label="Embedding"
+                modelName={getModelName('embedding')}
+                modelType={embeddingSavedModelType}
+                engine={selectedEngine}
+              />
+              <CurrentSelectionBadge
+                label="Reranker"
+                modelName={getModelName('reranker')}
+                modelType={rerankerSavedModelType}
+                engine={selectedEngine}
+              />
+            </div>
+          )}
         </DialogHeader>
 
-        <div className="space-y-6">
-          {/* Embedding Model Section */}
-          <div className="space-y-4">
-            <ModelSelector
-              models={availableEmbeddingModels}
+        {isEmbeddingLoading || isRerankerLoading ? (
+          <div className="flex min-h-0 w-full flex-1 flex-col space-y-4">
+            <Skeleton className="h-10 w-full rounded-md" />
+
+            <div className="space-y-2 pt-2">
+              <Skeleton className="h-5 w-[120px]" />
+              <Skeleton className="h-10 w-full" />
+            </div>
+
+            <div className="space-y-2">
+              <Skeleton className="h-5 w-[100px]" />
+              <Skeleton className="h-10 w-full" />
+            </div>
+
+            <div className="space-y-2">
+              <Skeleton className="h-5 w-[100px]" />
+              <Skeleton className="h-10 w-full" />
+            </div>
+          </div>
+        ) : (
+          <div className="flex-1 space-y-6 overflow-y-auto pr-2">
+            <EngineSelector
+              value={tempEngine}
+              onChange={handleEngineSelect}
+              engines={engines}
+            />
+
+            <WorkloadModelConfiguration
+              title="Embedding Model"
+              task={EMBEDDING_TYPE}
+              modelType={EMBEDDING_TYPE}
+              engine={tempEngine}
+              verifiedModels={verifiedEmbedding}
+              customModels={customEmbedding}
               selectedModel={tempEmbeddingModel}
               onModelSelect={setTempEmbeddingModel}
               tabValue={embeddingTabValue}
-              onTabChange={handleEmbeddingTabChange}
-              modelType="Embedding"
+              onTabChange={setEmbeddingTabValue}
+              source={embeddingSource}
+              onSourceChange={setEmbeddingSource}
+              isValid={isEmbeddingValid}
+              onValidationChange={setIsEmbeddingValid}
+              device={tempEmbeddingDevice}
+              onDeviceChange={setTempEmbeddingDevice}
+              savedModelName={getModelName('embedding')}
+              savedModelType={embeddingSavedModelType}
+              onTempFileUpload={setTempEmbeddingLocalFilePath}
+              onDeleteModel={(id, e) =>
+                handleDeleteModel(id, EMBEDDING_TYPE, e)
+              }
+              extraParams={tempEmbeddingParams}
+              onExtraParamsChange={setTempEmbeddingParams}
             />
 
-            <DeviceSelector
-              value={tempEmbeddingDevice}
-              onChange={setTempEmbeddingDevice}
-            />
-          </div>
-
-          <Separator />
-
-          {/* Reranker Model Section */}
-          <div className="space-y-4">
-            <ModelSelector
-              models={availableRerankerModels}
+            <WorkloadModelConfiguration
+              title="Reranker Model"
+              task={EMBEDDING_TYPE}
+              modelType={RERANKER_TYPE}
+              engine={tempEngine}
+              verifiedModels={verifiedReranker}
+              customModels={customReranker}
               selectedModel={tempRerankerModel}
               onModelSelect={setTempRerankerModel}
               tabValue={rerankerTabValue}
-              onTabChange={handleRerankerTabChange}
-              modelType="Reranker"
-            />
-
-            <DeviceSelector
-              value={tempRerankerDevice}
-              onChange={setTempRerankerDevice}
+              onTabChange={setRerankerTabValue}
+              source={rerankerSource}
+              onSourceChange={setRerankerSource}
+              isValid={isRerankerValid}
+              onValidationChange={setIsRerankerValid}
+              device={tempRerankerDevice}
+              onDeviceChange={setTempRerankerDevice}
+              savedModelName={getModelName('reranker')}
+              savedModelType={rerankerSavedModelType}
+              onTempFileUpload={setTempRerankerLocalFilePath}
+              onDeleteModel={(id, e) => handleDeleteModel(id, RERANKER_TYPE, e)}
+              extraParams={tempRerankerParams}
+              onExtraParamsChange={setTempRerankerParams}
             />
           </div>
+        )}
 
-          <Separator />
+        <Separator className="my-4" />
 
-          {(embeddingTabValue === 'custom' ||
-            rerankerTabValue === 'custom') && (
-            <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
-              <h4 className="mb-2 flex items-center gap-2 font-medium text-orange-900">
-                <ExternalLink className="h-4 w-4" />
-                Hugging Face Setup
-              </h4>
-              <div className="space-y-2 text-sm text-orange-800">
-                <p>To use custom Hugging Face models:</p>
-                <ol className="ml-2 list-inside list-decimal space-y-1">
-                  <li>Get your API key from Hugging Face</li>
-                  <li>Add it as HF_TOKEN in your environment</li>
-                  <li>
-                    Ensure the model supports the respective tasks
-                    (embedding/rerank)
-                  </li>
-                </ol>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="flex justify-end space-x-2 pt-4">
+        <div className="flex justify-end gap-3 pt-2">
           <Button
             variant="outline"
             disabled={isLoading}
             onClick={onClose}
-            className="bg-white text-gray-700"
+            className="min-w-[100px]"
           >
             Cancel
           </Button>
           <Button
             onClick={handleSave}
-            disabled={isLoading}
-            className="bg-blue-600 text-white"
+            disabled={isLoading || !canSave}
+            className="min-w-[120px] bg-blue-600 hover:bg-blue-700"
           >
             {isLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Saving...
+              </>
             ) : (
               'Save Settings'
             )}
           </Button>
         </div>
       </DialogContent>
+      <ConfirmationDialog
+        isOpen={isDeleteConfirmOpen}
+        onClose={() => setIsDeleteConfirmOpen(false)}
+        onConfirm={confirmDeleteModel}
+        title="Delete Model"
+        description={`Are you sure you want to delete model "${modelToDelete?.id}"? This action cannot be undone.`}
+        confirmText="Delete"
+        variant="destructive"
+        isLoading={isDeleting}
+      />
     </Dialog>
   )
 }

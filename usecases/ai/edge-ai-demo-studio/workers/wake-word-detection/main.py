@@ -331,13 +331,14 @@ async def start_detection(
         )
 
     detection_state.active = True
-    detection_state.selected_device_id = request.device_id
+    if request.device_id is not None:
+        detection_state.selected_device_id = request.device_id
 
     # Start audio stream with selected device
     await audio_manager.start_stream(
         device_id=(
-            request.device_id
-            if request.device_id != detection_state.default_device_id
+            detection_state.selected_device_id
+            if detection_state.selected_device_id != detection_state.default_device_id
             else -1  # use -1 for sysdefault
         )
     )

@@ -7,17 +7,8 @@
 import { useCallback, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { ToolInfo } from '@/lib/mcp-manager'
-
-export interface McpServerInfo {
-  id: string
-  name: string
-  url: string
-  active: boolean
-  isConnected: boolean
-  toolCount: number
-  tools: ToolInfo[]
-}
+import { McpServerInfo } from '@/types/mcp-manager'
+import { logger } from '@/utils/logger'
 
 export function useMcpServerInfo() {
   const queryClient = useQueryClient()
@@ -70,7 +61,7 @@ export function useMcpServerInfo() {
 
       toast.success('Successfully connected to MCP servers')
     } catch (error) {
-      console.error('Error connecting to MCP servers:', error)
+      logger.error('Error connecting to MCP servers:', error)
       toast.error('Failed to connect to MCP servers')
     } finally {
       setIsRefreshing(false)
@@ -97,7 +88,7 @@ export function useMcpServerInfo() {
       toast.success('Successfully disconnected from MCP servers')
       return true
     } catch (error) {
-      console.error('Error disconnecting from MCP servers:', error)
+      logger.error('Error disconnecting from MCP servers:', error)
 
       // Still clean up client-side state even if server cleanup fails
       queryClient.setQueryData(['mcp-initialization-state'], false)

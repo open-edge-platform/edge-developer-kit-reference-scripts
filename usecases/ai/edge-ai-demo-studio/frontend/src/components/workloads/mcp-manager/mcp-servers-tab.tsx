@@ -19,6 +19,7 @@ import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { McpServer } from '@/payload-types'
 import AddServerDialog from './add-server-dialog'
+import { logger } from '@/utils/logger'
 
 export default function McpServersTab() {
   const [servers, setServers] = useState<McpServer[]>([])
@@ -35,10 +36,10 @@ export default function McpServersTab() {
           const data = await response.json()
           setServers(data.docs || [])
         } else {
-          console.error('Failed to load MCP servers:', response.statusText)
+          logger.error('Failed to load MCP servers:', response.statusText)
         }
       } catch (error) {
-        console.error('Error loading MCP servers:', error)
+        logger.error('Error loading MCP servers:', error)
         toast.error('Failed to load MCP servers')
       } finally {
         setLoading(false)
@@ -68,7 +69,7 @@ export default function McpServersTab() {
         throw new Error('Failed to add server')
       }
     } catch (error) {
-      console.error('Error adding MCP server:', error)
+      logger.error('Error adding MCP server:', error)
       toast.error('Failed to add MCP server')
     }
   }
@@ -100,7 +101,7 @@ export default function McpServersTab() {
         throw new Error('Failed to update server')
       }
     } catch (error) {
-      console.error('Error updating MCP server:', error)
+      logger.error('Error updating MCP server:', error)
       toast.error('Failed to update MCP server')
     }
   }
@@ -122,7 +123,7 @@ export default function McpServersTab() {
         throw new Error('Failed to delete server')
       }
     } catch (error) {
-      console.error('Error deleting MCP server:', error)
+      logger.error('Error deleting MCP server:', error)
       toast.error('Failed to delete MCP server')
     }
   }
@@ -147,7 +148,7 @@ export default function McpServersTab() {
         throw new Error('Failed to toggle server status')
       }
     } catch (error) {
-      console.error('Error toggling MCP server status:', error)
+      logger.error('Error toggling MCP server status:', error)
       toast.error('Failed to toggle server status')
     }
   }

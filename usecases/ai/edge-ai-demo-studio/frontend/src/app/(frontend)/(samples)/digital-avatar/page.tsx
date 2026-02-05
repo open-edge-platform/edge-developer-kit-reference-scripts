@@ -20,22 +20,31 @@ import {
 import {
   AvatarStream,
   ConversationPanel,
-  DigitalAvatarSettings,
 } from '@/components/samples/digital-avatar'
 import { Badge } from '@/components/ui/badge'
 import { KnowledgeBase } from '@/types/embedding'
-import { TEXT_GENERATION_WORKLOAD } from '@/lib/workloads/text-generation'
+import { TEXT_GENERATION_TYPE } from '@/lib/workloads/text-generation'
+import { DigitalAvatarSettings } from '@/components/common/digital-avatar-settings'
+import { LIPSYNC_TYPE } from '@/lib/workloads/lipsync'
+import {
+  TEXT_TO_SPEECH_TYPE,
+  TEXT_TO_SPEECH_WORKLOAD,
+} from '@/lib/workloads/text-to-speech'
+import { SPEECH_TO_TEXT_TYPE } from '@/lib/workloads/speech-to-text'
+import { EMBEDDING_TYPE } from '@/lib/workloads/embedding'
+import { WAKE_WORD_DETECTION_TYPE } from '@/lib/workloads/wake-word-detection'
 
 export default function DigitalAvatarPage() {
   const { data: lipsyncService, isLoading: isLipsyncLoading } =
-    useGetWorkloadByType('lipsync')
-  const { data: ttsService } = useGetWorkloadByType('text-to-speech')
+    useGetWorkloadByType(LIPSYNC_TYPE)
+  const { data: ttsService } = useGetWorkloadByType(TEXT_TO_SPEECH_TYPE)
   const { data: workloads } = useGetWorkloadsStatus()
   const createWorkload = useCreateWorkload()
   const updateWorkload = useUpdateWorkload()
 
   const [sessionId, setSessionId] = useState('')
   const [connectionStatus, setConnectionStatus] = useState('disconnected')
+  const [useWakeWordDetection, setUseWakeWordDetection] = useState(false)
   const [useSTT, setUseSTT] = useState(false)
   const [useDenoise, setUseDenoise] = useState(true)
   const [useEmbedding, setUseEmbedding] = useState(false)
@@ -45,13 +54,18 @@ export default function DigitalAvatarPage() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
 
   const prerequisiteServices = useMemo(() => {
-    const ps = ['text-generation', 'text-to-speech', 'lipsync']
+    const ps: string[] = [
+      TEXT_GENERATION_TYPE,
+      TEXT_TO_SPEECH_TYPE,
+      LIPSYNC_TYPE,
+    ]
 
-    if (useSTT) ps.push('speech-to-text')
-    if (useEmbedding) ps.push('embedding')
+    if (useSTT) ps.push(SPEECH_TO_TEXT_TYPE)
+    if (useEmbedding) ps.push(EMBEDDING_TYPE)
+    if (useWakeWordDetection) ps.push(WAKE_WORD_DETECTION_TYPE)
 
     return ps
-  }, [useEmbedding, useSTT])
+  }, [useEmbedding, useSTT, useWakeWordDetection])
 
   const handleSessionIdChange = (newSessionId: string) => {
     setSessionId(newSessionId)
@@ -63,12 +77,14 @@ export default function DigitalAvatarPage() {
     useEmbedding: boolean
     selectedKnowledgeBase: KnowledgeBase | null
     useMcpTools: boolean
+    useWakeWordDetection?: boolean
   }) => {
     setUseSTT(settings.useSTT)
     setUseDenoise(settings.useDenoise)
     setUseEmbedding(settings.useEmbedding)
     setSelectedKnowledgeBase(settings.selectedKnowledgeBase)
     setUseMcpTools(settings.useMcpTools)
+    setUseWakeWordDetection(settings.useWakeWordDetection || false)
   }
 
   const SettingsButton = () => (
@@ -140,6 +156,15 @@ export default function DigitalAvatarPage() {
               >
                 <div className="h-2 w-2 animate-pulse rounded-full bg-green-500"></div>
                 MCP Tools On
+              </Badge>
+            )}
+            {useWakeWordDetection && (
+              <Badge
+                variant="secondary"
+                className="flex items-center gap-1.5 border-red-200 bg-red-100 px-3 py-1 text-red-800 dark:border-red-800 dark:bg-red-900/20 dark:text-red-200"
+              >
+                <div className="h-2 w-2 animate-pulse rounded-full bg-red-500"></div>
+                Wake Word Detection On
               </Badge>
             )}
             <SettingsButton />
@@ -224,13 +249,15 @@ export default function DigitalAvatarPage() {
                 inactivePrerequisites.length > 0 ||
                 (preparingPrerequisites && preparingPrerequisites.length > 0)
               }
+              useWakeWordDetection={useWakeWordDetection}
               isSTTEnabled={useSTT}
               isDenoiseEnabled={useDenoise}
               sessionId={sessionId}
               connectionStatus={connectionStatus}
               knowledgeBaseId={selectedKnowledgeBase?.id || undefined}
               selectedModel={
-                ttsService?.model || TEXT_GENERATION_WORKLOAD.model
+                ttsService?.models.default.name ||
+                TEXT_TO_SPEECH_WORKLOAD.models.default.name
               }
               useMcpTools={useMcpTools}
             />
@@ -246,6 +273,7 @@ export default function DigitalAvatarPage() {
           useEmbedding={useEmbedding}
           selectedKnowledgeBase={selectedKnowledgeBase}
           useMcpTools={useMcpTools}
+          useWakeWordDetection={useWakeWordDetection}
           onSettingsUpdate={handleSettingsUpdate}
         />
       </div>

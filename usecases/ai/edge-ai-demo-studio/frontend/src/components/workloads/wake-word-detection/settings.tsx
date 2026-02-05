@@ -31,6 +31,7 @@ import {
   useListWakeWordModels,
   useGetDetectionStatus,
 } from '@/hooks/use-wake-word-detection'
+import { WakeWordSettings } from '@/types/workload'
 
 export interface Model {
   name: string
@@ -42,10 +43,9 @@ interface SettingsModalProps {
   task: string
   isOpen: boolean
   onClose: () => void
-  selectedModel: string
-  updateSettings: (model: Model[], vadThreshold: number) => Promise<unknown>
+  updateSettings: (settings: WakeWordSettings) => Promise<unknown>
   predefinedModels: Model[]
-  vadThreshold?: number
+  currentSettings: WakeWordSettings
   workloadStatus?:
     | 'error'
     | 'restart'
@@ -60,9 +60,8 @@ export function SettingsModal({
   isOpen,
   onClose,
   predefinedModels,
-  selectedModel,
   updateSettings,
-  vadThreshold: initialVadThreshold,
+  currentSettings: { model: selectedModel, vadThreshold: initialVadThreshold },
   workloadStatus,
 }: SettingsModalProps) {
   const [selectedModels, setSelectedModels] = useState<Model[]>([])
@@ -78,6 +77,7 @@ export function SettingsModal({
   const { data: detectionStatus } = useGetDetectionStatus({
     enabled: isOpen && workloadStatus === 'active',
   })
+  const device = 'CPU'
 
   // Create a set of predefined model filenames for quick lookup
   const predefinedModelFilenames = useMemo(
@@ -199,7 +199,12 @@ export function SettingsModal({
           toast.success('Models reloaded successfully')
         }
 
-        await updateSettings(selectedModels, vadThreshold)
+        const model = selectedModels.map((m) => m.value).join(' ')
+
+        await updateSettings({
+          model: { name: model, device },
+          vadThreshold,
+        })
         toast.success('Settings saved successfully')
         onClose()
       }
@@ -251,7 +256,7 @@ export function SettingsModal({
   useEffect(() => {
     // Parse selected models from comma-separated string
     if (selectedModel && allAvailableModels.length > 0) {
-      const modelValues = selectedModel.split(' ')
+      const modelValues = selectedModel.name.split(' ')
       const models = modelValues
         .map((value) => allAvailableModels.find((m) => m.value === value))
         .filter((m): m is Model => m !== undefined)

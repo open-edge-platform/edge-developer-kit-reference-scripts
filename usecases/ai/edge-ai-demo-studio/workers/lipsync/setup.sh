@@ -54,10 +54,6 @@ wav2lip_dependencies_installation() {
   cp -rf "$SCRIPT_DIR"/tmp/Wav2Lip/hparams.py "$SCRIPT_DIR"/modules/lipsync/wav2lip/wav2lip256/
 
   rm -rf  "$SCRIPT_DIR"/tmp
-
-  "$UV_CMD" run hf download Kedreamix/Linly-Talker --local-dir models/wav2lip/ --include checkpoints/wav2lipv2.pth
-  
-  "$UV_CMD" run modules/lipsync/wav2lip/wav2lip_avatar_generator.py --video_path data/samples/sample_video_ai.mp4
 }
 
 main() {

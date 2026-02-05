@@ -17,6 +17,7 @@ export default function Dropzone({
   isMultiple = true,
   isUploading,
   onUpload,
+  disabled = false,
 }: UploadMultiFileProps): React.JSX.Element {
   const acceptedFileString = useMemo(() => {
     if (acceptFileType)
@@ -116,7 +117,7 @@ export default function Dropzone({
           <Button
             onClick={onUpload}
             className={`${isDragReject ? 'cursor-not-allowed' : ''}`}
-            disabled={isUploading || isDragReject}
+            disabled={disabled || isUploading || isDragReject}
           >
             {isUploading ? (
               <div className="flex items-center gap-2">

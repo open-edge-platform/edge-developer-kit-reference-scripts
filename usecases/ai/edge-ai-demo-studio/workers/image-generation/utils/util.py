@@ -9,6 +9,42 @@ import re
 MAX_PATH_LENGTH = 4096
 
 
+def get_sanitized_uv_path(raw_path_str: str) -> str:
+    """
+    Sanitizes and validates a path string from an untrusted source (like env vars).
+    Raises errors if the path looks suspicious or invalid, effectively 'breaking the taint'.
+    """
+    if not raw_path_str:
+        raise ValueError("Path is empty.")
+
+    # 1. Input Normalization
+    # Convert to absolute path immediately to avoid relative path ambiguity
+    try:
+        path_obj = Path(raw_path_str).resolve()
+    except Exception as e:
+        raise ValueError(f"Invalid path format: {e}")
+
+    # 2. Strict Filename Allowlisting (Crucial for Coverity)
+    allowed_names = {"uv", "uv.exe"}
+    if path_obj.name.lower() not in allowed_names:
+        raise ValueError(
+            f"Security Check Failed: File must be named 'uv' or 'uv.exe', found '{path_obj.name}'"
+        )
+
+    # 3. Directory Traversal & Character Check (Regex)
+    clean_path = str(path_obj)
+    if not re.match(r"^[a-zA-Z0-9_:/\.\\\s-]+$", clean_path):
+        raise ValueError("Security Check Failed: Path contains illegal characters.")
+
+    if not path_obj.is_file():
+        raise FileNotFoundError(f"File does not exist: {clean_path}")
+
+    if not os.access(path_obj, os.X_OK):
+        raise PermissionError(f"File is not executable: {clean_path}")
+
+    return clean_path
+
+
 def validate_and_sanitize_cache_dir(cache_dir: str) -> str:
     """
     Validate and sanitize a cache directory path to prevent path manipulation attacks.
@@ -103,7 +139,7 @@ def validate_and_sanitize_cache_dir(cache_dir: str) -> str:
 
     # Check for valid characters (avoid control characters and potentially dangerous chars)
     # Include platform-specific path separators and Windows drive letter colon
-    valid_chars = string.ascii_letters + string.digits + "/-._~" + os.sep
+    valid_chars = string.ascii_letters + string.digits + "/-._~ " + os.sep
     if os.name == "nt":  # Add ':' for Windows drive letters
         valid_chars += ":"
     if not all(c in valid_chars for c in cache_dir):

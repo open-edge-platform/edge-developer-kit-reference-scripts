@@ -6,6 +6,7 @@ import { spawn } from 'child_process'
 import { WORKER_DIR } from '@/lib/constants'
 import path from 'path'
 import os from 'os'
+import { logger } from '@/utils/logger'
 
 const isWindows = os.platform() === 'win32'
 
@@ -20,12 +21,7 @@ export async function GET() {
     )
 
     // Path to the query_device.py script
-    const scriptPath = path.join(
-      WORKER_DIR,
-      'lipsync',
-      'scripts',
-      'query_device.py',
-    )
+    const scriptPath = path.join(WORKER_DIR, 'helper', 'pytorch_device.py')
 
     // Arguments for uv run command
     const args = ['run', '--no-sync', '--frozen', scriptPath]
@@ -89,13 +85,15 @@ export async function GET() {
           if (!device.id || !device.name) {
             throw new Error('Each device must have id and name properties')
           }
+
+          device.name = `${device.name} (${device.id})`
         }
 
         return NextResponse.json({
           devices,
         })
       } catch (parseError) {
-        console.error('Failed to parse device output:', parseError)
+        logger.error('Failed to parse device output:', parseError)
         return NextResponse.json(
           {
             error: 'Failed to parse device information',
@@ -105,8 +103,8 @@ export async function GET() {
         )
       }
     } else {
-      console.error('Process failed with code:', result.exitCode)
-      console.error('stderr:', result.stderr)
+      logger.error('Process failed with code:', result.exitCode)
+      logger.error('stderr:', result.stderr)
       return NextResponse.json(
         {
           error: 'Failed to query PyTorch devices',
@@ -117,7 +115,7 @@ export async function GET() {
       )
     }
   } catch (error) {
-    console.error('Route error:', error)
+    logger.error('Route error:', error)
     if (error instanceof Error && error.message === 'Process timed out') {
       return NextResponse.json(
         {

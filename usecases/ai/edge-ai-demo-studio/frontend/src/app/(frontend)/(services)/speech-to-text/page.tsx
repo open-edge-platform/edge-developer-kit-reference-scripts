@@ -3,10 +3,7 @@
 
 'use client'
 
-import {
-  DocumentationTemplate,
-  DocumentationProps,
-} from '@/components/workloads/documentation'
+import { DocumentationTemplate } from '@/components/workloads/documentation'
 import Logs from '@/components/workloads/log'
 import { speechToTextEndpoints } from '@/components/workloads/speech-to-text/api'
 import SpeechToTextDemo from '@/components/workloads/speech-to-text/demo'
@@ -19,10 +16,7 @@ import {
 } from '@/hooks/use-workload'
 
 import useDisclosure from '@/hooks/use-disclosure'
-import {
-  SettingsModal,
-  SpeechToTextSettings,
-} from '@/components/workloads/speech-to-text/settings'
+import { SettingsModal } from '@/components/workloads/speech-to-text/settings'
 import { Button } from '@/components/ui/button'
 import { Settings } from 'lucide-react'
 import {
@@ -31,43 +25,47 @@ import {
   SPEECH_TO_TEXT_DESCRIPTION,
   SPEECH_TO_TEXT_MODELS,
   STT_DENOISE_MODELS,
+  SPEECH_TO_TEXT_URL,
 } from '@/lib/workloads/speech-to-text'
 import Endpoint from '@/components/workloads/endpoint'
-import { SPEECH_TO_TEXT_PORT } from '@/lib/constants'
+import { DocumentationProps, SpeechToTextSettings } from '@/types/workload'
+import { getBaseURL } from '@/utils/common'
+import { useMemo } from 'react'
 
 const TYPE = SPEECH_TO_TEXT_TYPE
 const DESCRIPTION = SPEECH_TO_TEXT_DESCRIPTION
 
 export default function SpeechToTextPage() {
-  const { data: workload, isLoading } = useGetWorkloadByType('speech-to-text')
+  const { data: workload, isLoading } =
+    useGetWorkloadByType(SPEECH_TO_TEXT_TYPE)
   const { isOpen, onClose, onOpen } = useDisclosure()
+  const url = getBaseURL(SPEECH_TO_TEXT_URL)
 
   const updateWorkload = useUpdateWorkload()
   const createWorkload = useCreateWorkload()
 
+  const workloadModel = useMemo(() => {
+    return workload?.models.default ?? SPEECH_TO_TEXT_WORKLOAD.models.default
+  }, [workload?.models.default])
+  const workloadDenoiseModel = useMemo(() => {
+    return workload?.models.denoise ?? SPEECH_TO_TEXT_WORKLOAD.models.denoise
+  }, [workload?.models.denoise])
+
   const data: DocumentationProps = {
-    overview: (
-      <SpeechToTextDocumentation port={workload?.port ?? SPEECH_TO_TEXT_PORT} />
-    ),
-    endpoints: (
-      <Endpoint
-        apis={speechToTextEndpoints}
-        port={workload?.port ?? SPEECH_TO_TEXT_PORT}
-      />
-    ),
+    overview: <SpeechToTextDocumentation url={url} />,
+    endpoints: <Endpoint apis={speechToTextEndpoints} url={url} />,
   }
 
   const updateSettings = (settings: SpeechToTextSettings) => {
+    const { sttModel, denoiseModel } = settings
     return new Promise((resolve) => {
       if (!workload) {
         createWorkload.mutate(
           {
             ...SPEECH_TO_TEXT_WORKLOAD,
-            device: settings.sttDevice,
-            model: settings.sttModel.value,
-            metadata: {
-              denoise_model: settings.denoiseModel.value,
-              denoise_device: settings.denoiseDevice,
+            models: {
+              default: sttModel,
+              denoise: denoiseModel,
             },
             status: 'inactive',
           },
@@ -81,11 +79,9 @@ export default function SpeechToTextPage() {
           {
             id: workload?.id || 0,
             data: {
-              device: settings.sttDevice,
-              model: settings.sttModel.value,
-              metadata: {
-                denoise_model: settings.denoiseModel.value,
-                denoise_device: settings.denoiseDevice,
+              models: {
+                default: sttModel,
+                denoise: denoiseModel,
               },
               status: workload?.status === 'active' ? 'restart' : 'inactive',
             },
@@ -120,19 +116,15 @@ export default function SpeechToTextPage() {
         task="Speech-to-Text"
         isOpen={isOpen}
         onClose={onClose}
-        availableSTTModels={SPEECH_TO_TEXT_MODELS}
-        availableDenoiseModels={STT_DENOISE_MODELS}
+        availableModels={{
+          stt: SPEECH_TO_TEXT_MODELS,
+          denoise: STT_DENOISE_MODELS,
+        }}
         updateSettings={updateSettings}
-        selectedSTTModel={workload?.model || SPEECH_TO_TEXT_WORKLOAD.model}
-        selectedSTTDevice={workload?.device || SPEECH_TO_TEXT_WORKLOAD.device}
-        selectedDenoiseModel={
-          workload?.metadata?.denoise_model ||
-          SPEECH_TO_TEXT_WORKLOAD.metadata.denoise_model
-        }
-        selectedDenoiseDevice={
-          workload?.metadata?.denoise_device ||
-          SPEECH_TO_TEXT_WORKLOAD.metadata.denoise_device
-        }
+        currentSettings={{
+          sttModel: workloadModel,
+          denoiseModel: workloadDenoiseModel,
+        }}
       />
       <WorkloadComponent
         title="Speech-to-Text"
@@ -146,7 +138,13 @@ export default function SpeechToTextPage() {
           />
         }
         docsElement={<DocumentationTemplate data={data} />}
-        logsElement={<Logs name={`${workload?.name}_${workload?.id}`} />}
+        logsElement={
+          <Logs
+            id={workload?.id || 0}
+            type={workload?.type || SPEECH_TO_TEXT_TYPE}
+            engine={workload?.engine ?? 'custom'}
+          />
+        }
         isLoading={isLoading}
       />
     </>

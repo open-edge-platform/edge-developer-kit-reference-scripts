@@ -1,69 +1,59 @@
 // Copyright (C) 2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-import { Model } from '@/components/workloads/speech-to-text/settings'
 import { SPEECH_TO_TEXT_PORT } from '@/lib/constants'
+import { CreateWorkload, Model } from '@/types/workload'
 
 export const SPEECH_TO_TEXT_TYPE = 'speech-to-text' as const
 
 export const SPEECH_TO_TEXT_DESCRIPTION =
   'Convert speech to text using OpenVINO-optimized Whisper models. Supports multiple languages, audio formats, and optional noise suppression for improved accuracy.'
 
+export const SPEECH_TO_TEXT_URL = '/api/speech-to-text'
+
 export const SPEECH_TO_TEXT_MODELS: Model[] = [
   {
     name: 'OpenVINO/whisper-base-int8-ov',
-    value: 'OpenVINO/whisper-base-int8-ov',
-    type: 'predefined',
+    device: 'CPU',
   },
   {
     name: 'OpenVINO/whisper-tiny-int8-ov',
-    value: 'OpenVINO/whisper-tiny-int8-ov',
-    type: 'predefined',
+    device: 'CPU',
   },
   {
     name: 'openai/whisper-tiny',
-    value: 'openai/whisper-tiny',
-    type: 'predefined',
+    device: 'CPU',
   },
   {
     name: 'openai/whisper-base',
-    value: 'openai/whisper-base',
-    type: 'predefined',
+    device: 'CPU',
   },
   {
     name: 'openai/whisper-small',
-    value: 'openai/whisper-small',
-    type: 'predefined',
+    device: 'CPU',
   },
   {
     name: 'openai/whisper-medium',
-    value: 'openai/whisper-medium',
-    type: 'predefined',
+    device: 'CPU',
   },
 ]
 
 export const STT_DENOISE_MODELS: Model[] = [
   {
     name: 'noise-suppression-poconetlike-0001',
-    value: 'noise-suppression-poconetlike-0001',
-    type: 'predefined',
+    device: 'CPU',
   },
   {
     name: 'noise-suppression-denseunet-ll-0001',
-    value: 'noise-suppression-denseunet-ll-0001',
-    type: 'predefined',
+    device: 'CPU',
   },
 ]
 
-export const SPEECH_TO_TEXT_WORKLOAD = {
+export const SPEECH_TO_TEXT_WORKLOAD: CreateWorkload = {
   name: SPEECH_TO_TEXT_TYPE,
   type: SPEECH_TO_TEXT_TYPE,
-  model: SPEECH_TO_TEXT_MODELS[0].value,
-  device: 'CPU',
+  models: { default: SPEECH_TO_TEXT_MODELS[0], denoise: STT_DENOISE_MODELS[0] },
   port: SPEECH_TO_TEXT_PORT,
-  metadata: {
-    denoise_model: STT_DENOISE_MODELS[0].value,
-    denoise_device: 'CPU',
-  },
-  healthUrl: '/healthcheck',
+  healthCheck: { url: '/healthcheck' },
+  engine: 'custom',
 }

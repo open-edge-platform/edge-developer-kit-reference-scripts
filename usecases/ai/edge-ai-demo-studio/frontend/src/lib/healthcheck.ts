@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { ALLOWED_PORTS } from '@/lib/constants'
-import { listProcesses, removeDeadProcess } from '@/lib/processHandler'
+import { listProcesses, removeDeadProcess } from '@/lib/process-handler'
 import { Workload } from '@/payload-types'
+import { logger } from '@/utils/logger'
 import { BasePayload } from 'payload'
+import jsonata from 'jsonata'
 
 // Constants
 const HEALTHCHECK_TIMEOUT = 3000 // ms
@@ -52,15 +54,6 @@ interface ProcessInfo {
   startTime: Date
 }
 
-interface WorkloadDoc {
-  id: number | string
-  type: string
-  status: Workload['status'] | null
-  healthUrl: string | null
-  port: number
-  isHealthy: boolean | null
-}
-
 // Retry configurations
 const HEALTHCHECK_RETRY_CONFIG: RetryConfig = {
   maxRetries: 6,
@@ -80,6 +73,9 @@ const PREPARE_STATUS_RETRY_CONFIG: RetryConfig = {
 declare global {
   var workloadHealthCheckInterval: NodeJS.Timeout | undefined
 }
+
+// Track currently checking workloads to prevent overlap
+const checkingWorkloads = new Set<string | number>()
 
 /**
  * Sanitizes a string value to ensure it contains only safe characters
@@ -201,7 +197,7 @@ const retryWithBackoff = async <T>(
           retryConfig.maxDelay,
         )
 
-        console.log(
+        logger.log(
           `Health check attempt ${attempt + 1} failed, retrying in ${delay}ms: ${getErrorMessage(error)}`,
         )
         await new Promise((resolve) => {
@@ -215,9 +211,72 @@ const retryWithBackoff = async <T>(
 }
 
 /**
+ * Validates health check response content based on configuration
+ */
+const validateHealthCheckResponse = async (
+  response: Response,
+  workload: Workload,
+): Promise<boolean> => {
+  if (!workload.healthCheck) return true
+
+  // Default to simple check if mapper is missing
+  if (!workload.healthCheck.responseMapper) {
+    return true
+  }
+
+  const mapper = workload.healthCheck.responseMapper as Record<string, string>
+
+  try {
+    const responseBody = await response.json()
+
+    for (const [workloadPath, expression] of Object.entries(mapper)) {
+      if (!expression || typeof expression !== 'string') continue
+
+      let actualValue
+      try {
+        const expr = jsonata(expression)
+        // Pass workload as variable binding '$workload' to the expression
+        actualValue = await expr.evaluate(responseBody, { workload })
+      } catch (err) {
+        logger.log(`JSONata error for ${expression}: ${err}`)
+        return false
+      }
+
+      const expectedValue = await jsonata(workloadPath).evaluate(workload)
+      if (!expectedValue) {
+        logger.log(
+          `Expected value for ${workloadPath} is undefined, skipping validation.`,
+        )
+        continue
+      }
+
+      if (
+        actualValue === undefined ||
+        String(actualValue) !== String(expectedValue)
+      ) {
+        logger.log(
+          `Validation failed for ${workloadPath}. Expected: ${expectedValue}, Got: ${actualValue}`,
+        )
+        return false
+      }
+    }
+
+    return true
+  } catch (error) {
+    logger.log(
+      `Error validating response for workload ${workload.id}: ${getErrorMessage(error)}`,
+    )
+    return false
+  }
+}
+
+/**
  * Creates an HTTP client for health checks with timeout
  */
-const createHealthCheckClient = async (url: string): Promise<Response> => {
+const createHealthCheckClient = async (
+  url: string,
+  workload: Workload,
+): Promise<boolean> => {
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), HEALTHCHECK_TIMEOUT)
 
@@ -230,7 +289,8 @@ const createHealthCheckClient = async (url: string): Promise<Response> => {
       throw new Error(`Health check returned status ${response.status}`)
     }
 
-    return response
+    // Validate response content based on health check configuration
+    return await validateHealthCheckResponse(response, workload)
   } catch (error) {
     clearTimeout(timeoutId)
     throw error
@@ -242,7 +302,7 @@ const createHealthCheckClient = async (url: string): Promise<Response> => {
  */
 const buildHealthCheckUrl = (port: number, healthUrl: string) => {
   if (!port || !ALLOWED_PORTS.includes(port)) {
-    console.log(
+    logger.log(
       `Invalid or disallowed port: ${port}. Allowed ports: ${ALLOWED_PORTS.join(', ')}`,
     )
     return null
@@ -251,7 +311,7 @@ const buildHealthCheckUrl = (port: number, healthUrl: string) => {
   const validation = validateHealthUrl(healthUrl)
   if (!validation.isValid || !validation.sanitized) {
     if (validation.error) {
-      console.log(validation.error)
+      logger.log(validation.error)
     }
     return null
   }
@@ -262,28 +322,35 @@ const buildHealthCheckUrl = (port: number, healthUrl: string) => {
 }
 
 /**
- * Performs a health check with configurable retry logic
+ * Performs a health check with configurable retry logic and content validation
  */
 const performHealthCheck = async (
+  workload: Workload,
   port: number,
-  healthUrl: string,
   retryConfig: RetryConfig = HEALTHCHECK_RETRY_CONFIG,
 ): Promise<boolean> => {
-  const url = buildHealthCheckUrl(port, healthUrl)
+  if (!workload.healthCheck || !workload.healthCheck.url) {
+    logger.log(
+      `No health check URL configured for workload ${workload.id}, Skipping healthcheck`,
+    )
+    return true
+  }
+  const url = buildHealthCheckUrl(port, workload.healthCheck?.url)
   if (!url) {
     throw new Error('Invalid health check URL or port')
   }
+
   try {
-    await retryWithBackoff(async () => {
-      await createHealthCheckClient(url)
+    const result = await retryWithBackoff(async () => {
+      return await createHealthCheckClient(url, workload)
     }, retryConfig)
 
-    return true
+    return result
   } catch (error: unknown) {
     const configType =
       retryConfig === PREPARE_STATUS_RETRY_CONFIG ? 'Prepare status ' : ''
-    console.log(
-      `${configType}healthcheck failed after all retries: ${getErrorMessage(error)}`,
+    logger.log(
+      `${configType}healthcheck failed after all retries for workload ${workload.id} (${workload.name}): ${getErrorMessage(error)}`,
     )
     return false
   }
@@ -307,9 +374,9 @@ const updateWorkloadInDatabase = async (
     const statusInfo = data.status ? ` status to ${data.status}` : ''
     const healthInfo =
       data.isHealthy !== undefined ? ` (isHealthy: ${data.isHealthy})` : ''
-    console.log(`Updated workload ${workloadId}${statusInfo}${healthInfo}`)
+    logger.log(`Updated workload ${workloadId}${statusInfo}${healthInfo}`)
   } catch (error) {
-    console.error(`Failed to update workload ${workloadId}:`, error)
+    logger.error(`Failed to update workload ${workloadId}:`, error)
   }
 }
 
@@ -318,7 +385,7 @@ const updateWorkloadInDatabase = async (
  */
 const handleInactiveWorkloadCleanup = async (
   payload: BasePayload,
-  workload: WorkloadDoc,
+  workload: Workload,
   process: ProcessInfo | undefined,
   processName: string,
 ): Promise<void> => {
@@ -328,7 +395,7 @@ const handleInactiveWorkloadCleanup = async (
   // Remove dead process from process handler list
   if (process) {
     removeDeadProcess(processName)
-    console.log(
+    logger.log(
       `Removed dead process ${processName} from process list for workload ${id}`,
     )
   }
@@ -342,22 +409,17 @@ const handleInactiveWorkloadCleanup = async (
 /**
  * Determines new status based on process state and health checks
  */
-const determineWorkloadStatus = async (
-  workload: WorkloadDoc,
+const determineCustomWorkloadStatus = async (
+  workload: Workload,
   process: ProcessInfo | undefined,
   processName: string,
-): Promise<{
-  newStatus: Workload['status'] | null
-  newIsHealthy: boolean | null
-}> => {
-  const { id, healthUrl, port, status } = workload
+) => {
+  const { id, healthCheck, port, status } = workload
   let newStatus: Workload['status'] | null = null
   let newIsHealthy: boolean | null = null
 
   if (!process) {
-    console.log(
-      `Process for ${id} not found in process list. Marking as error.`,
-    )
+    logger.log(`Process for ${id} not found in process list. Marking as error.`)
     return { newStatus: WorkloadStatus.ERROR, newIsHealthy: false }
   }
 
@@ -366,26 +428,29 @@ const determineWorkloadStatus = async (
 
   // Validate PID exists on system
   if (!isPidAlive(processId)) {
-    console.log(
+    logger.log(
       `Process ${id} (PID: ${processId}) no longer exists on system. Marking as error.`,
     )
     removeDeadProcess(processName)
-    console.log(`Removed dead process ${processName} from process list`)
+    logger.log(`Removed dead process ${processName} from process list`)
     return { newStatus: WorkloadStatus.ERROR, newIsHealthy: false }
   }
 
   // Handle different process statuses
   switch (processStatus) {
     case ProcessStatus.ACTIVE:
-      if (healthUrl && port) {
-        const healthy = await performHealthCheck(port, healthUrl)
+      if (healthCheck && healthCheck.url && port) {
+        const healthy = await performHealthCheck(workload, port)
         newIsHealthy = healthy
         if (healthy && status !== WorkloadStatus.ACTIVE) {
           newStatus = WorkloadStatus.ACTIVE
         }
         // Don't change status to ERROR when health check fails - just mark as unhealthy
         // The process is still running, so keep it as ACTIVE but unhealthy
-      } else if (!healthUrl && status !== WorkloadStatus.ACTIVE) {
+      } else if (
+        !(healthCheck && healthCheck.url) &&
+        status !== WorkloadStatus.ACTIVE
+      ) {
         newStatus = WorkloadStatus.ACTIVE
         newIsHealthy = true
       }
@@ -405,46 +470,90 @@ const determineWorkloadStatus = async (
   return { newStatus, newIsHealthy }
 }
 
+const determineMultiserveWorkloadStatus = async (
+  workload: Workload,
+): Promise<{
+  newStatus: Workload['status'] | null
+  newIsHealthy: boolean | null
+}> => {
+  // For multiserve workloads, we rely solely on health checks
+  const { id, healthCheck, port, status } = workload
+  let newStatus: Workload['status'] | null = null
+  let newIsHealthy: boolean | null = null
+
+  if (healthCheck && healthCheck.url && port) {
+    const healthy = await performHealthCheck(workload, port)
+    newIsHealthy = healthy
+    if (healthy && status !== WorkloadStatus.ACTIVE) {
+      newStatus = WorkloadStatus.ACTIVE
+    } else if (!healthy && status === WorkloadStatus.ACTIVE) {
+      // If previously active but now unhealthy, keep status but mark unhealthy
+      newIsHealthy = false
+    }
+  } else {
+    logger.log(
+      `Multiserve workload ${id} missing healthcheck url or port for health check`,
+    )
+  }
+
+  return { newStatus, newIsHealthy }
+}
+
+const determineWorkloadStatus = async (
+  workload: Workload,
+  process: ProcessInfo | undefined,
+  processName: string,
+): Promise<{
+  newStatus: Workload['status'] | null
+  newIsHealthy: boolean | null
+}> => {
+  if (workload.engine === 'custom') {
+    return await determineCustomWorkloadStatus(workload, process, processName)
+  } else {
+    return await determineMultiserveWorkloadStatus(workload)
+  }
+}
+
 /**
  * Handles special case for workloads in prepare status
  */
 const handlePrepareStatus = async (
-  workload: WorkloadDoc,
+  workload: Workload,
   process: ProcessInfo | undefined,
 ): Promise<{
   newStatus: Workload['status'] | null
   newIsHealthy: boolean | null
 }> => {
-  const { id, healthUrl, port } = workload
+  const { id, healthCheck, port } = workload
 
   if (!process || !isPidAlive(process.pid)) {
     return { newStatus: null, newIsHealthy: null }
   }
 
-  if (healthUrl && port) {
-    console.log(
+  if (healthCheck && healthCheck.url && port) {
+    logger.log(
       `Workload ${id} is in prepare status, performing aggressive health check...`,
     )
     const healthy = await performHealthCheck(
+      workload,
       port,
-      healthUrl,
       PREPARE_STATUS_RETRY_CONFIG,
     )
 
     if (healthy) {
-      console.log(
+      logger.log(
         `Workload ${id} is now healthy, transitioning from prepare to active`,
       )
       return { newStatus: WorkloadStatus.ACTIVE, newIsHealthy: true }
     } else {
-      console.log(
+      logger.log(
         `Workload ${id} is still preparing, will check again next interval`,
       )
       // Keep the workload in prepare status but update health status
       return { newStatus: null, newIsHealthy: healthy }
     }
   } else if (process.status === ProcessStatus.ACTIVE) {
-    console.log(
+    logger.log(
       `Workload ${id} process is active, transitioning from prepare to active`,
     )
     return { newStatus: WorkloadStatus.ACTIVE, newIsHealthy: true }
@@ -458,7 +567,7 @@ const handlePrepareStatus = async (
  */
 const processWorkloadHealthCheck = async (
   payload: BasePayload,
-  workload: WorkloadDoc,
+  workload: Workload,
   process: ProcessInfo | undefined,
   processName: string,
 ): Promise<void> => {
@@ -486,10 +595,18 @@ const processWorkloadHealthCheck = async (
   let newIsHealthy: boolean | null = null
 
   // Special handling for 'prepare' status
-  if (status === WorkloadStatus.PREPARE && process && isPidAlive(process.pid)) {
-    const prepareResult = await handlePrepareStatus(workload, process)
-    newStatus = prepareResult.newStatus
-    newIsHealthy = prepareResult.newIsHealthy
+  if (status === WorkloadStatus.PREPARE && process) {
+    if (
+      process.status === ProcessStatus.ERROR ||
+      process.status === ProcessStatus.STOPPED
+    ) {
+      newStatus = WorkloadStatus.ERROR
+      newIsHealthy = false
+    } else if (isPidAlive(process.pid)) {
+      const prepareResult = await handlePrepareStatus(workload, process)
+      newStatus = prepareResult.newStatus
+      newIsHealthy = prepareResult.newIsHealthy
+    }
   } else {
     // Handle normal status determination
     const statusResult = await determineWorkloadStatus(
@@ -524,43 +641,57 @@ const processHealthChecks = async (payload: BasePayload): Promise<void> => {
     const workloads = await payload.find({
       collection: WORKLOAD_COLLECTION,
       pagination: false,
-      select: {
-        id: true,
-        type: true,
-        status: true,
-        healthUrl: true,
-        port: true,
-        isHealthy: true,
-      },
     })
 
     const processes = listProcesses()
 
-    // Process each workload health check
-    for (const workload of workloads.docs) {
-      const { id, type } = workload
+    // Process each workload health check in parallel
+    await Promise.all(
+      workloads.docs.map(async (workload) => {
+        const { id, type, engine } = workload
 
-      // Sanitize inputs
-      const sanitizedType = sanitizeString(type)
-      const sanitizedId = sanitizeString(id)
+        // Skip if this workload is already being checked
+        if (checkingWorkloads.has(id)) {
+          return
+        }
 
-      if (!sanitizedType || !sanitizedId) {
-        console.log(`Invalid workload type or ID for workload ${id}`)
-        continue
-      }
+        checkingWorkloads.add(id)
 
-      const processName = `${sanitizedType}_${sanitizedId}`
-      const process = processes.find((p) => p.name === processName)
+        try {
+          // Sanitize inputs
+          const sanitizedType = sanitizeString(type)
+          const sanitizedId = sanitizeString(id)
+          const sanitizedEngine = sanitizeString(engine)
 
-      await processWorkloadHealthCheck(
-        payload,
-        workload as WorkloadDoc,
-        process,
-        processName,
-      )
-    }
+          if (!sanitizedType || !sanitizedId) {
+            logger.log(`Invalid workload type or ID for workload ${id}`)
+            return
+          }
+
+          const processName =
+            sanitizedEngine === 'custom'
+              ? `${sanitizedType}_${sanitizedId}`
+              : `${sanitizedType}_${sanitizedEngine}_${sanitizedId}`
+          const process = processes.find((p) => p.name === processName)
+
+          await processWorkloadHealthCheck(
+            payload,
+            workload as Workload,
+            process,
+            processName,
+          )
+        } catch (error) {
+          logger.error(
+            `Error processing health check for workload ${id}:`,
+            error,
+          )
+        } finally {
+          checkingWorkloads.delete(id)
+        }
+      }),
+    )
   } catch (err) {
-    console.error('Health check failed:', err)
+    logger.error('Health check failed:', err)
   }
 }
 
@@ -574,18 +705,18 @@ export const initHealthCheckService = (payload: BasePayload): void => {
     clearInterval(globalThis.workloadHealthCheckInterval)
   }
 
-  console.log('Starting workload health check service with 10 second interval')
+  logger.log('Starting workload health check service with 10 second interval')
 
   // Set up the health check interval
   globalThis.workloadHealthCheckInterval = setInterval(() => {
     processHealthChecks(payload).catch((error) => {
-      console.error('Health check service error:', error)
+      logger.error('Health check service error:', error)
     })
   }, HEALTHCHECK_INTERVAL)
 
   // Run initial health check
   processHealthChecks(payload).catch((error) => {
-    console.error('Initial health check error:', error)
+    logger.error('Initial health check error:', error)
   })
 }
 
@@ -596,7 +727,7 @@ export const stopHealthCheckService = (): void => {
   if (globalThis.workloadHealthCheckInterval) {
     clearInterval(globalThis.workloadHealthCheckInterval)
     globalThis.workloadHealthCheckInterval = undefined
-    console.log('Stopped workload health check service')
+    logger.log('Stopped workload health check service')
   }
 }
 

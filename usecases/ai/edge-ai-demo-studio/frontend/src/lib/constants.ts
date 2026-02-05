@@ -4,25 +4,43 @@
 import path from 'path'
 
 const FRONTEND_PORT = 8080
-const TEXT_GENERATION_PORT = 5001
-const TEXT_TO_SPEECH_PORT = 5002
-const EMBEDDING_PORT = 5003
-const LIPSYNC_PORT = 5004
-const SPEECH_TO_TEXT_PORT = 5005
-const IMAGE_GENERATION_PORT = 5006
-const WAKE_WORD_DETECTION_PORT = 5007
+const MULTISERVE_OVMS_TEMP_PORT = 8000 // Port for temporary multiserve instances to check available models
+const MULTISERVE_LLAMACPP_TEMP_PORT = 8002 // Port for temporary multiserve instances to check available models
+const TEXT_GENERATION_PORT = 5000 //reserve 5001-5002 for multiserve service ports
+const EMBEDDING_PORT = 5004 //reserve 5003-5004 for multiserve service ports
+const EMBEDDING_SERVING_PORT = 5005 //Port for multiserve embedding model serving
+const TEXT_TO_SPEECH_PORT = 5010 //Start from 5010 for non multiserve ports
+const LIPSYNC_PORT = 5011
+const SPEECH_TO_TEXT_PORT = 5012
+const IMAGE_GENERATION_PORT = 5013
+const WAKE_WORD_DETECTION_PORT = 5014
 const LOG_FILE_PATH = path.resolve(path.dirname(''), '../logs')
+const MULTISERVE_MODELS_DIR_PATH = path.resolve(
+  path.dirname(''),
+  '../models/multiserve',
+)
+const MULTISERVE_REPO_PATH = path.resolve(
+  path.dirname(''),
+  '../workers/engine/multiserve',
+)
+const UV_PATH = path.resolve(
+  path.dirname(''),
+  `../workers/thirdparty/uv/${process.platform === 'win32' ? 'uv.exe' : 'uv'}`,
+) // Path to UV executable
 const UINT32_RANGE = 2 ** 32
 
 // Whitelist of allowed ports for health checks - based on defined application ports
 const ALLOWED_PORTS = [
-  TEXT_GENERATION_PORT, // Text generation service port
-  TEXT_TO_SPEECH_PORT, // Text to speech service port
-  EMBEDDING_PORT, // Embedding service port
+  TEXT_GENERATION_PORT,
+  TEXT_TO_SPEECH_PORT,
+  EMBEDDING_PORT,
+  EMBEDDING_SERVING_PORT,
   LIPSYNC_PORT,
-  SPEECH_TO_TEXT_PORT, // Speech to text service port
-  IMAGE_GENERATION_PORT, // Image generation service port
-  WAKE_WORD_DETECTION_PORT, // Wake word detection service port
+  SPEECH_TO_TEXT_PORT,
+  IMAGE_GENERATION_PORT,
+  WAKE_WORD_DETECTION_PORT,
+  MULTISERVE_OVMS_TEMP_PORT,
+  MULTISERVE_LLAMACPP_TEMP_PORT,
 ]
 
 const WORKER_DIR = path.resolve(path.dirname(''), '../workers')
@@ -33,11 +51,17 @@ export {
   TEXT_TO_SPEECH_PORT,
   SPEECH_TO_TEXT_PORT,
   EMBEDDING_PORT,
+  EMBEDDING_SERVING_PORT,
   LOG_FILE_PATH,
   UINT32_RANGE,
   ALLOWED_PORTS,
   WORKER_DIR,
   LIPSYNC_PORT,
   IMAGE_GENERATION_PORT,
+  MULTISERVE_REPO_PATH,
+  MULTISERVE_MODELS_DIR_PATH,
   WAKE_WORD_DETECTION_PORT,
+  MULTISERVE_OVMS_TEMP_PORT,
+  MULTISERVE_LLAMACPP_TEMP_PORT,
+  UV_PATH,
 }

@@ -11,38 +11,36 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { Brain, AlertCircle, Loader2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { usePytorchAccelerator } from '@/hooks/use-accelerators'
+import { LipsyncSettings } from '@/types/workload'
+import { DeviceSelector } from '../../common/device-selector'
+import {
+  ModelSource,
+  ModelSourceSelector,
+} from '../../common/model-source-selector'
 
 interface SettingsModalProps {
   isOpen: boolean
   onClose: () => void
-  updateSettings: (device: string, turnServerIp: string) => Promise<unknown>
-  selectedDevice: string
-  turnServerIp: string
+  updateSettings: (settings: LipsyncSettings) => Promise<unknown>
+  currentSettings: LipsyncSettings
 }
 
 export function SettingsModal({
   isOpen,
   onClose,
-  selectedDevice,
-  turnServerIp,
+  currentSettings: { model: selectedModel, turnServerIp },
   updateSettings,
 }: SettingsModalProps) {
-  const [tempDevice, setTempDevice] = useState(selectedDevice || 'cpu')
-  const [tempTurnServerIp, setTempTurnServerIp] = useState('')
+  const [tempDevice, setTempDevice] = useState(selectedModel.device || 'cpu')
+  const [tempTurnServerIp, setTempTurnServerIp] = useState(turnServerIp || '')
   const [validationError, setValidationError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
-  const { data: devices } = usePytorchAccelerator()
+  const [tempSource, setTempSource] = useState<ModelSource>(
+    (selectedModel.source as ModelSource) || 'huggingface',
+  )
 
   // Validation function for TURN server IP and port
   const validateTurnServerIp = (value: string): string => {
@@ -130,7 +128,14 @@ export function SettingsModal({
 
     setValidationError('')
     setIsLoading(true)
-    updateSettings(tempDevice, tempTurnServerIp.trim())
+    updateSettings({
+      model: {
+        name: selectedModel.name,
+        device: tempDevice,
+        source: tempSource,
+      },
+      turnServerIp: tempTurnServerIp.trim(),
+    })
       .then(() => {
         setIsLoading(false)
         onClose()
@@ -141,33 +146,10 @@ export function SettingsModal({
   }
 
   useEffect(() => {
-    setTempDevice(selectedDevice || 'cpu')
+    setTempDevice(selectedModel.device || 'cpu')
+    setTempSource(selectedModel.source || 'huggingface')
     setTempTurnServerIp(turnServerIp || '')
-  }, [selectedDevice, turnServerIp])
-
-  const DeviceSelector = () => {
-    return (
-      <div>
-        <Label htmlFor="model-select" className="text-base font-medium">
-          Device
-        </Label>
-        <Select value={tempDevice} onValueChange={handleDeviceSelect}>
-          <SelectTrigger className="mt-2 w-full">
-            <SelectValue placeholder="Choose a device" />
-          </SelectTrigger>
-          <SelectContent>
-            {(devices ?? []).map((device) => (
-              <SelectItem key={device.id} value={device.id}>
-                <div className="flex flex-col">
-                  <span className="font-medium">{device.name}</span>
-                </div>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-    )
-  }
+  }, [selectedModel, turnServerIp])
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -180,7 +162,12 @@ export function SettingsModal({
         </DialogHeader>
 
         <div className="space-y-6">
-          <DeviceSelector />
+          <ModelSourceSelector value={tempSource} onChange={setTempSource} />
+          <DeviceSelector
+            value={tempDevice}
+            onChange={handleDeviceSelect}
+            accelerator="pytorch"
+          />
           <div className="space-y-2">
             <Label htmlFor="turn-server-ip" className="text-base font-medium">
               STUN/TURN Server IP

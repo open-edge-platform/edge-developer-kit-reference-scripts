@@ -18,8 +18,9 @@ import {
 import { ChatPanel, RagChatSettings } from '@/components/samples/rag-chat'
 import { Badge } from '@/components/ui/badge'
 import { KnowledgeBase } from '@/types/embedding'
-import { TEXT_GENERATION_WORKLOAD } from '@/lib/workloads/text-generation'
+import { TEXT_GENERATION_TYPE } from '@/lib/workloads/text-generation'
 import { SampleHeader, PrerequisiteBanner } from '@/components/samples'
+import { EMBEDDING_TYPE } from '@/lib/workloads/embedding'
 
 export default function RagChatPage() {
   const { data: workloads, isLoading: isWorkloadsLoading } =
@@ -33,7 +34,7 @@ export default function RagChatPage() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
 
   const prerequisiteServices = useMemo(() => {
-    const ps = ['text-generation', 'embedding']
+    const ps: string[] = [TEXT_GENERATION_TYPE, EMBEDDING_TYPE]
     return ps
   }, [])
 
@@ -100,7 +101,6 @@ export default function RagChatPage() {
           <ChatPanel
             disabled={isDisabled}
             knowledgeBaseId={selectedKnowledgeBase?.id || undefined}
-            selectedModel={TEXT_GENERATION_WORKLOAD.model}
           />
         </div>
       </div>
