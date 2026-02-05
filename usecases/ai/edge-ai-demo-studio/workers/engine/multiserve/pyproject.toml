@@ -1,0 +1,32 @@
+[project]
+name = "multiserve"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12, <3.14"
+dependencies = [
+    "aiohttp>=3.13.3",
+    "fastapi>=0.120.3",
+    "filelock==3.20.3",
+    "huggingface-hub>=1.0.1",
+    "openai>=2.6.1",
+    "openpyxl>=3.1.5",
+    "openvino-genai>=2025.3.0.0",
+    "pandas>=2.3.3",
+    "pillow>=12.0.0",
+    "psutil>=7.1.2",
+    "pydantic>=2.12.3",
+    "pyinstaller>=6.16.0 ; sys_platform == 'win32'",
+    "pypdf>=6.6.0",
+    "pystray>=0.19.5",
+    "python-docx>=1.2.0",
+    "python-multipart>=0.0.20",
+    "python-pptx>=1.0.2",
+    "pyyaml>=6.0.3",
+    "requests>=2.32.5",
+    "tiktoken>=0.12.0",
+    "tqdm>=4.67.1",
+    "urllib3==2.6.3",
+    "uvicorn>=0.38.0",
+    "wmi>=1.5.1 ; sys_platform == 'win32'",
+]

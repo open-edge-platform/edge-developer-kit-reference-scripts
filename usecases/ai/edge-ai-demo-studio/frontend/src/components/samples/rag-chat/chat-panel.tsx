@@ -20,14 +20,9 @@ import remarkGfm from 'remark-gfm'
 interface ChatPanelProps {
   disabled: boolean
   knowledgeBaseId?: number
-  selectedModel?: string
 }
 
-export function ChatPanel({
-  disabled,
-  knowledgeBaseId,
-  selectedModel,
-}: ChatPanelProps) {
+export function ChatPanel({ disabled, knowledgeBaseId }: ChatPanelProps) {
   const chatEndRef = useRef<HTMLDivElement>(null)
   const [currentMessage, setCurrentMessage] = useState('')
 
@@ -51,7 +46,6 @@ export function ChatPanel({
       {
         body: {
           knowledgeBaseId,
-          model: selectedModel,
         },
       },
     )

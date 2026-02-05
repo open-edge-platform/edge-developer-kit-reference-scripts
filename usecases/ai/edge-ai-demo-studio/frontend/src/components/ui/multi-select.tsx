@@ -26,6 +26,7 @@ import {
   CommandList,
   CommandSeparator,
 } from '@/components/ui/command'
+import { logger } from '@/utils/logger'
 
 /**
  * Animation types and configurations
@@ -548,7 +549,7 @@ export const MultiSelect = React.forwardRef<MultiSelectRef, MultiSelectProps>(
       })
       if (process.env.NODE_ENV === 'development' && duplicates.length > 0) {
         const action = deduplicateOptions ? 'automatically removed' : 'detected'
-        console.warn(
+        logger.warn(
           `MultiSelect: Duplicate option values ${action}: ${duplicates.join(
             ', ',
           )}. ` +
@@ -566,7 +567,7 @@ export const MultiSelect = React.forwardRef<MultiSelectRef, MultiSelectProps>(
       (value: string): MultiSelectOption | undefined => {
         const option = getAllOptions().find((option) => option.value === value)
         if (!option && process.env.NODE_ENV === 'development') {
-          console.warn(
+          logger.warn(
             `MultiSelect: Option with value "${value}" not found in options list`,
           )
         }

@@ -10,223 +10,419 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Skeleton } from '@/components/ui/skeleton'
+import { FileSearch, Loader2 } from 'lucide-react'
+import { useMemo, useState, useEffect } from 'react'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { FileSearch, ExternalLink, Loader2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
-import { useAccelerator } from '@/hooks/use-accelerators'
-
-export interface Model {
-  name: string
-  value: string
-  type: string
-}
+  InferenceEngine,
+  Model,
+  ModelList,
+  TextGenerationSettings,
+} from '@/types/workload'
+import { Workload } from '@/payload-types'
+import { getModelNameWithQuant } from '@/utils/common'
+import { EngineSelector } from '@/components/common/engine-selector'
+import {
+  useGetWorkloadModels,
+  useDeleteWorkloadModel,
+} from '@/hooks/use-workload'
+import { ConfirmationDialog } from '@/components/common/confirmation-dialog'
+import { toast } from 'sonner'
+import { TEXT_GENERATION_TYPE } from '@/lib/workloads/text-generation'
+import { WorkloadModelConfiguration } from '@/components/common/multiserve/multiserve-model-configuration'
+import { CurrentSelectionBadge } from '@/components/common/model-selector'
 
 interface SettingsModalProps {
   task: string
   isOpen: boolean
   onClose: () => void
-  selectedModel: string
-  updateSettings: (device: string, model: Model) => Promise<unknown>
-  availableModels: Model[]
-  selectedDevice: string
+  engines: InferenceEngine[]
+  updateSettings: (settings: TextGenerationSettings) => Promise<unknown>
+  currentSettings: TextGenerationSettings
 }
 
 export function SettingsModal({
   task,
   isOpen,
   onClose,
-  availableModels,
-  selectedModel,
-  selectedDevice,
+  engines,
   updateSettings,
+  currentSettings: { model: selectedModel, engine: selectedEngine },
 }: SettingsModalProps) {
-  const [tempModel, setTempModel] = useState(selectedModel || '')
-  const [tempDevice, setTempDevice] = useState(selectedDevice || 'CPU')
+  const selectedModelName = useMemo(() => {
+    return getModelNameWithQuant(selectedModel, selectedEngine)
+  }, [selectedEngine, selectedModel])
+  const [tempModel, setTempModel] = useState('')
+  const [tempEngine, setTempEngine] = useState<Workload['engine']>(
+    selectedEngine || 'ovms',
+  )
+  const { data: models, isLoading: areModelsLoading } = useGetWorkloadModels(
+    TEXT_GENERATION_TYPE,
+    tempEngine,
+  )
+
+  const { mutate: deleteModel, isPending: isDeleting } =
+    useDeleteWorkloadModel()
+  const [modelToDelete, setModelToDelete] = useState<string | null>(null)
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false)
+
+  const [verifiedModels, setVerifiedModels] = useState<{
+    [key in Workload['engine']]: ModelList
+  }>({
+    llamacpp: [],
+    ovms: [],
+    custom: [],
+  })
+
+  const [customModels, setCustomModels] = useState<{
+    [key in Workload['engine']]: ModelList
+  }>({
+    llamacpp: [],
+    ovms: [],
+    custom: [],
+  })
+
+  useEffect(() => {
+    if (areModelsLoading || !models) return
+
+    const newVerified: ModelList = []
+    const newCustom: ModelList = []
+
+    models.forEach((model) => {
+      if (model.verified) {
+        newVerified.push({ ...model })
+      } else {
+        newCustom.push({ ...model })
+      }
+    })
+
+    setVerifiedModels((prev) => ({
+      ...prev,
+      [tempEngine]: newVerified,
+    }))
+
+    setCustomModels((prev) => ({
+      ...prev,
+      [tempEngine]: newCustom,
+    }))
+  }, [areModelsLoading, models, tempEngine])
+
+  const [tempDevice, setTempDevice] = useState(selectedModel?.device || 'CPU')
+  const [tempParams, setTempParams] = useState<string>(
+    selectedModel?.params || '',
+  )
   const [tabValue, setTabValue] = useState('predefined')
   const [isLoading, setIsLoading] = useState(false)
-  const { data: devices } = useAccelerator()
+  const [tempLocalFilePath, setTempLocalFilePath] = useState('')
+  const [isModelValid, setIsModelValid] = useState(true)
+  const [modelSource, setModelSource] = useState<
+    'huggingface' | 'modelscope' | 'custom'
+  >(selectedModel.source ?? 'huggingface')
+  const [hasInitialized, setHasInitialized] = useState(false)
 
-  const handleDeviceSelect = (value: string) => {
-    setTempDevice(value)
-  }
+  const canSave = useMemo(() => {
+    if (!tempDevice) return false
+    if (!tempEngine) return false
+    if (!tempModel || tempModel.trim().length === 0) return false
 
-  const handleSave = () => {
-    let model = {
-      name: tempModel,
-      value: tempModel,
-      type: 'custom',
-    }
-    setIsLoading(true)
-    if (tabValue !== 'custom') {
-      const selected = availableModels.find(
-        (model) => model.value === tempModel,
-      )
-      if (selected) {
-        model = selected
+    if (tabValue === 'custom') {
+      if (modelSource === 'custom') {
+        return (
+          !!tempModel &&
+          tempModel.trim().length > 0 &&
+          (!!tempLocalFilePath ||
+            !!customModels[tempEngine].find((m) => m.id === tempModel)
+              ?.downloaded)
+        )
+      }
+      return !!tempModel && tempModel.trim().length > 0 && isModelValid
+    } else {
+      if (
+        tempModel.trim() === '' ||
+        !verifiedModels[tempEngine].find((m) => m.id === tempModel)
+      ) {
+        return false
       }
     }
 
-    updateSettings(tempDevice, model).then(() => {
+    return true
+  }, [
+    customModels,
+    isModelValid,
+    modelSource,
+    tabValue,
+    tempDevice,
+    tempEngine,
+    tempLocalFilePath,
+    tempModel,
+    verifiedModels,
+  ])
+
+  const savedModelType = useMemo(() => {
+    const isCustomModel = !Object.values(verifiedModels).some((models) =>
+      models.some((model) => model.id === selectedModelName),
+    )
+
+    return isCustomModel ? 'custom' : 'verified'
+  }, [selectedModelName, verifiedModels])
+
+  const handleDeleteModel = async (
+    modelId: string,
+    event: React.MouseEvent,
+  ) => {
+    event.stopPropagation()
+    setModelToDelete(modelId)
+    setIsDeleteConfirmOpen(true)
+  }
+
+  const confirmDeleteModel = () => {
+    if (modelToDelete) {
+      deleteModel(
+        {
+          engine: tempEngine,
+          type: TEXT_GENERATION_TYPE,
+          name: modelToDelete,
+        },
+        {
+          onSuccess: () => {
+            setIsDeleteConfirmOpen(false)
+            setModelToDelete(null)
+            if (tempModel === modelToDelete) {
+              setTempModel('')
+            }
+          },
+        },
+      )
+    }
+  }
+
+  const validateModelName = () => {
+    const availableModels = [
+      ...verifiedModels[tempEngine].map((m) => m.id),
+      ...customModels[tempEngine].map((m) => m.id),
+    ]
+    if (
+      tabValue === 'custom' &&
+      tempModel !== '' &&
+      !customModels[tempEngine].find((m) => m.id === tempModel)?.downloaded &&
+      availableModels.filter((m) => m !== selectedModelName).includes(tempModel)
+    ) {
+      toast.error('Model name already exists. Please choose a different name.')
+      return false
+    } else if (tempModel.trim() === '') {
+      toast.error('Model name cannot be empty.')
+      return false
+    }
+
+    return true
+  }
+
+  const handleEngineSelect = (value: Workload['engine']) => {
+    setTempEngine(value)
+  }
+
+  const handleSave = () => {
+    let model: Model = {
+      name: tempModel,
+      source: modelSource,
+      device: tempDevice,
+      params: tempParams,
+    }
+    if (!validateModelName()) {
+      return
+    }
+    setIsLoading(true)
+    if (tabValue !== 'custom') {
+      const selected = verifiedModels[tempEngine].find(
+        (m) => m.id === tempModel,
+      )
+      if (selected) {
+        let id = { ...selected }.id
+        const colonIndex = id.indexOf(':')
+        if (colonIndex !== -1) {
+          id = id.substring(0, colonIndex)
+        }
+        model = {
+          device: tempDevice,
+          name: id,
+          source: modelSource,
+          params: tempParams,
+          quant: selected.quant,
+        }
+      }
+    } else {
+      // For custom models, extract quant from model name if it follows format name:quant
+      const colonIndex = tempModel.indexOf(':')
+      if (colonIndex !== -1) {
+        const baseModel = tempModel.substring(0, colonIndex)
+        const quant = tempModel.substring(colonIndex + 1)
+        model = {
+          name: baseModel,
+          source: modelSource,
+          quant: quant,
+          device: tempDevice,
+          params: tempParams,
+        }
+      }
+    }
+
+    updateSettings({ model, engine: tempEngine }).then(() => {
       setIsLoading(false)
       onClose()
     })
   }
 
-  const handleModelSelect = (value: string) => {
-    setTempModel(value)
-  }
-
-  const handleTabChange = (value: string) => {
-    setTabValue(value)
-    if (value === 'predefined') {
-      if (!tempModel) setTempModel(selectedModel)
-    } else {
-      setTempModel('')
+  // Initialize
+  useEffect(() => {
+    if (!isOpen) {
+      setHasInitialized(false)
+      return
     }
-  }
 
+    // Only initialize values when dialog first opens, not on subsequent re-renders
+    if (!hasInitialized) {
+      setTempEngine(selectedEngine || 'ovms')
+      setTempDevice(selectedModel?.device || 'CPU')
+      setTempLocalFilePath('')
+      setIsModelValid(true)
+      setModelSource(selectedModel.source || 'huggingface')
+
+      const isCustomModel = !Object.values(verifiedModels).some((models) =>
+        models.some((model) => model.id === selectedModelName),
+      )
+
+      // Set the correct tab
+      if (isCustomModel) {
+        setTabValue('custom')
+        setTempModel(selectedModelName || '')
+      } else {
+        setTabValue('predefined')
+        setTempModel(
+          selectedModelName || verifiedModels[selectedEngine][0]?.id || '',
+        )
+      }
+      setHasInitialized(true)
+    }
+  }, [
+    isOpen,
+    hasInitialized,
+    selectedModel,
+    selectedEngine,
+    verifiedModels,
+    selectedModelName,
+  ])
+
+  // Reset to default helper
   useEffect(() => {
-    setTempModel(selectedModel || availableModels[0].name)
-  }, [availableModels, selectedModel])
-
-  useEffect(() => {
-    setTempDevice(selectedDevice || 'CPU')
-  }, [selectedDevice])
-
-  const DeviceSelector = () => {
-    return (
-      <div>
-        <Label htmlFor="model-select" className="text-base font-medium">
-          Device
-        </Label>
-        <Select value={tempDevice} onValueChange={handleDeviceSelect}>
-          <SelectTrigger className="mt-2 w-full">
-            <SelectValue placeholder="Choose a device" />
-          </SelectTrigger>
-          <SelectContent>
-            {(devices ?? []).map((device) => (
-              <SelectItem key={device.id} value={device.id}>
-                <div className="flex flex-col">
-                  <span className="font-medium">{device.name}</span>
-                </div>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-    )
-  }
+    setTempDevice('CPU')
+  }, [tempEngine])
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[600px]">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-xl font-semibold">
-            <FileSearch className="h-5 w-5" />
-            {task} Settings
-          </DialogTitle>
-        </DialogHeader>
-
-        <Tabs
-          value={tabValue}
-          onValueChange={handleTabChange}
-          defaultValue="custom"
-          className="w-full"
-        >
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="predefined">Verified Models</TabsTrigger>
-            <TabsTrigger value="custom">Custom Model</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="predefined" className="space-y-4">
-            <div>
-              <Label htmlFor="model-select" className="text-base font-medium">
-                Select Model
-              </Label>
-              <Select value={tempModel} onValueChange={handleModelSelect}>
-                <SelectTrigger className="mt-2 w-full">
-                  <SelectValue placeholder="Choose a model" />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableModels.map((model) => (
-                    <SelectItem key={model.name} value={model.value}>
-                      <div className="flex flex-col">
-                        <span className="font-medium">{model.name}</span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <DeviceSelector />
-          </TabsContent>
-
-          <TabsContent value="custom" className="space-y-4">
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="custom-url" className="text-base font-medium">
-                  Model Name
-                </Label>
-                <Input
-                  id="custom-url"
-                  placeholder="OpenVINO/Phi-3.5-mini-instruct-int4-ov"
-                  value={tempModel}
-                  onChange={(e) => setTempModel(e.target.value)}
-                  className="mt-2"
+    <>
+      <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent className="flex max-h-[90vh] flex-col sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl font-semibold">
+              <FileSearch className="h-5 w-5" />
+              {task} Settings
+            </DialogTitle>
+            {selectedModel && (
+              <div className="pt-2">
+                <CurrentSelectionBadge
+                  label="Current Selection"
+                  modelName={selectedModelName}
+                  modelType={savedModelType}
+                  engine={selectedEngine}
                 />
-                <p className="mt-1 text-sm text-gray-500">
-                  Enter the Hugging Face Model name for your model
-                </p>
+              </div>
+            )}
+          </DialogHeader>
+
+          {areModelsLoading ? (
+            <div className="flex min-h-0 w-full flex-1 flex-col space-y-4">
+              <Skeleton className="h-10 w-full rounded-md" />
+
+              <div className="space-y-2 pt-2">
+                <Skeleton className="h-5 w-[120px]" />
+                <Skeleton className="h-10 w-full" />
+              </div>
+
+              <div className="space-y-2">
+                <Skeleton className="h-5 w-[100px]" />
+                <Skeleton className="h-10 w-full" />
+              </div>
+
+              <div className="space-y-2">
+                <Skeleton className="h-5 w-[100px]" />
+                <Skeleton className="h-10 w-full" />
               </div>
             </div>
-
-            <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
-              <h4 className="mb-2 flex items-center gap-2 font-medium text-orange-900">
-                <ExternalLink className="h-4 w-4" />
-                Hugging Face Setup
-              </h4>
-              <div className="space-y-2 text-sm text-orange-800">
-                <p>To use custom Hugging Face models:</p>
-                <ol className="ml-2 list-inside list-decimal space-y-1">
-                  <li>Get your API key from Hugging Face</li>
-                  <li>Add it as HF_TOKEN in your environment</li>
-                  <li>Ensure the model supports {task.toLowerCase()}</li>
-                </ol>
-              </div>
+          ) : (
+            <div className="flex-1 space-y-6 overflow-y-auto pr-2">
+              <EngineSelector
+                value={tempEngine}
+                onChange={handleEngineSelect}
+                engines={engines}
+              />
+              <WorkloadModelConfiguration
+                task={TEXT_GENERATION_TYPE}
+                modelType={TEXT_GENERATION_TYPE}
+                engine={tempEngine}
+                verifiedModels={verifiedModels[tempEngine]}
+                customModels={customModels[tempEngine]}
+                selectedModel={tempModel}
+                onModelSelect={setTempModel}
+                tabValue={tabValue}
+                onTabChange={setTabValue}
+                source={modelSource}
+                onSourceChange={setModelSource}
+                isValid={isModelValid}
+                onValidationChange={setIsModelValid}
+                device={tempDevice}
+                onDeviceChange={setTempDevice}
+                savedModelName={selectedModelName}
+                savedModelType={savedModelType}
+                onTempFileUpload={setTempLocalFilePath}
+                onDeleteModel={handleDeleteModel}
+                extraParams={tempParams}
+                onExtraParamsChange={setTempParams}
+              />
             </div>
+          )}
 
-            <DeviceSelector />
-          </TabsContent>
-        </Tabs>
-
-        <div className="flex justify-end space-x-2 border-t pt-4">
-          <Button
-            variant="outline"
-            disabled={isLoading}
-            onClick={onClose}
-            className="bg-white text-gray-700"
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleSave}
-            disabled={isLoading}
-            className="bg-blue-600 text-white"
-          >
-            {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+          <div className="flex justify-end space-x-2 border-t pt-4">
+            <Button
+              variant="outline"
+              disabled={isLoading}
+              onClick={onClose}
+              className="bg-white text-gray-700"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSave}
+              disabled={isLoading || !canSave}
+              className="bg-blue-600 text-white disabled:opacity-50"
+            >
+              {isLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                'Save'
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <ConfirmationDialog
+        isOpen={isDeleteConfirmOpen}
+        onClose={() => setIsDeleteConfirmOpen(false)}
+        onConfirm={confirmDeleteModel}
+        title="Delete Model"
+        description={`Are you sure you want to delete model "${modelToDelete}"? This action cannot be undone.`}
+        confirmText="Delete"
+        variant="destructive"
+        isLoading={isDeleting}
+      />
+    </>
   )
 }

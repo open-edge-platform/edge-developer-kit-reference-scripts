@@ -20,6 +20,7 @@ import { Play, Zap, Languages, Mic } from 'lucide-react'
 import { Workload } from '@/payload-types'
 import { TTS_MODELS } from '@/lib/workloads/text-to-speech'
 import { SelectLanguage, SelectVoice } from './common'
+import { logger } from '@/utils/logger'
 
 interface TextToSpeechDemoProps {
   disabled?: boolean
@@ -42,7 +43,7 @@ export default function TextToSpeechDemo({
   })
 
   // Use the model from workload or default to 'kokoro'
-  const selectedModel = workload?.model || 'kokoro'
+  const selectedModel = workload?.models.default.name || 'kokoro'
 
   // Get the current model configuration
   const currentModelConfig = TTS_MODELS.find(
@@ -149,7 +150,7 @@ export default function TextToSpeechDemo({
         }
       })
       .catch((error) => {
-        console.error('TTS error:', error)
+        logger.error('TTS error:', error)
         toast.error('Error', {
           description:
             'An error occurred while synthesizing audio. Please try again.',

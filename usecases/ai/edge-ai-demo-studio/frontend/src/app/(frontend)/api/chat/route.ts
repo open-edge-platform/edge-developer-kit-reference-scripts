@@ -12,9 +12,10 @@ export async function POST(req: Request) {
       { status: 400 },
     )
   }
+  const port = TEXT_GENERATION_PORT
 
   const client = new OpenAI({
-    baseURL: `http://localhost:${TEXT_GENERATION_PORT}/v3`,
+    baseURL: `http://localhost:${port}/v1`,
     apiKey: '',
   })
 

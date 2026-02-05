@@ -7,6 +7,7 @@ import {
   ImageEditRequest,
   ImageGenerationResponse,
 } from '@/types/image-generation'
+import { logger } from '@/utils/logger'
 import { useMutation } from '@tanstack/react-query'
 import { useState, useCallback, useEffect, useRef } from 'react'
 
@@ -49,7 +50,7 @@ const useTaskPolling = (
             onError((status.result as string) || 'Task failed')
           }
         } catch (error) {
-          console.error('Polling error:', error)
+          logger.error('Polling error:', error)
           onError('Failed to get task status')
         }
       }

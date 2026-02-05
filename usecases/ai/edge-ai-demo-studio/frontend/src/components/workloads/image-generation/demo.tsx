@@ -21,6 +21,7 @@ import { toast } from 'sonner'
 import { ImageSettingsCard } from './image-settings-card'
 import { GenerateImageDemo } from './generate-image-demo'
 import { EditImageDemo } from './edit-image-demo'
+import { logger } from '@/utils/logger'
 
 interface ImageGenerationDemoProps {
   disabled?: boolean
@@ -146,7 +147,7 @@ export default function ImageGenerationDemo({
         description: 'Image generation started. Please wait...',
       })
     } catch (error) {
-      console.error('Image generation error:', error)
+      logger.error('Image generation error:', error)
       showToastMessage(false, 0, 'generate')
     }
   }
@@ -187,7 +188,7 @@ export default function ImageGenerationDemo({
         description: 'Image editing started. Please wait...',
       })
     } catch (error) {
-      console.error('Image edit error:', error)
+      logger.error('Image edit error:', error)
       showToastMessage(false, 0, 'edit')
     }
   }

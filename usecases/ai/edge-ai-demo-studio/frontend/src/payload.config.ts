@@ -10,13 +10,14 @@ import { sqliteAdapter } from '@payloadcms/db-sqlite'
 import { Users } from './collections/Users'
 import { Workloads } from './collections/Workloads'
 import { migrations } from './migrations'
-import { init, killAllProcesses } from './lib/processHandler'
+import { init, killAllProcesses } from './lib/process-handler'
 import {
   initHealthCheckService,
   stopHealthCheckService,
 } from './lib/healthcheck'
-import { checkAndHandlePortConflicts } from './lib/portManager'
+import { checkAndHandlePortConflicts } from './lib/port-manager'
 import { McpServers } from './collections/McpServers'
+import { logger } from './utils/logger'
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
@@ -54,48 +55,45 @@ export default buildConfig({
     const portCheck = await checkAndHandlePortConflicts()
 
     if (portCheck.killedPorts.length > 0) {
-      console.log(
+      logger.log(
         `✅ Cleaned up stale processes on ports: ${portCheck.killedPorts.join(', ')}\n`,
       )
     }
 
     if (portCheck.conflicts.length > 0) {
-      console.log(
+      logger.log(
         `⚠️  ${portCheck.conflicts.length} external process(es) detected on required ports.`,
       )
-      console.log('Services on those ports may fail to start.\n')
+      logger.log('Services on those ports may fail to start.\n')
     }
 
     await inactivateWorkloads(payload)
 
     // Initialize health check service with 10 second interval
     initHealthCheckService(payload)
-    console.log('--------------------------------------------')
-    console.log('payload init health check')
-
     process.on('beforeExit', async (code) => {
-      console.log('Process beforeExit event with code:', code)
+      logger.log('Process beforeExit event with code:', code)
       stopHealthCheckService()
       await killAllProcesses()
       process.exit()
     })
 
     process.on('exit', async (code) => {
-      console.log('Process exit event with code:', code)
+      logger.log('Process exit event with code:', code)
       stopHealthCheckService()
       await killAllProcesses()
       process.exit()
     })
 
     process.on('SIGINT', async () => {
-      console.log('SIGINT received (Ctrl+C)')
+      logger.log('SIGINT received (Ctrl+C)')
       stopHealthCheckService()
       await killAllProcesses()
       process.exit()
     })
 
     process.on('SIGTERM', async () => {
-      console.log('SIGTERM received')
+      logger.log('SIGTERM received')
       stopHealthCheckService()
       await killAllProcesses()
       process.exit()

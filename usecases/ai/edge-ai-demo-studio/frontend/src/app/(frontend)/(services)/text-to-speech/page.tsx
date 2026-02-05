@@ -3,10 +3,7 @@
 
 'use client'
 
-import {
-  DocumentationTemplate,
-  DocumentationProps,
-} from '@/components/workloads/documentation'
+import { DocumentationTemplate } from '@/components/workloads/documentation'
 import Logs from '@/components/workloads/log'
 import WorkloadComponent from '@/components/workloads/workload'
 import {
@@ -20,27 +17,32 @@ import {
   TEXT_TO_SPEECH_TYPE,
   TEXT_TO_SPEECH_DESCRIPTION,
   TEXT_TO_SPEECH_WORKLOAD,
+  TEXT_TO_SPEECH_URL,
 } from '@/lib/workloads/text-to-speech'
 import Endpoint from '@/components/workloads/endpoint'
 import { textToSpeechEndpoints } from '@/components/workloads/text-to-speech/api'
 import TextToSpeechDemo from '@/components/workloads/text-to-speech/demo'
-import { TEXT_TO_SPEECH_PORT } from '@/lib/constants'
 import { Button } from '@/components/ui/button'
 import { Settings } from 'lucide-react'
 import useDisclosure from '@/hooks/use-disclosure'
-import {
-  SettingsModal,
-  TTSSettings,
-} from '@/components/workloads/text-to-speech/settings'
+import { SettingsModal } from '@/components/workloads/text-to-speech/settings'
+import { DocumentationProps, TTSSettings } from '@/types/workload'
+import { getBaseURL } from '@/utils/common'
+import { useMemo } from 'react'
 
 const TYPE = TEXT_TO_SPEECH_TYPE
 const DESCRIPTION = TEXT_TO_SPEECH_DESCRIPTION
 
 export default function TextToSpeechPage() {
-  const { data: workload, isLoading } = useGetWorkloadByType('text-to-speech')
+  const { data: workload, isLoading } = useGetWorkloadByType(TYPE)
+  const url = getBaseURL(TEXT_TO_SPEECH_URL)
   const { isOpen, onClose, onOpen } = useDisclosure()
   const updateWorkload = useUpdateWorkload()
   const createWorkload = useCreateWorkload()
+
+  const workloadModel = useMemo(() => {
+    return workload?.models.default ?? TEXT_TO_SPEECH_WORKLOAD.models.default
+  }, [workload?.models.default])
 
   const updateSettings = (settings: TTSSettings) => {
     return new Promise<void>((resolve) => {
@@ -48,8 +50,6 @@ export default function TextToSpeechPage() {
         createWorkload.mutate(
           {
             ...TEXT_TO_SPEECH_WORKLOAD,
-            device: settings.device,
-            model: settings.model,
             status: 'inactive',
           },
           {
@@ -62,8 +62,7 @@ export default function TextToSpeechPage() {
           {
             id: workload?.id || 0,
             data: {
-              device: settings.device,
-              model: settings.model,
+              models: { default: settings.model },
               status: workload?.status === 'active' ? 'restart' : 'inactive',
             },
           },
@@ -78,15 +77,8 @@ export default function TextToSpeechPage() {
     })
   }
   const data: DocumentationProps = {
-    overview: (
-      <TextToSpeechDocumentation port={workload?.port ?? TEXT_TO_SPEECH_PORT} />
-    ),
-    endpoints: (
-      <Endpoint
-        apis={textToSpeechEndpoints}
-        port={workload?.port ?? TEXT_TO_SPEECH_PORT}
-      />
-    ),
+    overview: <TextToSpeechDocumentation url={url} />,
+    endpoints: <Endpoint apis={textToSpeechEndpoints} url={url} />,
   }
 
   return (
@@ -95,8 +87,7 @@ export default function TextToSpeechPage() {
         isOpen={isOpen}
         onClose={onClose}
         currentSettings={{
-          device: workload?.device || TEXT_TO_SPEECH_WORKLOAD.device,
-          model: workload?.model || TEXT_TO_SPEECH_WORKLOAD.model,
+          model: workloadModel,
         }}
         updateSettings={updateSettings}
       />
@@ -122,7 +113,13 @@ export default function TextToSpeechPage() {
           />
         }
         docsElement={<DocumentationTemplate data={data} />}
-        logsElement={<Logs name={`${workload?.name}_${workload?.id}`} />}
+        logsElement={
+          <Logs
+            id={workload?.id || 0}
+            type={workload?.type || TEXT_TO_SPEECH_TYPE}
+            engine={workload?.engine ?? 'custom'}
+          />
+        }
         isLoading={isLoading}
       />
     </>

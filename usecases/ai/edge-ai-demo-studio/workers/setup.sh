@@ -10,6 +10,7 @@ LOG_DIR="$SCRIPT_DIR/../logs/setup"
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 
 THIRDPARTY_DIR="$SCRIPT_DIR/thirdparty"
+ROOT_THIRDPARTY_DIR="$SCRIPT_DIR/../thirdparty"
 UV_ZIP_PATH="$THIRDPARTY_DIR/uv.zip"
 UV_ZIP_URL="https://github.com/astral-sh/uv/releases/download/0.8.13/uv-x86_64-unknown-linux-gnu.tar.gz"
 UV_DIR="$THIRDPARTY_DIR/uv"
@@ -20,10 +21,11 @@ OVMS_ZIP_URL_UBUNTU22="https://github.com/openvinotoolkit/model_server/releases/
 OVMS_ZIP_URL_UBUNTU24="https://github.com/openvinotoolkit/model_server/releases/download/v2025.3/ovms_ubuntu24_python_on.tar.gz"
 OVMS_DIR="$THIRDPARTY_DIR/ovms"
 
-FFMPEG_TAR_PATH="$THIRDPARTY_DIR/ffmpeg-release-amd64-static.tar.xz"
-FFMPEG_TAR_URL="https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
-FFMPEG_DIR="$THIRDPARTY_DIR/ffmpeg"
+# FFmpeg is installed at project root thirdparty directory
+FFMPEG_DIR="$ROOT_THIRDPARTY_DIR/ffmpeg"
 FFMPEG_PATH="$FFMPEG_DIR/bin/ffmpeg"
+
+export UV_EXE="$UV_PATH"
 
 # Function to cleanup old logs
 cleanup_old_logs() {
@@ -225,119 +227,26 @@ get_thirdparty_dependencies() {
         fi
     fi
 
-    # Install FFmpeg
-    if [ -d "$FFMPEG_DIR" ]; then
-        echo "✅ FFmpeg directory already exists. Skipping download."
+    # Verify FFmpeg is available from project root (installed by main setup.sh)
+    if [ ! -x "$FFMPEG_PATH" ]; then
+        echo "⚠️  WARNING: FFmpeg not found at $FFMPEG_PATH"
+        echo "FFmpeg should be installed by the main setup.sh script at the project root."
+        echo "If you're running workers/setup.sh directly, please run setup.sh from the project root first."
     else
-        echo "Downloading FFmpeg for Linux..."
-        
-        local ffmpeg_log_file
-        ffmpeg_log_file="$(get_service_log "ffmpeg")"
-        if [[ $VERBOSE -eq 0 ]]; then
-            echo "=== FFmpeg Setup Log - $(date) ===" > "$ffmpeg_log_file"
-            echo "" >> "$ffmpeg_log_file"
-            echo "Logging FFmpeg setup to: $ffmpeg_log_file"
-        fi
-        
-        echo "Downloading from $FFMPEG_TAR_URL..."
-        if [[ $VERBOSE -eq 1 ]]; then
-            if ! wget -O "$FFMPEG_TAR_PATH" "$FFMPEG_TAR_URL"; then
-                echo "❌ ERROR: Failed to download FFmpeg"
-                exit 1
-            fi
-        else
-            if ! wget -q -O "$FFMPEG_TAR_PATH" "$FFMPEG_TAR_URL" 2>> "$ffmpeg_log_file"; then
-                echo "❌ ERROR: Failed to download FFmpeg"
-                echo "Check log file: $ffmpeg_log_file"
-                exit 1
-            fi
-        fi
-        
-        # Extract FFmpeg
-        echo "Extracting FFmpeg..."
-        if [[ $VERBOSE -eq 1 ]]; then
-            if ! tar -xf "$FFMPEG_TAR_PATH" -C "$THIRDPARTY_DIR"; then
-                echo "❌ ERROR: Failed to extract FFmpeg archive"
-                rm -f "$FFMPEG_TAR_PATH"
-                exit 1
-            fi
-        else
-            if ! tar -xf "$FFMPEG_TAR_PATH" -C "$THIRDPARTY_DIR" 2>> "$ffmpeg_log_file"; then
-                echo "❌ ERROR: Failed to extract FFmpeg archive"
-                echo "Check log file: $ffmpeg_log_file"
-                rm -f "$FFMPEG_TAR_PATH"
-                exit 1
-            fi
-        fi
-        
-        # Find the extracted directory and set up ffmpeg structure
-        EXTRACTED_DIR=$(find "$THIRDPARTY_DIR" -maxdepth 1 -type d -name "ffmpeg-*" | head -1)
-        if [ -z "$EXTRACTED_DIR" ]; then
-            echo "❌ ERROR: Could not find extracted FFmpeg directory"
-            rm -f "$FFMPEG_TAR_PATH"
-            exit 1
-        fi
-        
-        # Create ffmpeg directory structure
-        if ! mkdir -p "$FFMPEG_DIR/bin"; then
-            echo "❌ ERROR: Failed to create FFmpeg bin directory"
-            rm -rf "$EXTRACTED_DIR"
-            rm -f "$FFMPEG_TAR_PATH"
-            exit 1
-        fi
-        
-        # Copy ffmpeg binaries
-        if ! cp "$EXTRACTED_DIR/ffmpeg" "$FFMPEG_DIR/bin/" || \
-           ! cp "$EXTRACTED_DIR/ffprobe" "$FFMPEG_DIR/bin/"; then
-            echo "❌ ERROR: Failed to copy FFmpeg binaries"
-            rm -rf "$EXTRACTED_DIR"
-            rm -f "$FFMPEG_TAR_PATH"
-            exit 1
-        fi
-        
-        # Make executable
-        chmod +x "$FFMPEG_DIR/bin/ffmpeg"
-        chmod +x "$FFMPEG_DIR/bin/ffprobe"
-        
-        # Clean up extracted directory
-        rm -rf "$EXTRACTED_DIR"
-        
-        # Clean up tar file
-        rm -f "$FFMPEG_TAR_PATH"
-        
-        # Verify installation
-        if [ ! -x "$FFMPEG_PATH" ]; then
-            echo "❌ ERROR: FFmpeg installation verification failed - binary not found or not executable"
-            if [[ $VERBOSE -eq 0 ]]; then
-                echo "FFmpeg setup failed at $(date)" >> "$ffmpeg_log_file"
-            fi
-            exit 1
-        fi
-        
-        if ! "$FFMPEG_PATH" -version >/dev/null 2>&1; then
-            echo "❌ ERROR: FFmpeg binary found but not working properly"
-            if [[ $VERBOSE -eq 0 ]]; then
-                echo "FFmpeg setup failed at $(date)" >> "$ffmpeg_log_file"
-            fi
-            exit 1
-        fi
-        
-        echo "✅ FFmpeg downloaded and extracted successfully."
-        if [[ $VERBOSE -eq 0 ]]; then
-            echo "FFmpeg setup completed successfully at $(date)" >> "$ffmpeg_log_file"
-        fi
+        echo "✅ FFmpeg found at $FFMPEG_PATH"
     fi
 }
 
 setup_workers() {
     # Discover all subdirectories with setup.sh files
-    WORKER_DIRS=$(find "$SCRIPT_DIR" -maxdepth 1 -type d ! -path "$SCRIPT_DIR" | while read -r dir; do
+    WORKER_DIRS=()
+    while IFS= read -r -d '' dir; do
         if [ -f "$dir/setup.sh" ]; then
-            echo "$dir"
+            WORKER_DIRS+=("$dir")
         fi
-    done)
+    done < <(find "$SCRIPT_DIR" -maxdepth 1 -type d ! -path "$SCRIPT_DIR" -print0)
 
-    if [ -z "$WORKER_DIRS" ]; then
+    if [ ${#WORKER_DIRS[@]} -eq 0 ]; then
         echo "No worker directories with setup.sh found."
         exit 0
     fi
@@ -350,7 +259,7 @@ setup_workers() {
     SKIP_MAP["text-to-speech"]=$SKIP_TTS
 
     echo "Found worker directories:"
-    for dir in $WORKER_DIRS; do
+    for dir in "${WORKER_DIRS[@]}"; do
         name=$(basename "$dir")
         status=""
         if [[ ${SKIP_MAP[$name]:-0} -eq 1 ]]; then
@@ -365,7 +274,7 @@ setup_workers() {
     FAILED_SETUPS=()
     SKIPPED_SETUPS=()
     
-    for worker_dir in $WORKER_DIRS; do
+    for worker_dir in "${WORKER_DIRS[@]}"; do
         name=$(basename "$worker_dir")
         if [[ ${SKIP_MAP[$name]:-0} -eq 1 ]]; then
             echo "Skipping $name setup..."
@@ -495,6 +404,10 @@ main() {
 
     cd "$SCRIPT_DIR"
     check_uv_installed
+
+    # Temporarily add UV_PATH to environment
+    export UV_PATH
+
     get_thirdparty_dependencies
     if [[ $SETUP_WORKERS -eq 1 ]]; then
         setup_workers

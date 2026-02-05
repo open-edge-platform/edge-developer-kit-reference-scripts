@@ -5,10 +5,16 @@ param(
     [string]$ErrorActionPreference = "Stop"
 )
 
-$ParentThirdPartyDir = Join-Path (Split-Path $PWD -Parent) "thirdparty"
-$UVPath = Join-Path $ParentThirdPartyDir "uv\uv.exe"
+$SCRIPT_DIR = $PSScriptRoot
+$WORKER_DIR = Split-Path $SCRIPT_DIR -Parent
+$WORKER_THIRDPARTY_DIR = Join-Path $WORKER_DIR "thirdparty"
+$HOME_DIR = Split-Path $WORKER_DIR -Parent
+$HOME_THIRDPARTY_DIR = Join-Path $HOME_DIR "thirdparty"
+
+$VenvDir = Join-Path $SCRIPT_DIR ".venv"
+$UVPath = Join-Path $WORKER_THIRDPARTY_DIR "uv\uv.exe"
 $script:uvCommand = $UVPath
-$FFmpegPath = Join-Path $ParentThirdPartyDir "ffmpeg\bin\ffmpeg.exe"
+$FFmpegPath = Join-Path $HOME_THIRDPARTY_DIR "ffmpeg\bin\ffmpeg.exe"
 
 # Function to check if FFmpeg is available
 function Test-FFmpegAvailable {
@@ -42,7 +48,7 @@ function Test-UvInstalled {
 # Function to install Python dependencies
 function Install-PythonDependencies {
     Write-Host "Checking for virtual environment..." -ForegroundColor Yellow
-    if (Test-Path ".venv") {
+    if (Test-Path $VenvDir) {
         Write-Host "Virtual environment already exists." -ForegroundColor Green
     } else {
         Write-Host "Creating virtual environment with uv..." -ForegroundColor Yellow

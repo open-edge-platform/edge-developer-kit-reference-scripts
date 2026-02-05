@@ -1,0 +1,29 @@
+# Copyright (C) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+[project]
+name = "embedding-worker"
+version = "0.1.0"
+description = "Embedding worker for Edge AI Studio"
+requires-python = ">=3.11"
+dependencies = [
+    # FastAPI and Web Framework
+    "fastapi[standard]>=0.120.1",
+    "openai==1.93.1",
+    "cohere==5.15.0",
+    "numpy==2.1.0",
+    # Vector Database and Search
+    "faiss-cpu==1.11.0",
+    # LangChain Ecosystem
+    "langchain==0.3.26",
+    "langchain-openai==0.3.27",
+    "langchain-cohere==0.4.4",
+    "langchain-community==0.3.27",
+    "langchainhub==0.1.21",
+    # Document Processing
+    "unstructured==0.18.3",
+    "pypdf>=6.6.2",
+    "filelock==3.20.3",
+    # Database and Modeling
+    "sqlmodel>=0.0.24",
+]

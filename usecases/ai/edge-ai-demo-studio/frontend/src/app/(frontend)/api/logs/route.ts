@@ -5,18 +5,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import fs from 'fs/promises'
 import path from 'path'
 import { LOG_FILE_PATH } from '@/lib/constants'
-
-export interface LogEntry {
-  timestamp: string
-  message: string
-  type: 'error' | 'out'
-}
-
-export interface LogResponse {
-  logs: LogEntry[]
-  offset: number
-  timestamp: string | null
-}
+import { LogEntry, LogResponse } from '@/types/log'
+import { logger } from '@/utils/logger'
 
 const MAX_READ_SIZE = 64_000 // 64KB
 const DEFAULT_TAIL_LINES = 500
@@ -183,7 +173,7 @@ export async function GET(
       timestamp: newTimestamp,
     })
   } catch (err) {
-    console.error('Error reading log file:', err)
+    logger.error('Error reading log file:', err)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 },

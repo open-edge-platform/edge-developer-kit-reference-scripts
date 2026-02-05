@@ -26,6 +26,7 @@ import { useState, useEffect } from 'react'
 import { useGetKnowledgeBases } from '@/hooks/use-embedding'
 import { KnowledgeBase } from '@/types/embedding'
 import { useGetWorkloadByType } from '@/hooks/use-workload'
+import { EMBEDDING_TYPE } from '@/lib/workloads/embedding'
 
 interface RagChatSettingsProps {
   isOpen: boolean
@@ -45,7 +46,7 @@ export function RagChatSettings({
   selectedKnowledgeBase,
   onSettingsUpdate,
 }: RagChatSettingsProps) {
-  const { data: embeddingService } = useGetWorkloadByType('embedding')
+  const { data: embeddingService } = useGetWorkloadByType(EMBEDDING_TYPE)
   const [localUseEmbedding, setLocalUseEmbedding] = useState(useEmbedding)
   const [localSelectedKnowledgeBase, setLocalSelectedKnowledgeBase] =
     useState<KnowledgeBase | null>(selectedKnowledgeBase)

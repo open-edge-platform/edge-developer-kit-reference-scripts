@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { Workload } from '@/payload-types'
-import type { CreateWorkload, UpdateWorkload } from '@/hooks/use-workload'
 import { UseMutationResult } from '@tanstack/react-query'
 import { getDefaultWorkload } from './common'
+import { CreateWorkload, UpdateWorkload } from '@/types/workload'
 
 export interface WorkloadStatus {
   id: number

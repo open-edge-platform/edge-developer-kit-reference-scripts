@@ -37,6 +37,7 @@ import {
 } from 'lucide-react'
 import { useState, useRef, useEffect } from 'react'
 import { toast } from 'sonner'
+import { logger } from '@/utils/logger'
 
 interface SpeechToTextDemoProps {
   disabled?: boolean
@@ -136,7 +137,7 @@ export default function SpeechToTextDemo({ disabled }: SpeechToTextDemoProps) {
         toast.success('Translation completed')
       }
     } catch (error) {
-      console.error('Processing error:', error)
+      logger.error('Processing error:', error)
       toast.error('Error', {
         description: `Failed to ${mode} audio. Please try again.`,
       })

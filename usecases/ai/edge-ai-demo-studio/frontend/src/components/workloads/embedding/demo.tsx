@@ -27,6 +27,7 @@ import {
   Upload,
   Brain,
   MessageSquare,
+  RefreshCcw,
 } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { toast } from 'sonner'
@@ -35,7 +36,6 @@ import type { CustomFile } from '@/types/dropzone'
 import {
   useCreateKnowledgeBase,
   useCreateKnowledgeBaseEmbeddings,
-  useCreateKnowledgeBaseEmbeddingsAdvanced,
   useDeleteKnowledgeBase,
   useDeleteKnowledgeBaseFile,
   useGetKnowledgeBaseFiles,
@@ -45,6 +45,8 @@ import {
   useGetKnowledgeBaseChunks,
   useAddChunkToKnowledgeBase,
   useDeleteChunksFromKnowledgeBase,
+  useCreateFileEmbeddings,
+  useDeleteChunksBySource,
 } from '@/hooks/use-embedding'
 import Dropzone from '@/components/common/dropzone'
 import {
@@ -67,6 +69,12 @@ import {
 } from '@/components/ui/collapsible'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import { logger } from '@/utils/logger'
 
 interface EmbeddingDemoProps {
   disabled: boolean
@@ -78,9 +86,14 @@ export default function EmbeddingDemo({ disabled }: EmbeddingDemoProps) {
     disabled,
   })
   const [selectedKbId, setSelectedKbId] = useState<number | null>(null)
+  const [showEmbeddingConfig, setShowEmbeddingConfig] = useState(false)
 
   // Find selected knowledge base
   const selectedKb = knowledgeBases?.find((kb) => kb.id === selectedKbId)
+
+  const handleToggleShowEmbeddingConfig = () => {
+    setShowEmbeddingConfig((prev) => !prev)
+  }
 
   return (
     <div className="space-y-6">
@@ -144,17 +157,27 @@ export default function EmbeddingDemo({ disabled }: EmbeddingDemoProps) {
       {selectedKb && (
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileText className="h-5 w-5" />
-              Step 2: Manage Documents
-              <Badge variant="secondary">{selectedKb.name}</Badge>
+            <CardTitle className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                Step 2: Manage Documents
+                <Badge variant="secondary">{selectedKb.name}</Badge>
+              </div>
+              <Button variant="ghost" onClick={handleToggleShowEmbeddingConfig}>
+                <Settings />
+              </Button>
             </CardTitle>
             <CardDescription>
               Upload documents and create embeddings for your knowledge base
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <DocumentManager disabled={disabled} selectedKbId={selectedKbId!} />
+            <DocumentManager
+              disabled={disabled}
+              selectedKbId={selectedKbId!}
+              showEmbeddingConfig={showEmbeddingConfig}
+              setShowEmbeddingConfig={setShowEmbeddingConfig}
+            />
           </CardContent>
         </Card>
       )}
@@ -263,7 +286,7 @@ function KnowledgeBaseSelector({
           }
         },
         onError: (error) => {
-          console.error('Error creating knowledge base:', error)
+          logger.error('Error creating knowledge base:', error)
           toast.error('Failed to create knowledge base.')
         },
       },
@@ -418,28 +441,38 @@ function KnowledgeBaseSelector({
 function DocumentManager({
   disabled,
   selectedKbId,
+  showEmbeddingConfig,
+  setShowEmbeddingConfig,
 }: {
   disabled?: boolean
   selectedKbId: number
+  showEmbeddingConfig: boolean
+  setShowEmbeddingConfig: (show: boolean) => void
 }) {
   const [selectedFiles, setSelectedFiles] = useState<CustomFile[]>([])
   const [isUploading, setIsUploading] = useState(false)
   const [deletingFileName, setDeletingFileName] = useState<string | null>(null)
-  const [showEmbeddingConfig, setShowEmbeddingConfig] = useState(false)
+  const [generatingEmbeddingsFileName, setGeneratingEmbeddingsFileName] =
+    useState<string | null>(null)
   const [splitterName, setSplitterName] = useState('RecursiveCharacter')
-  const [chunkSize, setChunkSize] = useState(1000)
+  const [chunkSize, setChunkSize] = useState(512)
   const [chunkOverlap, setChunkOverlap] = useState(200)
+  const [isGeneratingEmbeddings, setIsGeneratingEmbeddings] = useState(false)
 
   const queryClient = useQueryClient()
   const { data: existingFiles, refetch: refetchFiles } =
     useGetKnowledgeBaseFiles(selectedKbId)
   const uploadFile = useUploadKnowledgeBaseFile()
-  const createEmbeddings = useCreateKnowledgeBaseEmbeddings()
-  const createEmbeddingsAdvanced = useCreateKnowledgeBaseEmbeddingsAdvanced()
+  const createKnowledgeBaseEmbeddings = useCreateKnowledgeBaseEmbeddings()
+  const createFileEmbeddings = useCreateFileEmbeddings()
   const deleteFile = useDeleteKnowledgeBaseFile()
+  const deleteChunks = useDeleteChunksFromKnowledgeBase()
+  const deleteChunksBySource = useDeleteChunksBySource()
+  const { data: chunksResponse } = useGetKnowledgeBaseChunks(selectedKbId)
 
   const resetState = useCallback(() => {
     setIsUploading(false)
+    setIsGeneratingEmbeddings(false)
     setSelectedFiles([])
   }, [])
 
@@ -447,17 +480,77 @@ function DocumentManager({
     setSelectedFiles(value)
   }
 
+  // Check if a file has any chunks
+  const fileHasChunks = (fileName: string): boolean => {
+    const chunks = chunksResponse?.chunks || []
+    return chunks.some((chunk: ChunkResult) => {
+      const source = chunk.metadata?.source || ''
+      // Handle both Windows (\) and Unix (/) path separators
+      const sourceFileName = source.split(/[/\\]/).at(-1)
+      return sourceFileName === fileName
+    })
+  }
+
+  const handleGenerateFileEmbeddings = (fileName: string) => {
+    setGeneratingEmbeddingsFileName(fileName)
+    createFileEmbeddings.mutate(
+      {
+        kbId: selectedKbId,
+        filename: fileName,
+        splitterName,
+        chunkSize,
+        chunkOverlap,
+      },
+      {
+        onSuccess: () => {
+          toast.success(`Embeddings generated for "${fileName}"!`)
+          queryClient.invalidateQueries({
+            queryKey: ['knowledge-base-chunks', selectedKbId],
+          })
+        },
+        onError: (error) => {
+          logger.error('Error generating embeddings:', error)
+          toast.error(`Failed to generate embeddings for "${fileName}".`)
+        },
+        onSettled: () => {
+          setGeneratingEmbeddingsFileName(null)
+        },
+      },
+    )
+  }
+
   const handleDeleteFile = (fileName: string) => {
     setDeletingFileName(fileName)
+    // First delete the file
     deleteFile.mutate(
       { kbId: selectedKbId, fileName },
       {
         onSuccess: () => {
-          toast.success(`File "${fileName}" deleted successfully.`)
-          refetchFiles()
+          // Then delete associated chunks
+          deleteChunksBySource.mutate(
+            { kbId: selectedKbId, source: fileName },
+            {
+              onSuccess: () => {
+                toast.success(
+                  `File "${fileName}" and its embeddings deleted successfully.`,
+                )
+                refetchFiles()
+                queryClient.invalidateQueries({
+                  queryKey: ['knowledge-base-chunks', selectedKbId],
+                })
+              },
+              onError: (error) => {
+                logger.error('Error deleting chunks:', error)
+                toast.warning(
+                  `File deleted but failed to remove embeddings for "${fileName}".`,
+                )
+                refetchFiles()
+              },
+            },
+          )
         },
         onError: (error) => {
-          console.error('Error deleting file:', error)
+          logger.error('Error deleting file:', error)
           toast.error(`Failed to delete file "${fileName}".`)
         },
         onSettled: () => {
@@ -474,6 +567,7 @@ function DocumentManager({
     }
 
     setIsUploading(true)
+
     const uploadPromises = selectedFiles.map((file) =>
       uploadFile.mutateAsync({ kbId: selectedKbId, file }),
     )
@@ -482,17 +576,20 @@ function DocumentManager({
       .then(() => {
         toast.success('Files uploaded successfully!')
         refetchFiles()
-        // Create embeddings
-        if (showEmbeddingConfig) {
-          return createEmbeddingsAdvanced.mutateAsync({
-            kbId: selectedKbId,
-            splitterName,
-            chunkSize,
-            chunkOverlap,
-          })
-        } else {
-          return createEmbeddings.mutateAsync({ kbId: selectedKbId })
-        }
+        setIsGeneratingEmbeddings(true)
+        setIsUploading(false)
+
+        return Promise.all(
+          selectedFiles.map((file) =>
+            createFileEmbeddings.mutateAsync({
+              kbId: selectedKbId,
+              filename: file.name,
+              splitterName,
+              chunkSize,
+              chunkOverlap,
+            }),
+          ),
+        )
       })
       .then((response) => {
         if (response) {
@@ -505,129 +602,236 @@ function DocumentManager({
         }
       })
       .catch((error) => {
-        console.error('Error in upload/embedding process:', error)
-        toast.error('Failed to upload files or create embeddings.')
+        logger.error('Error in upload/embedding process:', error.message)
+        toast.error(
+          `Failed to upload files or create embeddings${error.cause === 400 ? `: ${error.message}` : '.'}`,
+        )
       })
       .finally(() => {
         resetState()
       })
   }
 
+  const regenerateEmbeddings = async () => {
+    if (existingFiles.length === 0) {
+      toast.error('Please upload files before generating embeddings')
+      return
+    }
+
+    setIsGeneratingEmbeddings(true)
+
+    // Delete all chunks from Knowledge Base
+    const chunks = chunksResponse?.chunks || []
+    const deletePromises =
+      chunks.length > 0
+        ? chunks.map((chunk: { doc_id: string }) =>
+            deleteChunks.mutateAsync({
+              kbId: selectedKbId,
+              docIds: [chunk.doc_id],
+            }),
+          )
+        : []
+
+    Promise.all(deletePromises)
+      .then(() => {
+        if (chunks.length > 0) {
+          toast.success(`Deleted ${chunks.length} existing chunks`)
+        }
+        // Re-create embeddings with current settings
+        return createKnowledgeBaseEmbeddings.mutateAsync({
+          kbId: selectedKbId,
+          splitterName,
+          chunkSize,
+          chunkOverlap,
+        })
+      })
+      .then((response) => {
+        if (response) {
+          toast.success('Embeddings created successfully!')
+          queryClient.invalidateQueries({
+            queryKey: ['knowledge-base-chunks', selectedKbId],
+          })
+        } else {
+          toast.error('Failed to create embeddings.')
+        }
+      })
+      .catch((error) => {
+        logger.error('Error in embedding process:', error)
+        toast.error('Failed to regenerate embeddings.')
+      })
+      .finally(() => {
+        setIsGeneratingEmbeddings(false)
+      })
+  }
+
   return (
-    <div className="space-y-6">
-      {/* Existing Files */}
-      {existingFiles && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <Label>Current Documents</Label>
-            <Badge variant="outline">{existingFiles.length} files</Badge>
+    <div>
+      {/* Embedding Configuration */}
+      <Collapsible
+        open={showEmbeddingConfig}
+        onOpenChange={setShowEmbeddingConfig}
+      >
+        <CollapsibleContent className="mb-4">
+          <div className="bg-muted/50 grid gap-4 rounded-lg border p-4 lg:grid-cols-3">
+            <div className="space-y-2">
+              <Label>Text Splitter</Label>
+              <Select value={splitterName} onValueChange={setSplitterName}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="RecursiveCharacter">
+                    Recursive Character
+                  </SelectItem>
+                  <SelectItem value="Character">Character</SelectItem>
+                  <SelectItem value="Markdown">Markdown</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Chunk Size</Label>
+              <Input
+                type="number"
+                value={chunkSize}
+                onChange={(e) => setChunkSize(Number.parseInt(e.target.value))}
+                min={100}
+                max={5000}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Chunk Overlap</Label>
+              <Input
+                type="number"
+                value={chunkOverlap}
+                onChange={(e) =>
+                  setChunkOverlap(Number.parseInt(e.target.value))
+                }
+                min={0}
+                max={chunkSize - 1}
+              />
+            </div>
           </div>
+        </CollapsibleContent>
+      </Collapsible>
+      <div className="space-y-6">
+        {/* Existing Files */}
+        {existingFiles && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Label>Current Documents</Label>
+                <Badge variant="outline">{existingFiles.length} files</Badge>
+              </div>
 
-          {existingFiles.length > 0 ? (
-            <div className="grid gap-2">
-              {existingFiles.map((file: KnowledgeBaseFile, index: number) => (
-                <div
-                  key={index}
-                  className="hover:bg-muted/50 flex items-center justify-between rounded-lg border p-3"
-                >
-                  <div className="flex items-center gap-3">
-                    <FileText className="text-muted-foreground h-4 w-4" />
-                    <span className="font-medium">{file.name}</span>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-destructive hover:text-destructive"
-                    onClick={() => handleDeleteFile(file.name)}
-                    disabled={deletingFileName === file.name || disabled}
-                  >
-                    {deletingFileName === file.name ? (
-                      <Loader2 className="size-4 animate-spin" />
-                    ) : (
-                      <Trash2 className="h-4 w-4" />
-                    )}
-                  </Button>
-                </div>
-              ))}
+              <Button
+                variant="outline"
+                onClick={regenerateEmbeddings}
+                hidden={existingFiles.length < 1}
+                disabled={isUploading || isGeneratingEmbeddings}
+              >
+                {chunksResponse?.chunks.length > 0 ? 'Regenerate' : 'Generate'}{' '}
+                embeddings for all files
+              </Button>
             </div>
-          ) : (
-            <div className="text-muted-foreground py-8 text-center">
-              <FileText className="mx-auto mb-2 h-8 w-8 opacity-50" />
-              <p>No documents uploaded yet</p>
-            </div>
-          )}
+
+            {existingFiles.length > 0 ? (
+              <div className="grid gap-2">
+                {existingFiles.map((file: KnowledgeBaseFile, index: number) => {
+                  const hasChunks = fileHasChunks(file.name)
+                  return (
+                    <div
+                      key={index}
+                      className="hover:bg-muted/50 flex items-center justify-between rounded-lg border p-3"
+                    >
+                      <div className="flex items-center gap-3">
+                        <FileText className="text-muted-foreground h-4 w-4" />
+                        <span className="font-medium">{file.name}</span>
+                        {!hasChunks && (
+                          <Badge
+                            variant="outline"
+                            className="border-amber-200 bg-amber-100 text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200"
+                          >
+                            No embeddings
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() =>
+                                handleGenerateFileEmbeddings(file.name)
+                              }
+                              disabled={
+                                generatingEmbeddingsFileName === file.name ||
+                                isUploading ||
+                                isGeneratingEmbeddings ||
+                                disabled
+                              }
+                            >
+                              {generatingEmbeddingsFileName === file.name ? (
+                                <Loader2 className="size-4 animate-spin" />
+                              ) : (
+                                <RefreshCcw />
+                              )}
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>
+                              {hasChunks ? 'Regenerate' : 'Generate'} Embeddings
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => handleDeleteFile(file.name)}
+                          disabled={
+                            deletingFileName === file.name ||
+                            isUploading ||
+                            isGeneratingEmbeddings ||
+                            disabled
+                          }
+                        >
+                          {deletingFileName === file.name ? (
+                            <Loader2 className="size-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              <div className="text-muted-foreground py-8 text-center">
+                <FileText className="mx-auto mb-2 h-8 w-8 opacity-50" />
+                <p>No documents uploaded yet</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Upload New Documents */}
+        <div className="space-y-4">
+          <Label>Upload New Documents</Label>
+          {/* File Upload */}
+          <Dropzone
+            files={selectedFiles}
+            acceptFileType={{
+              'application/pdf': ['.pdf'],
+              'application/json': ['.json'],
+            }}
+            setFieldValue={setFieldValue}
+            onUpload={handleUpload}
+            isUploading={isUploading || isGeneratingEmbeddings}
+            error={false}
+          />
         </div>
-      )}
-
-      {/* Upload New Documents */}
-      <div className="space-y-4">
-        <Label>Upload New Documents</Label>
-
-        {/* Embedding Configuration */}
-        <Collapsible
-          open={showEmbeddingConfig}
-          onOpenChange={setShowEmbeddingConfig}
-        >
-          <CollapsibleTrigger asChild>
-            <Button variant="outline" size="sm">
-              <Settings className="mr-2 h-4 w-4" />
-              Advanced Embedding Options
-            </Button>
-          </CollapsibleTrigger>
-          <CollapsibleContent className="mt-4">
-            <div className="bg-muted/50 grid gap-4 rounded-lg border p-4 lg:grid-cols-3">
-              <div className="space-y-2">
-                <Label>Text Splitter</Label>
-                <Select value={splitterName} onValueChange={setSplitterName}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="RecursiveCharacter">
-                      Recursive Character
-                    </SelectItem>
-                    <SelectItem value="Character">Character</SelectItem>
-                    <SelectItem value="Markdown">Markdown</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Chunk Size</Label>
-                <Input
-                  type="number"
-                  value={chunkSize}
-                  onChange={(e) =>
-                    setChunkSize(Number.parseInt(e.target.value))
-                  }
-                  min={100}
-                  max={5000}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Chunk Overlap</Label>
-                <Input
-                  type="number"
-                  value={chunkOverlap}
-                  onChange={(e) =>
-                    setChunkOverlap(Number.parseInt(e.target.value))
-                  }
-                  min={0}
-                  max={chunkSize - 1}
-                />
-              </div>
-            </div>
-          </CollapsibleContent>
-        </Collapsible>
-
-        {/* File Upload */}
-        <Dropzone
-          files={selectedFiles}
-          acceptFileType={{ 'application/pdf': ['.pdf'] }}
-          setFieldValue={setFieldValue}
-          onUpload={handleUpload}
-          isUploading={isUploading}
-          error={false}
-        />
       </div>
     </div>
   )
@@ -682,7 +886,7 @@ function SearchInterface({
         }
       },
       onError: (error) => {
-        console.error('Error searching knowledge base:', error)
+        logger.error('Error searching knowledge base:', error)
         toast.error('Failed to search knowledge base.')
       },
     })
@@ -893,7 +1097,7 @@ function ChunkManager({
           refetch()
         },
         onError: (error) => {
-          console.error('Error adding chunk:', error)
+          logger.error('Error adding chunk:', error)
           toast.error('Failed to add chunk')
         },
       },
@@ -921,7 +1125,7 @@ function ChunkManager({
           }
         },
         onError: (error) => {
-          console.error('Error deleting chunks:', error)
+          logger.error('Error deleting chunks:', error)
           toast.error('Failed to delete chunks')
         },
       },

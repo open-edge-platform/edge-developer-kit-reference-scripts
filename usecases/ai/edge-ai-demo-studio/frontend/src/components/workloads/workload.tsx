@@ -15,6 +15,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs'
 import React, { useCallback, useMemo } from 'react'
 import { Button } from '../ui/button'
+import { Badge } from '../ui/badge'
 import {
   useCreateWorkload,
   useGetWorkloadsStatus,
@@ -30,10 +31,36 @@ import {
   getActiveWorkloadInactivePrerequisites,
   startPrerequisites,
 } from '@/utils/prerequisite-utils'
+import { CreateWorkload, WorkloadStatusMessage } from '@/types/workload'
+
+const STATUS_MESSAGE_ALERT_STYLES = {
+  error: {
+    variant: 'destructive' as const,
+    className: 'border-red-200 bg-red-50',
+    circleClass: 'stroke-red-600',
+    titleClass: 'text-red-800',
+    descClass: 'text-red-700',
+  },
+  warning: {
+    variant: 'default' as const,
+    className: 'border-orange-200 bg-orange-50',
+    circleClass: 'stroke-orange-600',
+    titleClass: 'text-orange-800',
+    descClass: 'text-orange-700',
+  },
+  info: {
+    variant: 'default' as const,
+    className: 'border-blue-200 bg-blue-50',
+    circleClass: 'stroke-blue-600',
+    titleClass: 'text-blue-800',
+    descClass: 'text-blue-700',
+  },
+}
 
 export default function Workload({
   title,
   workload,
+  defaultWorkload,
   demoElement,
   docsElement,
   logsElement,
@@ -41,9 +68,12 @@ export default function Workload({
   settingsButton,
   workloadType,
   prerequisiteServices,
+  disabled,
+  statusMessage,
 }: {
   title: string
   workload?: Workload | null
+  defaultWorkload?: CreateWorkload
   workloadType: Workload['type']
   description: string
   demoElement: React.ReactNode
@@ -52,6 +82,8 @@ export default function Workload({
   settingsButton?: React.ReactNode
   isLoading: boolean
   prerequisiteServices?: string[]
+  disabled?: boolean
+  statusMessage?: WorkloadStatusMessage
 }) {
   const createWorkload = useCreateWorkload()
   const updateWorkload = useUpdateWorkload()
@@ -103,9 +135,10 @@ export default function Workload({
   const toggleService = () => {
     if (!workload) {
       preparePrerequisite()
-      const defaultWorkload = getDefaultWorkload(workloadType)
-      if (defaultWorkload) {
-        createWorkload.mutate({ ...defaultWorkload })
+      const workload = defaultWorkload || getDefaultWorkload(workloadType)
+
+      if (workload) {
+        createWorkload.mutate({ ...workload })
       } else {
         toast.error(
           'Unable to create workload: Default configuration not found.',
@@ -154,6 +187,16 @@ export default function Workload({
                     </span>
                   </div>
                 )}
+                {workload && workload.status === 'active' && (
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="text-xs">
+                      Model: {workload.models.default.name}
+                    </Badge>
+                    <Badge variant="outline" className="text-xs">
+                      Device: {workload.models.default.device}
+                    </Badge>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -171,6 +214,7 @@ export default function Workload({
                   : 'default'
               }
               disabled={
+                disabled ||
                 (workload &&
                   (workload.status === 'prepare' ||
                     workload.status === 'restart')) ||
@@ -245,27 +289,59 @@ export default function Workload({
                 </Alert>
               )}
             {!isLoading &&
-              activeWorkloadInactivePrerequisites &&
-              activeWorkloadInactivePrerequisites.length > 0 && (
+              (statusMessage ? (
                 <Alert
-                  variant="destructive"
-                  className="border-red-200 bg-red-50"
+                  variant={
+                    STATUS_MESSAGE_ALERT_STYLES[statusMessage.type].variant
+                  }
+                  className={
+                    STATUS_MESSAGE_ALERT_STYLES[statusMessage.type].className
+                  }
                 >
-                  <AlertCircleIcon className="stroke-red-600" />
-                  <AlertTitle className="text-red-800">
-                    Prerequisites Turned Off
+                  <AlertCircleIcon
+                    className={
+                      STATUS_MESSAGE_ALERT_STYLES[statusMessage.type]
+                        .circleClass
+                    }
+                  />
+                  <AlertTitle
+                    className={
+                      STATUS_MESSAGE_ALERT_STYLES[statusMessage.type].titleClass
+                    }
+                  >
+                    {statusMessage.title}
                   </AlertTitle>
-                  <AlertDescription className="text-red-700">
-                    This workload is active but the following prerequisite
-                    services are turned off:{' '}
-                    <strong>
-                      {activeWorkloadInactivePrerequisites.join(', ')}
-                    </strong>
-                    . This service might not work properly. Please ensure the
-                    prerequisite services are running.
+                  <AlertDescription
+                    className={
+                      STATUS_MESSAGE_ALERT_STYLES[statusMessage.type].descClass
+                    }
+                  >
+                    {statusMessage.message}
                   </AlertDescription>
                 </Alert>
-              )}
+              ) : (
+                activeWorkloadInactivePrerequisites &&
+                activeWorkloadInactivePrerequisites.length > 0 && (
+                  <Alert
+                    variant="destructive"
+                    className="border-red-200 bg-red-50"
+                  >
+                    <AlertCircleIcon className="stroke-red-600" />
+                    <AlertTitle className="text-red-800">
+                      Prerequisites Turned Off
+                    </AlertTitle>
+                    <AlertDescription className="text-red-700">
+                      This workload is active but the following prerequisite
+                      services are turned off:{' '}
+                      <strong>
+                        {activeWorkloadInactivePrerequisites.join(', ')}
+                      </strong>
+                      . This service might not work properly. Please ensure the
+                      prerequisite services are running.
+                    </AlertDescription>
+                  </Alert>
+                )
+              ))}
             {isLoading ||
             createWorkload.isPending ||
             updateWorkload.isPending ? (

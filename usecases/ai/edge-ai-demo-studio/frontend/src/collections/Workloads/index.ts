@@ -7,6 +7,13 @@ import {
   afterWorkloadChange,
 } from '@/hooks/workload'
 import { WorkloadEndpoints } from './endpoints'
+import { WAKE_WORD_DETECTION_TYPE } from '@/lib/workloads/wake-word-detection'
+import { SPEECH_TO_TEXT_TYPE } from '@/lib/workloads/speech-to-text'
+import { TEXT_GENERATION_TYPE } from '@/lib/workloads/text-generation'
+import { EMBEDDING_TYPE } from '@/lib/workloads/embedding'
+import { TEXT_TO_SPEECH_TYPE } from '@/lib/workloads/text-to-speech'
+import { LIPSYNC_TYPE } from '@/lib/workloads/lipsync'
+import { IMAGE_GENERATION_TYPE } from '@/lib/workloads/image-generation'
 
 export const Workloads: CollectionConfig = {
   slug: 'workloads',
@@ -20,32 +27,68 @@ export const Workloads: CollectionConfig = {
       name: 'type',
       type: 'select',
       options: [
-        { label: 'Wake Word Detection', value: 'wake-word-detection' },
-        { label: 'Speech-To-Text', value: 'speech-to-text' },
-        { label: 'Embedding', value: 'embedding' },
-        { label: 'Text Generation', value: 'text-generation' },
-        { label: 'Text-To-Speech', value: 'text-to-speech' },
-        { label: 'Lipsync', value: 'lipsync' },
-        { label: 'Image Generation', value: 'image-generation' },
+        { label: 'Wake Word Detection', value: WAKE_WORD_DETECTION_TYPE },
+        { label: 'Speech-To-Text', value: SPEECH_TO_TEXT_TYPE },
+        { label: 'Embedding', value: EMBEDDING_TYPE },
+        { label: 'Text Generation', value: TEXT_GENERATION_TYPE },
+        { label: 'Text-To-Speech', value: TEXT_TO_SPEECH_TYPE },
+        { label: 'Lipsync', value: LIPSYNC_TYPE },
+        { label: 'Image Generation', value: IMAGE_GENERATION_TYPE },
       ],
       required: true,
     },
     {
-      name: 'model',
-      type: 'text',
+      name: 'models',
+      type: 'json',
       required: true,
+      jsonSchema: {
+        uri: 'a://b/foo.json', // required
+        fileMatch: ['a://b/foo.json'], // required
+        schema: {
+          type: 'object',
+          required: ['default'],
+          properties: {
+            default: {
+              type: 'object',
+              required: ['name', 'device'],
+              additionalProperties: false,
+              properties: {
+                name: { type: 'string' },
+                source: {
+                  type: 'string',
+                  enum: ['huggingface', 'modelscope', 'custom'],
+                },
+                quant: { type: 'string' },
+                device: { type: 'string' },
+                params: { type: 'string' },
+              },
+            },
+          },
+          patternProperties: {
+            '^(?!default$).*': {
+              type: 'object',
+              required: ['name', 'device'],
+              additionalProperties: false,
+              properties: {
+                name: { type: 'string' },
+                source: {
+                  type: 'string',
+                  enum: ['huggingface', 'modelscope', 'custom'],
+                },
+                quant: { type: 'string' },
+                device: { type: 'string' },
+                params: { type: 'string' },
+              },
+            },
+          },
+        },
+      },
     },
     {
       name: 'port',
       type: 'number',
       required: true,
       unique: true,
-    },
-    {
-      name: 'device',
-      type: 'text',
-      defaultValue: 'CPU',
-      required: true,
     },
     {
       name: 'metadata',
@@ -57,18 +100,6 @@ export const Workloads: CollectionConfig = {
         schema: {
           type: 'object',
           properties: {
-            denoise_model: {
-              type: 'string',
-            },
-            denoise_device: {
-              type: 'string',
-            },
-            rerankerModel: {
-              type: 'string',
-            },
-            rerankerDevice: {
-              type: 'string',
-            },
             turnServerIp: {
               type: 'string',
               description: 'Turn Server IP for Lipsync',
@@ -103,14 +134,46 @@ export const Workloads: CollectionConfig = {
       type: 'text',
     },
     {
-      name: 'healthUrl',
-      type: 'text',
+      name: 'healthCheck',
+      type: 'json',
       required: false,
+      jsonSchema: {
+        uri: 'a://b/foo.json', // required
+        fileMatch: ['a://b/foo.json'], // required
+        schema: {
+          type: 'object',
+          properties: {
+            url: {
+              type: 'string',
+              description: 'Health check endpoint URL',
+            },
+            responseMapper: {
+              type: 'object',
+              additionalProperties: {
+                type: 'string',
+              },
+              description:
+                'Map of Workload field paths to JSONata expressions for validation against the response',
+            },
+          },
+          required: ['url'],
+        },
+      },
     },
     {
       name: 'isHealthy',
       type: 'checkbox',
       defaultValue: false,
+    },
+    {
+      name: 'engine',
+      type: 'select',
+      options: [
+        { label: 'Llama.cpp', value: 'llamacpp' },
+        { label: 'OVMS', value: 'ovms' },
+        { label: 'Custom', value: 'custom' }, //This is for workloads with no specific engine
+      ],
+      required: true,
     },
   ],
   access: {
