@@ -4,7 +4,7 @@ uvicorn==0.34.0
 
 # Dependencies with version specifications
 transformers==4.53.1
-Pillow==11.1.0
+Pillow==12.1.1
 diffusers==0.32.1
 typing_extensions==4.12.2
 nncf==2.14.1
