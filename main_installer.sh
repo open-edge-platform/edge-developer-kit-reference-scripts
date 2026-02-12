@@ -642,7 +642,9 @@ main() {
     if [ "${PTL_PLATFORM}" = true ] && ! uname -r | grep -q '^6\.17'; then
         echo "# PTL platform prerequisites detected (kernel upgrade path) ..."
         apply_ptl_platform_prereqs
-        # Function may exit early; if it doesn't, continue with flow
+        # Function may exit early; if it doesn't, continue with flow   
+    elif [ "${PTL_PLATFORM}" = true ] && uname -r | grep -q '^6\.17'; then
+        # If it is PTL and already 6.17     
         echo "# Platform Installation Flow..."
         echo "$S_VALID Platform detected: $CPU_MODEL"
     
@@ -667,6 +669,7 @@ main() {
                 echo "You may retry OpenVINO installation manually: bash $SCRIPT_DIR/openvino_installer.sh"
             fi
     else
+        # Any platform that is not PTL
         echo ""
         echo "========================================================================"
         echo "# STANDARD INTEL PLATFORM INSTALLATION"
