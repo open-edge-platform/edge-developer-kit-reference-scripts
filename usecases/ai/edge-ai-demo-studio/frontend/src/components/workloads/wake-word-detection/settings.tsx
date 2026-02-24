@@ -23,7 +23,7 @@ import {
   BadgeCheck,
   CloudDownload,
 } from 'lucide-react'
-import { useEffect, useState, useRef, useMemo } from 'react'
+import { useState, useRef, useMemo } from 'react'
 import { toast } from 'sonner'
 import {
   useUploadWakeWordModel,
@@ -131,27 +131,31 @@ export function SettingsModal({
     const predefined = allAvailableModels.filter((m) => m.type === 'predefined')
     const custom = allAvailableModels.filter((m) => m.type === 'custom')
 
-    const groups = []
-    if (predefined.length > 0) {
-      groups.push({
-        heading: 'Predefined Models',
-        options: predefined.map((model) => ({
-          label: model.name,
-          value: model.value,
-          icon: model.downloaded ? BadgeCheck : CloudDownload,
-        })),
-      })
-    }
-    if (custom.length > 0) {
-      groups.push({
-        heading: 'Custom Models',
-        options: custom.map((model) => ({
-          label: model.name,
-          value: model.value,
-        })),
-      })
-    }
-    return groups
+    return [
+      ...(predefined.length > 0
+        ? [
+            {
+              heading: 'Predefined Models',
+              options: predefined.map((model) => ({
+                label: model.name,
+                value: model.value,
+                icon: model.downloaded ? BadgeCheck : CloudDownload,
+              })),
+            },
+          ]
+        : []),
+      ...(custom.length > 0
+        ? [
+            {
+              heading: 'Custom Models',
+              options: custom.map((model) => ({
+                label: model.name,
+                value: model.value,
+              })),
+            },
+          ]
+        : []),
+    ]
   }, [allAvailableModels])
 
   const handleSave = async () => {
@@ -253,7 +257,16 @@ export function SettingsModal({
     }
   }
 
-  useEffect(() => {
+  const [prevDeps, setPrevDeps] = useState({
+    available: allAvailableModels,
+    selected: selectedModel,
+  })
+
+  if (
+    allAvailableModels !== prevDeps.available ||
+    selectedModel !== prevDeps.selected
+  ) {
+    setPrevDeps({ available: allAvailableModels, selected: selectedModel })
     // Parse selected models from comma-separated string
     if (selectedModel && allAvailableModels.length > 0) {
       const modelValues = selectedModel.name.split(' ')
@@ -264,11 +277,13 @@ export function SettingsModal({
     } else if (allAvailableModels.length > 0) {
       setSelectedModels([allAvailableModels[0]])
     }
-  }, [allAvailableModels, selectedModel])
+  }
 
-  useEffect(() => {
+  const [prevVad, setPrevVad] = useState(initialVadThreshold)
+  if (initialVadThreshold !== prevVad) {
+    setPrevVad(initialVadThreshold)
     setVadThreshold(initialVadThreshold ?? 0.2)
-  }, [initialVadThreshold])
+  }
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>

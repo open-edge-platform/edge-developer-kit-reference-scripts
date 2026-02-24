@@ -33,11 +33,11 @@ check_ffmpeg_available() {
 check_uv_installed() {
     echo "Checking if uv is installed..."
     
-    if [ -x "$UV_PATH" ]; then
+    if [ -x "$UV_CMD" ]; then
         echo "Found uv in parent thirdparty folder."
         return 0
     else
-        echo "uv not found in expected location: $UV_PATH"
+        echo "uv not found in expected location: $UV_CMD"
         echo "Please ensure the workers setup has been run first."
         exit 1
     fi
@@ -49,8 +49,8 @@ install_python_dependencies() {
     if [ -d "$VENV_DIR" ]; then
         echo "Virtual environment already exists."
     else
-        echo "Creating virtual environment with uv..."
-        "$UV_PATH" venv
+        echo "Creating Python 3.11 virtual environment with uv ..."
+        "$UV_CMD" venv --seed --python 3.11 "$VENV_DIR"
     fi
     
     echo "Installing Python dependencies with uv (this may take a few minutes)..."

@@ -10,7 +10,7 @@ import { Workload } from '@/payload-types'
 interface CurrentSelectionBadgeProps {
   label: string
   modelName: string
-  modelType: 'verified' | 'custom'
+  modelType?: 'verified' | 'custom'
   engine: Workload['engine']
 }
 
@@ -27,12 +27,14 @@ export function CurrentSelectionBadge({
       <BadgeComponent variant={'secondary'} className="text-xs">
         {engine}
       </BadgeComponent>
-      <BadgeComponent
-        variant={modelType === 'verified' ? 'default' : 'secondary'}
-        className="text-xs"
-      >
-        {modelType === 'verified' ? '✓ Verified' : 'Custom'}
-      </BadgeComponent>
+      {modelType && (
+        <BadgeComponent
+          variant={modelType === 'verified' ? 'default' : 'secondary'}
+          className="text-xs"
+        >
+          {modelType === 'verified' ? '✓ Verified' : 'Custom'}
+        </BadgeComponent>
+      )}
     </div>
   )
 }

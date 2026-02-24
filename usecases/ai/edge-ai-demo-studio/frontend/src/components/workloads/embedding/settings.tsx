@@ -12,7 +12,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Loader2 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import {
   EmbeddingSettings,
   InferenceEngine,
@@ -108,65 +108,57 @@ export function EmbeddingSettingsModal({
     'huggingface' | 'modelscope' | 'custom'
   >(selectedRerankerModel?.source ?? 'huggingface')
 
-  const [verifiedEmbedding, setVerifiedEmbedding] = useState<ModelList>([])
-  const [customEmbedding, setCustomEmbedding] = useState<ModelList>([])
-  const [verifiedReranker, setVerifiedReranker] = useState<ModelList>([])
-  const [customReranker, setCustomReranker] = useState<ModelList>([])
+  const verifiedEmbedding = useMemo<ModelList>(() => {
+    if (!embeddingModelsList) return []
+    return embeddingModelsList.filter((m) => m.verified)
+  }, [embeddingModelsList])
+
+  const customEmbedding = useMemo<ModelList>(() => {
+    if (!embeddingModelsList) return []
+    return embeddingModelsList.filter((m) => !m.verified)
+  }, [embeddingModelsList])
+
+  const verifiedReranker = useMemo<ModelList>(() => {
+    if (!rerankerModelsList) return []
+    return rerankerModelsList.filter((m) => m.verified)
+  }, [rerankerModelsList])
+
+  const customReranker = useMemo<ModelList>(() => {
+    if (!rerankerModelsList) return []
+    return rerankerModelsList.filter((m) => !m.verified)
+  }, [rerankerModelsList])
 
   const [isLoading, setIsLoading] = useState(false)
-  const [hasInitialized, setHasInitialized] = useState(false)
 
   // Temp file paths (unused in final logic but needed for state)
   const [, setTempEmbeddingLocalFilePath] = useState('')
   const [, setTempRerankerLocalFilePath] = useState('')
 
-  // Process models
-  useEffect(() => {
-    if (embeddingModelsList) {
-      const verified: ModelList = []
-      const custom: ModelList = []
-      embeddingModelsList.forEach((m) => {
-        if (m.verified) verified.push(m)
-        else custom.push(m)
-      })
-      setVerifiedEmbedding(verified)
-      setCustomEmbedding(custom)
-    }
-  }, [embeddingModelsList])
-
-  useEffect(() => {
-    if (rerankerModelsList) {
-      const verified: ModelList = []
-      const custom: ModelList = []
-      rerankerModelsList.forEach((m) => {
-        if (m.verified) verified.push(m)
-        else custom.push(m)
-      })
-      setVerifiedReranker(verified)
-      setCustomReranker(custom)
-    }
-  }, [rerankerModelsList])
-
   const embeddingSavedModelType = useMemo(() => {
+    if (selectedEngine !== tempEngine) return undefined
     const name = getModelName('embedding')
     const isVerified = verifiedEmbedding.some((m) => m.id === name)
     return isVerified ? 'verified' : 'custom'
-  }, [getModelName, verifiedEmbedding])
+  }, [getModelName, selectedEngine, tempEngine, verifiedEmbedding])
 
   const rerankerSavedModelType = useMemo(() => {
+    if (selectedEngine !== tempEngine) return undefined
     const name = getModelName('reranker')
     const isVerified = verifiedReranker.some((m) => m.id === name)
     return isVerified ? 'verified' : 'custom'
-  }, [getModelName, verifiedReranker])
+  }, [getModelName, selectedEngine, tempEngine, verifiedReranker])
 
-  // Initialization
-  useEffect(() => {
-    if (!isOpen) {
-      setHasInitialized(false)
-      return
-    }
-
-    if (!hasInitialized && embeddingModelsList && rerankerModelsList) {
+  const [prevIsOpen, setPrevIsOpen] = useState(isOpen)
+  if (isOpen !== prevIsOpen) {
+    // Ensure models have finished loading before initializing temp state
+    if (
+      isOpen &&
+      !isEmbeddingLoading &&
+      !isRerankerLoading &&
+      embeddingModelsList &&
+      rerankerModelsList
+    ) {
+      setPrevIsOpen(isOpen)
       setTempEngine(selectedEngine || 'ovms')
 
       // Embedding Init
@@ -204,21 +196,8 @@ export function EmbeddingSettingsModal({
         setRerankerTabValue('predefined')
         setTempRerankerModel(verifiedReranker[0]?.id || '')
       }
-
-      setHasInitialized(true)
     }
-  }, [
-    isOpen,
-    hasInitialized,
-    selectedEngine,
-    selectedEmbeddingModel,
-    selectedRerankerModel,
-    getModelName,
-    embeddingModelsList,
-    rerankerModelsList,
-    verifiedEmbedding,
-    verifiedReranker,
-  ])
+  }
 
   // Handlers
   const handleEngineSelect = (value: Workload['engine']) => {

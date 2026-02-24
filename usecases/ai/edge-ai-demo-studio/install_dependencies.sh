@@ -94,7 +94,7 @@ install_and_verify_packages() {
 }
 
 install_system_dependencies() {
-  local system_packages="curl wget libxml2 git software-properties-common vulkan-tools libportaudio2"
+  local system_packages="curl wget libxml2 git software-properties-common vulkan-tools libportaudio2 unzip"
   
   if ! install_and_verify_packages "$system_packages" "system dependencies"; then
     echo "❌ ERROR: Failed to install system dependencies"

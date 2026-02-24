@@ -52,10 +52,13 @@ def _ensure_model(
     base_url = f"http://localhost:{port}"
 
     try:
+        body = {"repo_id": model_id, "task": task}
+        if params and params != "None":
+            body["extra_params"] = params
         logger.info(f"Downloading model {model_id} for task {task}...")
         resp = requests.post(
             f"{base_url}/v1/model/download/unverified",
-            json={"repo_id": model_id, "task": task, "extra_params": params},
+            json=body,
         )
         if resp.status_code != 200:
             logger.error(f"Failed to download model {model_id}: {resp.text}")

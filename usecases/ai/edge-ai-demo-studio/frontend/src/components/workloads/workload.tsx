@@ -178,7 +178,12 @@ export default function Workload({
             {!isLoading && (
               <div className="flex items-center gap-2">
                 <div className={`h-2 w-2 rounded-full ${status.color}`} />
-                <span className="text-sm text-slate-600">{status.status}</span>
+                <span
+                  data-testid="workload-status"
+                  className="text-sm text-slate-600"
+                >
+                  {status.status}
+                </span>
                 {workload?.status === 'active' && !workload?.isHealthy && (
                   <div className="flex items-center gap-1 rounded-md bg-red-100 px-2 py-1">
                     <div className="h-1.5 w-1.5 rounded-full bg-red-500" />
@@ -223,6 +228,7 @@ export default function Workload({
                 isLoading ||
                 (preparingPrerequisites && preparingPrerequisites.length > 0)
               }
+              data-testid="workload-toggle-button"
             >
               {createWorkload.isPending ||
               updateWorkload.isPending ||

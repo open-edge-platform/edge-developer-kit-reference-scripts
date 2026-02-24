@@ -2,25 +2,34 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { FlatCompat } from "@eslint/eslintrc";
+import { defineConfig, globalIgnores } from "eslint/config";
+import nextVitals from "eslint-config-next/core-web-vitals";
+import nextTs from "eslint-config-next/typescript";
+import prettier from "eslint-config-prettier/flat";
 
 const compat = new FlatCompat({
   // import.meta.dirname is available after Node.js v20.11.0
   baseDirectory: import.meta.dirname,
 });
 
-const eslintConfig = [
-  {
-    ignores: ["src/app/(payload)/admin", "eslint.config.mjs"],
-  },
+const eslintConfig = defineConfig([
+  ...nextVitals,
+  ...nextTs,
+  prettier,
+  // Override default ignores of eslint-config-next.
+  globalIgnores([
+    // Default ignores of eslint-config-next:
+    ".next/**",
+    "out/**",
+    "build/**",
+    "next-env.d.ts",
+    "src/app/(payload)/admin/**",
+    "eslint.config.mjs",
+    "playwright-report/**",
+  ]),
   ...compat.config({
-    extends: [
-      "next",
-      "next/core-web-vitals",
-      "next/typescript",
-      "plugin:prettier/recommended",
-      "plugin:jsx-a11y/recommended",
-    ],
-    plugins: ["prettier", "jsx-a11y"],
+    extends: ["plugin:prettier/recommended"],
+    plugins: ["prettier"],
     rules: {
       "no-console": "error",
       "prettier/prettier": [
@@ -39,14 +48,6 @@ const eslintConfig = [
           usePrettierrc: false,
         },
       ],
-      "react/react-in-jsx-scope": "off",
-      "jsx-a11y/media-has-caption": "off",
-      "jsx-a11y/alt-text": "warn",
-      "jsx-a11y/aria-props": "warn",
-      "jsx-a11y/aria-proptypes": "warn",
-      "jsx-a11y/aria-unsupported-elements": "warn",
-      "jsx-a11y/role-has-required-aria-props": "warn",
-      "jsx-a11y/role-supports-aria-props": "warn",
       "@typescript-eslint/naming-convention": [
         "error",
         {
@@ -58,6 +59,17 @@ const eslintConfig = [
       ],
     },
   }),
-];
+  {
+    files: ["tests/**", "**/*.spec.ts"],
+    rules: {
+      "no-console": "off",
+    },
+  },
+  {
+    settings: {
+      react: { version: "19" },
+    },
+  },
+]);
 
 export default eslintConfig;

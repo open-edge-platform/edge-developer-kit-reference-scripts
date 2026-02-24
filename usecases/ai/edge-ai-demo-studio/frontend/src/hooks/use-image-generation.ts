@@ -37,6 +37,14 @@ const useTaskPolling = (
   const [taskStatus, setTaskStatus] = useState<TaskStatus | null>(null)
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
 
+  const [prevIsPolling, setPrevIsPolling] = useState(isPolling)
+  if (isPolling !== prevIsPolling) {
+    setPrevIsPolling(isPolling)
+    if (!isPolling) {
+      setTaskStatus(null)
+    }
+  }
+
   useEffect(() => {
     if (isPolling) {
       const poll = async () => {
@@ -66,7 +74,6 @@ const useTaskPolling = (
         clearInterval(intervalRef.current)
         intervalRef.current = null
       }
-      setTaskStatus(null)
     }
 
     return () => {

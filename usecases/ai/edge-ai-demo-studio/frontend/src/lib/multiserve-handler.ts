@@ -48,6 +48,7 @@ const waitForHealthCheck = async (
 }
 
 const downloadModel = async (
+  id: number,
   modelConfig: Model,
   engine: Workload['engine'],
   taskType: string,
@@ -81,7 +82,7 @@ const downloadModel = async (
     const reader = downloadResponse.body.getReader()
     const decoder = new TextDecoder()
     let hasError = false
-    const logFileName = `${taskType}_${engine}.log`
+    const logFileName = `${taskType}_${engine}_${id}.log`
 
     while (true) {
       const { done, value } = await reader.read()
@@ -183,6 +184,7 @@ const initializeModel = async (workload: Workload): Promise<boolean> => {
         // Model not downloaded, need to download it
         logger.log(`Downloading model ${workloadModel.name}...`)
         const downloaded = await downloadModel(
+          workload.id,
           workloadModel,
           workload.engine,
           modelKey === 'default' ? workload.type : modelKey,

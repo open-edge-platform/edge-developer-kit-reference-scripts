@@ -75,7 +75,7 @@ export default function Dropzone({
           isDragActive ? 'border-blue-500' : 'border-gray-300'
         } hover:border-blue-500`}
       >
-        <input {...getInputProps()} />
+        <input data-testid="file-input" {...getInputProps()} />
         <Upload />
         <p className="mt-2">Click to upload or drag and drop</p>
         <p>{acceptedFileString}</p>
@@ -116,6 +116,7 @@ export default function Dropzone({
           </Button>
           <Button
             onClick={onUpload}
+            data-testid="upload-button"
             className={`${isDragReject ? 'cursor-not-allowed' : ''}`}
             disabled={disabled || isUploading || isDragReject}
           >

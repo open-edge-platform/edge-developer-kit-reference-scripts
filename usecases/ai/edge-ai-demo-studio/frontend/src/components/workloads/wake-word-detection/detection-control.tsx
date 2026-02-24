@@ -81,11 +81,15 @@ export default function DetectionControl({
     Record<string, { score: number; timestamp: string; flash: boolean }>
   >({})
 
-  useEffect(() => {
+  const [prevAudioDevicesData, setPrevAudioDevicesData] =
+    useState(audioDevicesData)
+
+  if (audioDevicesData !== prevAudioDevicesData) {
+    setPrevAudioDevicesData(audioDevicesData)
     if (audioDevicesData && audioDevicesData.selected_device_id) {
       setSelectedDeviceId(audioDevicesData.selected_device_id)
     }
-  }, [audioDevicesData])
+  }
 
   // Connect to SSE for real-time detection events
   useEffect(() => {

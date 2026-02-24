@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { FileSearch, ExternalLink, Loader2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { ImageGenerationSettings, Model } from '@/types/workload'
 import { DeviceSelector } from '../../common/device-selector'
 import {
@@ -92,10 +92,19 @@ export function SettingsModal({
     }
   }
 
-  useEffect(() => {
+  const [prevDeps, setPrevDeps] = useState({
+    model: currentModel,
+    available: availableModels,
+  })
+
+  if (
+    currentModel !== prevDeps.model ||
+    availableModels !== prevDeps.available
+  ) {
+    setPrevDeps({ model: currentModel, available: availableModels })
     setTempModelName(currentModel.name || availableModels[0].name)
     setTempDevice(currentModel.device || 'CPU')
-  }, [availableModels, currentModel])
+  }
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>

@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Brain, AlertCircle, Loader2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { LipsyncSettings } from '@/types/workload'
 import { DeviceSelector } from '../../common/device-selector'
 import {
@@ -145,11 +145,20 @@ export function SettingsModal({
       })
   }
 
-  useEffect(() => {
+  const [prevDeps, setPrevDeps] = useState({
+    model: selectedModel,
+    turnServerIp: turnServerIp,
+  })
+
+  if (
+    selectedModel !== prevDeps.model ||
+    turnServerIp !== prevDeps.turnServerIp
+  ) {
+    setPrevDeps({ model: selectedModel, turnServerIp: turnServerIp })
     setTempDevice(selectedModel.device || 'cpu')
     setTempSource(selectedModel.source || 'huggingface')
     setTempTurnServerIp(turnServerIp || '')
-  }, [selectedModel, turnServerIp])
+  }
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>

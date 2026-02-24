@@ -20,7 +20,7 @@ import {
 } from '@/components/ui/select'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { MessageSquareText, Info, Loader2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import {
   useOpenVINOAccelerator,
   usePytorchAccelerator,
@@ -90,10 +90,18 @@ export function SettingsModal({
 
   const availableDevices = getAvailableDevices()
 
-  useEffect(() => {
-    setTempModel(currentSettings.model)
-    setTempSource(currentSettings.model.source || 'huggingface')
-  }, [currentSettings, isOpen])
+  const [prevDeps, setPrevDeps] = useState({
+    isOpen: isOpen,
+    settings: currentSettings,
+  })
+
+  if (isOpen !== prevDeps.isOpen || currentSettings !== prevDeps.settings) {
+    setPrevDeps({ isOpen: isOpen, settings: currentSettings })
+    if (isOpen) {
+      setTempModel(currentSettings.model)
+      setTempSource(currentSettings.model.source || 'huggingface')
+    }
+  }
 
   const handleModelChange = (modelName: string) => {
     const selectedModel = TTS_MODELS.find((model) => model.model === modelName)

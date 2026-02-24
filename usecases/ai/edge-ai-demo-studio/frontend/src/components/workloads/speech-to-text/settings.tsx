@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { FileSearch, Loader2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Separator } from '@/components/ui/separator'
 import { Model, SpeechToTextSettings } from '@/types/workload'
 import { DeviceSelector } from '../../common/device-selector'
@@ -120,15 +120,25 @@ export function SettingsModal({
     }
   }
 
-  useEffect(() => {
+  const [prevIsOpen, setPrevIsOpen] = useState(isOpen)
+  if (isOpen !== prevIsOpen) {
+    setPrevIsOpen(isOpen)
+    if (isOpen) {
+      setTempSTTModelName(selectedSTTModel.name || availableSTTModels[0].name)
+      setTempSTTDevice(selectedSTTModel.device || 'CPU')
+    }
+  }
+
+  // Also check if selectedSTTModel changes while open?
+  // If parent changes it, we probably want to update.
+  const [prevModel, setPrevModel] = useState(selectedSTTModel)
+  if (selectedSTTModel !== prevModel) {
+    setPrevModel(selectedSTTModel)
     setTempSTTModelName(selectedSTTModel.name || availableSTTModels[0].name)
-  }, [availableSTTModels, selectedSTTModel])
-
-  useEffect(() => {
     setTempSTTDevice(selectedSTTModel.device || 'CPU')
-  }, [selectedSTTModel])
+  }
 
-  const VerfiedModelsElement = () => (
+  const verfiedModelsElement = (
     <>
       <ModelSourceSelector value={tempSTTSource} onChange={setTempSTTSource} />
       <div>
@@ -158,7 +168,7 @@ export function SettingsModal({
     </>
   )
 
-  const CustomModelElement = () => (
+  const customModelElement = (
     <>
       <div className="space-y-4">
         <ModelSourceSelector
@@ -202,8 +212,8 @@ export function SettingsModal({
           <ModelSelector
             tabValue={tabValue}
             onTabChange={handleTabChange}
-            verifiedElement={<VerfiedModelsElement />}
-            customElement={<CustomModelElement />}
+            verifiedElement={verfiedModelsElement}
+            customElement={customModelElement}
           />
         </div>
 
