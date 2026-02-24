@@ -24,12 +24,22 @@ This repository provides simplified developer kit reference setup scripts for va
 
 
 ## 5-Minute Quick Start
-
+1) Run following command:
 ```bash
 sudo bash -c "$(wget -qLO - https://raw.githubusercontent.com/open-edge-platform/edge-developer-kit-reference-scripts/refs/heads/main/main_installer.sh)"
 
 ```
-Follow the on-screen instructions to complete installation until you see the `Platform configured` message.
+2) Follow the on-screen instructions to install. 
+
+3) If the following output appears, reboot your system and rerun the script from step 1. Else, proceed to next step.
+
+    ![EEF](./docs/images/EEF%20reboot.png)
+
+4) Edge Developer Kit Reference Scripts installation is complete when you see the `Platform is configured` message.
+
+    ![platform](./docs/images/platform%20configured.png)
+
+    **Note:** It is highly recommended to reboot the system after completing the installation.
 
 ### Next Steps
 
