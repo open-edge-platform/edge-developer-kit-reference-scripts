@@ -12,7 +12,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { FileSearch, Loader2 } from 'lucide-react'
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState } from 'react'
 import {
   InferenceEngine,
   Model,
@@ -66,46 +66,15 @@ export function SettingsModal({
   const [modelToDelete, setModelToDelete] = useState<string | null>(null)
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false)
 
-  const [verifiedModels, setVerifiedModels] = useState<{
-    [key in Workload['engine']]: ModelList
-  }>({
-    llamacpp: [],
-    ovms: [],
-    custom: [],
-  })
+  const verifiedModels = useMemo<ModelList>(() => {
+    if (!models) return []
+    return models.filter((model) => model.verified)
+  }, [models])
 
-  const [customModels, setCustomModels] = useState<{
-    [key in Workload['engine']]: ModelList
-  }>({
-    llamacpp: [],
-    ovms: [],
-    custom: [],
-  })
-
-  useEffect(() => {
-    if (areModelsLoading || !models) return
-
-    const newVerified: ModelList = []
-    const newCustom: ModelList = []
-
-    models.forEach((model) => {
-      if (model.verified) {
-        newVerified.push({ ...model })
-      } else {
-        newCustom.push({ ...model })
-      }
-    })
-
-    setVerifiedModels((prev) => ({
-      ...prev,
-      [tempEngine]: newVerified,
-    }))
-
-    setCustomModels((prev) => ({
-      ...prev,
-      [tempEngine]: newCustom,
-    }))
-  }, [areModelsLoading, models, tempEngine])
+  const customModels = useMemo<ModelList>(() => {
+    if (!models) return []
+    return models.filter((model) => !model.verified)
+  }, [models])
 
   const [tempDevice, setTempDevice] = useState(selectedModel?.device || 'CPU')
   const [tempParams, setTempParams] = useState<string>(
@@ -117,8 +86,34 @@ export function SettingsModal({
   const [isModelValid, setIsModelValid] = useState(true)
   const [modelSource, setModelSource] = useState<
     'huggingface' | 'modelscope' | 'custom'
-  >(selectedModel.source ?? 'huggingface')
-  const [hasInitialized, setHasInitialized] = useState(false)
+  >(selectedModel?.source ?? 'huggingface')
+  const [prevIsOpen, setPrevIsOpen] = useState(isOpen)
+  if (isOpen !== prevIsOpen) {
+    if (isOpen && !areModelsLoading && models) {
+      setPrevIsOpen(isOpen)
+      setTempEngine(selectedEngine || 'ovms')
+      setTempDevice(selectedModel?.device || 'CPU')
+      setTempLocalFilePath('')
+      setIsModelValid(true)
+      setModelSource(selectedModel.source || 'huggingface')
+
+      // Since verifiedModels is for tempEngine (initially selectedEngine),
+      // we check if selected model is in there.
+      // If initialized with selectedEngine, verifiedModels covers it.
+      const isCustomModel = !verifiedModels.some(
+        (model) => model.id === selectedModelName,
+      )
+
+      // Set the correct tab
+      if (isCustomModel) {
+        setTabValue('custom')
+        setTempModel(selectedModelName || '')
+      } else {
+        setTabValue('predefined')
+        setTempModel(selectedModelName || verifiedModels[0]?.id || '')
+      }
+    }
+  }
 
   const canSave = useMemo(() => {
     if (!tempDevice) return false
@@ -131,15 +126,14 @@ export function SettingsModal({
           !!tempModel &&
           tempModel.trim().length > 0 &&
           (!!tempLocalFilePath ||
-            !!customModels[tempEngine].find((m) => m.id === tempModel)
-              ?.downloaded)
+            !!customModels.find((m) => m.id === tempModel)?.downloaded)
         )
       }
       return !!tempModel && tempModel.trim().length > 0 && isModelValid
     } else {
       if (
         tempModel.trim() === '' ||
-        !verifiedModels[tempEngine].find((m) => m.id === tempModel)
+        !verifiedModels.find((m) => m.id === tempModel)
       ) {
         return false
       }
@@ -159,12 +153,13 @@ export function SettingsModal({
   ])
 
   const savedModelType = useMemo(() => {
-    const isCustomModel = !Object.values(verifiedModels).some((models) =>
-      models.some((model) => model.id === selectedModelName),
+    if (selectedEngine !== tempEngine) return undefined
+    const isCustomModel = !verifiedModels.some(
+      (model) => model.id === selectedModelName,
     )
 
     return isCustomModel ? 'custom' : 'verified'
-  }, [selectedModelName, verifiedModels])
+  }, [selectedEngine, selectedModelName, tempEngine, verifiedModels])
 
   const handleDeleteModel = async (
     modelId: string,
@@ -198,13 +193,13 @@ export function SettingsModal({
 
   const validateModelName = () => {
     const availableModels = [
-      ...verifiedModels[tempEngine].map((m) => m.id),
-      ...customModels[tempEngine].map((m) => m.id),
+      ...verifiedModels.map((m) => m.id),
+      ...customModels.map((m) => m.id),
     ]
     if (
       tabValue === 'custom' &&
       tempModel !== '' &&
-      !customModels[tempEngine].find((m) => m.id === tempModel)?.downloaded &&
+      !customModels.find((m) => m.id === tempModel)?.downloaded &&
       availableModels.filter((m) => m !== selectedModelName).includes(tempModel)
     ) {
       toast.error('Model name already exists. Please choose a different name.')
@@ -219,6 +214,7 @@ export function SettingsModal({
 
   const handleEngineSelect = (value: Workload['engine']) => {
     setTempEngine(value)
+    setTempDevice('CPU')
   }
 
   const handleSave = () => {
@@ -233,9 +229,7 @@ export function SettingsModal({
     }
     setIsLoading(true)
     if (tabValue !== 'custom') {
-      const selected = verifiedModels[tempEngine].find(
-        (m) => m.id === tempModel,
-      )
+      const selected = verifiedModels.find((m) => m.id === tempModel)
       if (selected) {
         let id = { ...selected }.id
         const colonIndex = id.indexOf(':')
@@ -271,51 +265,6 @@ export function SettingsModal({
       onClose()
     })
   }
-
-  // Initialize
-  useEffect(() => {
-    if (!isOpen) {
-      setHasInitialized(false)
-      return
-    }
-
-    // Only initialize values when dialog first opens, not on subsequent re-renders
-    if (!hasInitialized) {
-      setTempEngine(selectedEngine || 'ovms')
-      setTempDevice(selectedModel?.device || 'CPU')
-      setTempLocalFilePath('')
-      setIsModelValid(true)
-      setModelSource(selectedModel.source || 'huggingface')
-
-      const isCustomModel = !Object.values(verifiedModels).some((models) =>
-        models.some((model) => model.id === selectedModelName),
-      )
-
-      // Set the correct tab
-      if (isCustomModel) {
-        setTabValue('custom')
-        setTempModel(selectedModelName || '')
-      } else {
-        setTabValue('predefined')
-        setTempModel(
-          selectedModelName || verifiedModels[selectedEngine][0]?.id || '',
-        )
-      }
-      setHasInitialized(true)
-    }
-  }, [
-    isOpen,
-    hasInitialized,
-    selectedModel,
-    selectedEngine,
-    verifiedModels,
-    selectedModelName,
-  ])
-
-  // Reset to default helper
-  useEffect(() => {
-    setTempDevice('CPU')
-  }, [tempEngine])
 
   return (
     <>
@@ -368,8 +317,8 @@ export function SettingsModal({
                 task={TEXT_GENERATION_TYPE}
                 modelType={TEXT_GENERATION_TYPE}
                 engine={tempEngine}
-                verifiedModels={verifiedModels[tempEngine]}
-                customModels={customModels[tempEngine]}
+                verifiedModels={verifiedModels}
+                customModels={customModels}
                 selectedModel={tempModel}
                 onModelSelect={setTempModel}
                 tabValue={tabValue}

@@ -38,6 +38,20 @@ import {
 const TYPE = EMBEDDING_TYPE
 const DESCRIPTION = EMBEDDING_DESCRIPTION
 
+const SettingsButton = ({ onOpen }: { onOpen: () => void }) => {
+  return (
+    <Button
+      variant="secondary"
+      size="icon"
+      className="size-8"
+      onClick={onOpen}
+      data-testid="workload-settings-button"
+    >
+      <Settings />
+    </Button>
+  )
+}
+
 export default function EmbeddingPage() {
   const { data: workload, isLoading } = useGetWorkloadByType(EMBEDDING_TYPE)
   const { isOpen, onClose, onOpen } = useDisclosure()
@@ -120,19 +134,6 @@ export default function EmbeddingPage() {
     })
   }
 
-  const SettingsButton = () => {
-    return (
-      <Button
-        variant="secondary"
-        size="icon"
-        className="size-8"
-        onClick={onOpen}
-      >
-        <Settings />
-      </Button>
-    )
-  }
-
   return (
     <>
       <EmbeddingSettingsModal
@@ -148,7 +149,7 @@ export default function EmbeddingPage() {
       />
       <WorkloadComponent
         title="Embedding"
-        settingsButton={<SettingsButton />}
+        settingsButton={<SettingsButton onOpen={onOpen} />}
         workload={workload}
         description={DESCRIPTION}
         workloadType={TYPE}

@@ -193,11 +193,18 @@ export function AvatarStream({
     }
   }, [getRTCOffer, peerConnection, disconnectAvatar, turnServerIp])
 
+  const [prevRTCError, setPrevRTCError] = useState(getRTCError)
+  if (getRTCError !== prevRTCError) {
+    setPrevRTCError(getRTCError)
+    if (getRTCError) {
+      setIsIceConnecting(false)
+    }
+  }
+
   useEffect(() => {
     if (getRTCError) {
       toast.error('Error connecting to avatar')
       setConnectionStatusRef.current('disconnected')
-      setIsIceConnecting(false)
     }
   }, [getRTCError])
 

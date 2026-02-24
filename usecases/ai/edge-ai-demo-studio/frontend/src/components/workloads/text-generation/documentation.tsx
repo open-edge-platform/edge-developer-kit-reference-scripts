@@ -55,7 +55,7 @@ console.log(response.choices[0].text)`,
 
 client = OpenAI(base_url="${url}/v1", api_key="unused")
 model = "${model}"
-response = completion = client.chat.completions.create(
+response = client.chat.completions.create(
     model=model,
     messages=[
         {"role": "system", "content": "You are a helpful assistant."},

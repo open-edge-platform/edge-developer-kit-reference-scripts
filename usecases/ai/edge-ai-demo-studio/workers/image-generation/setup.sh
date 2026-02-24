@@ -5,7 +5,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
+VENV_DIR="$SCRIPT_DIR/.venv"
 PARENT_THIRDPARTY_DIR="$SCRIPT_DIR/../thirdparty"
 PARENT_UV_PATH="$PARENT_THIRDPARTY_DIR/uv/uv"
 PARENT_OVMS_PATH="$PARENT_THIRDPARTY_DIR/ovms/bin/ovms"
@@ -94,12 +94,11 @@ setup_export_model() {
 
 # Function to install Python dependencies
 install_python_dependencies() {
-    echo -e "Checking for virtual environment..."
-    if [ -d ".venv" ]; then
-        echo -e "Virtual environment already exists."
+    if [[ -d "$VENV_DIR" ]]; then
+        echo "Virtual environment already exists at $VENV_DIR."
     else
-        echo -e "Creating virtual environment with uv..."
-        "$UV_CMD" venv
+        echo "Creating Python 3.11 virtual environment with uv ..."
+        "$UV_CMD" venv --seed --python 3.11 "$VENV_DIR"
     fi
 
     echo -e "Installing Python dependencies with uv (this may take a few minutes)..."

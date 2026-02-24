@@ -56,7 +56,7 @@ export function ConversationPanel({
   const chatEndRef = useRef<HTMLDivElement>(null)
   const [selectedLanguage, setSelectedLanguage] = useState<string>('')
   const [selectedVoice, setSelectedVoice] = useState<string>('')
-  const [clearChat, setClearChat] = useState<boolean>(false)
+  const [resetId, setResetId] = useState<number>(0)
   const { data: availableVoices, refetch: refetchVoices } = useGetVoices({
     enabled: !disabled,
   })
@@ -136,8 +136,9 @@ export function ConversationPanel({
     }
   }, [messages])
 
-  // Initialize default selections when component mounts or model changes
-  useEffect(() => {
+  const [prevModel, setPrevModel] = useState<string | undefined>(undefined)
+  if (selectedModel !== prevModel) {
+    setPrevModel(selectedModel)
     const modelConfig = TTS_MODELS.find(
       (model) => model.model === selectedModel,
     )
@@ -146,17 +147,18 @@ export function ConversationPanel({
       setSelectedLanguage(firstLanguage.id)
       setSelectedVoice(firstLanguage.voices[0] || '')
     }
-  }, [selectedModel])
+  }
 
-  // Update voice when language changes
-  useEffect(() => {
+  const [prevLang, setPrevLang] = useState(selectedLanguage)
+  if (selectedLanguage !== prevLang) {
+    setPrevLang(selectedLanguage)
     const languageConfig = availableLanguages.find(
       (lang) => lang.id === selectedLanguage,
     )
     if (languageConfig && languageConfig.voices.length > 0) {
       setSelectedVoice(languageConfig.voices[0])
     }
-  }, [selectedLanguage, availableLanguages])
+  }
 
   const handleSendMessage = (
     text: string,
@@ -228,7 +230,7 @@ export function ConversationPanel({
   const handleClearChat = () => {
     handleStopChat() // Stop any ongoing generation
     setMessages([])
-    setClearChat(true)
+    setResetId((prev) => prev + 1)
     toast.success('Chat history cleared')
   }
 
@@ -362,8 +364,7 @@ export function ConversationPanel({
 
         <InputArea
           disabled={disabled}
-          clearChat={clearChat}
-          setClearChat={setClearChat}
+          resetId={resetId}
           useWakeWordDetection={useWakeWordDetection}
           isSTTEnabled={isSTTEnabled}
           isDenoiseEnabled={isDenoiseEnabled}

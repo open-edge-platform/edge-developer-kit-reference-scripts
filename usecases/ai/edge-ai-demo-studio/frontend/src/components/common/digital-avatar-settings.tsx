@@ -79,8 +79,21 @@ export function DigitalAvatarSettings({
   const [localSelectedKnowledgeBase, setLocalSelectedKnowledgeBase] =
     useState<KnowledgeBase | null>(selectedKnowledgeBase)
   const [localUseMcpTools, setLocalUseMcpTools] = useState(useMcpTools)
+  const [prevIsOpen, setPrevIsOpen] = useState(isOpen)
   const [localUseWakeWordDetection, setLocalUseWakeWordDetection] =
     useState(useWakeWordDetection)
+
+  if (isOpen !== prevIsOpen) {
+    setPrevIsOpen(isOpen)
+    if (isOpen) {
+      setLocalUseSTT(useSTT)
+      setLocalUseDenoise(useDenoise)
+      setLocalUseEmbedding(useEmbedding)
+      setLocalSelectedKnowledgeBase(selectedKnowledgeBase)
+      setLocalUseMcpTools(useMcpTools)
+      setLocalUseWakeWordDetection(useWakeWordDetection)
+    }
+  }
 
   const isEmbeddingServiceActive = embeddingService?.status === 'active'
   const isSTTServiceActive = sttService?.status === 'active'
@@ -141,23 +154,6 @@ export function DigitalAvatarSettings({
     refetchKnowledgeBases,
     refetchSubscribers,
     refetchWakeWordDetectionStatus,
-  ])
-
-  useEffect(() => {
-    setLocalUseSTT(useSTT)
-    setLocalUseDenoise(useDenoise)
-    setLocalUseEmbedding(useEmbedding)
-    setLocalSelectedKnowledgeBase(selectedKnowledgeBase)
-    setLocalUseMcpTools(useMcpTools)
-    setLocalUseWakeWordDetection(useWakeWordDetection)
-  }, [
-    useSTT,
-    useDenoise,
-    useEmbedding,
-    selectedKnowledgeBase,
-    useMcpTools,
-    useWakeWordDetection,
-    isOpen,
   ])
 
   const handleApplySettings = () => {

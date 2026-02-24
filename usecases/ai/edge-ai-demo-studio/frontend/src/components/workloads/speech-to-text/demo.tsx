@@ -35,7 +35,7 @@ import {
   Volume2,
   AudioWaveform,
 } from 'lucide-react'
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import { toast } from 'sonner'
 import { logger } from '@/utils/logger'
 
@@ -77,15 +77,17 @@ export default function SpeechToTextDemo({ disabled }: SpeechToTextDemoProps) {
     isDeviceFound,
   } = useAudioRecorder()
 
-  // Handle audioBlob availability after recording stops
-  useEffect(() => {
+  const [prevAudioBlob, setPrevAudioBlob] = useState(audioBlob)
+
+  if (audioBlob !== prevAudioBlob) {
+    setPrevAudioBlob(audioBlob)
     if (audioBlob) {
       const file = new File([audioBlob], 'recording.webm', {
         type: 'audio/webm',
       })
       setSelectedFile(file)
     }
-  }, [audioBlob])
+  }
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]

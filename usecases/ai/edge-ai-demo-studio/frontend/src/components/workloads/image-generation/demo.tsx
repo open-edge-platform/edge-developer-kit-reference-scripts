@@ -88,12 +88,33 @@ export default function ImageGenerationDemo({
   const imageGeneration = useImageGeneration()
   const imageEdit = useImageEdit()
 
+  const [prevGenResult, setPrevGenResult] = useState(imageGeneration.result)
+  if (imageGeneration.result !== prevGenResult) {
+    setPrevGenResult(imageGeneration.result)
+    if (imageGeneration.result) {
+      const result = processApiResponse(imageGeneration.result)
+      if (result.success) {
+        setGeneratedImages(result.images)
+      }
+    }
+  }
+
+  const [prevEditResult, setPrevEditResult] = useState(imageEdit.result)
+  if (imageEdit.result !== prevEditResult) {
+    setPrevEditResult(imageEdit.result)
+    if (imageEdit.result) {
+      const result = processApiResponse(imageEdit.result)
+      if (result.success) {
+        setEditedImages(result.images)
+      }
+    }
+  }
+
   // Handle image generation results
   useEffect(() => {
     if (imageGeneration.result) {
       const result = processApiResponse(imageGeneration.result)
       if (result.success) {
-        setGeneratedImages(result.images)
         showToastMessage(true, result.images.length, 'Generated')
       } else {
         showToastMessage(false, 0, 'generate')
@@ -109,7 +130,6 @@ export default function ImageGenerationDemo({
     if (imageEdit.result) {
       const result = processApiResponse(imageEdit.result)
       if (result.success) {
-        setEditedImages(result.images)
         showToastMessage(true, result.images.length, 'Edited')
       } else {
         showToastMessage(false, 0, 'edit')

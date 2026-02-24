@@ -114,7 +114,7 @@ export default function TextGenerationDemo({
               </label>
             </div>
             <div className="rounded-lg border bg-slate-50 p-4">
-              <p id="generated-text" className="text-slate-700">
+              <p data-testid="generated-text" className="text-slate-700">
                 {generatedText}
               </p>
             </div>

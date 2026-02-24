@@ -9,8 +9,8 @@ from typing import List, Optional, Callable, Any, Dict
 from glob import glob
 
 from langchain_openai import OpenAIEmbeddings
-from langchain.retrievers.contextual_compression import ContextualCompressionRetriever
-from langchain.text_splitter import (
+from langchain_classic.retrievers import ContextualCompressionRetriever
+from langchain_text_splitters import (
     CharacterTextSplitter,
     RecursiveCharacterTextSplitter,
     MarkdownTextSplitter,
@@ -29,7 +29,7 @@ from langchain_community.document_loaders import (
 )
 
 from langchain_community.vectorstores import FAISS
-from langchain.docstore.document import Document
+from langchain_core.documents import Document
 from langchain_cohere import CohereRerank
 import cohere
 

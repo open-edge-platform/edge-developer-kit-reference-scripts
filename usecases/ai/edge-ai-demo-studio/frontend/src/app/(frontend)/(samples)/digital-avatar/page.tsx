@@ -3,9 +3,8 @@
 
 'use client'
 
-import { User, Play, Settings } from 'lucide-react'
+import { User } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
-import { Button } from '@/components/ui/button'
 import {
   getInactivePrerequisites,
   getPreparingPrerequisites,
@@ -33,12 +32,16 @@ import {
 import { SPEECH_TO_TEXT_TYPE } from '@/lib/workloads/speech-to-text'
 import { EMBEDDING_TYPE } from '@/lib/workloads/embedding'
 import { WAKE_WORD_DETECTION_TYPE } from '@/lib/workloads/wake-word-detection'
+import { PrerequisiteBanner, SampleHeader } from '@/components/samples'
+import SamplesBody from '@/components/samples/samples-body'
 
 export default function DigitalAvatarPage() {
   const { data: lipsyncService, isLoading: isLipsyncLoading } =
     useGetWorkloadByType(LIPSYNC_TYPE)
-  const { data: ttsService } = useGetWorkloadByType(TEXT_TO_SPEECH_TYPE)
-  const { data: workloads } = useGetWorkloadsStatus()
+  const { data: ttsService, isLoading: isTTSLoading } =
+    useGetWorkloadByType(TEXT_TO_SPEECH_TYPE)
+  const { data: workloads, isLoading: isWorkloadsLoading } =
+    useGetWorkloadsStatus()
   const createWorkload = useCreateWorkload()
   const updateWorkload = useUpdateWorkload()
 
@@ -54,17 +57,14 @@ export default function DigitalAvatarPage() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
 
   const prerequisiteServices = useMemo(() => {
-    const ps: string[] = [
+    return [
       TEXT_GENERATION_TYPE,
       TEXT_TO_SPEECH_TYPE,
       LIPSYNC_TYPE,
+      ...(useSTT ? [SPEECH_TO_TEXT_TYPE] : []),
+      ...(useEmbedding ? [EMBEDDING_TYPE] : []),
+      ...(useWakeWordDetection ? [WAKE_WORD_DETECTION_TYPE] : []),
     ]
-
-    if (useSTT) ps.push(SPEECH_TO_TEXT_TYPE)
-    if (useEmbedding) ps.push(EMBEDDING_TYPE)
-    if (useWakeWordDetection) ps.push(WAKE_WORD_DETECTION_TYPE)
-
-    return ps
   }, [useEmbedding, useSTT, useWakeWordDetection])
 
   const handleSessionIdChange = (newSessionId: string) => {
@@ -87,22 +87,6 @@ export default function DigitalAvatarPage() {
     setUseWakeWordDetection(settings.useWakeWordDetection || false)
   }
 
-  const SettingsButton = () => (
-    <Button
-      variant="outline"
-      size="icon"
-      className="size-8"
-      onClick={() => setIsSettingsOpen(true)}
-      disabled={
-        inactivePrerequisites.length > 0 ||
-        isLipsyncLoading ||
-        (preparingPrerequisites && preparingPrerequisites.length > 0)
-      }
-    >
-      <Settings className="h-4 w-4" />
-    </Button>
-  )
-
   const inactivePrerequisites = useMemo(() => {
     return getInactivePrerequisites(prerequisiteServices, workloads)
   }, [prerequisiteServices, workloads])
@@ -120,26 +104,21 @@ export default function DigitalAvatarPage() {
     )
   }, [createWorkload, prerequisiteServices, updateWorkload, workloads])
 
+  const isDisabled =
+    inactivePrerequisites.length > 0 ||
+    (preparingPrerequisites && preparingPrerequisites.length > 0)
+
   return (
-    <div className="bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
-      <div className="container mx-auto p-4">
-        {/* Header */}
-        <div className="mb-8 flex items-center justify-between">
-          <div className="mb-4 flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-600 text-white">
-              <User className="h-6 w-6" />
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100">
-                Digital Avatar
-              </h1>
-              <p className="text-slate-600 dark:text-slate-400">
-                Interact with an AI-powered avatar that combines real-time video
-                with intelligent conversation
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
+    <>
+      <SampleHeader
+        icon={User}
+        title="Digital Avatar"
+        description=" Interact with an AI-powered avatar that combines real-time video
+                with intelligent conversation"
+        onOpenSettings={() => setIsSettingsOpen(true)}
+        disabled={isDisabled}
+        badge={
+          <>
             {selectedKnowledgeBase && (
               <Badge
                 variant="secondary"
@@ -167,65 +146,19 @@ export default function DigitalAvatarPage() {
                 Wake Word Detection On
               </Badge>
             )}
-            <SettingsButton />
-          </div>
-        </div>
+          </>
+        }
+      />
 
-        {/* Prerequisites Button */}
-        {inactivePrerequisites && inactivePrerequisites.length > 0 && (
-          <div className="mb-6">
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-semibold text-amber-800 dark:text-amber-200">
-                    Prerequisites Required
-                  </h3>
-                  <p className="text-sm text-amber-700 dark:text-amber-300">
-                    The following services need to be started:{' '}
-                    {inactivePrerequisites.join(', ')}
-                  </p>
-                </div>
-                <Button
-                  onClick={preparePrerequisite}
-                  className="bg-blue-600 text-white hover:bg-blue-700"
-                  disabled={
-                    createWorkload.isPending ||
-                    updateWorkload.isPending ||
-                    (preparingPrerequisites &&
-                      preparingPrerequisites.length > 0)
-                  }
-                >
-                  <Play className="mr-2 h-4 w-4" />
-                  {createWorkload.isPending || updateWorkload.isPending
-                    ? 'Starting...'
-                    : 'Start All Services'}
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
+      <PrerequisiteBanner
+        inactivePrerequisites={inactivePrerequisites}
+        preparingPrerequisites={preparingPrerequisites}
+        isLoading={isWorkloadsLoading || isTTSLoading || isLipsyncLoading}
+        onStart={preparePrerequisite}
+        isStarting={createWorkload.isPending || updateWorkload.isPending}
+      />
 
-        {/* Prerequisites Preparing Notification */}
-        {preparingPrerequisites && preparingPrerequisites.length > 0 && (
-          <div className="mb-6">
-            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-900/20">
-              <div className="flex items-center gap-3">
-                <div className="h-2 w-2 animate-pulse rounded-full bg-blue-600"></div>
-                <div>
-                  <h3 className="font-semibold text-blue-800 dark:text-blue-200">
-                    Prerequisites Starting
-                  </h3>
-                  <p className="text-sm text-blue-700 dark:text-blue-300">
-                    The following services are currently starting:{' '}
-                    <strong>{preparingPrerequisites.join(', ')}</strong>. Please
-                    wait for them to finish.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
+      <SamplesBody>
         <div className="grid gap-8 lg:grid-cols-3">
           {/* Video Stream */}
           <div className="lg:col-span-2">
@@ -263,20 +196,20 @@ export default function DigitalAvatarPage() {
             />
           </div>
         </div>
+      </SamplesBody>
 
-        {/* Settings Modal */}
-        <DigitalAvatarSettings
-          isOpen={isSettingsOpen}
-          onClose={() => setIsSettingsOpen(false)}
-          useSTT={useSTT}
-          useDenoise={useDenoise}
-          useEmbedding={useEmbedding}
-          selectedKnowledgeBase={selectedKnowledgeBase}
-          useMcpTools={useMcpTools}
-          useWakeWordDetection={useWakeWordDetection}
-          onSettingsUpdate={handleSettingsUpdate}
-        />
-      </div>
-    </div>
+      {/* Settings Modal */}
+      <DigitalAvatarSettings
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        useSTT={useSTT}
+        useDenoise={useDenoise}
+        useEmbedding={useEmbedding}
+        selectedKnowledgeBase={selectedKnowledgeBase}
+        useMcpTools={useMcpTools}
+        useWakeWordDetection={useWakeWordDetection}
+        onSettingsUpdate={handleSettingsUpdate}
+      />
+    </>
   )
 }

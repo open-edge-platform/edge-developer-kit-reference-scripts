@@ -99,19 +99,6 @@ export default function TextGenerationPage() {
     })
   }
 
-  const SettingsButton = () => {
-    return (
-      <Button
-        variant="secondary"
-        size="icon"
-        className="size-8"
-        onClick={onOpen}
-      >
-        <Settings />
-      </Button>
-    )
-  }
-
   return (
     <>
       <SettingsModal
@@ -132,7 +119,16 @@ export default function TextGenerationPage() {
       />
       <WorkloadComponent
         title="Wake Word Detection"
-        settingsButton={<SettingsButton />}
+        settingsButton={
+          <Button
+            variant="secondary"
+            size="icon"
+            className="size-8"
+            onClick={onOpen}
+          >
+            <Settings />
+          </Button>
+        }
         workload={workload}
         description={DESCRIPTION}
         workloadType={TYPE}
