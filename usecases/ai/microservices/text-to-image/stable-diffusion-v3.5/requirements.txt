@@ -3,7 +3,7 @@ fastapi==0.115.6
 uvicorn==0.34.0
 
 # Dependencies with version specifications
-Pillow==11.1.0
+Pillow==12.1.1
 diffusers==0.32.1
 typing_extensions==4.12.2
 numpy==2.1.3
