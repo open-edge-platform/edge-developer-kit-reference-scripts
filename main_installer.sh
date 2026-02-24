@@ -166,34 +166,6 @@ verify_ubuntu_24() {
         echo "Please upgrade to Ubuntu 24.04 LTS before running this script"
         exit 1
     fi
-
-   # Kernel policy: Accept 6.14.x (standard) OR 6.17.x (OEM) when PTL_PLATFORM=true
-   local kernel_major kernel_minor running_kernel
-   running_kernel=$(uname -r)
-   kernel_major=$(echo "$running_kernel" | cut -d'.' -f1)
-   kernel_minor=$(echo "$running_kernel" | cut -d'.' -f2)
-
-   if { [ "$kernel_major" = "6" ] && [ "$kernel_minor" = "14" ]; }; then
-       echo "$S_VALID Ubuntu 24.04 LTS with supported HWE kernel $running_kernel detected"
-   elif { [ "${PTL_PLATFORM:-false}" = true ] && [ "$kernel_major" = "6" ] && [ "$kernel_minor" = "17" ]; }; then
-       echo "$S_VALID PTL platform OEM kernel $running_kernel accepted"
-   else
-       echo "$S_WARNING Unsupported kernel version: $running_kernel"
-       if [ "${PTL_PLATFORM:-false}" = true ]; then
-           echo "PTL platform detected; proceeding to install OEM 6.17 kernel via prerequisites phase."
-           # Do not exit; apply_ptl_platform_prereqs will manage kernel upgrade & reboot gate.
-       else
-           echo "This installer requires Ubuntu 24.04 LTS with kernel 6.14.x"
-           if command -v hwe-support-status >/dev/null 2>&1; then
-              echo "Checking HWE support status..."
-              hwe-support-status --verbose || true
-           fi
-           echo "Installing HWE kernel..."
-           apt update && apt install -y linux-generic-hwe-24.04
-           echo "$S_VALID HWE kernel installed. Please reboot and run this installer again."
-           exit 0
-       fi
-   fi
 }
 
 # Apply PTL platform prerequisites before standard GPU driver installation
@@ -630,7 +602,7 @@ main() {
     detect_platform
     echo ""
 
-    # 2. Verify Ubuntu version & kernel (allows 6.17 if PTL)
+    # 2. Verify Ubuntu version
     verify_ubuntu_24
     echo ""
 
