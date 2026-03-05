@@ -93,8 +93,8 @@ You can use the following command as an alternative to the AI object classificat
 2. Partition the Last Level Cache (LLC) and assign an exclusive portion of the cache to the real-time test application, as demonstrated for the Intel® Core™ i5-1350PE above. Here is how the LLC can be partitioned using the Linux `msr-tools`:
   ```sh
     #define LLC Core Masks
-    wrmsr 0xc90 0x30 # best effort mask
-    wrmsr 0xc91 0xFC # real-time mask
+    wrmsr 0xc90 0x07 # best effort mask - cache ways 0-2
+    wrmsr 0xc91 0xF8 # real-time mask - cache ways 3-7
     #define LLC GT Mask 
     wrmsr 0x18b0 0x80 # iGPU mask
     
@@ -211,5 +211,6 @@ In this tutorial, three easy-to-use features of the Intel TCC toolbox, along wit
 - Speed Shift for Edge Computing: Can be used to boost single-threaded performance.
 
 By leveraging these tools, system integrators can efficiently enhance the performance and reliability of their real-time applications.
+
 
 <span style="color:red"> Note: Please keep in mind that performance varies by use, configuration and other factors. Learn more at www.Intel.com/PerformanceIndex results are based on testing as of dates shown in configurations and may not reflect all publicly available updates.  No product or component can be absolutely secure</span>
