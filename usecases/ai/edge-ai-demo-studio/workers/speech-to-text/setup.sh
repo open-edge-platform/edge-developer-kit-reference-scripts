@@ -13,6 +13,7 @@ HOME_THIRDPARTY_DIR="$HOME_DIR/thirdparty"
 
 VENV_DIR="$SCRIPT_DIR/.venv"
 UV_PATH="$WORKER_THIRDPARTY_DIR/uv/uv"
+UV_CMD="$UV_PATH"
 FFMPEG_PATH="$HOME_THIRDPARTY_DIR/ffmpeg/bin/ffmpeg"
 
 # Function to check if FFmpeg is available

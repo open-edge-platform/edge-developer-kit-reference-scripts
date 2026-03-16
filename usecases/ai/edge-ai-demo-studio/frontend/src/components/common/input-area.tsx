@@ -14,6 +14,7 @@ export const InputArea = ({
   useWakeWordDetection = false,
   isSTTEnabled,
   isDenoiseEnabled,
+  sttLanguage = 'en',
   sendMessage,
   onStop,
   isStreaming,
@@ -27,6 +28,7 @@ export const InputArea = ({
   useWakeWordDetection?: boolean
   isSTTEnabled: boolean
   isDenoiseEnabled: boolean
+  sttLanguage?: string
   sendMessage: (text: string, isWakeWordDetected?: boolean) => void
   onStop: () => void
   isStreaming: boolean
@@ -190,7 +192,7 @@ export const InputArea = ({
 
           const response = await transcription.mutateAsync({
             file: audioFile,
-            language: 'en',
+            language: sttLanguage,
             useDenoise: isDenoiseEnabled,
           })
 
@@ -222,6 +224,7 @@ export const InputArea = ({
     hasSoundRef,
     isDenoiseEnabled,
     sendMessage,
+    sttLanguage,
     transcription,
   ])
 

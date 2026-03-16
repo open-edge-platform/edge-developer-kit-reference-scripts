@@ -9,7 +9,7 @@ import path from 'path'
 const isWindows = typeof process !== 'undefined' && process.platform === 'win32'
 
 export const DEFAULT_MULTISERVE_FIELDS = {
-  engine: (isWindows ? 'llamacpp' : 'ovms') as Workload['engine'],
+  engine: (isWindows ? 'llamacpp' : 'openvino') as Workload['engine'],
   healthCheck: {
     url: '/v1/status',
     responseMapper: {
@@ -84,7 +84,7 @@ export const MULTISERVE_VERIFIED_MODELS: ModelList = [
   // OpenVINO models
   {
     id: 'OpenVINO/Qwen3-8B-int4-ov',
-    engine: 'ovms',
+    engine: 'openvino',
     task: 'text-generation',
     tool_parser: 'hermes3',
     chat_template: '',
@@ -92,7 +92,7 @@ export const MULTISERVE_VERIFIED_MODELS: ModelList = [
   },
   {
     id: 'OpenVINO/Qwen3-4B-int8-ov',
-    engine: 'ovms',
+    engine: 'openvino',
     task: 'text-generation',
     tool_parser: 'hermes3',
     chat_template: '',
@@ -100,7 +100,7 @@ export const MULTISERVE_VERIFIED_MODELS: ModelList = [
   },
   {
     id: 'OpenVINO/Phi-4-mini-instruct-int8-ov',
-    engine: 'ovms',
+    engine: 'openvino',
     task: 'text-generation',
     tool_parser: 'phi4',
     chat_template:
@@ -109,13 +109,13 @@ export const MULTISERVE_VERIFIED_MODELS: ModelList = [
   },
   {
     id: 'OpenVINO/Qwen3-Embedding-0.6B-int8-ov',
-    engine: 'ovms',
+    engine: 'openvino',
     task: 'embeddings',
     source: ['huggingface', 'modelscope'],
   },
   {
     id: 'OpenVINO/bge-reranker-base-int8-ov',
-    engine: 'ovms',
+    engine: 'openvino',
     task: 'rerank',
     source: ['huggingface', 'modelscope'],
   },
@@ -125,8 +125,8 @@ export const getMultiserveModelsDir = (type: Workload['type']) => {
   return path.join(MULTISERVE_MODELS_DIR_PATH, type)
 }
 
-export const getMultiserveLogsDir = (type: Workload['type'], id: number) => {
-  return path.join(LOG_FILE_PATH, 'multiserve', `${type}-${id}`)
+export const getMultiserveLogsDir = (type: Workload['type']) => {
+  return path.join(LOG_FILE_PATH, 'multiserve', `${type}`)
 }
 
 export const getDefaultModelForEngine = (
@@ -148,7 +148,7 @@ export const getDefaultModelForEngine = (
 
 export const MULTISERVE_ENGINES = [
   {
-    id: 'ovms',
+    id: 'openvino',
     name: 'OpenVINO Model Server (OVMS)',
     description: 'Intel OpenVINO optimized inference server',
     recommended: !isWindows,

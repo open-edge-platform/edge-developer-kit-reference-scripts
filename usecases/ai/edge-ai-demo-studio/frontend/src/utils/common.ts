@@ -12,6 +12,10 @@ import {
   SPEECH_TO_TEXT_WORKLOAD,
 } from '@/lib/workloads/speech-to-text'
 import {
+  SYNTHETIC_IMAGE_GENERATION_TYPE,
+  SYNTHETIC_IMAGE_GENERATION_WORKLOAD,
+} from '@/lib/workloads/synthetic-image-generation'
+import {
   TEXT_GENERATION_TYPE,
   TEXT_GENERATION_WORKLOAD,
 } from '@/lib/workloads/text-generation'
@@ -78,7 +82,7 @@ export const getModelNameWithPrefix = (
   model: Model,
 ) => {
   switch (engine) {
-    case 'ovms':
+    case 'openvino':
       return 'openvino:' + getModelNameWithQuant(model, engine)
     case 'llamacpp':
       return 'llamacpp:' + getModelNameWithQuant(model, engine)
@@ -111,6 +115,8 @@ export function getDefaultWorkload(workloadType: Workload['type']) {
       return IMAGE_GENERATION_WORKLOAD
     case WAKE_WORD_DETECTION_TYPE:
       return WAKE_WORD_DETECTION_WORKLOAD
+    case SYNTHETIC_IMAGE_GENERATION_TYPE:
+      return SYNTHETIC_IMAGE_GENERATION_WORKLOAD
     default:
       return null
   }

@@ -38,22 +38,11 @@ import {
 import { useState, useRef } from 'react'
 import { toast } from 'sonner'
 import { logger } from '@/utils/logger'
+import { SUPPORTED_STT_LANGUAGES } from '@/lib/workloads/speech-to-text'
 
 interface SpeechToTextDemoProps {
   disabled?: boolean
 }
-
-const SUPPORTED_LANGUAGES = [
-  { code: 'en', name: 'English' },
-  { code: 'ms', name: 'Malay' },
-  { code: 'zh', name: 'Chinese' },
-  { code: 'hi', name: 'Hindi' },
-  { code: 'ja', name: 'Japanese' },
-  { code: 'es', name: 'Spanish' },
-  { code: 'fr', name: 'French' },
-  { code: 'it', name: 'Italian' },
-  { code: 'pt', name: 'Portuguese' },
-]
 
 export default function SpeechToTextDemo({ disabled }: SpeechToTextDemoProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
@@ -206,7 +195,7 @@ export default function SpeechToTextDemo({ disabled }: SpeechToTextDemoProps) {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {SUPPORTED_LANGUAGES.map((lang) => (
+                {SUPPORTED_STT_LANGUAGES.map((lang) => (
                   <SelectItem key={lang.code} value={lang.code}>
                     {lang.name}
                   </SelectItem>
