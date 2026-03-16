@@ -52,9 +52,8 @@ export function SettingsModal({
   const selectedModelName = useMemo(() => {
     return getModelNameWithQuant(selectedModel, selectedEngine)
   }, [selectedEngine, selectedModel])
-  const [tempModel, setTempModel] = useState('')
   const [tempEngine, setTempEngine] = useState<Workload['engine']>(
-    selectedEngine || 'ovms',
+    selectedEngine || 'openvino',
   )
   const { data: models, isLoading: areModelsLoading } = useGetWorkloadModels(
     TEXT_GENERATION_TYPE,
@@ -66,74 +65,97 @@ export function SettingsModal({
   const [modelToDelete, setModelToDelete] = useState<string | null>(null)
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false)
 
-  const verifiedModels = useMemo<ModelList>(() => {
-    if (!models) return []
-    return models.filter((model) => model.verified)
+  const derivedModels = useMemo(() => {
+    const verified: ModelList = []
+    const custom: ModelList = []
+
+    if (models) {
+      models.forEach((model) => {
+        if (model.verified) {
+          verified.push({ ...model })
+        } else {
+          custom.push({ ...model })
+        }
+      })
+    }
+
+    return { verified, custom }
   }, [models])
 
-  const customModels = useMemo<ModelList>(() => {
-    if (!models) return []
-    return models.filter((model) => !model.verified)
-  }, [models])
+  const verifiedModels = useMemo(() => {
+    return tempEngine ? derivedModels.verified : []
+  }, [derivedModels.verified, tempEngine])
 
+  const customModels = useMemo(() => {
+    return tempEngine ? derivedModels.custom : []
+  }, [derivedModels.custom, tempEngine])
   const [tempDevice, setTempDevice] = useState(selectedModel?.device || 'CPU')
   const [tempParams, setTempParams] = useState<string>(
     selectedModel?.params || '',
   )
-  const [tabValue, setTabValue] = useState('predefined')
+  const [tabValue, setTabValue] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [tempLocalFilePath, setTempLocalFilePath] = useState('')
   const [isModelValid, setIsModelValid] = useState(true)
   const [modelSource, setModelSource] = useState<
     'huggingface' | 'modelscope' | 'custom'
-  >(selectedModel?.source ?? 'huggingface')
-  const [prevIsOpen, setPrevIsOpen] = useState(isOpen)
-  if (isOpen !== prevIsOpen) {
-    if (isOpen && !areModelsLoading && models) {
-      setPrevIsOpen(isOpen)
-      setTempEngine(selectedEngine || 'ovms')
-      setTempDevice(selectedModel?.device || 'CPU')
-      setTempLocalFilePath('')
-      setIsModelValid(true)
-      setModelSource(selectedModel.source || 'huggingface')
+  >(selectedModel.source ?? 'huggingface')
+  const [tempModelOverride, setTempModelOverride] = useState<string | null>(
+    null,
+  )
 
-      // Since verifiedModels is for tempEngine (initially selectedEngine),
-      // we check if selected model is in there.
-      // If initialized with selectedEngine, verifiedModels covers it.
-      const isCustomModel = !verifiedModels.some(
-        (model) => model.id === selectedModelName,
-      )
+  const savedModelType = useMemo(() => {
+    if (tempEngine !== selectedEngine) return 'verified'
+    const isCustomModel = !verifiedModels.some(
+      (model) => model.id === selectedModelName,
+    )
 
-      // Set the correct tab
-      if (isCustomModel) {
-        setTabValue('custom')
-        setTempModel(selectedModelName || '')
-      } else {
-        setTabValue('predefined')
-        setTempModel(selectedModelName || verifiedModels[0]?.id || '')
-      }
-    }
-  }
+    return isCustomModel ? 'custom' : 'verified'
+  }, [selectedModelName, verifiedModels, tempEngine, selectedEngine])
+
+  const resolvedTabValue = useMemo(() => {
+    if (tabValue) return tabValue
+    return savedModelType === 'custom' ? 'custom' : 'predefined'
+  }, [savedModelType, tabValue])
+
+  const resolvedTempModel = useMemo(() => {
+    if (tempModelOverride !== null) return tempModelOverride
+    if (tempEngine !== selectedEngine) return verifiedModels[0]?.id || ''
+    if (savedModelType === 'custom') return selectedModelName || ''
+    return selectedModelName || verifiedModels[0]?.id || ''
+  }, [
+    savedModelType,
+    selectedModelName,
+    tempModelOverride,
+    verifiedModels,
+    tempEngine,
+    selectedEngine,
+  ])
 
   const canSave = useMemo(() => {
     if (!tempDevice) return false
     if (!tempEngine) return false
-    if (!tempModel || tempModel.trim().length === 0) return false
+    if (!resolvedTempModel || resolvedTempModel.trim().length === 0)
+      return false
 
-    if (tabValue === 'custom') {
+    if (resolvedTabValue === 'custom') {
       if (modelSource === 'custom') {
         return (
-          !!tempModel &&
-          tempModel.trim().length > 0 &&
+          !!resolvedTempModel &&
+          resolvedTempModel.trim().length > 0 &&
           (!!tempLocalFilePath ||
-            !!customModels.find((m) => m.id === tempModel)?.downloaded)
+            !!customModels.find((m) => m.id === resolvedTempModel)?.downloaded)
         )
       }
-      return !!tempModel && tempModel.trim().length > 0 && isModelValid
+      return (
+        !!resolvedTempModel &&
+        resolvedTempModel.trim().length > 0 &&
+        isModelValid
+      )
     } else {
       if (
-        tempModel.trim() === '' ||
-        !verifiedModels.find((m) => m.id === tempModel)
+        resolvedTempModel.trim() === '' ||
+        !verifiedModels.find((m) => m.id === resolvedTempModel)
       ) {
         return false
       }
@@ -144,22 +166,13 @@ export function SettingsModal({
     customModels,
     isModelValid,
     modelSource,
-    tabValue,
+    resolvedTabValue,
     tempDevice,
     tempEngine,
     tempLocalFilePath,
-    tempModel,
+    resolvedTempModel,
     verifiedModels,
   ])
-
-  const savedModelType = useMemo(() => {
-    if (selectedEngine !== tempEngine) return undefined
-    const isCustomModel = !verifiedModels.some(
-      (model) => model.id === selectedModelName,
-    )
-
-    return isCustomModel ? 'custom' : 'verified'
-  }, [selectedEngine, selectedModelName, tempEngine, verifiedModels])
 
   const handleDeleteModel = async (
     modelId: string,
@@ -182,8 +195,8 @@ export function SettingsModal({
           onSuccess: () => {
             setIsDeleteConfirmOpen(false)
             setModelToDelete(null)
-            if (tempModel === modelToDelete) {
-              setTempModel('')
+            if (resolvedTempModel === modelToDelete) {
+              setTempModelOverride('')
             }
           },
         },
@@ -197,14 +210,16 @@ export function SettingsModal({
       ...customModels.map((m) => m.id),
     ]
     if (
-      tabValue === 'custom' &&
-      tempModel !== '' &&
-      !customModels.find((m) => m.id === tempModel)?.downloaded &&
-      availableModels.filter((m) => m !== selectedModelName).includes(tempModel)
+      resolvedTabValue === 'custom' &&
+      resolvedTempModel !== '' &&
+      !customModels.find((m) => m.id === resolvedTempModel)?.downloaded &&
+      availableModels
+        .filter((m) => m !== selectedModelName)
+        .includes(resolvedTempModel)
     ) {
       toast.error('Model name already exists. Please choose a different name.')
       return false
-    } else if (tempModel.trim() === '') {
+    } else if (resolvedTempModel.trim() === '') {
       toast.error('Model name cannot be empty.')
       return false
     }
@@ -215,11 +230,13 @@ export function SettingsModal({
   const handleEngineSelect = (value: Workload['engine']) => {
     setTempEngine(value)
     setTempDevice('CPU')
+    setTempModelOverride(null)
+    setTabValue(null)
   }
 
   const handleSave = () => {
     let model: Model = {
-      name: tempModel,
+      name: resolvedTempModel,
       source: modelSource,
       device: tempDevice,
       params: tempParams,
@@ -228,8 +245,8 @@ export function SettingsModal({
       return
     }
     setIsLoading(true)
-    if (tabValue !== 'custom') {
-      const selected = verifiedModels.find((m) => m.id === tempModel)
+    if (resolvedTabValue !== 'custom') {
+      const selected = verifiedModels.find((m) => m.id === resolvedTempModel)
       if (selected) {
         let id = { ...selected }.id
         const colonIndex = id.indexOf(':')
@@ -246,10 +263,10 @@ export function SettingsModal({
       }
     } else {
       // For custom models, extract quant from model name if it follows format name:quant
-      const colonIndex = tempModel.indexOf(':')
+      const colonIndex = resolvedTempModel.indexOf(':')
       if (colonIndex !== -1) {
-        const baseModel = tempModel.substring(0, colonIndex)
-        const quant = tempModel.substring(colonIndex + 1)
+        const baseModel = resolvedTempModel.substring(0, colonIndex)
+        const quant = resolvedTempModel.substring(colonIndex + 1)
         model = {
           name: baseModel,
           source: modelSource,
@@ -266,9 +283,32 @@ export function SettingsModal({
     })
   }
 
+  const resetState = () => {
+    setTempEngine(selectedEngine || 'openvino')
+    setTempDevice(selectedModel?.device || 'CPU')
+    setTempLocalFilePath('')
+    setIsModelValid(true)
+    setModelSource(selectedModel?.source || 'huggingface')
+    setTempParams(selectedModel?.params || '')
+    setTabValue(null)
+    setTempModelOverride(null)
+  }
+
+  const handleCancel = () => {
+    resetState()
+    onClose()
+  }
+
+  const handleDialogChange = (open: boolean) => {
+    if (!open) {
+      resetState()
+      onClose()
+    }
+  }
+
   return (
     <>
-      <Dialog open={isOpen} onOpenChange={onClose}>
+      <Dialog open={isOpen} onOpenChange={handleDialogChange}>
         <DialogContent className="flex max-h-[90vh] flex-col sm:max-w-[600px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-xl font-semibold">
@@ -319,9 +359,9 @@ export function SettingsModal({
                 engine={tempEngine}
                 verifiedModels={verifiedModels}
                 customModels={customModels}
-                selectedModel={tempModel}
-                onModelSelect={setTempModel}
-                tabValue={tabValue}
+                selectedModel={resolvedTempModel}
+                onModelSelect={setTempModelOverride}
+                tabValue={resolvedTabValue}
                 onTabChange={setTabValue}
                 source={modelSource}
                 onSourceChange={setModelSource}
@@ -343,7 +383,7 @@ export function SettingsModal({
             <Button
               variant="outline"
               disabled={isLoading}
-              onClick={onClose}
+              onClick={handleCancel}
               className="bg-white text-gray-700"
             >
               Cancel

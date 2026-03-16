@@ -10,6 +10,7 @@ import {
   SPEECH_TO_TEXT_PORT,
   TEXT_TO_SPEECH_PORT,
   IMAGE_GENERATION_PORT,
+  SYNTHETIC_IMAGE_GENERATION_PORT,
   WAKE_WORD_DETECTION_PORT,
   TEXT_GENERATION_PORT,
 } from '@/lib/constants'
@@ -64,6 +65,10 @@ const nextConfig: NextConfig = {
       {
         source: '/api/images/v1/:slug*',
         destination: `http://localhost:${IMAGE_GENERATION_PORT}/v3/images/:slug*`,
+      },
+      {
+        source: '/api/synthetic-image-generation/:slug*',
+        destination: `http://localhost:${SYNTHETIC_IMAGE_GENERATION_PORT}/:slug*`,
       },
       {
         source: '/api/wake-word-detection/:slug*',

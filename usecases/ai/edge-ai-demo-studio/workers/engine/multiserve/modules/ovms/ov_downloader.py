@@ -189,6 +189,44 @@ class OVDownloader:
         finally:
             self._current_process = None
 
+    def _list_verified_models(self) -> Dict[str, str]:
+        verified_models = []
+
+        for repo_id_with_tag, detail in self.verified_models.items():
+            verified_models.append(
+                (repo_id_with_tag, detail["task"], detail["quant"], detail["source"])
+            )
+
+        return verified_models
+
+    def _list_downloaded_models(self) -> List[Tuple[str, str, List[str]]]:
+        consolidated_models: DefaultDict[Tuple[str, str], List[str]] = defaultdict(list)
+
+        base_dir = Path(self.models_base_dir)
+        if not base_dir.exists():
+            return []
+
+        for ov_file in base_dir.rglob("*model.xml"):
+            task = ov_file.parent.parent.parent.name
+            org = ov_file.parent.parent.name
+            model_name = ov_file.parent.name
+
+            repo_id = f"{org}/{model_name}"
+            quant_value = self.extract_quant_from_foldername(model_name)
+
+            if quant_value:
+                key = (repo_id, task)
+                if quant_value not in consolidated_models[key]:
+                    consolidated_models[key].append(quant_value)
+            else:
+                key = (repo_id, task)
+                consolidated_models[key].append("")
+        final_list = []
+        for (repo_id, task), quants in consolidated_models.items():
+            final_list.append((repo_id, task, sorted(quants)))
+
+        return final_list
+
     @staticmethod
     def read_verified_models(file_path: str) -> Dict[str, str]:
         try:
@@ -536,40 +574,33 @@ class OVDownloader:
             print(f"Model directory not found: {model_dir}")
             return False
 
-    def list_verified_models(self) -> Dict[str, str]:
-        verified_models = []
+    def list_models(self):
+        verified_models = self._list_verified_models()
+        downloaded_models = self._list_downloaded_models()
 
-        for repo_id_with_tag, detail in self.verified_models.items():
-            verified_models.append(
-                (repo_id_with_tag, detail["task"], detail["quant"], detail["source"])
+        verified_map = {}
+        for repo_id, task_type, quantizations, sources in verified_models:
+            key = (repo_id, task_type)
+            verified_map[key] = (quantizations, sources)
+
+        downloaded_map = {}
+        for repo_id, task_type, quantizations in downloaded_models:
+            key = (repo_id, task_type)
+            downloaded_map[key] = quantizations
+
+        all_keys = set(verified_map.keys()) | set(downloaded_map.keys())
+
+        detailed_list = []
+        for repo_id, task_type in all_keys:
+            verified_quant, sources = verified_map.get((repo_id, task_type), ([], []))
+            detailed_list.append(
+                {
+                    "repo_id": repo_id,
+                    "task_type": task_type,
+                    "downloaded": downloaded_map.get((repo_id, task_type), []),
+                    "verified": verified_quant,
+                    "sources": sources,
+                }
             )
 
-        return verified_models
-
-    def list_downloaded_models(self) -> List[Tuple[str, str, List[str]]]:
-        consolidated_models: DefaultDict[Tuple[str, str], List[str]] = defaultdict(list)
-
-        base_dir = Path(self.models_base_dir)
-        if not base_dir.exists():
-            return []
-
-        for ov_file in base_dir.rglob("*model.xml"):
-            task = ov_file.parent.parent.parent.name
-            org = ov_file.parent.parent.name
-            model_name = ov_file.parent.name
-
-            repo_id = f"{org}/{model_name}"
-            quant_value = self.extract_quant_from_foldername(model_name)
-
-            if quant_value:
-                key = (repo_id, task)
-                if quant_value not in consolidated_models[key]:
-                    consolidated_models[key].append(quant_value)
-            else:
-                key = (repo_id, task)
-                consolidated_models[key].append("")
-        final_list = []
-        for (repo_id, task), quants in consolidated_models.items():
-            final_list.append((repo_id, task, sorted(quants)))
-
-        return final_list
+        return detailed_list

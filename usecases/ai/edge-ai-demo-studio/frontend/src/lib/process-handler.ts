@@ -240,7 +240,7 @@ async function stopProcess(name: string): Promise<boolean> {
         logStreams.delete(name)
       }
       processes.delete(name)
-      resolve(success)
+      setTimeout(() => resolve(success), 2000)
     }
 
     proc.on('exit', () => cleanup(true))
