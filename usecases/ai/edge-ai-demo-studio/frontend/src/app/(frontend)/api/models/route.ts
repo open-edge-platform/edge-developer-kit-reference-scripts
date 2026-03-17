@@ -5,16 +5,12 @@ import { logger } from '@/utils/logger'
 import {
   KNOWN_QUANTIZATIONS,
   MULTISERVE_ENGINES,
+  DEFAULT_MULTISERVE_FIELDS,
 } from '@/lib/engine/multiserve'
 import { ModelList } from '@/types/workload'
 import { MultiserveModel } from '@/types/multiserve'
-import {
-  EMBEDDING_SERVING_PORT,
-  MULTISERVE_OVMS_TEMP_PORT,
-  MULTISERVE_LLAMACPP_TEMP_PORT,
-  TEXT_GENERATION_PORT,
-} from '@/lib/constants'
-import { listProcesses, stopProcess } from '@/lib/process-handler'
+import { EMBEDDING_PORT, TEXT_GENERATION_PORT } from '@/lib/constants'
+import { listProcesses } from '@/lib/process-handler'
 import { TEXT_GENERATION_TYPE } from '@/lib/workloads/text-generation'
 import { EMBEDDING_TYPE } from '@/lib/workloads/embedding'
 
@@ -23,40 +19,30 @@ const getWorkloadPort = (type: Workload['type']) => {
     case TEXT_GENERATION_TYPE:
       return TEXT_GENERATION_PORT
     case EMBEDDING_TYPE:
-      return EMBEDDING_SERVING_PORT
+      return EMBEDDING_PORT
     default:
       throw new Error(`Unsupported workload type: ${type}`)
   }
 }
 
-const getTempWorkloadPort = (engine: Workload['engine']) => {
-  return engine === 'ovms'
-    ? MULTISERVE_OVMS_TEMP_PORT
-    : MULTISERVE_LLAMACPP_TEMP_PORT
-}
-
-const stopDummyMultiserve = async (
-  engine: Workload['engine'],
-  name: string,
-) => {
-  const processes = await listProcesses()
-  const existingProcess = processes.find(
-    (proc) => proc.name === `${name}_${engine}`,
-  )
-  if (existingProcess) {
-    logger.info('Killing existing temporary multiserve instance')
-    await stopProcess(existingProcess.name)
+const getMultiserveType = (type: Workload['type'] | 'rerank') => {
+  switch (type) {
+    case 'rerank':
+      return EMBEDDING_TYPE
+    default:
+      return type
   }
 }
 
 const pendingStartups = new Map<string, Promise<{ port: number }>>()
 
-// Start a temporary multiserve instance if not already running
-const startTempMultiserve = async (
+// Start a dummy multiserve instance (actual service but with no model) if not already running
+const startDummyMultiserve = async (
   engine: Workload['engine'],
   type: Workload['type'],
 ) => {
-  const lockKey = engine
+  const workloadType = getMultiserveType(type)
+  const lockKey = `${workloadType}`
 
   if (pendingStartups.has(lockKey)) {
     return pendingStartups.get(lockKey)!
@@ -64,37 +50,33 @@ const startTempMultiserve = async (
 
   const startupPromise = (async () => {
     try {
+      const port = getWorkloadPort(workloadType)
       const processes = await listProcesses()
       const existingProcess = processes.find((proc) =>
-        proc.name.startsWith(`${type}_${engine}`),
+        proc.name.startsWith(`${workloadType}_`),
       )
+
       if (existingProcess) {
-        await stopDummyMultiserve(engine, `temp`)
-        const port = getWorkloadPort(type)
-        logger.info(`Temporary multiserve for engine ${engine} already running`)
+        logger.info(`Multiserve for type ${workloadType} already running`)
         return { port }
-      } else if (processes.some((proc) => proc.name === `temp_${engine}`)) {
-        return {
-          port: getTempWorkloadPort(engine),
-        }
       }
 
       const dummyWorkload: Workload = {
         id: 0,
-        name: `temp`,
-        type: type,
+        name: workloadType,
+        type: workloadType,
         engine: engine as Workload['engine'],
         models: {
           default: { name: 'dummy', device: 'CPU' },
         },
-        port: getTempWorkloadPort(engine),
+        port: port,
         updatedAt: new Date().toISOString(),
         createdAt: new Date().toISOString(),
       }
 
       await startMultiserveServer(dummyWorkload)
 
-      return { port: getTempWorkloadPort(engine) }
+      return { port }
     } finally {
       pendingStartups.delete(lockKey)
     }
@@ -121,38 +103,64 @@ const validateMultiserveRequest = (engine: string) => {
 export async function GET(req: NextRequest) {
   try {
     const searchParams = req.nextUrl.searchParams
-    const engine = searchParams.get('engine') as Workload['engine']
+    let engine = searchParams.get('engine') as Workload['engine']
     const workloadType = searchParams.get('type') as Workload['type']
 
-    if (!engine || !workloadType) {
+    if (!workloadType) {
       return NextResponse.json(
-        { error: 'Missing engine or workload type' },
+        { error: 'Missing workload type' },
         { status: 400 },
       )
+    }
+
+    if (!engine) {
+      const processes = await listProcesses()
+      const workloadTypeKey = getMultiserveType(workloadType)
+      const existingProcess = processes.find((proc) =>
+        proc.name.startsWith(`${workloadTypeKey}_`),
+      )
+
+      if (existingProcess) {
+        for (const e of MULTISERVE_ENGINES) {
+          if (existingProcess.name.includes(`_${e.id}_`)) {
+            engine = e.id as Workload['engine']
+            break
+          }
+        }
+      }
+
+      if (!engine) {
+        engine = DEFAULT_MULTISERVE_FIELDS.engine
+      }
     }
 
     const errorResponse = validateMultiserveRequest(engine)
     if (errorResponse) return errorResponse
 
     try {
-      const { port } = await startTempMultiserve(
+      const { port } = await startDummyMultiserve(
         engine as Workload['engine'],
         workloadType,
       )
 
-      const modelsURL = `http://localhost:${port}/v1/model`
-
+      const modelsURL = `http://localhost:${port}/v1/api/models?backend=${engine}`
       const res = await fetch(modelsURL, {})
 
       if (!res.ok) {
         const err = await res.text()
-        throw new Error(`Multiserve upload failed: ${err}`)
+        throw new Error(`Failed to get multiserve models: ${err}`)
       }
 
-      const data = (await res.json()) as MultiserveModel[]
+      const data = (await res.json()) as Record<string, MultiserveModel[]>
+      if (!data[engine]) {
+        return NextResponse.json(
+          { error: 'No Available models for provided engine' },
+          { status: 404 },
+        )
+      }
       const models: ModelList =
         engine === 'llamacpp'
-          ? data
+          ? data[engine]
               .filter(
                 (model) => model.task_type === workloadType.replace('-', '_'),
               )
@@ -176,7 +184,7 @@ export async function GET(req: NextRequest) {
                     : model.downloaded.length > 0,
                 }))
               })
-          : data
+          : data[engine]
               .filter(
                 (model) => model.task_type === workloadType.replace('-', '_'),
               )
@@ -229,7 +237,7 @@ export async function POST(req: NextRequest) {
       if (errorResponse) return errorResponse
 
       try {
-        const { port } = await startTempMultiserve(
+        const { port } = await startDummyMultiserve(
           engine as Workload['engine'],
           workloadType,
         )
@@ -256,7 +264,7 @@ export async function POST(req: NextRequest) {
     if (errorResponse) return errorResponse
 
     try {
-      const { port } = await startTempMultiserve(
+      const { port } = await startDummyMultiserve(
         engine as Workload['engine'],
         workloadType,
       )
@@ -264,9 +272,9 @@ export async function POST(req: NextRequest) {
       // Upload to multiserve
       const chunkIndex = formData.get('chunk_index')
       const endpoint = chunkIndex
-        ? '/v1/model/upload/chunk'
-        : '/v1/model/upload'
-      const uploadUrl = `http://localhost:${port}${endpoint}`
+        ? `/v1/api/model/upload/chunk?backend=${engine}`
+        : `/v1/api/model/upload?backend=${engine}`
+      const uploadUrl = new URL(`http://localhost:${port}${endpoint}`)
 
       const uploadFormData = new FormData()
       for (const [key, value] of formData.entries()) {
@@ -321,12 +329,12 @@ export async function DELETE(req: NextRequest) {
     if (errorResponse) return errorResponse
 
     try {
-      const { port } = await startTempMultiserve(
+      const { port } = await startDummyMultiserve(
         engine as Workload['engine'],
         workloadType,
       )
 
-      const deleteUrl = `http://localhost:${port}/v1/model/delete`
+      const deleteUrl = `http://localhost:${port}/v1/api/model/delete?backend=${engine}`
 
       const res = await fetch(deleteUrl, {
         method: 'DELETE',

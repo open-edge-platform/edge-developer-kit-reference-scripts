@@ -10,3 +10,4 @@ wheels/
 .venv
 data/
 output/
+outputs/
