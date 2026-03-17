@@ -162,7 +162,6 @@ export default function EmbeddingPage() {
         docsElement={<DocumentationTemplate data={data} />}
         logsElement={
           <Logs
-            id={workload?.id || 0}
             type={workload?.type || EMBEDDING_TYPE}
             engine={workload?.engine ?? 'custom'}
           />

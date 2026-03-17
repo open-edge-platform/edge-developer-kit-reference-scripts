@@ -136,7 +136,6 @@ export default function SpeechToTextPage() {
         docsElement={<DocumentationTemplate data={data} />}
         logsElement={
           <Logs
-            id={workload?.id || 0}
             type={workload?.type || SPEECH_TO_TEXT_TYPE}
             engine={workload?.engine ?? 'custom'}
           />

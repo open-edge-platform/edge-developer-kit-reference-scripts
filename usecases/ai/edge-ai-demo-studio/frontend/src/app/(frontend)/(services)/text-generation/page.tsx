@@ -143,7 +143,6 @@ export default function TextGenerationPage() {
         docsElement={<DocumentationTemplate data={data} />}
         logsElement={
           <Logs
-            id={workload?.id || 0}
             type={workload?.type || TEXT_GENERATION_TYPE}
             engine={workload?.engine ?? TEXT_GENERATION_WORKLOAD.engine}
           />

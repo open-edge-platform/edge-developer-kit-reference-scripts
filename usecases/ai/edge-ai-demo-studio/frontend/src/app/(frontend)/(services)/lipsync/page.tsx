@@ -127,7 +127,6 @@ export default function LipsyncPage() {
         docsElement={<DocumentationTemplate data={data} />}
         logsElement={
           <Logs
-            id={workload?.id || 0}
             type={workload?.type || LIPSYNC_TYPE}
             engine={workload?.engine ?? 'custom'}
           />
