@@ -9,28 +9,19 @@ import {
 } from 'payload'
 import { spawnProcess, stopProcess } from '@/lib/process-handler'
 import path from 'path'
-import {
-  EMBEDDING_SERVING_PORT,
-  TEXT_TO_SPEECH_PORT,
-  UV_PATH,
-  WORKER_DIR,
-} from '@/lib/constants'
+import { TEXT_TO_SPEECH_PORT, UV_PATH, WORKER_DIR } from '@/lib/constants'
 import { startMultiserveModel } from '@/lib/multiserve-handler'
 import { logger } from '@/utils/logger'
-import {
-  getMultiserveLogsDir,
-  getMultiserveModelsDir,
-} from '@/lib/engine/multiserve'
-import { getModelNameWithQuant } from '@/utils/common'
 import fs from 'fs'
+
+const getProcessName = (doc: Workload) => {
+  return `${doc.type}_${doc.engine}`
+}
 
 export const deleteWorkloadAfterDelete: CollectionAfterDeleteHook<
   Workload
 > = async ({ doc }) => {
-  const processName =
-    doc.engine === 'custom'
-      ? `${doc.name}_${doc.id}`
-      : `${doc.name}_${doc.engine}_${doc.id}`
+  const processName = getProcessName(doc)
 
   try {
     await stopProcess(processName)
@@ -63,43 +54,6 @@ const typeHandlers: Record<string, (doc: Workload) => string[] | undefined> = {
     '--source',
     doc.models.default.source || 'huggingface',
   ],
-  embeddings: (doc) => {
-    const params: string[] = [
-      '--embedding-model-id',
-      getModelNameWithQuant(doc.models.default, doc.engine),
-      '--embedding-device',
-      doc.models.default.device,
-      '--embedding-source',
-      doc.models.default.source || 'huggingface',
-    ]
-    if (doc.models.default.params) {
-      params.push('--embedding-params', doc.models.default.params)
-    }
-    params.push(
-      '--reranker-model-id',
-      getModelNameWithQuant(doc.models.rerank, doc.engine),
-      '--reranker-device',
-      doc.models.rerank.device,
-      '--reranker-source',
-      doc.models.rerank.source || 'huggingface',
-    )
-    if (doc.models.rerank.params) {
-      params.push('--reranker-params', doc.models.rerank.params)
-    }
-    params.push(
-      '--port',
-      String(doc.port),
-      '--serving-port',
-      String(EMBEDDING_SERVING_PORT),
-      '--backend',
-      doc.engine,
-      '--multiserve-models-dir',
-      getMultiserveModelsDir(doc.type),
-      '--multiserve-logs-dir',
-      getMultiserveLogsDir(doc.type, doc.id),
-    )
-    return params
-  },
   'text-to-speech': (doc) => [
     '--port',
     String(doc.port),
@@ -150,10 +104,7 @@ const pathHandler = (doc: Workload) => {
 
 const startProcess = async (workload: Workload) => {
   // Assume all workers uses uv
-  const processName =
-    workload.engine === 'custom'
-      ? `${workload.name}_${workload.id}`
-      : `${workload.name}_${workload.engine}_${workload.id}`
+  const processName = getProcessName(workload)
   const handler = typeHandlers[workload.type]
   const params = (handler ? handler(workload) : []) ?? []
 
@@ -193,10 +144,7 @@ export const afterWorkloadChange: CollectionAfterChangeHook<Workload> = async ({
   operation,
   req: { payload },
 }) => {
-  const processName =
-    doc.engine === 'custom'
-      ? `${doc.name}_${doc.id}`
-      : `${doc.name}_${doc.engine}_${doc.id}`
+  const processName = getProcessName(doc)
 
   if (operation === 'update') {
     // if no status change, do nothing
@@ -225,8 +173,7 @@ export const afterWorkloadChange: CollectionAfterChangeHook<Workload> = async ({
       case 'prepare':
         //Exception for embdding, always use custom start even with multiserve
         try {
-          if (doc.type === 'embeddings' || doc.engine === 'custom')
-            await startProcess(doc)
+          if (doc.engine === 'custom') await startProcess(doc)
           else startMultiserveModel(doc, payload)
         } catch {
           await updateWorkloadStatus(payload, doc.id, 'error')
@@ -239,8 +186,7 @@ export const afterWorkloadChange: CollectionAfterChangeHook<Workload> = async ({
     if (doc.status !== 'inactive') {
       //Exception for embdding, always use custom start even with multiserve
       try {
-        if (doc.type === 'embeddings' || doc.engine === 'custom')
-          await startProcess(doc)
+        if (doc.engine === 'custom') await startProcess(doc)
         else startMultiserveModel(doc, payload)
       } catch {
         await updateWorkloadStatus(payload, doc.id, 'error')

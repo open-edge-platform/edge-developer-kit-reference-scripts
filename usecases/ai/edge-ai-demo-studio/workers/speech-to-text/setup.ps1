@@ -11,7 +11,7 @@ $WORKER_THIRDPARTY_DIR = Join-Path $WORKER_DIR "thirdparty"
 $HOME_DIR = Split-Path $WORKER_DIR -Parent
 $HOME_THIRDPARTY_DIR = Join-Path $HOME_DIR "thirdparty"
 
-$VenvDir = Join-Path $SCRIPT_DIR ".venv"
+$VENV_DIR = Join-Path $SCRIPT_DIR ".venv"
 $UVPath = Join-Path $WORKER_THIRDPARTY_DIR "uv\uv.exe"
 $script:uvCommand = $UVPath
 $FFmpegPath = Join-Path $HOME_THIRDPARTY_DIR "ffmpeg\bin\ffmpeg.exe"
@@ -45,14 +45,12 @@ function Test-UvInstalled {
     }
 }
 
-# Function to install Python dependencies
-function Install-PythonDependencies {
+function New-VirtualEnvironment {
     if (Test-Path $VENV_DIR) {
         Write-Host "Virtual environment already exists at $VENV_DIR." -ForegroundColor Green
     } else {
         Write-Host "Creating Python 3.11 virtual environment with uv ..." -ForegroundColor Yellow
-
-        & $script:uvCommand venv --seed --python 3.11
+        & $script:uvCommand venv --python 3.11 --seed
         if ($LASTEXITCODE -ne 0) {
             throw "Failed to create virtual environment. uv venv exited with code $LASTEXITCODE"
         }
@@ -70,9 +68,9 @@ function Install-PythonDependencies {
 # Main execution
 try {
     Write-Host "Starting Speech-to-Text Setup..." -ForegroundColor Green
-    Test-UvInstalled
     Test-FFmpegAvailable
-    Install-PythonDependencies
+    Test-UvInstalled
+    New-VirtualEnvironment
     Write-Host "Setup completed successfully!" -ForegroundColor Green
     exit 0
 } catch {
