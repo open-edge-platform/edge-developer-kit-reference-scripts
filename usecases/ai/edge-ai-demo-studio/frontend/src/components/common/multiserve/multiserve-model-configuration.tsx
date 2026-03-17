@@ -18,11 +18,11 @@ import {
   useVulkanAccelerator,
 } from '@/hooks/use-accelerators'
 import { DeviceSelector } from '@/components/common/device-selector'
-import { OVMSModel } from './model-selector/ovms-model'
 import { LlamaCppModel } from './model-selector/llamacpp-model'
 import { ModelSourceSelector } from '@/components/common/model-source-selector'
 import { ModelSelector } from '../model-selector'
 import { Accelerator } from '@/types/accelerator'
+import { OpenVINOModel } from './model-selector/openvino-model'
 
 interface WorkloadModelConfigurationProps {
   title?: string
@@ -155,8 +155,8 @@ const CustomModelElement = ({
   onExtraParamsChange,
 }: CustomModelElementProps) => (
   <>
-    {engine === 'ovms' ? (
-      <OVMSModel
+    {engine === 'openvino' ? (
+      <OpenVINOModel
         modelName={selectedModel}
         onModelNameChange={onModelSelect}
         onSourceChange={onSourceChange}
@@ -217,10 +217,10 @@ export function WorkloadModelConfiguration({
   extraParams,
   onExtraParamsChange,
 }: WorkloadModelConfigurationProps) {
-  const { data: ovmsDevices } = useOpenVINOAccelerator()
+  const { data: openVINODevices } = useOpenVINOAccelerator()
   const { data: vulkanDevices } = useVulkanAccelerator()
 
-  const devices = engine === 'llamacpp' ? vulkanDevices : ovmsDevices
+  const devices = engine === 'llamacpp' ? vulkanDevices : openVINODevices
   const modelExists = customModels.some((m) => m.id === selectedModel)
 
   // Logic to determine initial tab selection logic helpers
