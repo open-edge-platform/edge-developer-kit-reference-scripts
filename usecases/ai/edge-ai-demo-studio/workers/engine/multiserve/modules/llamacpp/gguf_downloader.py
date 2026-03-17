@@ -185,6 +185,98 @@ class GGUFDownloader:
 
         return files_to_download
 
+    def _list_verified_models(self) -> Dict[str, str]:
+        verified_models = []
+
+        for repo_id_with_tag, detail in self.verified_models.items():
+            verified_models.append(
+                (repo_id_with_tag, detail["task"], detail["quant"], detail["source"])
+            )
+
+        return verified_models
+
+    def _list_downloaded_models(self) -> List[Tuple[str, str, List[str]]]:
+        consolidated_models: DefaultDict[Tuple[str, str], List[str]] = defaultdict(list)
+
+        base_dir = Path(self.models_base_dir)
+        if not base_dir.exists():
+            return []
+
+        cached_manifests = self.list_all_cached_manifests()
+        FALLBACK_TAGS = {"latest", "unknown", "main", "master", ""}
+
+        for manifest in cached_manifests:
+            repo_id = manifest.get("hf_repo")
+            gguf_file = manifest.get("gguf_file")
+            mmproj_file = manifest.get("mmproj_file")
+
+            if not repo_id or not gguf_file or "mmproj" in gguf_file:
+                continue
+
+            tag_value = manifest.get("tag", "").strip()
+            quant_value = tag_value
+
+            if tag_value.lower() in FALLBACK_TAGS or not tag_value:
+                quant_value = self.extract_quant_from_filename(gguf_file)
+
+            if quant_value == "N/A":
+                quant_value = "Unknown Quant"
+
+            try:
+                org, model_name = repo_id.split("/", 1)
+                possible_tasks = [
+                    "text_generation",
+                    "embeddings",
+                    "rerank",
+                    "multimodal",
+                ]
+
+                for task in possible_tasks:
+                    repo_dir = base_dir / task / org / model_name
+
+                    if repo_dir.is_dir():
+                        expected_files = [gguf_file]
+                        if mmproj_file:
+                            expected_files.append(mmproj_file)
+
+                        all_files_present = True
+                        for filename in expected_files:
+                            if not (repo_dir / filename).exists():
+                                all_files_present = False
+                                break
+
+                        if all_files_present:
+                            key = (repo_id, task)
+                            if quant_value not in consolidated_models[key]:
+                                consolidated_models[key].append(quant_value)
+                            break
+
+            except Exception as e:
+                print(
+                    f"Warning: Skipping cached model {repo_id} due to file checking error: {e}",
+                    file=sys.stderr,
+                )
+                continue
+
+        possible_tasks = ["text_generation", "embeddings", "rerank", "multimodal"]
+        for task in possible_tasks:
+            task_dir = base_dir / task
+            for gguf_file in task_dir.rglob("*.gguf"):
+                if "mmproj" in str(gguf_file):
+                    continue
+
+                quant_value = self.extract_quant_from_filename(str(gguf_file))
+                repo_id = f"{gguf_file.parent.parent.name}/{gguf_file.parent.name}"
+                key = (repo_id, task)
+                if quant_value not in consolidated_models[key]:
+                    consolidated_models[key].append(quant_value)
+
+        final_list = []
+        for (repo_id, task), quants in consolidated_models.items():
+            final_list.append((repo_id, task, sorted(quants)))
+
+        return final_list
+
     @staticmethod
     def read_verified_models(file_path: str) -> Dict[str, str]:
         try:
@@ -548,94 +640,33 @@ class GGUFDownloader:
 
         return best_match if best_match else "N/A"
 
-    def list_verified_models(self) -> Dict[str, str]:
-        verified_models = []
+    def list_models(self):
+        verified_models = self._list_verified_models()
+        downloaded_models = self._list_downloaded_models()
 
-        for repo_id_with_tag, detail in self.verified_models.items():
-            verified_models.append(
-                (repo_id_with_tag, detail["task"], detail["quant"], detail["source"])
+        verified_map = {}
+        for repo_id, task_type, quantizations, sources in verified_models:
+            key = (repo_id, task_type)
+            verified_map[key] = (quantizations, sources)
+
+        downloaded_map = {}
+        for repo_id, task_type, quantizations in downloaded_models:
+            key = (repo_id, task_type)
+            downloaded_map[key] = quantizations
+
+        all_keys = set(verified_map.keys()) | set(downloaded_map.keys())
+
+        detailed_list = []
+        for repo_id, task_type in all_keys:
+            verified_quant, sources = verified_map.get((repo_id, task_type), ([], []))
+            detailed_list.append(
+                {
+                    "repo_id": repo_id,
+                    "task_type": task_type,
+                    "downloaded": downloaded_map.get((repo_id, task_type), []),
+                    "verified": verified_quant,
+                    "sources": sources,
+                }
             )
 
-        return verified_models
-
-    def list_downloaded_models(self) -> List[Tuple[str, str, List[str]]]:
-        consolidated_models: DefaultDict[Tuple[str, str], List[str]] = defaultdict(list)
-
-        base_dir = Path(self.models_base_dir)
-        if not base_dir.exists():
-            return []
-
-        cached_manifests = self.list_all_cached_manifests()
-        FALLBACK_TAGS = {"latest", "unknown", "main", "master", ""}
-
-        for manifest in cached_manifests:
-            repo_id = manifest.get("hf_repo")
-            gguf_file = manifest.get("gguf_file")
-            mmproj_file = manifest.get("mmproj_file")
-
-            if not repo_id or not gguf_file or "mmproj" in gguf_file:
-                continue
-
-            tag_value = manifest.get("tag", "").strip()
-            quant_value = tag_value
-
-            if tag_value.lower() in FALLBACK_TAGS or not tag_value:
-                quant_value = self.extract_quant_from_filename(gguf_file)
-
-            if quant_value == "N/A":
-                quant_value = "Unknown Quant"
-
-            try:
-                org, model_name = repo_id.split("/", 1)
-                possible_tasks = [
-                    "text_generation",
-                    "embeddings",
-                    "rerank",
-                    "multimodal",
-                ]
-
-                for task in possible_tasks:
-                    repo_dir = base_dir / task / org / model_name
-
-                    if repo_dir.is_dir():
-                        expected_files = [gguf_file]
-                        if mmproj_file:
-                            expected_files.append(mmproj_file)
-
-                        all_files_present = True
-                        for filename in expected_files:
-                            if not (repo_dir / filename).exists():
-                                all_files_present = False
-                                break
-
-                        if all_files_present:
-                            key = (repo_id, task)
-                            if quant_value not in consolidated_models[key]:
-                                consolidated_models[key].append(quant_value)
-                            break
-
-            except Exception as e:
-                print(
-                    f"Warning: Skipping cached model {repo_id} due to file checking error: {e}",
-                    file=sys.stderr,
-                )
-                continue
-
-        possible_tasks = ["text_generation", "embeddings", "rerank", "multimodal"]
-        for task in possible_tasks:
-            task_dir = base_dir / task
-            for gguf_file in task_dir.rglob("*.gguf"):
-                if "mmproj" in str(gguf_file):
-                    continue
-
-                quant_value = self.extract_quant_from_filename(str(gguf_file))
-                repo_id = f"{gguf_file.parent.parent.name}/{gguf_file.parent.name}"
-                key = (repo_id, task)
-                if quant_value not in consolidated_models[key]:
-                    consolidated_models[key].append(quant_value)
-
-        final_list = []
-        for (repo_id, task), quants in consolidated_models.items():
-            final_list.append((repo_id, task, sorted(quants)))
-
-        return final_list
+        return detailed_list

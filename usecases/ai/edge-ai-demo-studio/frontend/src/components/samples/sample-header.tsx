@@ -15,6 +15,7 @@ interface SampleHeaderProps {
   onOpenSettings: () => void
   disabled: boolean
   badge?: ReactNode
+  children?: ReactNode
 }
 
 export function SampleHeader({
@@ -24,6 +25,7 @@ export function SampleHeader({
   onOpenSettings,
   disabled,
   badge,
+  children,
 }: SampleHeaderProps) {
   return (
     <div className="flex items-center justify-between border-b border-slate-200 bg-white/80 px-6 py-4 backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/80">
@@ -47,6 +49,7 @@ export function SampleHeader({
             <Home className="h-4 w-4" />
           </Button>
         </Link>
+        {children}
         <Button
           variant="outline"
           size="sm"

@@ -13,7 +13,7 @@ import { useUploadLocalModel } from '@/hooks/use-workload'
 import { toast } from 'sonner'
 import {
   validateLlamaCPPModelName,
-  validateOVMSModelName,
+  validateOpenVINOModelName,
 } from '@/utils/model-validation'
 import { Workload } from '@/payload-types'
 import { ModelTypes } from '@/types/workload'
@@ -68,8 +68,8 @@ export function LocalModel({
       return validateLlamaCPPModelName(name)
     }
 
-    if (selectedEngine === 'ovms') {
-      return validateOVMSModelName(name)
+    if (selectedEngine === 'openvino') {
+      return validateOpenVINOModelName(name)
     }
 
     return true

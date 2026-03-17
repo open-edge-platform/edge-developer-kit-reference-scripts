@@ -124,7 +124,6 @@ export default function ImageGenerationPage() {
         docsElement={<DocumentationTemplate data={data} />}
         logsElement={
           <Logs
-            id={workload?.id || 0}
             type={workload?.type || IMAGE_GENERATION_TYPE}
             engine={workload?.engine ?? 'custom'}
           />
