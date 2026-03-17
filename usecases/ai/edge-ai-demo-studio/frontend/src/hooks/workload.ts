@@ -2,64 +2,101 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Workload } from '@/payload-types'
-import { CollectionAfterChangeHook, CollectionAfterDeleteHook } from 'payload'
-import { spawnProcess, stopProcess } from '@/lib/processHandler'
+import {
+  BasePayload,
+  CollectionAfterChangeHook,
+  CollectionAfterDeleteHook,
+} from 'payload'
+import { spawnProcess, stopProcess } from '@/lib/process-handler'
 import path from 'path'
-import { TEXT_TO_SPEECH_PORT, WORKER_DIR } from '@/lib/constants'
+import { TEXT_TO_SPEECH_PORT, UV_PATH, WORKER_DIR } from '@/lib/constants'
+import { startMultiserveModel } from '@/lib/multiserve-handler'
+import { logger } from '@/utils/logger'
+import fs from 'fs'
+
+const getProcessName = (doc: Workload) => {
+  return `${doc.type}_${doc.engine}`
+}
 
 export const deleteWorkloadAfterDelete: CollectionAfterDeleteHook<
   Workload
 > = async ({ doc }) => {
-  const processName = `${doc.name}_${doc.id}`
+  const processName = getProcessName(doc)
 
   try {
     await stopProcess(processName)
   } catch (error) {
-    console.error(`Error stopping process for workload ${processName}:`, error)
+    logger.error(`Error stopping process for workload ${processName}:`, error)
   }
   return doc
 }
 
-const typeHandlers: Record<
-  string,
-  (doc: Workload) => { params: string } | undefined
-> = {
-  'wake-word-detection': (doc) => ({
-    params: `--model ${doc.model} --vad-threshold ${doc.metadata?.vadThreshold} --port ${doc.port}`,
-  }),
-  'speech-to-text': (doc) => ({
-    params: `--stt-model-id ${doc.model} --stt-device ${doc.device} --denoise-model-id ${doc.metadata?.denoise_model} --denoise-device ${doc.metadata?.denoise_device} --port ${doc.port}`,
-  }),
-  embedding: (doc) => {
-    return {
-      params: `--embedding-model-id ${doc.model} --embedding-device ${doc.device} --reranker-model-id ${doc.metadata?.rerankerModel} --reranker-device ${doc.metadata?.rerankerDevice} --port ${doc.port}`,
-    }
-  },
-  'text-generation': (doc) => ({
-    params: `--model-id ${doc.model} --port ${doc.port} --device ${doc.device}`,
-  }),
-  'text-to-speech': (doc) => ({
-    params: `--port ${doc.port} --device ${doc.device}`,
-  }),
+const typeHandlers: Record<string, (doc: Workload) => string[] | undefined> = {
+  'wake-word-detection': (doc) => [
+    '--model',
+    doc.models.default.name,
+    '--vad-threshold',
+    String(doc.metadata?.vadThreshold),
+    '--port',
+    String(doc.port),
+  ],
+  'speech-to-text': (doc) => [
+    '--stt-model-id',
+    doc.models.default.name,
+    '--stt-device',
+    doc.models.default.device,
+    '--denoise-model-id',
+    doc.models.denoise.name,
+    '--denoise-device',
+    doc.models.denoise.device,
+    '--port',
+    String(doc.port),
+    '--source',
+    doc.models.default.source || 'huggingface',
+  ],
+  'text-to-speech': (doc) => [
+    '--port',
+    String(doc.port),
+    '--device',
+    doc.models.default.device,
+    '--source',
+    doc.models.default.source || 'huggingface',
+  ],
   lipsync: (doc) => {
-    let params = `--port ${doc.port} --tts_port ${TEXT_TO_SPEECH_PORT} --device ${doc.device}`
+    const params = [
+      '--port',
+      String(doc.port),
+      '--tts_port',
+      String(TEXT_TO_SPEECH_PORT),
+      '--device',
+      doc.models.default.device,
+      '--source',
+      doc.models.default.source || 'huggingface',
+    ]
 
     // Add turn server IP if provided in metadata
     if (doc.metadata?.turnServerIp) {
-      params += ` --turn_server ${doc.metadata.turnServerIp}`
+      params.push('--turn_server', doc.metadata.turnServerIp)
     }
 
-    return { params }
+    return params
   },
-  'image-generation': (doc) => ({
-    params: `--model-id ${doc.model} --port ${doc.port} --device ${doc.device}`,
-  }),
+  'image-generation': (doc) => [
+    '--model-id',
+    doc.models.default.name,
+    '--port',
+    String(doc.port),
+    '--device',
+    doc.models.default.device,
+    '--source',
+    doc.models.default.source || 'huggingface',
+  ],
 }
 
 const pathHandler = (doc: Workload) => {
   switch (doc.type) {
     case 'text-to-speech':
-      return path.join(WORKER_DIR, doc.type, doc.model)
+      return path.join(WORKER_DIR, doc.type, doc.models.default.name)
     default:
       return path.join(WORKER_DIR, doc.type)
   }
@@ -67,33 +104,54 @@ const pathHandler = (doc: Workload) => {
 
 const startProcess = async (workload: Workload) => {
   // Assume all workers uses uv
-  const processName = `${workload.name}_${workload.id}`
-
+  const processName = getProcessName(workload)
   const handler = typeHandlers[workload.type]
-  const handlerResult = handler ? handler(workload) : undefined
-  const params = handlerResult ? handlerResult.params : ''
+  const params = (handler ? handler(workload) : []) ?? []
 
-  await spawnProcess(
-    processName,
-    'uv',
-    ['run', 'main.py', ...params.split(' ')],
-    {
-      cwd: pathHandler(workload),
-    },
+  logger.info(
+    `Starting process for workload ${processName} with params: ${params.join(' ')}`,
   )
+  const processPath = pathHandler(workload)
+  if (!processPath || !fs.existsSync(processPath)) {
+    throw new Error(`No process path found for workload type ${workload.type}`)
+  }
+
+  const env = { ...process.env }
+  env['UV_EXE'] = UV_PATH
+
+  await spawnProcess(processName, 'uv', ['run', 'main.py', ...(params || [])], {
+    cwd: processPath,
+  })
+}
+
+const updateWorkloadStatus = async (
+  payload: BasePayload,
+  id: number,
+  status: Workload['status'],
+) => {
+  await payload.update({
+    collection: 'workloads',
+    id: id,
+    data: {
+      status: status,
+    },
+  })
 }
 
 export const afterWorkloadChange: CollectionAfterChangeHook<Workload> = async ({
   doc,
+  previousDoc,
   operation,
   req: { payload },
 }) => {
-  const processName = `${doc.name}_${doc.id}`
+  const processName = getProcessName(doc)
+
   if (operation === 'update') {
+    // if no status change, do nothing
+    if (previousDoc.status === doc.status) return
     const status = doc.status
     switch (status) {
       case 'inactive':
-        // Stop the process if it is active
         await stopProcess(processName)
         return
       case 'restart':
@@ -113,12 +171,26 @@ export const afterWorkloadChange: CollectionAfterChangeHook<Workload> = async ({
         })
         return
       case 'prepare':
-        await startProcess(doc)
+        //Exception for embdding, always use custom start even with multiserve
+        try {
+          if (doc.engine === 'custom') await startProcess(doc)
+          else startMultiserveModel(doc, payload)
+        } catch {
+          await updateWorkloadStatus(payload, doc.id, 'error')
+        }
         return
       default:
         return
     }
   } else {
-    if (doc.status !== 'inactive') await startProcess(doc)
+    if (doc.status !== 'inactive') {
+      //Exception for embdding, always use custom start even with multiserve
+      try {
+        if (doc.engine === 'custom') await startProcess(doc)
+        else startMultiserveModel(doc, payload)
+      } catch {
+        await updateWorkloadStatus(payload, doc.id, 'error')
+      }
+    }
   }
 }

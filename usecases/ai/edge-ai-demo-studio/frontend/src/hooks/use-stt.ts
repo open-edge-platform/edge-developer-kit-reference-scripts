@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { FetchAPI } from '@/lib/api'
+import { SPEECH_TO_TEXT_URL } from '@/lib/workloads/speech-to-text'
+import { logger } from '@/utils/logger'
 import { useMutation } from '@tanstack/react-query'
 import { useState } from 'react'
 
@@ -21,7 +23,7 @@ export interface TranslationOptions {
   language?: string
 }
 
-const STT_API = new FetchAPI(`/api/stt`, 'v1')
+const STT_API = new FetchAPI(SPEECH_TO_TEXT_URL, 'v1')
 
 export const useSpeechToText = () => {
   return useMutation({
@@ -99,7 +101,7 @@ export const useAudioRecording = () => {
       setMediaRecorder(recorder)
       setIsRecording(true)
     } catch (error) {
-      console.error('Error starting recording:', error)
+      logger.error('Error starting recording:', error)
       throw new Error('Could not access microphone. Please check permissions.')
     }
   }

@@ -16,30 +16,9 @@ import {
   hermesToolMiddleware,
   morphXmlToolMiddleware,
 } from '@ai-sdk-tool/parser'
-import { OVMSModelConfig } from '@/types/chat_model'
-
-async function getAvailableModel(): Promise<string> {
-  const response = await fetch(
-    `http://localhost:${TEXT_GENERATION_PORT}/v1/config`,
-  )
-
-  if (!response.ok) {
-    throw new Error('Failed to fetch model configuration')
-  }
-
-  const models: OVMSModelConfig = await response.json()
-
-  const availableModel = Object.keys(models).find((modelName) => {
-    const model = models[modelName]
-    return model.model_version_status[0]?.state === 'AVAILABLE'
-  })
-
-  if (!availableModel) {
-    throw new Error('No available model found')
-  }
-
-  return availableModel
-}
+import { logger } from '@/utils/logger'
+import { getWorkloadModel } from '@/utils/workload/service'
+import { TEXT_GENERATION_TYPE } from '@/lib/workloads/text-generation'
 
 export async function POST(req: Request) {
   const {
@@ -61,15 +40,15 @@ export async function POST(req: Request) {
   // Get available model
   let model: string
   try {
-    model = await getAvailableModel()
+    model = await getWorkloadModel(TEXT_GENERATION_TYPE)
   } catch (error) {
-    console.error('Model service error:', error)
+    logger.error('Model service error:', error)
     return new Response('No available model', { status: 500 })
   }
 
   // Create OpenAI compatible provider
   const provider = createOpenAICompatible({
-    baseURL: `http://localhost:${TEXT_GENERATION_PORT}/v3`,
+    baseURL: `http://localhost:${TEXT_GENERATION_PORT}/v1`,
     name: 'ovms',
   })
 
@@ -103,7 +82,7 @@ export async function POST(req: Request) {
       mcpTools = await mcpManager.getAllTools()
     }
   } catch (error) {
-    console.error('Error loading MCP tools:', error)
+    logger.error('Error loading MCP tools:', error)
     // Continue without tools rather than failing completely
   }
 
@@ -145,7 +124,7 @@ export async function POST(req: Request) {
       })
     }
   } catch (error) {
-    console.error('Error during text generation:', error)
+    logger.error('Error during text generation:', error)
     return Response.json(
       { error: 'An error occurred during text generation.' },
       { status: 500 },

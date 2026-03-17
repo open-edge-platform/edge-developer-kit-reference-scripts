@@ -6,9 +6,15 @@ set -euo pipefail
 
 # Variables
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PARENT_THIRDPARTY_DIR="$(dirname "$SCRIPT_DIR")/thirdparty"
-UV_PATH="$PARENT_THIRDPARTY_DIR/uv/uv"
-FFMPEG_PATH="$PARENT_THIRDPARTY_DIR/ffmpeg/bin/ffmpeg"
+WORKER_DIR="$(dirname "$SCRIPT_DIR")"
+WORKER_THIRDPARTY_DIR="$WORKER_DIR/thirdparty"
+HOME_DIR="$(dirname "$WORKER_DIR")"
+HOME_THIRDPARTY_DIR="$HOME_DIR/thirdparty"
+
+VENV_DIR="$SCRIPT_DIR/.venv"
+UV_PATH="$WORKER_THIRDPARTY_DIR/uv/uv"
+UV_CMD="$UV_PATH"
+FFMPEG_PATH="$HOME_THIRDPARTY_DIR/ffmpeg/bin/ffmpeg"
 
 # Function to check if FFmpeg is available
 check_ffmpeg_available() {
@@ -18,7 +24,7 @@ check_ffmpeg_available() {
         echo "Found FFmpeg in thirdparty folder."
         return 0
     else
-        echo "FFmpeg not found in thirdparty folder."
+        echo "FFmpeg not found in thirdparty folder: $FFMPEG_PATH"
         echo "Please ensure the workers setup has been run first to install FFmpeg."
         exit 1
     fi
@@ -28,11 +34,11 @@ check_ffmpeg_available() {
 check_uv_installed() {
     echo "Checking if uv is installed..."
     
-    if [ -x "$UV_PATH" ]; then
+    if [ -x "$UV_CMD" ]; then
         echo "Found uv in parent thirdparty folder."
         return 0
     else
-        echo "uv not found in expected location: $UV_PATH"
+        echo "uv not found in expected location: $UV_CMD"
         echo "Please ensure the workers setup has been run first."
         exit 1
     fi
@@ -41,22 +47,17 @@ check_uv_installed() {
 # Function to install Python dependencies
 install_python_dependencies() {
     echo "Checking for virtual environment..."
-    if [ -d ".venv" ]; then
+    if [ -d "$VENV_DIR" ]; then
         echo "Virtual environment already exists."
     else
-        echo "Creating virtual environment with uv..."
-        "$UV_PATH" venv
+        echo "Creating Python 3.11 virtual environment with uv ..."
+        "$UV_CMD" venv --seed --python 3.11 "$VENV_DIR"
     fi
     
     echo "Installing Python dependencies with uv (this may take a few minutes)..."
     echo "Note: If this seems stuck, it might be resolving PyTorch dependencies..."
     
-    if [ -f "requirements.txt" ]; then
-        echo "Installing requirements.txt dependencies..."
-        "$UV_PATH" pip install -r requirements.txt --refresh --pre --verbose --index-strategy unsafe-best-match
-    else
-        echo "requirements.txt not found, skipping requirements installation."
-    fi
+    "$UV_PATH" sync
     echo "Python dependencies installed successfully."
 }
 

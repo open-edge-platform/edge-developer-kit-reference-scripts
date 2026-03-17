@@ -1,13 +1,14 @@
 // Copyright (C) 2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-import CodeBlock, { CodeSnippet } from '@/components/common/codeblock'
+import CodeBlock from '@/components/common/codeblock'
+import { CodeSnippet } from '@/types/code'
 
 export default function ImageGenerationDocumentation({
-  port,
+  url,
   model,
 }: {
-  port: number
+  url: string
   model: string
 }) {
   const generateImagesSnippet: CodeSnippet[] = [
@@ -20,7 +21,7 @@ from io import BytesIO
 from PIL import Image
 
 client = OpenAI(
-    base_url="http://localhost:${port}/v3",
+    base_url="${url}/v3",
     api_key="unused"
 )
 
@@ -46,7 +47,7 @@ image.save('generate_output.png')`,
 import fs from "fs";
 
 const openai = new OpenAI({
-  baseURL: 'http://localhost:${port}/v3',
+  baseURL: '${url}/v3',
   apiKey: 'unused',
 });
 
@@ -74,7 +75,7 @@ from io import BytesIO
 from PIL import Image
 
 client = OpenAI(
-    base_url="http://localhost:${port}/v3",
+    base_url="${url}/v3",
     api_key="unused"
 )
 
@@ -102,7 +103,7 @@ image.save('edit_output.png')`,
 import fs from "fs";
 
 const openai = new OpenAI({
-  baseURL: 'http://localhost:${port}/v3',
+  baseURL: '${url}/v3',
   apiKey: 'unused',
 });
 
@@ -132,13 +133,13 @@ await fs.promises.writeFile("edit_output.png", buffer);`,
       languageCode: 'py',
       code: `import requests
 
-response = requests.get(f"http://localhost:${port}/v1/config")
+response = requests.get(f"${url}/v1/config")
 print(response.json())`,
     },
     {
       language: 'Javascript',
       languageCode: 'js',
-      code: `const url = 'http://localhost:${port}/v1/config'
+      code: `const url = '${url}/v1/config'
 fetch(url)
   .then(res => res.json())
   .then(data => console.log(data))`,
