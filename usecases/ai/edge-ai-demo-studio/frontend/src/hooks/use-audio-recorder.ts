@@ -1,6 +1,7 @@
 // Copyright (C) 2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
+import { logger } from '@/utils/logger'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 export default function useAudioRecorder() {
@@ -202,7 +203,7 @@ export default function useAudioRecorder() {
       }
     } catch (error) {
       setIsDeviceFound(false)
-      console.error('Error recording audio:', error)
+      logger.error('Error recording audio:', error)
     }
 
     setVisualizerData(Array(VISUALIZER_BUFFER_LENGTH).fill(0))
@@ -220,7 +221,7 @@ export default function useAudioRecorder() {
         initiateMediaRecoder(stream)
       } catch (error) {
         setIsDeviceFound(false)
-        console.error('Error accessing microphone:', error)
+        logger.error('Error accessing microphone:', error)
       }
     }
 

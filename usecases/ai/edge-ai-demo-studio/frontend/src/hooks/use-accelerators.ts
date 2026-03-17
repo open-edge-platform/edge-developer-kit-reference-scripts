@@ -4,11 +4,11 @@
 import { Accelerator } from '@/types/accelerator'
 import { useQuery } from '@tanstack/react-query'
 
-export const useAccelerator = () => {
+export const useOpenVINOAccelerator = () => {
   return useQuery({
-    queryKey: ['accelerators'],
+    queryKey: ['accelerators', 'openvino'],
     queryFn: async () => {
-      const response = await fetch('/api/accelerators')
+      const response = await fetch('/api/accelerators/openvino')
       if (!response.ok) {
         throw new Error('Failed to fetch accelerators')
       }
@@ -23,6 +23,20 @@ export const usePytorchAccelerator = () => {
     queryKey: ['accelerators', 'pytorch'],
     queryFn: async () => {
       const response = await fetch('/api/accelerators/pytorch')
+      if (!response.ok) {
+        throw new Error('Failed to fetch accelerators')
+      }
+      const data = await response.json()
+      return (data.devices ? data.devices : []) as Accelerator[]
+    },
+  })
+}
+
+export const useVulkanAccelerator = () => {
+  return useQuery({
+    queryKey: ['accelerators', 'vulkan'],
+    queryFn: async () => {
+      const response = await fetch('/api/accelerators/vulkan')
       if (!response.ok) {
         throw new Error('Failed to fetch accelerators')
       }

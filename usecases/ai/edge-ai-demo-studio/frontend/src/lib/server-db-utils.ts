@@ -5,6 +5,7 @@
 import { getPayload } from 'payload'
 import configPromise from '@payload-config'
 import { McpServer } from '@/payload-types'
+import { logger } from '@/utils/logger'
 
 let payload: Awaited<ReturnType<typeof getPayload>> | null = null
 
@@ -30,7 +31,7 @@ export async function getActiveMcpServers(): Promise<McpServer[]> {
 
     return docs || []
   } catch (error) {
-    console.error('Failed to fetch MCP servers from database:', error)
+    logger.error('Failed to fetch MCP servers from database:', error)
     return []
   }
 }
@@ -46,7 +47,7 @@ export async function getMcpServerById(id: string): Promise<McpServer | null> {
 
     return doc || null
   } catch (error) {
-    console.error(`Failed to fetch MCP server ${id}:`, error)
+    logger.error(`Failed to fetch MCP server ${id}:`, error)
     return null
   }
 }

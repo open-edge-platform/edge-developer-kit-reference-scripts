@@ -20,14 +20,9 @@ import remarkGfm from 'remark-gfm'
 interface ChatPanelProps {
   disabled: boolean
   knowledgeBaseId?: number
-  selectedModel?: string
 }
 
-export function ChatPanel({
-  disabled,
-  knowledgeBaseId,
-  selectedModel,
-}: ChatPanelProps) {
+export function ChatPanel({ disabled, knowledgeBaseId }: ChatPanelProps) {
   const chatEndRef = useRef<HTMLDivElement>(null)
   const [currentMessage, setCurrentMessage] = useState('')
 
@@ -51,7 +46,6 @@ export function ChatPanel({
       {
         body: {
           knowledgeBaseId,
-          model: selectedModel,
         },
       },
     )
@@ -77,7 +71,7 @@ export function ChatPanel({
   }
 
   return (
-    <div className="flex h-full flex-col bg-gradient-to-b from-slate-50 to-white dark:from-slate-900 dark:to-slate-800">
+    <div className="flex h-full flex-col border bg-white bg-gradient-to-b from-slate-50 to-white shadow-lg dark:from-slate-900 dark:to-slate-800">
       {/* Chat Messages */}
       <div className="flex-1 overflow-hidden">
         <ScrollArea className="h-full px-6 py-4">

@@ -1,7 +1,8 @@
 // Copyright (C) 2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-import CodeBlock, { CodeSnippet } from '@/components/common/codeblock'
+import CodeBlock from '@/components/common/codeblock'
+import { CodeSnippet } from '@/types/code'
 
 export default function WakeWordDetectionDocumentation({
   port,

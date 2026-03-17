@@ -15,6 +15,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Slider } from '@/components/ui/slider'
+import { logger } from '@/utils/logger'
 import { Loader2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
@@ -72,7 +73,7 @@ export default function AddSubscriberDialog({
       })
       onOpenChange(false)
     } catch (error) {
-      console.error('Error saving subscriber:', error)
+      logger.error('Error saving subscriber:', error)
     } finally {
       setIsLoading(false)
     }

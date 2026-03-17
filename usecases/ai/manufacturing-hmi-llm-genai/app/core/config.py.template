@@ -1,0 +1,64 @@
+# Copyright (C) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0 
+import os
+
+import numpy as np
+
+APP = {
+    'app_directory': os.path.abspath(os.path.join(os.path.dirname(__file__), "..")),
+    'image_directory': "static/images"
+}
+
+DATABASE = {
+    'uri': 'mongodb://localhost:27017/',
+    'database': 'manufacturing_hmi_llm_genai_db',
+    'collection': 'inspection_results',
+}
+
+ROBOTIC_ARM = {
+    'type': 'm5',
+    'speed': 100,
+    'movement_mode': 1,
+    'sleep_time': 2,
+    'baud_rate': 115200,
+    'port': '/dev/ttyACM0',
+    'angles': {
+        'point_0': [-82.61, -37.44, 82.88, 94.21, -88.85, 89.03],
+        'point_1': [-33.92, 28.74, 116.45, 32.95, -30.58, 45.87],
+        'point_2': [-53.7, -0.79, 83.75, 81.29, -57.12, 63.98],
+        'point_3': [-92.54, 38.32, 79.27, 10.63, -87.8, 97.29],
+        'point_4': [42.97, -0.35, 83.75, 97.91, 35.33, 51.94],
+        'point_5': [26.71, 16.96, 84.63, 78.75, 23.99, 47.28],
+        'point_6': [33.04, 40.86, 84.72, 60.82, 35.33, 45.52],
+        'point_7': [76.81, 26.8, 84.63, 84.46, 75.84, 59.32],
+        'point_8': [76.81, 41.66, 84.63, 77.51, 77.43, 65.03]
+    },
+    'combined_angles': {
+        'home': [[-82.61, -37.44, 82.88, 94.21, -88.85, 89.03]],
+        'infer_1': [[-33.92, 28.74, 116.45, 32.95, -30.58, 45.87]],
+        'infer_2': [[-53.7, -0.79, 83.75, 81.29, -57.12, 63.98], [-92.54, 38.32, 79.27, 10.63, -87.8, 97.29]],
+        'pass': [[-92.54, 38.32, 79.27, 10.63, -87.8, 97.29], [-53.7, -0.79, 83.75, 81.29, -57.12, 63.98], [42.97, -0.35, 83.75, 97.91, 35.33, 51.94], [26.71, 16.96, 84.63, 78.75, 23.99, 47.28], [33.04, 40.86, 84.72, 60.82, 35.33, 45.52]],
+        'fail': [[-92.54, 38.32, 79.27, 10.63, -87.8, 97.29], [-53.7, -0.79, 83.75, 81.29, -57.12, 63.98], [42.97, -0.35, 83.75, 97.91, 35.33, 51.94], [76.81, 26.8, 84.63, 84.46, 75.84, 59.32], [76.81, 41.66, 84.63, 77.51, 77.43, 65.03]],
+    },
+    'ip_address': "0.0.0.0",
+    'ip_port': 8080,
+}
+
+CONVEYOR_BELT = {
+    'isEnabled': False,
+    'port': '/dev/ttyACM1',
+    'baud_rate': 115200,
+    'steps_to_camera': -2400,
+    'steps_from_camera': 2400,
+}
+
+DEFECT_DETECTOR = {
+    'model_path': os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "detection_model")),
+    'device': 'CPU'
+}
+
+CAMERA_FEED = {
+    'camera_id': 0,
+    'empty_frame': np.zeros((480, 260, 3), 'uint8'),
+    'focus': 25,
+}

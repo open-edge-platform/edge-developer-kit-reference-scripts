@@ -7,6 +7,14 @@ import { PaginatedDocs } from 'payload'
 import { stringify } from 'qs-esm'
 import type { Where } from 'payload'
 import isEqual from 'fast-deep-equal'
+import {
+  CreateWorkload,
+  ModelList,
+  ModelTypes,
+  UpdateWorkload,
+} from '@/types/workload'
+import { logger } from '@/utils/logger'
+import { useEffect, useRef, useState } from 'react'
 
 const TIMEOUT_TIMER = 500
 
@@ -19,6 +27,22 @@ export const useGetWorkloads = () => {
         throw new Error('Network response was not ok')
       }
       return (await response.json()) as PaginatedDocs<Workload>
+    },
+  })
+}
+
+export const useGetWorkloadModels = (
+  type: Workload['type'] | 'rerank',
+  engine: Workload['engine'],
+) => {
+  return useQuery({
+    queryKey: ['workload', 'models', type, engine],
+    queryFn: async () => {
+      const response = await fetch(`/api/models?type=${type}&engine=${engine}`)
+      if (!response.ok) {
+        throw new Error('Network response was not ok')
+      }
+      return (await response.json()) as ModelList
     },
   })
 }
@@ -77,7 +101,7 @@ export const useGetWorkloadByType = (type: string) => {
       }
       // Return the first workload found
       if (data.docs.length > 1) {
-        console.warn(
+        logger.warn(
           `Multiple workloads found for type ${type}. Returning the first one.`,
         )
       }
@@ -92,17 +116,6 @@ export const useGetWorkloadByType = (type: string) => {
     },
     refetchInterval: 10000,
   })
-}
-
-export interface CreateWorkload {
-  name: string
-  type: Workload['type']
-  model?: string
-  device?: string
-  port?: number
-  healthUrl?: string
-  status?: Workload['status']
-  metadata?: Workload['metadata']
 }
 
 export const useCreateWorkload = () => {
@@ -136,14 +149,6 @@ export const useCreateWorkload = () => {
   })
 }
 
-export interface UpdateWorkload {
-  name?: string
-  model?: string
-  device?: string
-  metadata?: Workload['metadata']
-  status?: Workload['status']
-}
-
 export const useUpdateWorkload = () => {
   const queryClient = useQueryClient()
   return useMutation({
@@ -173,4 +178,134 @@ export const useUpdateWorkload = () => {
       )
     },
   })
+}
+
+export const useDeleteWorkloadModel = () => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      engine,
+      type,
+      name,
+    }: {
+      engine: Workload['engine']
+      type: Workload['type']
+      name: string
+    }) => {
+      const response = await fetch('/api/models', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ engine, workloadType: type, name }),
+      })
+      if (!response.ok) {
+        throw new Error('Network response was not ok')
+      }
+      return response.json()
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ['workload', 'models', variables.type, variables.engine],
+      })
+    },
+  })
+}
+
+export const useUploadLocalModel = () => {
+  const [uploadProgress, setUploadProgress] = useState(0)
+  const abortControllerRef = useRef<AbortController | null>(null)
+  const CHUNK_SIZE = 10 * 1024 * 1024 // 10MB
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+      }
+    }
+  }, [])
+
+  const cancel = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+    setUploadProgress(0)
+  }
+
+  const mutation = useMutation({
+    mutationFn: async ({
+      file,
+      engine,
+      type,
+      task,
+      modelName,
+    }: {
+      file: File
+      engine: Workload['engine']
+      type: ModelTypes
+      task: string
+      modelName: string
+    }) => {
+      setUploadProgress(0)
+      abortControllerRef.current = new AbortController()
+      const signal = abortControllerRef.current.signal
+
+      // 1. Upload chunks via API route
+      const totalChunks = Math.ceil(file.size / CHUNK_SIZE)
+      let uploadedFilePath = ''
+
+      for (let i = 0; i < totalChunks; i++) {
+        if (signal.aborted) {
+          throw new DOMException('Upload cancelled', 'AbortError')
+        }
+
+        const start = i * CHUNK_SIZE
+        const end = Math.min(start + CHUNK_SIZE, file.size)
+        const chunk = file.slice(start, end)
+
+        const formData = new FormData()
+        // API Route requires these for routing
+        formData.append('engine', engine)
+        formData.append('workload_type', type)
+
+        // Backend requires these
+        formData.append('repo_id', modelName)
+        formData.append('task', task.replace('-', '_'))
+        formData.append('chunk_index', i.toString())
+        formData.append('total_chunks', totalChunks.toString())
+        formData.append('file', chunk, file.name)
+        formData.append('force_override', 'true')
+
+        const response = await fetch('/api/models', {
+          method: 'POST',
+          body: formData,
+          signal,
+        })
+
+        if (!response.ok) {
+          const error = await response.json()
+          throw new Error(error.error || error.detail || 'Upload failed')
+        }
+
+        const data = await response.json()
+
+        if (data.tempPath) {
+          uploadedFilePath = data.tempPath
+        }
+
+        // Update progress
+        setUploadProgress(Math.round(((i + 1) / totalChunks) * 100))
+      }
+
+      return uploadedFilePath
+    },
+    onError: (error) => {
+      if (error.name !== 'AbortError') {
+        setUploadProgress(0)
+      }
+    },
+  })
+
+  return { ...mutation, uploadProgress, cancel }
 }

@@ -59,7 +59,7 @@ class OpenAICompatibleTTSModule(TTSModule):
             getLogger().info(e)
 
     def speak(self, message, metadata={}):
-        print(message, metadata)
+        getLogger("TTS").info(f"{message} {metadata}")
         if len(message) > 0:
             self.message_queue.put((message, metadata))
 

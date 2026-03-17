@@ -1,14 +1,34 @@
 // Copyright (C) 2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-import { EMBEDDING_WORKLOAD } from '@/lib/workloads/embedding'
-import { IMAGE_GENERATION_WORKLOAD } from '@/lib/workloads/image-generation'
-import { LIPSYNC_WORKLOAD } from '@/lib/workloads/lipsync'
-import { SPEECH_TO_TEXT_WORKLOAD } from '@/lib/workloads/speech-to-text'
-import { TEXT_GENERATION_WORKLOAD } from '@/lib/workloads/text-generation'
-import { TEXT_TO_SPEECH_WORKLOAD } from '@/lib/workloads/text-to-speech'
-import { WAKE_WORD_DETECTION_WORKLOAD } from '@/lib/workloads/wake-word-detection'
+import { EMBEDDING_TYPE, EMBEDDING_WORKLOAD } from '@/lib/workloads/embedding'
+import {
+  IMAGE_GENERATION_TYPE,
+  IMAGE_GENERATION_WORKLOAD,
+} from '@/lib/workloads/image-generation'
+import { LIPSYNC_TYPE, LIPSYNC_WORKLOAD } from '@/lib/workloads/lipsync'
+import {
+  SPEECH_TO_TEXT_TYPE,
+  SPEECH_TO_TEXT_WORKLOAD,
+} from '@/lib/workloads/speech-to-text'
+import {
+  SYNTHETIC_IMAGE_GENERATION_TYPE,
+  SYNTHETIC_IMAGE_GENERATION_WORKLOAD,
+} from '@/lib/workloads/synthetic-image-generation'
+import {
+  TEXT_GENERATION_TYPE,
+  TEXT_GENERATION_WORKLOAD,
+} from '@/lib/workloads/text-generation'
+import {
+  TEXT_TO_SPEECH_TYPE,
+  TEXT_TO_SPEECH_WORKLOAD,
+} from '@/lib/workloads/text-to-speech'
+import {
+  WAKE_WORD_DETECTION_TYPE,
+  WAKE_WORD_DETECTION_WORKLOAD,
+} from '@/lib/workloads/wake-word-detection'
 import { Workload } from '@/payload-types'
+import { Model } from '@/types/workload'
 
 export const createResponse = <T>(
   status: boolean,
@@ -22,6 +42,55 @@ export const createResponse = <T>(
   })
 }
 
+export const getBaseURL = (path?: string) => {
+  if (typeof window !== 'undefined') {
+    return `${window.location.origin}${path ?? ''}`
+  }
+  return ''
+}
+
+export const getModelNameWithQuant = (
+  model: Model,
+  engine?: Workload['engine'],
+): string => {
+  if (engine === 'llamacpp') {
+    return model.quant ? `${model.name}:${model.quant}` : model.name
+  }
+
+  return model.name
+}
+
+export const constructModelData = (model: Model) => {
+  const modelData: Model = {
+    name: model.name,
+    device: model.device,
+  }
+  if (model.source) {
+    modelData.source = model.source
+  }
+  if (model.quant) {
+    modelData.quant = model.quant
+  }
+  if (model.params) {
+    modelData.params = model.params
+  }
+  return modelData
+}
+
+export const getModelNameWithPrefix = (
+  engine: Workload['engine'],
+  model: Model,
+) => {
+  switch (engine) {
+    case 'openvino':
+      return 'openvino:' + getModelNameWithQuant(model, engine)
+    case 'llamacpp':
+      return 'llamacpp:' + getModelNameWithQuant(model, engine)
+    default:
+      return model.name
+  }
+}
+
 export const statusMap = {
   prepare: { status: 'Preparing', color: 'bg-yellow-500' },
   restart: { status: 'Restarting', color: 'bg-yellow-500' },
@@ -32,20 +101,22 @@ export const statusMap = {
 
 export function getDefaultWorkload(workloadType: Workload['type']) {
   switch (workloadType) {
-    case 'text-generation':
+    case TEXT_GENERATION_TYPE:
       return TEXT_GENERATION_WORKLOAD
-    case 'text-to-speech':
+    case TEXT_TO_SPEECH_TYPE:
       return TEXT_TO_SPEECH_WORKLOAD
-    case 'lipsync':
+    case LIPSYNC_TYPE:
       return LIPSYNC_WORKLOAD
-    case 'embedding':
+    case EMBEDDING_TYPE:
       return EMBEDDING_WORKLOAD
-    case 'speech-to-text':
+    case SPEECH_TO_TEXT_TYPE:
       return SPEECH_TO_TEXT_WORKLOAD
-    case 'image-generation':
+    case IMAGE_GENERATION_TYPE:
       return IMAGE_GENERATION_WORKLOAD
-    case 'wake-word-detection':
+    case WAKE_WORD_DETECTION_TYPE:
       return WAKE_WORD_DETECTION_WORKLOAD
+    case SYNTHETIC_IMAGE_GENERATION_TYPE:
+      return SYNTHETIC_IMAGE_GENERATION_WORKLOAD
     default:
       return null
   }

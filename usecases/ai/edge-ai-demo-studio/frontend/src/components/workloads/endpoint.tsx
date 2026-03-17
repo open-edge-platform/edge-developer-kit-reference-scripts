@@ -1,6 +1,6 @@
 // Copyright (C) 2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
-
+'use client'
 import { Check, Copy } from 'lucide-react'
 import {
   Accordion,
@@ -12,39 +12,28 @@ import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
 import { useState } from 'react'
 import { toast } from 'sonner'
-
-export interface EndpointProps {
-  title: string
-  description: string
-  path: string
-  headers?: string
-  body?: string
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'
-  parameters?: Parameter[]
-  exampleResponse: string
-  queryParams?: string[]
-  formData?: string[]
-  output?: string
-}
-
-export interface Parameter {
-  name: string
-  description: string
-  required?: boolean
-}
+import { EndpointProps } from '@/types/workload'
 
 export default function Endpoint({
   apis,
-  port,
+  url,
 }: {
   apis: EndpointProps[]
-  port: number
+  url: string
 }) {
   const [copiedIndex, setCopiedIndex] = useState<
     { type: 'path' | 'curl'; index: number } | undefined
   >()
   const handleCopyApiPath = (index: number, path: string) => {
-    const fullUrl = `http://localhost:${port}${path.startsWith('/') ? path : `/${path}`}`
+    if (
+      typeof window === 'undefined' ||
+      !window.navigator ||
+      !window.navigator.clipboard
+    ) {
+      toast.error('Clipboard not supported')
+      return
+    }
+    const fullUrl = `${url}${path.startsWith('/') ? path : `/${path}`}`
     navigator.clipboard.writeText(fullUrl)
     setCopiedIndex({ type: 'path', index })
     toast.success('Path copied to clipboard')

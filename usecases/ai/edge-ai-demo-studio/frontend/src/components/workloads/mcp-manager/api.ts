@@ -1,7 +1,7 @@
 // Copyright (C) 2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-import { EndpointProps } from '../endpoint'
+import { EndpointProps } from '@/types/workload'
 
 export const mcpManagerEndpoints: EndpointProps[] = [
   {

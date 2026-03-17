@@ -21,7 +21,7 @@ Install the latest [Ubuntu* 24.04 LTS Desktop](https://releases.ubuntu.com/noble
 Docker and docker compose should be setup before running the commands below. Refer to [here](https://docs.docker.com/engine/install/) to setup docker.
 
 ### 3. Install necessary GPU drivers.
-   - Refer to [here](../../../README.md#-5-minute-quick-start) to setup GPU drivers
+   - Refer to [here](../../../README.md#5-minute-quick-start) to setup GPU drivers
 
 ## Application ports
 Please ensure that you have these ports available before running the applications.
@@ -72,7 +72,8 @@ docker compose up -d
 ![Alt Text](./assets/signup.png)
 
 ### 5. Configure OpenAI, TTS and STT API Link
-* Open the Admin Panel from the top left corner.
+* From the bottom left corner, click account button.
+* Click on `Admin panel`
 * Click on `Settings`
 * Replace OpenAI API link:
     * Click on `Connections`

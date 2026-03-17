@@ -24,7 +24,6 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { McpServerInfo } from '@/hooks/use-mcp-clients'
 import { useCompletion } from '@ai-sdk/react'
 import {
   AlertCircleIcon,
@@ -38,7 +37,6 @@ import { useCallback, useMemo, useState } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { toast } from 'sonner'
-import { TEXT_GENERATION_MODELS } from '@/lib/workloads/text-generation'
 import {
   getInactivePrerequisites,
   getPreparingPrerequisites,
@@ -49,6 +47,9 @@ import {
   useGetWorkloadsStatus,
   useUpdateWorkload,
 } from '@/hooks/use-workload'
+import { McpServerInfo } from '@/types/mcp-manager'
+import { MCP_VERIFIED_MODELS } from '@/lib/workloads/mcp'
+import { TEXT_GENERATION_TYPE } from '@/lib/workloads/text-generation'
 
 interface MCPTextGenerationDemoProps {
   disabled?: boolean
@@ -77,18 +78,18 @@ export default function MCPTextGenerationDemo({
   const { data: workloads } = useGetWorkloadsStatus()
 
   const inactivePrerequisites = useMemo(
-    () => getInactivePrerequisites(['text-generation'], workloads),
+    () => getInactivePrerequisites([TEXT_GENERATION_TYPE], workloads),
     [workloads],
   )
 
   const preparingPrerequisites = useMemo(
-    () => getPreparingPrerequisites(['text-generation'], workloads),
+    () => getPreparingPrerequisites([TEXT_GENERATION_TYPE], workloads),
     [workloads],
   )
 
   const preparePrerequisite = useCallback(() => {
     startPrerequisites(
-      ['text-generation'],
+      [TEXT_GENERATION_TYPE],
       workloads,
       createWorkload,
       updateWorkload,
@@ -96,8 +97,8 @@ export default function MCPTextGenerationDemo({
   }, [createWorkload, updateWorkload, workloads])
 
   // Check if the selected model is a validated model
-  const isValidatedModel = TEXT_GENERATION_MODELS.some(
-    (model) => model.value === selectedModel,
+  const isValidatedModel = MCP_VERIFIED_MODELS.some((model) =>
+    selectedModel.includes(model),
   )
 
   const handleGenerate = async () => {

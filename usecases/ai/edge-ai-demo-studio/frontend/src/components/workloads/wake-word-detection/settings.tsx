@@ -23,7 +23,7 @@ import {
   BadgeCheck,
   CloudDownload,
 } from 'lucide-react'
-import { useEffect, useState, useRef, useMemo } from 'react'
+import { useState, useRef, useMemo } from 'react'
 import { toast } from 'sonner'
 import {
   useUploadWakeWordModel,
@@ -31,6 +31,7 @@ import {
   useListWakeWordModels,
   useGetDetectionStatus,
 } from '@/hooks/use-wake-word-detection'
+import { WakeWordSettings } from '@/types/workload'
 
 export interface Model {
   name: string
@@ -42,10 +43,9 @@ interface SettingsModalProps {
   task: string
   isOpen: boolean
   onClose: () => void
-  selectedModel: string
-  updateSettings: (model: Model[], vadThreshold: number) => Promise<unknown>
+  updateSettings: (settings: WakeWordSettings) => Promise<unknown>
   predefinedModels: Model[]
-  vadThreshold?: number
+  currentSettings: WakeWordSettings
   workloadStatus?:
     | 'error'
     | 'restart'
@@ -60,9 +60,8 @@ export function SettingsModal({
   isOpen,
   onClose,
   predefinedModels,
-  selectedModel,
   updateSettings,
-  vadThreshold: initialVadThreshold,
+  currentSettings: { model: selectedModel, vadThreshold: initialVadThreshold },
   workloadStatus,
 }: SettingsModalProps) {
   const [selectedModels, setSelectedModels] = useState<Model[]>([])
@@ -78,6 +77,7 @@ export function SettingsModal({
   const { data: detectionStatus } = useGetDetectionStatus({
     enabled: isOpen && workloadStatus === 'active',
   })
+  const device = 'CPU'
 
   // Create a set of predefined model filenames for quick lookup
   const predefinedModelFilenames = useMemo(
@@ -131,27 +131,31 @@ export function SettingsModal({
     const predefined = allAvailableModels.filter((m) => m.type === 'predefined')
     const custom = allAvailableModels.filter((m) => m.type === 'custom')
 
-    const groups = []
-    if (predefined.length > 0) {
-      groups.push({
-        heading: 'Predefined Models',
-        options: predefined.map((model) => ({
-          label: model.name,
-          value: model.value,
-          icon: model.downloaded ? BadgeCheck : CloudDownload,
-        })),
-      })
-    }
-    if (custom.length > 0) {
-      groups.push({
-        heading: 'Custom Models',
-        options: custom.map((model) => ({
-          label: model.name,
-          value: model.value,
-        })),
-      })
-    }
-    return groups
+    return [
+      ...(predefined.length > 0
+        ? [
+            {
+              heading: 'Predefined Models',
+              options: predefined.map((model) => ({
+                label: model.name,
+                value: model.value,
+                icon: model.downloaded ? BadgeCheck : CloudDownload,
+              })),
+            },
+          ]
+        : []),
+      ...(custom.length > 0
+        ? [
+            {
+              heading: 'Custom Models',
+              options: custom.map((model) => ({
+                label: model.name,
+                value: model.value,
+              })),
+            },
+          ]
+        : []),
+    ]
   }, [allAvailableModels])
 
   const handleSave = async () => {
@@ -199,7 +203,12 @@ export function SettingsModal({
           toast.success('Models reloaded successfully')
         }
 
-        await updateSettings(selectedModels, vadThreshold)
+        const model = selectedModels.map((m) => m.value).join(' ')
+
+        await updateSettings({
+          model: { name: model, device },
+          vadThreshold,
+        })
         toast.success('Settings saved successfully')
         onClose()
       }
@@ -248,10 +257,19 @@ export function SettingsModal({
     }
   }
 
-  useEffect(() => {
+  const [prevDeps, setPrevDeps] = useState({
+    available: allAvailableModels,
+    selected: selectedModel,
+  })
+
+  if (
+    allAvailableModels !== prevDeps.available ||
+    selectedModel !== prevDeps.selected
+  ) {
+    setPrevDeps({ available: allAvailableModels, selected: selectedModel })
     // Parse selected models from comma-separated string
     if (selectedModel && allAvailableModels.length > 0) {
-      const modelValues = selectedModel.split(' ')
+      const modelValues = selectedModel.name.split(' ')
       const models = modelValues
         .map((value) => allAvailableModels.find((m) => m.value === value))
         .filter((m): m is Model => m !== undefined)
@@ -259,11 +277,13 @@ export function SettingsModal({
     } else if (allAvailableModels.length > 0) {
       setSelectedModels([allAvailableModels[0]])
     }
-  }, [allAvailableModels, selectedModel])
+  }
 
-  useEffect(() => {
+  const [prevVad, setPrevVad] = useState(initialVadThreshold)
+  if (initialVadThreshold !== prevVad) {
+    setPrevVad(initialVadThreshold)
     setVadThreshold(initialVadThreshold ?? 0.2)
-  }, [initialVadThreshold])
+  }
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
