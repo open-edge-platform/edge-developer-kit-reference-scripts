@@ -21,23 +21,21 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { FileSearch, ExternalLink, Loader2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
-import { useAccelerator } from '@/hooks/use-accelerators'
-
-export interface Model {
-  name: string
-  value: string
-  type: string
-}
+import { useState } from 'react'
+import { ImageGenerationSettings, Model } from '@/types/workload'
+import { DeviceSelector } from '../../common/device-selector'
+import {
+  ModelSource,
+  ModelSourceSelector,
+} from '../../common/model-source-selector'
 
 interface SettingsModalProps {
   task: string
   isOpen: boolean
   onClose: () => void
-  selectedModel: string
-  updateSettings: (device: string, model: Model) => Promise<unknown>
+  currentSettings: ImageGenerationSettings
+  updateSettings: (settings: ImageGenerationSettings) => Promise<unknown>
   availableModels: Model[]
-  selectedDevice: string
 }
 
 export function SettingsModal({
@@ -45,85 +43,67 @@ export function SettingsModal({
   isOpen,
   onClose,
   availableModels,
-  selectedModel,
-  selectedDevice,
+  currentSettings: { model: currentModel },
   updateSettings,
 }: SettingsModalProps) {
-  const [tempModel, setTempModel] = useState(selectedModel || '')
-  const [tempDevice, setTempDevice] = useState(selectedDevice || 'CPU')
+  const [tempModelName, setTempModelName] = useState(currentModel.name || '')
+  const [tempDevice, setTempDevice] = useState(currentModel.device || 'CPU')
+  const [tempSource, setTempSource] = useState<ModelSource>(
+    (currentModel.source as ModelSource) || 'huggingface',
+  )
   const [tabValue, setTabValue] = useState('predefined')
   const [isLoading, setIsLoading] = useState(false)
-  const { data: devices } = useAccelerator()
 
   const handleDeviceSelect = (value: string) => {
     setTempDevice(value)
   }
 
   const handleSave = () => {
-    let model = {
-      name: tempModel,
-      value: tempModel,
-      type: 'custom',
+    let model: Model = {
+      name: tempModelName,
+      device: tempDevice,
+      source: tempSource,
     }
     setIsLoading(true)
-    if (tabValue !== 'custom') {
-      const selected = availableModels.find(
-        (model) => model.value === tempModel,
-      )
+    if (tabValue === 'predefined') {
+      const selected = availableModels.find((m) => m.name === tempModelName)
       if (selected) {
-        model = selected
+        model = { ...selected, device: tempDevice, source: tempSource }
       }
     }
 
-    updateSettings(tempDevice, model).then(() => {
+    updateSettings({ model }).then(() => {
       setIsLoading(false)
       onClose()
     })
   }
 
   const handleModelSelect = (value: string) => {
-    setTempModel(value)
+    setTempModelName(value)
   }
 
   const handleTabChange = (value: string) => {
     setTabValue(value)
     if (value === 'predefined') {
-      if (!tempModel) setTempModel(selectedModel)
+      if (!tempModelName) setTempModelName(currentModel.name)
     } else {
-      setTempModel('')
+      setTempModelName('')
+      setTempDevice('CPU')
     }
   }
 
-  useEffect(() => {
-    setTempModel(selectedModel || availableModels[0].name)
-  }, [availableModels, selectedModel])
+  const [prevDeps, setPrevDeps] = useState({
+    model: currentModel,
+    available: availableModels,
+  })
 
-  useEffect(() => {
-    setTempDevice(selectedDevice || 'CPU')
-  }, [selectedDevice])
-
-  const DeviceSelector = () => {
-    return (
-      <div>
-        <Label htmlFor="model-select" className="text-base font-medium">
-          Device
-        </Label>
-        <Select value={tempDevice} onValueChange={handleDeviceSelect}>
-          <SelectTrigger className="mt-2 w-full">
-            <SelectValue placeholder="Choose a device" />
-          </SelectTrigger>
-          <SelectContent>
-            {(devices ?? []).map((device) => (
-              <SelectItem key={device.id} value={device.id}>
-                <div className="flex flex-col">
-                  <span className="font-medium">{device.name}</span>
-                </div>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-    )
+  if (
+    currentModel !== prevDeps.model ||
+    availableModels !== prevDeps.available
+  ) {
+    setPrevDeps({ model: currentModel, available: availableModels })
+    setTempModelName(currentModel.name || availableModels[0].name)
+    setTempDevice(currentModel.device || 'CPU')
   }
 
   return (
@@ -148,17 +128,18 @@ export function SettingsModal({
           </TabsList>
 
           <TabsContent value="predefined" className="space-y-4">
+            <ModelSourceSelector value={tempSource} onChange={setTempSource} />
             <div>
               <Label htmlFor="model-select" className="text-base font-medium">
                 Select Model
               </Label>
-              <Select value={tempModel} onValueChange={handleModelSelect}>
+              <Select value={tempModelName} onValueChange={handleModelSelect}>
                 <SelectTrigger className="mt-2 w-full">
                   <SelectValue placeholder="Choose a model" />
                 </SelectTrigger>
                 <SelectContent>
                   {availableModels.map((model) => (
-                    <SelectItem key={model.name} value={model.value}>
+                    <SelectItem key={model.name} value={model.name}>
                       <div className="flex flex-col">
                         <span className="font-medium">{model.name}</span>
                       </div>
@@ -168,20 +149,24 @@ export function SettingsModal({
               </Select>
             </div>
 
-            <DeviceSelector />
+            <DeviceSelector value={tempDevice} onChange={handleDeviceSelect} />
           </TabsContent>
 
           <TabsContent value="custom" className="space-y-4">
             <div className="space-y-4">
+              <ModelSourceSelector
+                value={tempSource}
+                onChange={setTempSource}
+              />
               <div>
                 <Label htmlFor="custom-url" className="text-base font-medium">
                   Model Name
                 </Label>
                 <Input
                   id="custom-url"
-                  placeholder={availableModels[0]?.value}
-                  value={tempModel}
-                  onChange={(e) => setTempModel(e.target.value)}
+                  placeholder={availableModels[0]?.name}
+                  value={tempModelName}
+                  onChange={(e) => setTempModelName(e.target.value)}
                   className="mt-2"
                 />
                 <p className="mt-1 text-sm text-gray-500">
@@ -205,7 +190,7 @@ export function SettingsModal({
               </div>
             </div>
 
-            <DeviceSelector />
+            <DeviceSelector value={tempDevice} onChange={handleDeviceSelect} />
           </TabsContent>
         </Tabs>
 

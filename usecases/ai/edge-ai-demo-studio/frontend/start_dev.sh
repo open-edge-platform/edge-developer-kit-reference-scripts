@@ -9,6 +9,29 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NODE_PATH="$(cd "$SCRIPT_DIR/../thirdparty/node/bin" && pwd)"
 
 
+ensure_env_file() {
+  echo " Checking for .env.example and .env..."
+  if [ ! -f ".env.example" ]; then
+    echo "Error:.env.example not found. Please provide this file."
+    exit 1
+  fi
+  if [ ! -f ".env" ]; then
+    echo " Creating .env from .env.example..."
+    cp .env.example .env
+    echo " .env created."
+  else
+    echo " .env already exists."
+  fi
+  # Always overwrite PAYLOAD_SECRET in .env with a new value
+  PAYLOAD_SECRET=$(openssl rand -hex 32)
+  if grep -q '^PAYLOAD_SECRET=' .env; then
+    sed -i "s/^PAYLOAD_SECRET=.*/PAYLOAD_SECRET=$PAYLOAD_SECRET/" .env
+  else
+    echo "PAYLOAD_SECRET=$PAYLOAD_SECRET" >> .env
+  fi
+  echo " PAYLOAD_SECRET updated in .env."
+}
+
 setup_node_env() {
     OLD_PATH="$PATH"
     echo " Setting up Node.js environment..."

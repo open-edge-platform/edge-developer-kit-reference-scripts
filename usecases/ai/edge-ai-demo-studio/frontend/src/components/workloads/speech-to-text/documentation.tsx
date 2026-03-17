@@ -1,9 +1,10 @@
 // Copyright (C) 2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-import CodeBlock, { CodeSnippet } from '@/components/common/codeblock'
+import CodeBlock from '@/components/common/codeblock'
+import { CodeSnippet } from '@/types/code'
 
-export default function SpeechToTextDocumentation({ port }: { port: number }) {
+export default function SpeechToTextDocumentation({ url }: { url: string }) {
   const transcriptionAPISnippet: CodeSnippet[] = [
     {
       language: 'Python',
@@ -11,7 +12,7 @@ export default function SpeechToTextDocumentation({ port }: { port: number }) {
       code: `import requests
 
 # Transcribe audio to text
-url = "http://localhost:${port}/v1/audio/transcriptions"
+url = "${url}/v1/audio/transcriptions"
 files = {"file": open("audio_file.wav", "rb")}
 data = {
     "language": "en",
@@ -34,7 +35,7 @@ formData.append('file', new Blob([audioBuffer], { type: 'audio/wav' }), 'audio_f
 formData.append('language', 'en')
 formData.append('use_denoise', 'false')
 
-const response = await fetch('http://localhost:${port}/v1/audio/transcriptions', {
+const response = await fetch('${url}/v1/audio/transcriptions', {
   method: 'POST',
   body: formData,
 })
@@ -51,7 +52,7 @@ console.log('Transcription:', result.text)`,
       code: `import requests
 
 # Translate audio to English text
-url = "http://localhost:${port}/v1/audio/translations"
+url = "${url}/v1/audio/translations"
 files = {"file": open("non_english_audio.wav", "rb")}
 data = {
     "language": "fr"  # Source language (French in this example)
@@ -72,7 +73,7 @@ const formData = new FormData()
 formData.append('file', new Blob([audioBuffer], { type: 'audio/wav' }), 'non_english_audio.wav')
 formData.append('language', 'fr')  // Source language (French in this example)
 
-const response = await fetch('http://localhost:${port}/v1/audio/translations', {
+const response = await fetch('${url}/v1/audio/translations', {
   method: 'POST',
   body: formData,
 })

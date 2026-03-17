@@ -1,0 +1,15 @@
+# Copyright (C) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+# Python
+.venv
+venv
+__pycache__
+.data
+data
+
+# Config
+config.py
+
+# Temporary assets
+static
+test

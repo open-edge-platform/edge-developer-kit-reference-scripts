@@ -21,7 +21,7 @@ from utils import (
     create_cache_directory,
     denoise,
     download_model,
-    download_and_export_model,
+    export_model,
     download_omz_model,
     ensure_wav,
     load_denoise_model,
@@ -84,20 +84,21 @@ def initialize_stt_model():
     validated_stt_model_id = validate_and_sanitize_model_id(stt_model_id)
 
     try:
-        if stt_model_provider == "OpenVINO":
-            stt_model_dir = os.path.join(stt_model_cache_dir, validated_stt_model_id)
-            if not os.path.exists(stt_model_dir):
+        stt_model_dir = os.path.join(stt_model_cache_dir, validated_stt_model_id)
+        if not os.path.exists(stt_model_dir):
+
+            if not stt_model_provider == "OpenVINO":
+                export_model(
+                    model_name_or_path=validated_stt_model_id,
+                    output_dir=stt_model_dir,
+                )
+            else:
                 logger.info("OpenVINO model not found. Downloading model ...")
-                download_model(validated_stt_model_id, stt_model_dir)
-            else:
-                logger.info(f"OpenVINO model already exists at: {stt_model_dir}")
+                path = download_model(
+                    validated_stt_model_id, stt_model_dir, source=CONFIG["source"]
+                )
         else:
-            stt_model_dir = os.path.join(hf_model_cache_dir, validated_stt_model_id)
-            if not os.path.exists(stt_model_dir):
-                logger.info("Model not found. Downloading model ...")
-                download_and_export_model(validated_stt_model_id, stt_model_dir)
-            else:
-                logger.info(f"Model already exists at: {stt_model_dir}")
+            logger.info(f"Model already exists at: {stt_model_dir}")
     except Exception as e:
         print(f"Error downloading model {validated_stt_model_id}: {e}")
         raise RuntimeError(f"Failed to download model {validated_stt_model_id}")
@@ -308,6 +309,13 @@ def parse_args():
         default="CPU",
         help="Device to run the denoise model on (e.g., CPU, GPU, NPU)",
     )
+    parser.add_argument(
+        "--source",
+        type=str,
+        default="huggingface",
+        choices=["huggingface", "modelscope"],
+        help="Source to download the model from (e.g., huggingface, modelscope)",
+    )
     return parser.parse_args()
 
 
@@ -320,6 +328,7 @@ def main():
     CONFIG["stt_device"] = str(args.stt_device).upper()
     CONFIG["denoise_model_id"] = args.denoise_model_id
     CONFIG["denoise_device"] = str(args.denoise_device).upper()
+    CONFIG["source"] = args.source
 
     multiprocessing.freeze_support()
     uvicorn.run(

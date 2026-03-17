@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { getMcpManager } from '@/lib/mcp-manager'
+import { logger } from '@/utils/logger'
 
 export async function POST() {
   try {
@@ -11,7 +12,7 @@ export async function POST() {
     // Cleanup all clients
     await mcpManager.cleanup()
 
-    console.log('Successfully cleaned up all MCP clients')
+    logger.log('Successfully cleaned up all MCP clients')
 
     return Response.json({
       success: true,
@@ -19,7 +20,7 @@ export async function POST() {
       timestamp: new Date().toISOString(),
     })
   } catch (error) {
-    console.error('Error cleaning up MCP clients:', error)
+    logger.error('Error cleaning up MCP clients:', error)
     return Response.json(
       {
         success: false,

@@ -21,7 +21,7 @@ Package | Version
 openvino-dev | 2024.6.0
 opencv-python | 4.10.0.84
 ultralytics | 8.3.61
-python-multipart | 0.0.20
+python-multipart | 0.0.22
 ovmsclient | 2023.1
 grpcio | 1.69.0
 
