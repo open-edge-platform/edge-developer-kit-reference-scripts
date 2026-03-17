@@ -6,6 +6,7 @@ param(
 )
 
 $SCRIPT_DIR = $PSScriptRoot
+$VENV_DIR = Join-Path $SCRIPT_DIR ".venv"
 $ParentThirdPartyDir = Join-Path (Split-Path $SCRIPT_DIR -Parent) "thirdparty"
 $UVPath = Join-Path $ParentThirdPartyDir "uv\uv.exe"
 $OvmsPath = Join-Path $ParentThirdPartyDir "ovms\ovms.exe"
@@ -55,12 +56,11 @@ function Test-OVMSInstalled {
 
 # Function to install Python dependencies
 function Install-PythonDependencies {
-    Write-Host "Checking for virtual environment..." -ForegroundColor Yellow
-    if (Test-Path ".venv") {
-        Write-Host "Virtual environment already exists." -ForegroundColor Green
+    if (Test-Path $VENV_DIR) {
+        Write-Host "Virtual environment already exists at $VENV_DIR." -ForegroundColor Green
     } else {
-        Write-Host "Creating virtual environment with uv..." -ForegroundColor Yellow
-        & $script:uvCommand venv
+        Write-Host "Creating Python 3.11 virtual environment with uv ..." -ForegroundColor Yellow
+        & $script:uvCommand venv --seed --python 3.11
         if ($LASTEXITCODE -ne 0) {
             throw "Failed to create virtual environment. uv venv exited with code $LASTEXITCODE"
         }

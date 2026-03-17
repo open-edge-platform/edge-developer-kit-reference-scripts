@@ -33,14 +33,14 @@ export default function NotFound(): React.JSX.Element {
         <Typography color="text.secondary" variant="body1" sx={{ textAlign: 'center' }}>
           You either tried some shady route or you came here by mistake. Whichever it is, try using the navigation
         </Typography>
-        <Button
-          component={RouterLink}
-          href={paths.home}
-          startIcon={<ArrowLeftIcon fontSize="var(--icon-fontSize-md)" />}
-          variant="contained"
-        >
-          Go back to home
-        </Button>
+        <RouterLink href={paths.home} style={{ textDecoration: 'none' }}>
+          <Button
+            startIcon={<ArrowLeftIcon fontSize="var(--icon-fontSize-md)" />}
+            variant="contained"
+          >
+            Go back to home
+          </Button>
+        </RouterLink>
       </Stack>
     </Box>
   );

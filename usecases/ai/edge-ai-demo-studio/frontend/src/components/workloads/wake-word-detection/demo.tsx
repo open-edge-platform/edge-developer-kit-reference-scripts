@@ -3,7 +3,7 @@
 
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import { useGetWebhookSubscribers } from '@/hooks/use-wake-word-detection'
 import { Subscriber } from './add-subscriber-dialog'
 import DetectionControl from './detection-control'
@@ -29,14 +29,17 @@ export default function WakeWordDetectionDemo({
     return (subscribersData?.subscribers as Subscriber[]) || []
   }, [subscribersData])
 
-  useEffect(() => {
+  const [prevSubscribers, setPrevSubscribers] = useState(subscribers)
+
+  if (subscribers !== prevSubscribers) {
+    setPrevSubscribers(subscribers)
     // Check if local subscriber exists
     const localSub = subscribers.find(
       (s) =>
         s.url === `http://localhost:${FRONTEND_PORT}/api/wake-word-detected`,
     )
     setHasLocalSubscriber(!!localSub)
-  }, [subscribers])
+  }
 
   return (
     <div className="space-y-4">

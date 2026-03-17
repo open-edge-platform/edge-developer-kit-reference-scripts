@@ -16,6 +16,7 @@ import {
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
+  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
@@ -34,6 +35,7 @@ const navigationData = {
         url: workload.href,
         icon: workload.icon,
         type: workload.type,
+        description: workload.description,
       }
     }),
   ],
@@ -44,6 +46,7 @@ const navigationData = {
         url: sample.href,
         icon: sample.icon,
         type: sample.type,
+        description: sample.description,
       }
     }),
   ],
@@ -119,21 +122,21 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               {navigationData.aiServices.map((item) => {
                 const workload = workloads.find((w) => w.type === item.type)
                 return (
-                  <SidebarMenuItem key={item.title}>
+                  <SidebarMenuItem key={item.title} title={item.description}>
                     <SidebarMenuButton asChild isActive={pathname === item.url}>
                       <Link
                         href={item.url}
-                        className="flex w-full items-center justify-between"
+                        className="flex w-full items-center"
                       >
-                        <div className="flex items-center gap-2">
-                          <item.icon />
-                          <span>{item.title}</span>
-                        </div>
-                        <div
-                          className={`h-2 w-2 rounded-full ${workload?.status.color ?? 'bg-gray-300'}`}
-                        />
+                        <item.icon />
+                        <span>{item.title}</span>
                       </Link>
                     </SidebarMenuButton>
+                    <SidebarMenuBadge>
+                      <div
+                        className={`h-2 w-2 rounded-full ${workload?.status.color ?? 'bg-gray-300'}`}
+                      />
+                    </SidebarMenuBadge>
                   </SidebarMenuItem>
                 )
               })}
@@ -141,23 +144,21 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {/* AI Services */}
+        {/* AI Samples */}
         <SidebarGroup>
           <SidebarGroupLabel>Samples</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {navigationData.samples.map((item) => {
                 return (
-                  <SidebarMenuItem key={item.title}>
+                  <SidebarMenuItem key={item.title} title={item.description}>
                     <SidebarMenuButton asChild isActive={pathname === item.url}>
                       <Link
                         href={item.url}
-                        className="flex w-full items-center justify-between"
+                        className="flex w-full items-center"
                       >
-                        <div className="flex items-center gap-2">
-                          <item.icon />
-                          <span>{item.title}</span>
-                        </div>
+                        <item.icon />
+                        <span>{item.title}</span>
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>

@@ -229,6 +229,7 @@ async def lifespan(app: FastAPI):
             CONFIG["device"],
             CONFIG["precision"],
             CONFIG["ovms_port"],
+            CONFIG["source"],
         )
 
         # Log the process ID for manual management if needed
@@ -468,6 +469,13 @@ def parse_args():
         choices=["fp32", "fp16", "int8", "int4"],
         help="Model precision for quantization (default: int8)",
     )
+    parser.add_argument(
+        "--source",
+        type=str,
+        choices=["huggingface", "modelscope"],
+        default="huggingface",
+        help="Source of the model to be used",
+    )
     return parser.parse_args()
 
 
@@ -479,6 +487,7 @@ def main():
     CONFIG["device"] = str(args.device).upper().strip()
     CONFIG["precision"] = args.precision
     CONFIG["ovms_port"] = args.ovms_port
+    CONFIG["source"] = args.source
 
     multiprocessing.freeze_support()
     uvicorn.run(

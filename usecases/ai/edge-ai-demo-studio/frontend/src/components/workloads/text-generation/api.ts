@@ -1,16 +1,16 @@
 // Copyright (C) 2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-import { EndpointProps } from '../endpoint'
+import { EndpointProps } from '@/types/workload'
 
 export const textGenerationEndpoints: EndpointProps[] = [
   {
     title: 'OpenVINO Completion API',
     description:
       'Generate text based on a given prompt using OpenVINO Model Server with OpenAI-compatible API.',
-    path: '/v3/completions',
+    path: '/v1/completions',
     body: `{
-    "model": "llama3",
+    "model": "llamacpp:unsloth/Qwen3-1.7B-GGUF",
     "prompt": "This is a test",
     "stream": false,
     "max_tokens": 100,
@@ -179,9 +179,9 @@ export const textGenerationEndpoints: EndpointProps[] = [
     title: 'OpenVINO Chat Completions API',
     description:
       'Generate conversational responses using OpenVINO Model Server with OpenAI-compatible chat API. Supports both text-only and vision-language models (VLM).',
-    path: '/v3/chat/completions',
+    path: '/v1/chat/completions',
     body: `{
-    "model": "llama3",
+    "model": "llamacpp:unsloth/Qwen3-1.7B-GGUF",
     "messages": [
       {
         "role": "system",

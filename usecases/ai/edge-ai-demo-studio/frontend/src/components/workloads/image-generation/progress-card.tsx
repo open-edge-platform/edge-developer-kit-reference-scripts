@@ -3,16 +3,16 @@
 
 import { Card, CardContent } from '@/components/ui/card'
 import { Loader2, Clock } from 'lucide-react'
-import { TaskStatus } from '@/hooks/use-image-generation'
 import { Progress } from '@/components/ui/progress'
 import { useMemo } from 'react'
+import { ImageGenerationTaskStatus } from '@/types/image-generation'
 
 export function ProgressCard({
   taskType,
   taskStatus,
 }: {
   taskType: 'generation' | 'edit'
-  taskStatus: TaskStatus
+  taskStatus: ImageGenerationTaskStatus
 }) {
   const progressPct = useMemo(() => {
     if (!taskStatus) return 0
