@@ -11,4 +11,5 @@ dependencies = [
   "openwakeword>=0.6.0",
   "sounddevice>=0.5.3",
   "sqlmodel>=0.0.24",
+  "protobuf==6.33.5",
 ]

@@ -103,13 +103,14 @@ download_scripts() {
     DOWNLOAD_DIR="$(pwd)"
 
     local REQUIRED_SCRIPTS=(
-        "eef_installer.sh"
         "gpu_installer.sh"
         "npu_installer.sh"
         "openvino_installer.sh"
         "print_summary_table.sh"
     )
 
+    # Download scripts
+    apt update
     apt install -y curl
     mkdir -p "$DOWNLOAD_DIR"
     for script in "${REQUIRED_SCRIPTS[@]}"; do
@@ -167,33 +168,39 @@ verify_ubuntu_24() {
         exit 1
     fi
 
-   # Kernel policy: Accept 6.14.x (standard) OR 6.17.x (OEM) when PTL_PLATFORM=true
-   local kernel_major kernel_minor running_kernel
-   running_kernel=$(uname -r)
-   kernel_major=$(echo "$running_kernel" | cut -d'.' -f1)
-   kernel_minor=$(echo "$running_kernel" | cut -d'.' -f2)
+    # Kernel policy: Accept 6.14.x (standard) OR 6.17.x (OEM) when PTL_PLATFORM=true
+    local kernel_major kernel_minor running_kernel
+    running_kernel=$(uname -r)
+    kernel_major=$(echo "$running_kernel" | cut -d'.' -f1)
+    kernel_minor=$(echo "$running_kernel" | cut -d'.' -f2)
 
-   if { [ "$kernel_major" = "6" ] && [ "$kernel_minor" = "14" ]; }; then
-       echo "$S_VALID Ubuntu 24.04 LTS with supported HWE kernel $running_kernel detected"
-   elif { [ "${PTL_PLATFORM:-false}" = true ] && [ "$kernel_major" = "6" ] && [ "$kernel_minor" = "17" ]; }; then
-       echo "$S_VALID PTL platform OEM kernel $running_kernel accepted"
-   else
-       echo "$S_WARNING Unsupported kernel version: $running_kernel"
-       if [ "${PTL_PLATFORM:-false}" = true ]; then
-           echo "PTL platform detected; proceeding to install OEM 6.17 kernel via prerequisites phase."
-           # Do not exit; apply_ptl_platform_prereqs will manage kernel upgrade & reboot gate.
-       else
-           echo "This installer requires Ubuntu 24.04 LTS with kernel 6.14.x"
-           if command -v hwe-support-status >/dev/null 2>&1; then
-              echo "Checking HWE support status..."
-              hwe-support-status --verbose || true
-           fi
-           echo "Installing HWE kernel..."
-           apt update && apt install -y linux-generic-hwe-24.04
-           echo "$S_VALID HWE kernel installed. Please reboot and run this installer again."
-           exit 0
-       fi
-   fi
+    if { [ "$kernel_major" = "6" ] && [ "$kernel_minor" = "14" ]; }; then
+        echo "$S_VALID Ubuntu 24.04 LTS with supported HWE kernel $running_kernel detected"
+    elif { [ "${PTL_PLATFORM:-false}" = true ] && [ "$kernel_major" = "6" ] && [ "$kernel_minor" = "17" ]; }; then
+        echo "$S_VALID PTL platform OEM kernel $running_kernel accepted"
+    else
+        echo "$S_WARNING Unsupported kernel version: $running_kernel"
+        if [ "${PTL_PLATFORM:-false}" = true ]; then
+            echo "PTL platform detected; proceeding to install OEM 6.17 kernel via prerequisites phase."
+            # Do not exit; apply_ptl_platform_prereqs will manage kernel upgrade & reboot gate.
+        else 
+            echo "Currently only PTL platform validated with 6.17.x kernel version. For non-PTL platforms, 6.14.x is validated kernel version."
+            if { [ "$kernel_major" = "6" ] && [ "$kernel_minor" -lt "14" ]; }; then
+                # If kernel is older than 6.14
+                echo "System kernel version is lower than 6.14.x, proceed upgrade to 6.14.x"
+                apt update && apt install -y linux-image-6.14.0-37-generic \
+                linux-modules-6.14.0-37-generic \
+                linux-modules-extra-6.14.0-37-generic \
+                linux-headers-6.14.0-37-generic
+                echo "$S_VALID HWE kernel installed. Please reboot and run this installer again."
+                exit 0
+            else
+                # If kernel is newer than 6.14 but not PTL
+                echo "Kernel newer than 6.14.x are not validated. You may proceed at your own risk by manually install ./gpu_installer.sh and ./npu_installer.sh scripts."
+                exit 0
+            fi
+        fi
+    fi
 }
 
 # Apply PTL platform prerequisites before standard GPU driver installation
@@ -215,7 +222,7 @@ apply_ptl_platform_prereqs() {
     if ! grep -R "kisak-mesa" /etc/apt/sources.list /etc/apt/sources.list.d 2>/dev/null | grep -q kisak; then
         echo "Adding Kisak Mesa PPA..."
         apt-get install -y software-properties-common
-        apt-add-repository -y ppa:kisak/kisak-mesa || { echo "$S_ERROR Failed to add Kisak Mesa PPA"; exit 1; }
+        add-apt-repository -y ppa:kisak/kisak-mesa || { echo "$S_ERROR Failed to add Kisak Mesa PPA"; exit 1; }
     else
         echo "$S_VALID Kisak Mesa PPA already configured"
     fi
@@ -560,40 +567,6 @@ install_openvino(){
       echo "========================================================================"
 }
 
-install_eef(){
-      echo ""
-      echo "========================================================================"
-      echo "# Installing Intel® Edge Device Enablement Framework (EEF)..."
-      echo "========================================================================"
-      
-      if [ -f "$SCRIPT_DIR/eef_installer.sh" ]; then
-         echo "Found EEF installer at: $SCRIPT_DIR/eef_installer.sh"
-         echo "Starting EEF installation process..."
-         
-         if bash "$SCRIPT_DIR/eef_installer.sh"; then
-            echo ""
-            echo "$S_VALID EEF installed successfully"
-         else
-            local exit_code=$?
-            echo ""
-            echo "$S_ERROR EEF installation failed"
-            echo "Exit code: $exit_code"
-            echo "Please check the installation logs for details"
-            echo "Log file location: $SCRIPT_DIR/output.log"
-            return 1
-         fi
-      else
-         echo "$S_ERROR EEF installer not found at $SCRIPT_DIR/eef_installer.sh"
-         echo "Expected location: $SCRIPT_DIR/eef_installer.sh"
-         echo "Current directory: $(pwd)"
-         echo "Available files in $SCRIPT_DIR:"
-         ls -la "$SCRIPT_DIR"/*.sh 2>/dev/null || echo "No .sh files found"
-         return 1
-      fi
-      
-      echo "========================================================================"
-}
-
 summary(){
       echo "Running Installation Summary"
       # Execute the script instead of sourcing it to avoid context issues
@@ -630,7 +603,7 @@ main() {
     detect_platform
     echo ""
 
-    # 2. Verify Ubuntu version & kernel (allows 6.17 if PTL)
+    # 2. Verify Ubuntu version
     verify_ubuntu_24
     echo ""
 
@@ -643,30 +616,38 @@ main() {
         echo "# PTL platform prerequisites detected (kernel upgrade path) ..."
         apply_ptl_platform_prereqs
         # Function may exit early; if it doesn't, continue with flow
-        echo "# Platform Installation Flow..."
-        echo "$S_VALID Platform detected: $CPU_MODEL"
+        echo ""
+    fi
     
-            echo ""
-            echo "========================================================================"
-            echo "# PTL PLATFORM INSTALLATION"
-            echo "========================================================================"
-            echo "Platform: Core Ultra CPU"
-            echo "Components: GPU Drivers + NPU Drivers + OpenVINO"
-            echo "NPU Support: Available and will be installed"
-            echo ""
-            
-            # Install GPU drivers (will check for GPU presence). Any failure will exit.
-            install_gpu_drivers
-            
-            # Install NPU drivers (Core Ultra only)
-            install_npu_drivers || echo "$S_WARNING NPU driver installation had issues"
-            
-            # Install OpenVINO with error handling
-            if ! install_openvino; then
-                echo "$S_ERROR Core Ultra platform setup incomplete due to OpenVINO installation failure"
-                echo "You may retry OpenVINO installation manually: bash $SCRIPT_DIR/openvino_installer.sh"
-            fi
+    # 5. Platform Installation Flow
+    echo "# Platform Installation Flow..."
+    echo "$S_VALID Platform detected: $CPU_MODEL"
+    
+    # Determine platform family and execute appropriate flow
+    if is_coreultra; then
+        echo ""
+        echo "========================================================================"
+        echo "# CORE ULTRA PLATFORM INSTALLATION"
+        echo "========================================================================"
+        echo "Platform: Core Ultra CPU"
+        echo "Components: GPU Drivers + NPU Drivers + OpenVINO"
+        echo "NPU Support: Available and will be installed"
+        echo ""
+        
+        # Install GPU drivers (will check for GPU presence). Any failure will exit.
+        install_gpu_drivers
+        
+        # Install NPU drivers (Core Ultra only)
+        install_npu_drivers || echo "$S_WARNING NPU driver installation had issues"
+        
+        # Install OpenVINO with error handling
+        if ! install_openvino; then
+            echo "$S_ERROR Core Ultra platform setup incomplete due to OpenVINO installation failure"
+            echo "You may retry OpenVINO installation manually: bash $SCRIPT_DIR/openvino_installer.sh"
+        fi
+        
     else
+        # Any platform that is not PTL
         echo ""
         echo "========================================================================"
         echo "# STANDARD INTEL PLATFORM INSTALLATION"
@@ -675,44 +656,14 @@ main() {
         echo "Components: GPU Drivers (if GPU present) + OpenVINO"
         echo "NPU Support: Not available (Core Ultra only)"
         echo ""
-
-        # Check if install_pkgs_status file exists. If not exist, proceed to install EEF.
-        # If the file exists, check its content if everything installed successfully.
-        # If EEF install successfully, proceed add user to groups and run OpenVINO validation.
-        if [ -f "$SCRIPT_DIR/install_pkgs_status" ]; then
-           if grep -q '=0' "$SCRIPT_DIR/install_pkgs_status"; then
-               echo "EEF installation failed. Check log file $SCRIPT_DIR/output.log for more details or submit Github issue."
-               exit 1
-           else
-               echo "Successfully installed EEF packages."
-               echo "Add render, video, and docker groups to current user."
-               local groups=("video" "render" "docker")
-               local users=("$USER")
-                
-               # Add native user if running via sudo
-               if [ -n "${SUDO_USER:-}" ]; then
-                   users+=("$SUDO_USER")
-               fi
-               
-               for user in "${users[@]}"; do
-                   for group in "${groups[@]}"; do
-                       if ! id -nG "$user" | grep -q -w "$group"; then
-                           echo "Adding user $user to group $group"
-                           usermod -aG "$group" "$user"
-                       else
-                           echo "User $user already in group $group"
-                       fi
-                   done
-               done
-               # Install OpenVINO with error handling
-                if ! install_openvino; then
-                    echo "$S_ERROR Platform setup incomplete due to OpenVINO installation failure"
-                    echo "You may retry OpenVINO installation manually: bash $SCRIPT_DIR/openvino_installer.sh"
-                fi
-           fi
-        else
-            # Else install EEF      
-            install_eef
+        
+        # Install GPU drivers (will check for GPU presence). Any failure will exit.
+        install_gpu_drivers
+        
+        # Install OpenVINO with error handling
+        if ! install_openvino; then
+            echo "$S_ERROR Platform setup incomplete due to OpenVINO installation failure"
+            echo "You may retry OpenVINO installation manually: bash $SCRIPT_DIR/openvino_installer.sh"
         fi
     fi
     

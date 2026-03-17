@@ -1,9 +1,10 @@
 // Copyright (C) 2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-import CodeBlock, { CodeSnippet } from '@/components/common/codeblock'
+import CodeBlock from '@/components/common/codeblock'
+import { CodeSnippet } from '@/types/code'
 
-export default function TextToSpeechDocumentation({ port }: { port: number }) {
+export default function TextToSpeechDocumentation({ url }: { url: string }) {
   const generateOpenAISnippet: CodeSnippet[] = [
     {
       language: 'Python',
@@ -11,7 +12,7 @@ export default function TextToSpeechDocumentation({ port }: { port: number }) {
       code: `from pathlib import Path
 from openai import OpenAI
 
-client = OpenAI(base_url="http://localhost:${port}/v1", api_key="not-needed")
+client = OpenAI(base_url="${url}/v1", api_key="not-needed")
 speech_file_path = Path(__file__).parent / "speech.mp3"
 
 with client.audio.speech.with_streaming_response.create(
@@ -30,7 +31,7 @@ import path from "path";
 import OpenAI from "openai";
 
 const openai = new OpenAI({
-  baseURL: 'http://localhost:${port}/v1',
+  baseURL: '${url}/v1',
   apiKey: 'not-needed',
 });
 const speechFile = path.resolve("./speech.mp3");
@@ -55,7 +56,7 @@ await fs.promises.writeFile(speechFile, buffer);
 from openai import AsyncOpenAI
 from openai.helpers import LocalAudioPlayer
 
-openai = AsyncOpenAI(base_url="http://localhost:${port}/v1", api_key="not-needed")
+openai = AsyncOpenAI(base_url="${url}/v1", api_key="not-needed")
 
 async def main() -> None:
     async with openai.audio.speech.with_streaming_response.create(
@@ -79,7 +80,7 @@ import { spawn } from "child_process";
 import path from "path";
 
 const openai = new OpenAI({
-  baseURL: 'http://localhost:${port}/v1',
+  baseURL: '${url}/v1',
   apiKey: 'not-needed',
 });
 
@@ -109,14 +110,14 @@ player.on('exit', () => {
       languageCode: 'py',
       code: `import requests
 
-url = f"http://localhost:${port}/v1/audio/voices"
+url = f"${url}/v1/audio/voices"
 response = requests.get(url)
 print(response.json())`,
     },
     {
       language: 'Javascript',
       languageCode: 'js',
-      code: `const url = 'http://localhost:${port}/v1/audio/voices'
+      code: `const url = '${url}/v1/audio/voices'
 fetch(url)
   .then(res => res.json())
   .then(data => console.log(data))`,
@@ -131,7 +132,7 @@ fetch(url)
 from openai import OpenAI
 import requests
 
-base_url = "http://localhost:${port}/v1"
+base_url = "${url}/v1"
 client = OpenAI(base_url=base_url, api_key="not-needed")
 speech_file_path = Path(__file__).parent / "speech.mp3"
 
@@ -157,7 +158,7 @@ import path from 'path'
 import OpenAI from 'openai'
 
 const openai = new OpenAI({
-  baseURL: 'http://localhost:${port}/v1',
+  baseURL: '${url}/v1',
   apiKey: 'not-needed',
 })
 const speechFile = path.resolve('./speech.mp3')

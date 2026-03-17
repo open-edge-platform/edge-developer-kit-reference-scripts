@@ -30,6 +30,7 @@ import {
 } from '@/hooks/use-wake-word-detection'
 import AddSubscriberDialog, { Subscriber } from './add-subscriber-dialog'
 import { FRONTEND_PORT } from '@/lib/constants'
+import { logger } from '@/utils/logger'
 
 interface WebhookSubscribersProps {
   disabled?: boolean
@@ -64,7 +65,7 @@ export default function WebhookSubscribers({
       toast.success('Webhook subscriber added successfully')
       onRefreshSubscribers()
     } catch (error) {
-      console.error('Error adding subscriber:', error)
+      logger.error('Error adding subscriber:', error)
       toast.error('Failed to add webhook subscriber')
       throw error
     }
@@ -83,7 +84,7 @@ export default function WebhookSubscribers({
       setEditingSubscriber(undefined)
       onRefreshSubscribers()
     } catch (error) {
-      console.error('Error updating subscriber:', error)
+      logger.error('Error updating subscriber:', error)
       toast.error('Failed to update webhook subscriber')
       throw error
     }
@@ -95,7 +96,7 @@ export default function WebhookSubscribers({
       toast.success('Webhook subscriber deleted successfully')
       onRefreshSubscribers()
     } catch (error) {
-      console.error('Error deleting subscriber:', error)
+      logger.error('Error deleting subscriber:', error)
       toast.error('Failed to delete webhook subscriber')
     }
   }
@@ -111,7 +112,7 @@ export default function WebhookSubscribers({
       onRefreshSubscribers()
       onAddLocalSubscriber()
     } catch (error) {
-      console.error('Error adding local subscriber:', error)
+      logger.error('Error adding local subscriber:', error)
       toast.error('Failed to add local webhook subscriber')
     }
   }
@@ -138,7 +139,7 @@ export default function WebhookSubscribers({
         )
       }
     } catch (error) {
-      console.error('Error testing webhooks:', error)
+      logger.error('Error testing webhooks:', error)
       toast.error('Failed to send test webhooks')
     }
   }

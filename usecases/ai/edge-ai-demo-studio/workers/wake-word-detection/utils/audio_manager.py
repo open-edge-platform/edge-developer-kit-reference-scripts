@@ -11,6 +11,7 @@ from typing import Optional
 
 import numpy as np
 import sounddevice as sd
+from scipy import signal
 
 from utils.config import AudioConfig
 
@@ -24,14 +25,23 @@ class AudioManager:
         self.config = audio_config
         self.audio_queue: asyncio.Queue = asyncio.Queue()
         self.audio_stream: Optional[sd.InputStream] = None
+        self.resample_ratio: float = 1.0
 
     def audio_callback(self, indata, frames, time_info, status):
         """Callback function for audio stream."""
         if status:
             logger.warning(f"Audio status: {status}")
 
+        # Extract mono audio
+        audio_float = indata[:, 0]
+
+        # Resample if needed
+        if self.resample_ratio != 1.0:
+            target_samples = int(len(audio_float) * self.resample_ratio)
+            audio_float = signal.resample(audio_float, target_samples)
+
         # Convert float32 to int16 for openWakeWord
-        audio_array = (indata[:, 0] * 32767).astype(np.int16)
+        audio_array = (audio_float * 32767).astype(np.int16)
 
         # Put in queue for processing
         try:
@@ -52,18 +62,37 @@ class AudioManager:
         try:
             logger.info(f"Opening microphone stream with device {device_id}...")
 
-            # Open microphone stream with sounddevice
+            # Get device info to determine native sample rate
+            device_to_use = device_id if device_id != -1 else None
+            device_info = sd.query_devices(device_to_use, kind="input")
+            native_sample_rate = int(
+                device_info.get("default_samplerate", self.config.SAMPLE_RATE)
+            )
+
+            # Calculate resampling ratio
+            self.resample_ratio = self.config.SAMPLE_RATE / native_sample_rate
+
+            if self.resample_ratio != 1.0:
+                logger.info(
+                    f"Will resample from {native_sample_rate}Hz to {self.config.SAMPLE_RATE}Hz (ratio: {self.resample_ratio:.3f})"
+                )
+
+            # Check if the specified device is sysdefault and convert to None for sounddevice
+            if device_info.get("name", "").lower() == "sysdefault":
+                device_to_use = None
+
+            # Open microphone stream with sounddevice using native sample rate
             self.audio_stream = sd.InputStream(
-                samplerate=self.config.SAMPLE_RATE,
+                samplerate=native_sample_rate,
                 channels=self.config.CHANNELS,
                 dtype="float32",
                 blocksize=self.config.CHUNK_SIZE,
                 callback=self.audio_callback,
-                device=device_id if device_id != -1 else None,
+                device=device_to_use,
             )
             self.audio_stream.start()
             logger.info(
-                f"Microphone stream opened with device {device_id}, listening for wake word..."
+                f"Microphone stream opened with device {device_id} at {native_sample_rate}Hz, listening for wake word..."
             )
 
         except Exception as e:
@@ -211,59 +240,73 @@ class AudioManager:
             available_devices = []
 
             # Keywords to exclude virtual/system devices
-            exclude_keywords = ["pipewire", "pulse", "dmix", "dsnoop"]
+            exclude_keywords = [
+                "pipewire",
+                "pulse",
+                "dmix",
+                "dsnoop",
+                "monitor",
+                "loopback",
+                "mix",
+                "alt",
+                "hdmi",
+            ]
 
             # Get the actual sysdefault device name on Linux
             sysdefault_name = self.get_sysdefault_device_name(devices)
 
+            # Get host API information
+            host_apis = sd.query_hostapis()
+
             for i, device in enumerate(devices):
-                if device["max_input_channels"] > 0:
-                    # Filter for WDM-KS (hostapi 3) on Windows
-                    if os.name == "nt" and device["hostapi"] != 3:
+                if device["max_input_channels"] <= 0:
+                    continue  # Not an input device
+
+                # Get host API name
+                host_api_idx = device.get("hostapi", 0)
+                host_api_name = (
+                    host_apis[host_api_idx]["name"]
+                    if host_api_idx < len(host_apis)
+                    else "Unknown"
+                )
+
+                logger.info(
+                    f"Checking device {i}: {device['name']} (Host API: {host_api_name})"
+                )
+
+                # On Windows, only show WASAPI devices (support shared mode)
+                if os.name == "nt":
+                    if "WASAPI" not in host_api_name.upper():
                         continue
 
-                    device_name = device["name"].lower()
-                    # Skip virtual/system devices
-                    if (
-                        any(keyword in device_name for keyword in exclude_keywords)
-                        or device_name == "default"
-                    ):
-                        continue
+                device_name = device["name"].lower()
+                # Skip virtual/system devices
+                if (
+                    any(keyword in device_name for keyword in exclude_keywords)
+                    or device_name == "default"
+                ):
+                    continue
 
-                    # Test if device supports 16kHz sample rate
-                    try:
-                        sd.check_input_settings(
-                            device=i,
-                            channels=self.config.CHANNELS,
-                            dtype="float32",
-                            samplerate=self.config.SAMPLE_RATE,
-                        )
-                        # Device is compatible
-                        # Use the actual device name from arecord for sysdefault
-                        display_name = (
-                            sysdefault_name
-                            if device_name == "sysdefault"
-                            else str(device["name"])
-                        )
+                # Use the actual device name from arecord for sysdefault
+                display_name = (
+                    sysdefault_name
+                    if device_name == "sysdefault"
+                    else str(device["name"])
+                )
 
-                        available_devices.append(
-                            {
-                                "id": int(i),
-                                "name": display_name,
-                                "max_input_channels": int(device["max_input_channels"]),
-                                "default_samplerate": (
-                                    float(device.get("default_samplerate"))
-                                    if device.get("default_samplerate")
-                                    else None
-                                ),
-                            }
-                        )
-                    except sd.PortAudioError:
-                        # Device doesn't support required settings, skip it
-                        logger.info(
-                            f"Skipping device {i} ({device['name']}): incompatible with {self.config.SAMPLE_RATE}Hz"
-                        )
-                        continue
+                available_devices.append(
+                    {
+                        "id": int(i),
+                        "name": display_name,
+                        "max_input_channels": int(device["max_input_channels"]),
+                        "default_samplerate": (
+                            float(device.get("default_samplerate"))
+                            if device.get("default_samplerate")
+                            else None
+                        ),
+                        "host_api": host_api_name,
+                    }
+                )
 
             # Add system default option at the beginning
             available_devices.insert(

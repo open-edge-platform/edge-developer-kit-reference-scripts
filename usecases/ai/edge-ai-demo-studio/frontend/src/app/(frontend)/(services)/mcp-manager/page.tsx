@@ -5,23 +5,38 @@
 
 import McpManagerService from '@/components/workloads/mcp-manager/mcp-manager-service'
 import { useGetWorkloadByType } from '@/hooks/use-workload'
-import { TEXT_GENERATION_WORKLOAD } from '@/lib/workloads/text-generation'
+import {
+  TEXT_GENERATION_TYPE,
+  TEXT_GENERATION_WORKLOAD,
+} from '@/lib/workloads/text-generation'
 import { useMcpServerInfo } from '@/hooks/use-mcp-clients'
 import MCPTextGenerationDemo from '@/components/workloads/mcp-manager/demo'
 import McpServersTab from '@/components/workloads/mcp-manager/mcp-servers-tab'
-import {
-  DocumentationProps,
-  DocumentationTemplate,
-} from '@/components/workloads/documentation'
+import { DocumentationTemplate } from '@/components/workloads/documentation'
 import McpManagerDocumentation from '@/components/workloads/mcp-manager/documentation'
-import { FRONTEND_PORT } from '@/lib/constants'
 import Endpoint from '@/components/workloads/endpoint'
 import { mcpManagerEndpoints } from '@/components/workloads/mcp-manager/api'
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
+import { DocumentationProps } from '@/types/workload'
+import { getBaseURL, getModelNameWithPrefix } from '@/utils/common'
 
 export default function McpManagerPage() {
   const { data: llmWorkload, isLoading: llmWorkloadIsLoading } =
-    useGetWorkloadByType('text-generation')
+    useGetWorkloadByType(TEXT_GENERATION_TYPE)
+  const url = getBaseURL()
+
+  const workloadModel = useMemo(() => {
+    return (
+      llmWorkload?.models?.default || TEXT_GENERATION_WORKLOAD.models.default
+    )
+  }, [llmWorkload?.models])
+
+  const modelName = useMemo(() => {
+    return getModelNameWithPrefix(
+      llmWorkload?.engine || TEXT_GENERATION_WORKLOAD.engine,
+      workloadModel,
+    )
+  }, [workloadModel, llmWorkload?.engine])
 
   const {
     isInitialized,
@@ -32,8 +47,8 @@ export default function McpManagerPage() {
   } = useMcpServerInfo()
 
   const data: DocumentationProps = {
-    overview: <McpManagerDocumentation port={FRONTEND_PORT} />,
-    endpoints: <Endpoint apis={mcpManagerEndpoints} port={FRONTEND_PORT} />,
+    overview: <McpManagerDocumentation url={url} />,
+    endpoints: <Endpoint apis={mcpManagerEndpoints} url={url} />,
   }
 
   useEffect(() => {
@@ -57,7 +72,7 @@ export default function McpManagerPage() {
             toolsLoading ||
             activeServers.length === 0
           }
-          selectedModel={llmWorkload?.model || TEXT_GENERATION_WORKLOAD.model}
+          selectedModel={modelName}
           servers={activeServers}
           llmWorkloadIsLoading={llmWorkloadIsLoading}
         />

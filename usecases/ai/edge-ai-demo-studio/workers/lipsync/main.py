@@ -4,7 +4,12 @@
 import yaml
 import argparse
 import socket
+import sys
+import subprocess  # nosec -- used as a catch exception type only
+from contextlib import asynccontextmanager
 
+from huggingface_hub import snapshot_download
+from modelscope import snapshot_download as ms_snapshot_download
 from uuid import uuid4
 from aiortc import (
     RTCPeerConnection,
@@ -149,12 +154,79 @@ def parse_arguments():
         default="5002",
         help="TTS server port (default: 5002)",
     )
+    parser.add_argument(
+        "--source",
+        type=str,
+        default="huggingface",
+        choices=["huggingface", "modelscope"],
+        help="Model source (default: huggingface)",
+    )
     return parser.parse_args()
 
 
-def create_app():
+def create_app(args):
     """Create and configure FastAPI application."""
-    app = FastAPI()
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        getLogger(__name__).info("Starting lifespan...")
+        try:
+            getLogger(__name__).info("Downloading Wav2Lip models if needed...")
+            download = (
+                ms_snapshot_download
+                if args.source == "modelscope"
+                else snapshot_download
+            )
+            download(
+                repo_id="Kedreamix/Linly-Talker",
+                local_dir="models/wav2lip",
+                allow_patterns=["checkpoints/wav2lipv2.pth"],
+            )
+            getLogger(__name__).info("Wav2Lip models ready.")
+
+            # Avatar generation check
+            conf_path = Path(args.config).resolve()
+            if conf_path.exists():
+                with open(conf_path) as f:
+                    config = yaml.safe_load(f)
+
+                avatar_path = config.get("wav2lip", {}).get("avatar_path", "")
+                is_valid = False
+                if avatar_path:
+                    full_path = Path(avatar_path).resolve()
+                    if full_path.exists() and (full_path / "coords.pkl").exists():
+                        is_valid = True
+                        getLogger(__name__).info(f"Avatar found at {full_path}")
+
+                if not is_valid:
+                    getLogger(__name__).info(
+                        "Avatar not found or invalid. Generating default avatar..."
+                    )
+                    generator_script = Path(
+                        "modules/lipsync/wav2lip/wav2lip_avatar_generator.py"
+                    )
+                    video_path = Path("data/samples/sample_video_ai.mp4")
+
+                    if generator_script.exists() and video_path.exists():
+                        cmd = [
+                            sys.executable,
+                            str(generator_script),
+                            "--video_path",
+                            str(video_path),
+                        ]
+                        # Run synchronously to ensure avatar is ready before serving requests
+                        subprocess.run(cmd, check=True)
+                        getLogger(__name__).info("Avatar generation completed.")
+                    else:
+                        getLogger(__name__).error(
+                            f"Cannot generate avatar. Missing script or video: {generator_script}, {video_path}"
+                        )
+        except Exception as e:
+            getLogger(__name__).error(f"Error in lifespan startup: {e}")
+            exit(1)
+        yield
+
+    app = FastAPI(lifespan=lifespan)
 
     # Get the current machine's IP address
     local_ip = get_local_ip()
@@ -437,7 +509,7 @@ def main():
     manager = WSConnectionManager()
 
     # Create FastAPI application
-    app = create_app()
+    app = create_app(args)
 
     # Setup routes
     setup_routes(app, pcs, avatars, manager, args)

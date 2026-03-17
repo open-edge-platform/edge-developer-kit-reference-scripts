@@ -6,17 +6,14 @@ import { ToolSet } from 'ai'
 import { experimental_createMCPClient } from '@ai-sdk/mcp'
 import { getActiveMcpServers } from './server-db-utils'
 import { McpServer } from '@/payload-types'
+import { ToolInfo } from '@/types/mcp-manager'
+import { logger } from '@/utils/logger'
 
 interface ServerMCPConnection {
   url: string
   name: string
   client: Awaited<ReturnType<typeof experimental_createMCPClient>> | null
   isConnected: boolean
-}
-
-export interface ToolInfo {
-  name: string
-  description: string
 }
 
 class McpManager {
@@ -79,7 +76,7 @@ class McpManager {
 
       this.connections.set(server.url, connection)
     } catch (error) {
-      console.error(`Failed to connect to MCP server ${server.name}:`, error)
+      logger.error(`Failed to connect to MCP server ${server.name}:`, error)
       // set is connected to false in case of failure
       const connection: ServerMCPConnection = {
         url: server.url,
@@ -97,9 +94,9 @@ class McpManager {
       try {
         // Clean up client connection if needed
         this.connections.delete(url)
-        console.log(`Disconnected from MCP server: ${connection.name}`)
+        logger.log(`Disconnected from MCP server: ${connection.name}`)
       } catch (error) {
-        console.error(`Error disconnecting from ${connection.name}:`, error)
+        logger.error(`Error disconnecting from ${connection.name}:`, error)
       }
     }
   }

@@ -43,6 +43,7 @@ import {
 } from '@/components/ui/collapsible'
 import { FRONTEND_PORT } from '@/lib/constants'
 import { Badge } from '@/components/ui/badge'
+import { logger } from '@/utils/logger'
 
 interface DetectionControlProps {
   disabled?: boolean
@@ -68,7 +69,7 @@ export default function DetectionControl({
     data: statusData,
     refetch: refetchStatus,
     isLoading: isLoadingStatus,
-  } = useGetDetectionStatus({ enabled: false })
+  } = useGetDetectionStatus({ enabled: true })
   const { data: audioDevicesData, isLoading: isLoadingDevices } =
     useListAudioDevices({ enabled: !disabled })
 
@@ -80,11 +81,15 @@ export default function DetectionControl({
     Record<string, { score: number; timestamp: string; flash: boolean }>
   >({})
 
-  useEffect(() => {
+  const [prevAudioDevicesData, setPrevAudioDevicesData] =
+    useState(audioDevicesData)
+
+  if (audioDevicesData !== prevAudioDevicesData) {
+    setPrevAudioDevicesData(audioDevicesData)
     if (audioDevicesData && audioDevicesData.selected_device_id) {
       setSelectedDeviceId(audioDevicesData.selected_device_id)
     }
-  }, [audioDevicesData])
+  }
 
   // Connect to SSE for real-time detection events
   useEffect(() => {
@@ -122,12 +127,12 @@ export default function DetectionControl({
             }, 2000)
           }
         } catch (error) {
-          console.error('Failed to parse SSE event:', error)
+          logger.error('Failed to parse SSE event:', error)
         }
       }
 
       eventSource.onerror = (error) => {
-        console.error('SSE connection error:', error)
+        logger.error('SSE connection error:', error)
         eventSource?.close()
         // Reconnect after 3 seconds
         setTimeout(connectSSE, 3000)
@@ -154,7 +159,7 @@ export default function DetectionControl({
       onRefreshSubscribers()
       onAddLocalSubscriber()
     } catch (error) {
-      console.error('Error adding local subscriber:', error)
+      logger.error('Error adding local subscriber:', error)
       toast.error('Failed to add local webhook subscriber')
     }
   }
@@ -167,7 +172,7 @@ export default function DetectionControl({
       )
       refetchStatus()
     } catch (error) {
-      console.error('Error starting detection:', error)
+      logger.error('Error starting detection:', error)
       const errorMessage =
         String(error) || 'Failed to start wake word detection'
       toast.error(errorMessage)
@@ -180,7 +185,7 @@ export default function DetectionControl({
       toast.success(result.message || 'Wake word detection stopped')
       refetchStatus()
     } catch (error) {
-      console.error('Error stopping detection:', error)
+      logger.error('Error stopping detection:', error)
       toast.error('Failed to stop wake word detection')
     }
   }

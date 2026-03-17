@@ -24,12 +24,11 @@ This repository provides simplified developer kit reference setup scripts for va
 
 
 ## 5-Minute Quick Start
-
+1) Run following command:
 ```bash
 sudo bash -c "$(wget -qLO - https://raw.githubusercontent.com/open-edge-platform/edge-developer-kit-reference-scripts/refs/heads/main/main_installer.sh)"
 
 ```
-Follow the on-screen instructions to complete installation until you see the `Platform configured` message.
 
 ### Next Steps
 
@@ -45,12 +44,12 @@ Follow the on-screen instructions to complete installation until you see the `Pl
 | Intel® Arc™ Pro B-Series Graphics | Products formerly Battlemage | ✅ Supported | [Intel® Arc™ Pro B60 Creator 24GB](https://www.asrock.com/Graphics-Card/Intel/Intel%20Arc%20Pro%20B60%20Creator%2024GB/) |
 | Intel® Arc™ B-Series Graphics | Products formerly Battlemage | ✅ Supported  |[Intel® Arc™ B580 Challenger 12GB](https://www.asrock.com/Graphics-Card/Intel/Intel%20Arc%20B580%20Challenger%2012GB%20OC/) |
 | Intel® Arc™ A-Series Graphics | Products formerly Alchemist | ✅ Supported  | [Intel® Arc™ A770 Challenger 16GB](https://www.asrock.com/Graphics-Card/Intel/Intel%20Arc%20A770%20Challenger%2016GB%20OC/index.us.asp)|
-| Intel® Core™ Ultra Processors (Series 3) | Products formerly Panther Lake | ✅ Supported | |
-| Intel® Core™ Ultra Processors (Series 2) | Products formerly Arrow Lake | ✅ Supported | [Innodisk Intel® Core™ Ultra Series 2 Reference Kit](https://www.innodisk.com/en/blog/intel-core-ultra-series2-reference-kit)<br>[IEI TANK-XM813](https://www.ieiworld.com/tw/product/model.php?II=1099)<br>[AAEON UP Xtreme ARL](https://up-board.org/up-xtreme-arl/)<br>[ASRock Industrial NUC BOX-255H](https://www.asrockind.com/en-gb/NUC%20BOX-255H) |
+| Intel® Core™ Ultra Processors (Series 3) | Products formerly Panther Lake | ✅ Supported | [AAEON* UP XTREME PTL EDGE](https://www.aaeon.com/en/product/detail/up-systems-up-xtreme-ptl-edge)<br>[ASRock Industrial* NUCS BOX-358H](https://www.asrockind.com/en-gb/NUCS%20BOX-358H)|
+| Intel® Core™ Ultra Processors (Series 2) | Products formerly Arrow Lake | ✅ Supported | [Innodisk Intel® Core™ Ultra Series 2 Reference Kit](https://www.innodisk.com/en/blog/intel-core-ultra-series2-reference-kit)<br>[IEI* TANK-XM813](https://www.ieiworld.com/tw/product/model.php?II=1099)<br>[AAEON* UP Xtreme ARL](https://up-board.org/up-xtreme-arl/)<br>[ASRock Industrial* NUC BOX-255H](https://www.asrockind.com/en-gb/NUC%20BOX-255H) |
 | Intel® Core™ Ultra Processors (Series 1) | Products formerly Meteor Lake | ✅ Supported | [Seavo* PIR-1014A AIoT Developer Kit](https://www.seavo.com/en/pir_devkit/)<br>[AAEON* UP Xtreme i14](https://up-board.org/up-xtreme-i14/)<br>[ASRock Industrial* NUC BOX-155H](https://www.asrockind.com/en-gb/NUC%20BOX-155H)<br>[Asus* NUC 14 Pro](https://www.asus.com/displays-desktops/nucs/nuc-mini-pcs/asus-nuc-14-pro/) |
 | Intel® Core™ Processors (Series 2) | Products formerly Bartlett Lake | ✅ Supported | [ASRock Industrial* iEPF-100000S Series](https://www.asrockind.com/en-gb/iEPF-10000S%20Series) |
 | Intel® 14th Gen Core™ Processors | Products formerly Raptor Lake | ✅ Supported | [ASRock Industrial* iEPF-9030S-EW4](https://www.asrockind.com/en-gb/iEPF-9030S-EW4)|
-| Intel® Core™ Processor N-Series | Products formerly Twin Lake | ✅ Supported | [AAEON RS-UPN-ADLN355-A10-0864](https://www.aaeon.com/en/product/detail/up-boards-up-squared-pro-twl) |
+| Intel® Core™ Processor N-Series | Products formerly Twin Lake | ✅ Supported | [AAEON* RS-UPN-ADLN355-A10-0864](https://www.aaeon.com/en/product/detail/up-boards-up-squared-pro-twl) |
 
 ## Edge Design Combinations Matrix
 

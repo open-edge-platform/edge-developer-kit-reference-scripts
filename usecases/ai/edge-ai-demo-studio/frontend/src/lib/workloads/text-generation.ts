@@ -1,47 +1,33 @@
 // Copyright (C) 2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-import { Model } from '@/components/workloads/text-generation/settings'
-import { TEXT_GENERATION_PORT } from '@/lib/constants'
+import { CreateWorkload, Model } from '@/types/workload'
+import {
+  DEFAULT_MULTISERVE_FIELDS,
+  getDefaultModelForEngine,
+  MULTISERVE_ENGINES,
+} from '../engine/multiserve'
+import { TEXT_GENERATION_PORT } from '../constants'
 
 export const TEXT_GENERATION_TYPE = 'text-generation' as const
 
 export const TEXT_GENERATION_DESCRIPTION =
   'Generate human-like text using advanced language models running directly in your browser. Perfect for content creation, code generation, and creative writing.'
 
-export const TEXT_GENERATION_MODELS: Model[] = [
-  {
-    name: 'OpenVINO/Phi-4-mini-instruct-int4-ov',
-    value: 'OpenVINO/Phi-4-mini-instruct-int4-ov',
-    type: 'predefined',
-  },
-  {
-    name: 'OpenVINO/Phi-3.5-mini-instruct-int4-ov',
-    value: 'OpenVINO/Phi-3.5-mini-instruct-int4-ov',
-    type: 'predefined',
-  },
-  {
-    name: 'OpenVINO/Qwen2.5-1.5B-Instruct-int4-ov',
-    value: 'OpenVINO/Qwen2.5-1.5B-Instruct-int4-ov',
-    type: 'predefined',
-  },
-  {
-    name: 'OpenVINO/Qwen3-8B-int4-ov',
-    value: 'OpenVINO/Qwen3-8B-int4-ov',
-    type: 'predefined',
-  },
-  {
-    name: 'OpenVINO/Qwen3-4B-int4-ov',
-    value: 'OpenVINO/Qwen3-4B-int4-ov',
-    type: 'predefined',
-  },
-]
+export const TEXT_GENERATION_MODELS: Model[] = []
 
-export const TEXT_GENERATION_WORKLOAD = {
+export const TEXT_GENERATION_ENGINES = [...MULTISERVE_ENGINES]
+export const TEXT_GENERATION_URL = '/api/text-generation'
+
+export const TEXT_GENERATION_WORKLOAD: CreateWorkload = {
   name: TEXT_GENERATION_TYPE,
   type: TEXT_GENERATION_TYPE,
-  model: TEXT_GENERATION_MODELS[0].value,
-  device: 'CPU',
+  models: {
+    default: getDefaultModelForEngine(
+      DEFAULT_MULTISERVE_FIELDS.engine,
+      TEXT_GENERATION_TYPE,
+    ),
+  },
   port: TEXT_GENERATION_PORT,
-  healthUrl: '/v1/config',
+  ...DEFAULT_MULTISERVE_FIELDS,
 }

@@ -7,6 +7,7 @@ import {
   ImageEditRequest,
   ImageGenerationResponse,
 } from '@/types/image-generation'
+import { logger } from '@/utils/logger'
 import { useMutation } from '@tanstack/react-query'
 import { useState, useCallback, useEffect, useRef } from 'react'
 
@@ -36,6 +37,14 @@ const useTaskPolling = (
   const [taskStatus, setTaskStatus] = useState<TaskStatus | null>(null)
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
 
+  const [prevIsPolling, setPrevIsPolling] = useState(isPolling)
+  if (isPolling !== prevIsPolling) {
+    setPrevIsPolling(isPolling)
+    if (!isPolling) {
+      setTaskStatus(null)
+    }
+  }
+
   useEffect(() => {
     if (isPolling) {
       const poll = async () => {
@@ -49,7 +58,7 @@ const useTaskPolling = (
             onError((status.result as string) || 'Task failed')
           }
         } catch (error) {
-          console.error('Polling error:', error)
+          logger.error('Polling error:', error)
           onError('Failed to get task status')
         }
       }
@@ -65,7 +74,6 @@ const useTaskPolling = (
         clearInterval(intervalRef.current)
         intervalRef.current = null
       }
-      setTaskStatus(null)
     }
 
     return () => {

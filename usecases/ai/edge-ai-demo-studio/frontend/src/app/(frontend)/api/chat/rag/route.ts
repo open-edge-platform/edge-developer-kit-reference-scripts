@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { EMBEDDING_PORT, TEXT_GENERATION_PORT } from '@/lib/constants'
-import { OVMSModelConfig } from '@/types/chat_model'
+import { TEXT_GENERATION_TYPE } from '@/lib/workloads/text-generation'
+import { logger } from '@/utils/logger'
+import { getWorkloadModel } from '@/utils/workload/service'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import {
   UIMessage,
@@ -18,29 +20,6 @@ const createDefaultSystemPrompt = () => {
 Your goal is to communicate in a way that is natural, empathetic, and engaging. 
 Prioritize clarity and warmth in your responses.
 You only reply in plain natural language, Do not produce any HIGHLIGHT, Markdown format, programming codes, formatted structured output`
-}
-
-async function getAvailableModel(): Promise<string> {
-  const response = await fetch(
-    `http://localhost:${TEXT_GENERATION_PORT}/v1/config`,
-  )
-
-  if (!response.ok) {
-    throw new Error('Failed to fetch model configuration')
-  }
-
-  const models: OVMSModelConfig = await response.json()
-
-  const availableModel = Object.keys(models).find((modelName) => {
-    const model = models[modelName]
-    return model.model_version_status[0]?.state === 'AVAILABLE'
-  })
-
-  if (!availableModel) {
-    throw new Error('No available model found')
-  }
-
-  return availableModel
 }
 
 const createRAGContextPrompt = async (
@@ -85,7 +64,7 @@ Context: ${contextContent}
 Answer:`
     return systemMessage
   } catch (error) {
-    console.error('RAG search error:', error)
+    logger.error('RAG search error:', error)
     // Return default system prompt if search fails
     return createDefaultSystemPrompt()
   }
@@ -103,15 +82,15 @@ export async function POST(req: Request) {
   // Get available model
   let model: string
   try {
-    model = await getAvailableModel()
+    model = await getWorkloadModel(TEXT_GENERATION_TYPE)
   } catch (error) {
-    console.error('Model service error:', error)
+    logger.error('Model service error:', error)
     return new Response('No available model', { status: 500 })
   }
 
   // Create OpenAI compatible provider
   const provider = createOpenAICompatible({
-    baseURL: `http://localhost:${TEXT_GENERATION_PORT}/v3`,
+    baseURL: `http://localhost:${TEXT_GENERATION_PORT}/v1`,
     name: 'ovms',
   })
 

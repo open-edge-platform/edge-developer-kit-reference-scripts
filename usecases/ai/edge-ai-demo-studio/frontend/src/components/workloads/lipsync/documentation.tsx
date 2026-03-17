@@ -1,9 +1,10 @@
 // Copyright (C) 2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-import CodeBlock, { CodeSnippet } from '@/components/common/codeblock'
+import CodeBlock from '@/components/common/codeblock'
+import { CodeSnippet } from '@/types/code'
 
-export default function LipsyncDocumentation({ port }: { port: number }) {
+export default function LipsyncDocumentation({ url }: { url: string }) {
   const turnConfigurationSnippet: CodeSnippet[] = [
     {
       language: 'Javascript',
@@ -88,7 +89,7 @@ await new Promise((resolve) => {
 })
 
 // Send offer to avatar service and get answer
-const response = await fetch('http://localhost:${port}/v1/lipsync/offer', {
+const response = await fetch('${url}/v1/lipsync/offer', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ offer: peerConnection.localDescription })
@@ -126,7 +127,7 @@ async def connect_to_avatar():
     
     # Send offer to avatar service
     async with aiohttp.ClientSession() as session:
-        async with session.post('http://localhost:${port}/v1/lipsync/offer', 
+        async with session.post('${url}/v1/lipsync/offer', 
                                json={"offer": pc.localDescription.dict()}) as resp:
             data = await resp.json()
             answer = RTCSessionDescription(**data["answer"])
@@ -148,7 +149,7 @@ const handleSendMessage = (message) => {
   if (!message) return
   
   // Send message - avatar will speak the message
-  fetch('http://localhost:${port}/v1/lipsync/chat',{
+  fetch('${url}/v1/lipsync/chat',{
       method: 'POST',
       body: JSON.stringify(
       { 
@@ -162,7 +163,7 @@ const handleSendMessage = (message) => {
 
 // Stop avatar speaking
 const stopAvatar = async (sessionId) => {
-  await fetch('http://localhost:${port}/v1/lipsync/stop'}', {
+  await fetch('${url}/v1/lipsync/stop'}', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sessionId })
@@ -178,7 +179,7 @@ import asyncio
 async def send_message_to_avatar(session_id, message):
     """Send a message to the avatar for speech synthesis"""
     async with aiohttp.ClientSession() as session:
-        async with session.post('http://localhost:${port}/v1/lipsync/chat', 
+        async with session.post('${url}/v1/lipsync/chat', 
                                json={
                                    "messages": [
                                        {"role": "user", "content": message}
@@ -196,7 +197,7 @@ async def send_message_to_avatar(session_id, message):
 async def stop_avatar_speaking(session_id):
     """Stop the avatar from speaking"""
     async with aiohttp.ClientSession() as session:
-        async with session.post('http://localhost:${port}/v1/lipsync/stop', 
+        async with session.post('${url}/v1/lipsync/stop', 
                                json={"sessionId": session_id}) as resp:
             return await resp.json()`,
     },
@@ -220,7 +221,7 @@ const handleAudioUpload = async (audioFile, sessionId, textOverlay = null) => {
   formData.append('language_code', 'en-US')
 
   try {
-    const response = await fetch('http://localhost:${port}/v1/lipsync', {
+    const response = await fetch('${url}/v1/lipsync', {
       method: 'POST',
       body: formData // No need to set Content-Type, browser handles it for FormData
     })
@@ -273,7 +274,7 @@ async def upload_audio_for_lipsync(session_id, audio_file_path, text_overlay=Non
     
     # Send request
     async with aiohttp.ClientSession() as session:
-        async with session.post('http://localhost:${port}/v1/lipsync', 
+        async with session.post('${url}/v1/lipsync', 
                                data=data) as resp:
             result = await resp.json()
             
@@ -329,7 +330,7 @@ function AvatarChat() {
       })
     })
     
-    const response = await fetch('http://localhost:${port}/v1/lipsync/offer', {
+    const response = await fetch('${url}/v1/lipsync/offer', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sdp: pc.localDescription.sdp, type: pc.localDescription.type })
@@ -342,7 +343,7 @@ function AvatarChat() {
   }
 
   const sendMessage = async () => {
-    await fetch('http://localhost:${port}/v1/lipsync/chat', {
+    await fetch('${url}/v1/lipsync/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -366,7 +367,7 @@ function AvatarChat() {
     formData.append('session_id', sessionId)
     formData.append('language_code', 'en-US')
     
-    await fetch('http://localhost:${port}/v1/lipsync', { method: 'POST', body: formData })
+    await fetch('${url}/v1/lipsync', { method: 'POST', body: formData })
   }
 
   return (
