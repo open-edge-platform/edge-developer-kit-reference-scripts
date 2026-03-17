@@ -11,10 +11,7 @@ import {
 } from '@/hooks/use-workload'
 
 import useDisclosure from '@/hooks/use-disclosure'
-import {
-  Model,
-  SettingsModal,
-} from '@/components/workloads/wake-word-detection/settings'
+import { SettingsModal } from '@/components/workloads/wake-word-detection/settings'
 import { Button } from '@/components/ui/button'
 import { Settings } from 'lucide-react'
 import {
@@ -22,25 +19,28 @@ import {
   WAKE_WORD_DETECTION_TYPE,
   WAKE_WORD_DETECTION_DESCRIPTION,
   WAKE_WORD_DETECTION_MODELS,
+  WAKE_WORD_DETECTION_URL,
 } from '@/lib/workloads/wake-word-detection'
 import WakeWordDetectionDemo from '@/components/workloads/wake-word-detection/demo'
 import Logs from '@/components/workloads/log'
-import {
-  DocumentationProps,
-  DocumentationTemplate,
-} from '@/components/workloads/documentation'
+import { DocumentationTemplate } from '@/components/workloads/documentation'
 import WakeWordDetectionDocumentation from '@/components/workloads/wake-word-detection/documentation'
 import { WAKE_WORD_DETECTION_PORT } from '@/lib/constants'
 import Endpoint from '@/components/workloads/endpoint'
 import { wakeWordDetectionEndpoints } from '@/components/workloads/wake-word-detection/api'
+import { logger } from '@/utils/logger'
+import { getBaseURL } from '@/utils/common'
+import { DocumentationProps, WakeWordSettings } from '@/types/workload'
 
 const TYPE = WAKE_WORD_DETECTION_TYPE
 const DESCRIPTION = WAKE_WORD_DETECTION_DESCRIPTION
 
 export default function TextGenerationPage() {
   const { data: workload, isLoading } = useGetWorkloadByType(
-    'wake-word-detection',
+    WAKE_WORD_DETECTION_TYPE,
   )
+  const url = getBaseURL(WAKE_WORD_DETECTION_URL)
+
   const { isOpen, onClose, onOpen } = useDisclosure()
 
   const updateWorkload = useUpdateWorkload()
@@ -50,23 +50,17 @@ export default function TextGenerationPage() {
     overview: (
       <WakeWordDetectionDocumentation port={WAKE_WORD_DETECTION_PORT} />
     ),
-    endpoints: (
-      <Endpoint
-        apis={wakeWordDetectionEndpoints}
-        port={WAKE_WORD_DETECTION_PORT}
-      />
-    ),
+    endpoints: <Endpoint apis={wakeWordDetectionEndpoints} url={url} />,
   }
 
-  const updateSettings = (models: Model[], vadThreshold: number) => {
+  const updateSettings = (settings: WakeWordSettings) => {
+    const { model, vadThreshold } = settings
     return new Promise((resolve, reject) => {
-      const modelString = models.map((model) => model.value).join(' ')
-
       if (!workload) {
         createWorkload.mutate(
           {
             ...WAKE_WORD_DETECTION_WORKLOAD,
-            model: modelString,
+            models: { default: model },
             metadata: {
               vadThreshold,
             },
@@ -75,7 +69,7 @@ export default function TextGenerationPage() {
           {
             onSuccess: () => resolve(true),
             onError: (error) => {
-              console.error('Failed to create workload:', error)
+              logger.error('Failed to create workload:', error)
               reject(error)
             },
           },
@@ -85,7 +79,7 @@ export default function TextGenerationPage() {
           {
             id: workload?.id || 0,
             data: {
-              model: modelString,
+              models: { default: model },
               metadata: {
                 vadThreshold,
               },
@@ -94,7 +88,7 @@ export default function TextGenerationPage() {
           {
             onSuccess: () => resolve(true),
             onError: (error) => {
-              console.error('Failed to update workload:', error)
+              logger.error('Failed to update workload:', error)
               reject(error)
             },
           },
@@ -105,19 +99,6 @@ export default function TextGenerationPage() {
     })
   }
 
-  const SettingsButton = () => {
-    return (
-      <Button
-        variant="secondary"
-        size="icon"
-        className="size-8"
-        onClick={onOpen}
-      >
-        <Settings />
-      </Button>
-    )
-  }
-
   return (
     <>
       <SettingsModal
@@ -126,16 +107,28 @@ export default function TextGenerationPage() {
         onClose={onClose}
         predefinedModels={WAKE_WORD_DETECTION_MODELS}
         updateSettings={updateSettings}
-        selectedModel={workload?.model || WAKE_WORD_DETECTION_WORKLOAD.model}
-        vadThreshold={
-          workload?.metadata?.vadThreshold ??
-          WAKE_WORD_DETECTION_WORKLOAD.metadata.vadThreshold
-        }
+        currentSettings={{
+          model:
+            workload?.models?.default ||
+            WAKE_WORD_DETECTION_WORKLOAD.models.default,
+          vadThreshold:
+            workload?.metadata?.vadThreshold ??
+            WAKE_WORD_DETECTION_WORKLOAD.metadata!.vadThreshold!,
+        }}
         workloadStatus={workload?.status}
       />
       <WorkloadComponent
         title="Wake Word Detection"
-        settingsButton={<SettingsButton />}
+        settingsButton={
+          <Button
+            variant="secondary"
+            size="icon"
+            className="size-8"
+            onClick={onOpen}
+          >
+            <Settings />
+          </Button>
+        }
         workload={workload}
         description={DESCRIPTION}
         workloadType={TYPE}
@@ -145,7 +138,12 @@ export default function TextGenerationPage() {
           />
         }
         docsElement={<DocumentationTemplate data={data} />}
-        logsElement={<Logs name={`${workload?.name}_${workload?.id}`} />}
+        logsElement={
+          <Logs
+            type={workload?.type || WAKE_WORD_DETECTION_TYPE}
+            engine={workload?.engine ?? 'custom'}
+          />
+        }
         isLoading={isLoading}
       />
     </>

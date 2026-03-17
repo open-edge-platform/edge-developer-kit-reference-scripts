@@ -17,7 +17,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { ImageGenerationForm } from '@/hooks/use-image-generation'
+import { ImageGenerationForm } from '@/types/image-generation'
 import { Label } from '@radix-ui/react-label'
 import { Settings } from 'lucide-react'
 

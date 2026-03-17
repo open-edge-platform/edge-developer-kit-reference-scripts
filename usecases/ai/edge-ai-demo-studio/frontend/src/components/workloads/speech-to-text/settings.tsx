@@ -12,7 +12,6 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Select,
   SelectContent,
@@ -20,95 +19,89 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { FileSearch, ExternalLink, Loader2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
-import { useAccelerator } from '@/hooks/use-accelerators'
+import { FileSearch, Loader2 } from 'lucide-react'
+import { useState } from 'react'
 import { Separator } from '@/components/ui/separator'
-
-export interface Model {
-  name: string
-  value: string
-  type: string
-}
-
-export interface SpeechToTextSettings {
-  sttModel: Model
-  sttDevice: string
-  denoiseModel: Model
-  denoiseDevice: string
-}
+import { Model, SpeechToTextSettings } from '@/types/workload'
+import { DeviceSelector } from '../../common/device-selector'
+import {
+  ModelSource,
+  ModelSourceSelector,
+} from '../../common/model-source-selector'
+import { ModelSelector } from '@/components/common/model-selector'
 
 interface SettingsModalProps {
   task: string
   isOpen: boolean
   onClose: () => void
   updateSettings: (settings: SpeechToTextSettings) => Promise<unknown>
-  availableSTTModels: Model[]
-  availableDenoiseModels: Model[]
-  selectedSTTModel: string
-  selectedSTTDevice: string
-  selectedDenoiseModel: string
-  selectedDenoiseDevice: string
+  availableModels: { [k: string]: Model[] }
+  currentSettings: SpeechToTextSettings
 }
 
 export function SettingsModal({
   task,
   isOpen,
   onClose,
-  availableSTTModels,
-  availableDenoiseModels,
-  selectedSTTModel,
-  selectedSTTDevice,
-  selectedDenoiseModel,
-  selectedDenoiseDevice,
+  availableModels: { stt: availableSTTModels, denoise: availableDenoiseModels },
+  currentSettings: {
+    sttModel: selectedSTTModel,
+    denoiseModel: selectedDenoiseModel,
+  },
   updateSettings,
 }: SettingsModalProps) {
-  const [tempSTTModel, setTempSTTModel] = useState(selectedSTTModel || '')
-  const [tempSTTDevice, setTempSTTDevice] = useState(selectedSTTDevice || 'CPU')
-  const [tempDenoiseModel, setTempDenoiseModel] = useState(
-    selectedDenoiseModel || '',
+  const [tempSTTModelName, setTempSTTModelName] = useState(
+    selectedSTTModel.name,
+  )
+  const [tempSTTDevice, setTempSTTDevice] = useState(selectedSTTModel.device)
+  const [tempSTTSource, setTempSTTSource] = useState<ModelSource>(
+    (selectedSTTModel.source as ModelSource) || 'huggingface',
+  )
+  const [tempDenoiseModelName, setTempDenoiseModelName] = useState(
+    selectedDenoiseModel.name || '',
   )
   const [tempDenoiseDevice, setTempDenoiseDevice] = useState(
-    selectedDenoiseDevice || 'CPU',
+    selectedDenoiseModel.device,
   )
   const [tabValue, setTabValue] = useState('predefined')
   const [isLoading, setIsLoading] = useState(false)
-  const { data: devices } = useAccelerator()
 
   const handleSave = () => {
-    let sttModel = {
-      name: tempSTTModel,
-      value: tempSTTModel,
-      type: 'custom',
+    let sttModel: Model = {
+      name: tempSTTModelName,
+      device: tempSTTDevice,
+      source: tempSTTSource,
     }
     setIsLoading(true)
     if (tabValue !== 'custom') {
       const selected = availableSTTModels.find(
-        (model) => model.value === tempSTTModel,
+        (model) => model.name === tempSTTModelName,
       )
       if (selected) {
-        sttModel = selected
+        sttModel = { ...selected, device: tempSTTDevice, source: tempSTTSource }
       }
     }
 
     // Handle denoise model
     let denoiseModel = {
-      name: tempDenoiseModel,
-      value: tempDenoiseModel,
-      type: 'predefined',
+      name: tempDenoiseModelName,
+      device: tempDenoiseDevice,
+      source: tempSTTSource,
     }
     const selectedDenoise = availableDenoiseModels.find(
-      (model) => model.value === tempDenoiseModel,
+      (model) => model.name === tempDenoiseModelName,
     )
     if (selectedDenoise) {
-      denoiseModel = selectedDenoise
+      denoiseModel = {
+        ...selectedDenoise,
+        device: tempDenoiseDevice,
+        source: tempSTTSource,
+      }
     }
 
     const settings: SpeechToTextSettings = {
       sttModel,
-      sttDevice: tempSTTDevice,
       denoiseModel,
-      denoiseDevice: tempDenoiseDevice,
     }
 
     updateSettings(settings).then(() => {
@@ -120,49 +113,88 @@ export function SettingsModal({
   const handleTabChange = (value: string) => {
     setTabValue(value)
     if (value === 'predefined') {
-      if (!tempSTTModel) setTempSTTModel(selectedSTTModel)
+      if (!tempSTTModelName) setTempSTTModelName(selectedSTTModel.name)
     } else {
-      setTempSTTModel('')
+      setTempSTTModelName('')
+      setTempSTTDevice('CPU')
     }
   }
 
-  useEffect(() => {
-    setTempSTTModel(selectedSTTModel || availableSTTModels[0].name)
-  }, [availableSTTModels, selectedSTTModel])
+  const [prevIsOpen, setPrevIsOpen] = useState(isOpen)
+  if (isOpen !== prevIsOpen) {
+    setPrevIsOpen(isOpen)
+    if (isOpen) {
+      setTempSTTModelName(selectedSTTModel.name || availableSTTModels[0].name)
+      setTempSTTDevice(selectedSTTModel.device || 'CPU')
+    }
+  }
 
-  useEffect(() => {
-    setTempSTTDevice(selectedSTTDevice || 'CPU')
-  }, [selectedSTTDevice])
+  // Also check if selectedSTTModel changes while open?
+  // If parent changes it, we probably want to update.
+  const [prevModel, setPrevModel] = useState(selectedSTTModel)
+  if (selectedSTTModel !== prevModel) {
+    setPrevModel(selectedSTTModel)
+    setTempSTTModelName(selectedSTTModel.name || availableSTTModels[0].name)
+    setTempSTTDevice(selectedSTTModel.device || 'CPU')
+  }
 
-  const DeviceSelector = ({
-    value,
-    onChange,
-  }: {
-    value: string
-    onChange: (value: string) => void
-  }) => {
-    return (
+  const verfiedModelsElement = (
+    <>
+      <ModelSourceSelector value={tempSTTSource} onChange={setTempSTTSource} />
       <div>
-        <Label htmlFor="device-select" className="text-base font-medium">
-          Device
+        <Label htmlFor="model-select" className="text-base font-medium">
+          Model
         </Label>
-        <Select value={value} onValueChange={onChange}>
+        <Select
+          value={tempSTTModelName}
+          onValueChange={(value) => setTempSTTModelName(value)}
+        >
           <SelectTrigger className="mt-2 w-full">
-            <SelectValue placeholder="Choose a device" />
+            <SelectValue placeholder="Choose a model" />
           </SelectTrigger>
           <SelectContent>
-            {(devices ?? []).map((device) => (
-              <SelectItem key={device.id} value={device.id}>
+            {availableSTTModels.map((model) => (
+              <SelectItem key={model.name} value={model.name}>
                 <div className="flex flex-col">
-                  <span className="font-medium">{device.name}</span>
+                  <span className="font-medium">{model.name}</span>
                 </div>
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
       </div>
-    )
-  }
+
+      <DeviceSelector value={tempSTTDevice} onChange={setTempSTTDevice} />
+    </>
+  )
+
+  const customModelElement = (
+    <>
+      <div className="space-y-4">
+        <ModelSourceSelector
+          value={tempSTTSource}
+          onChange={setTempSTTSource}
+        />
+        <div>
+          <Label htmlFor="custom-url" className="text-base font-medium">
+            Model Name
+          </Label>
+          <Input
+            id="custom-url"
+            placeholder="OpenVINO/whisper-tiny-int8-ov"
+            value={tempSTTModelName}
+            onChange={(e) => setTempSTTModelName(e.target.value)}
+            className="mt-2"
+          />
+          <p className="mt-1 text-sm text-gray-500">
+            Enter the Hugging Face model name (e.g., openai/whisper-base)
+          </p>
+        </div>
+      </div>
+
+      <DeviceSelector value={tempSTTDevice} onChange={setTempSTTDevice} />
+    </>
+  )
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -177,88 +209,12 @@ export function SettingsModal({
         {/* <div className="space-y-6"> */}
         <div>
           <Label className="text-base font-medium">Speech-To-Text</Label>
-          <Tabs
-            value={tabValue}
-            onValueChange={handleTabChange}
-            defaultValue="custom"
-            className="mt-2 w-full"
-          >
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="predefined">Verified Models</TabsTrigger>
-              <TabsTrigger value="custom">Custom Model</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="predefined" className="space-y-4">
-              <div>
-                <Label htmlFor="model-select" className="text-base font-medium">
-                  Model
-                </Label>
-                <Select value={tempSTTModel} onValueChange={setTempSTTModel}>
-                  <SelectTrigger className="mt-2 w-full">
-                    <SelectValue placeholder="Choose a model" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableSTTModels.map((model) => (
-                      <SelectItem key={model.name} value={model.value}>
-                        <div className="flex flex-col">
-                          <span className="font-medium">{model.name}</span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <DeviceSelector
-                value={tempSTTDevice}
-                onChange={setTempSTTDevice}
-              />
-            </TabsContent>
-
-            <TabsContent value="custom" className="space-y-4">
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="custom-url" className="text-base font-medium">
-                    Model Name
-                  </Label>
-                  <Input
-                    id="custom-url"
-                    placeholder="OpenVINO/whisper-tiny-int8-ov"
-                    value={tempSTTModel}
-                    onChange={(e) => setTempSTTModel(e.target.value)}
-                    className="mt-2"
-                  />
-                  <p className="mt-1 text-sm text-gray-500">
-                    Enter the Hugging Face model name (e.g.,
-                    openai/whisper-base)
-                  </p>
-                </div>
-              </div>
-
-              <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
-                <h4 className="mb-2 flex items-center gap-2 font-medium text-orange-900">
-                  <ExternalLink className="h-4 w-4" />
-                  Hugging Face Setup
-                </h4>
-                <div className="space-y-2 text-sm text-orange-800">
-                  <p>To use custom speech-to-text models:</p>
-                  <ol className="ml-2 list-inside list-decimal space-y-1">
-                    <li>Get your API key from Hugging Face (if needed)</li>
-                    <li>Add it as HF_TOKEN in your environment</li>
-                    <li>
-                      Ensure the model supports automatic speech recognition
-                    </li>
-                    <li>Compatible models include Whisper variants</li>
-                  </ol>
-                </div>
-              </div>
-
-              <DeviceSelector
-                value={tempSTTDevice}
-                onChange={setTempSTTDevice}
-              />
-            </TabsContent>
-          </Tabs>
+          <ModelSelector
+            tabValue={tabValue}
+            onTabChange={handleTabChange}
+            verifiedElement={verfiedModelsElement}
+            customElement={customModelElement}
+          />
         </div>
 
         {/* TODO: The following Separator and Denoise settings section are intentionally hidden for future implementation. Remove or enable if the feature is needed. */}
@@ -275,15 +231,15 @@ export function SettingsModal({
                 Model
               </Label>
               <Select
-                value={tempDenoiseModel}
-                onValueChange={setTempDenoiseModel}
+                value={tempDenoiseModelName}
+                onValueChange={(value) => setTempDenoiseModelName(value)}
               >
                 <SelectTrigger className="mt-2 w-full">
                   <SelectValue placeholder="Choose a model" />
                 </SelectTrigger>
                 <SelectContent>
                   {availableDenoiseModels.map((model) => (
-                    <SelectItem key={model.name} value={model.value}>
+                    <SelectItem key={model.name} value={model.name}>
                       <div className="flex flex-col">
                         <span className="font-medium">{model.name}</span>
                       </div>

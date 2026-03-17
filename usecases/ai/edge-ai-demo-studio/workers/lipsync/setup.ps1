@@ -100,18 +100,6 @@ function Install-Wav2LipDependencies {
 
     # Clean up tmp directory
     Remove-Item -Path "$SCRIPT_DIR\tmp" -Recurse -Force -ErrorAction Stop
-
-    # Download models
-    & $UV_CMD run hf download Kedreamix/Linly-Talker --local-dir models/wav2lip/ --include checkpoints/wav2lipv2.pth
-    if ($LASTEXITCODE -ne 0) {
-        throw "Failed to download Wav2Lip models. uv run exited with code $LASTEXITCODE"
-    }
-    
-    # Run test
-    & $UV_CMD run modules/lipsync/wav2lip/wav2lip_avatar_generator.py --video_path data/samples/sample_video_ai.mp4
-    if ($LASTEXITCODE -ne 0) {
-        throw "Failed to run Wav2Lip test. uv run exited with code $LASTEXITCODE"
-    }
 }
 
 function Install-MainDependencies {

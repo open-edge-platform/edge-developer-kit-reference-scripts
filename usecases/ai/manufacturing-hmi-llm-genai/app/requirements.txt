@@ -1,0 +1,10 @@
+# Copyright (C) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+opencv-python==4.9.0.80
+fastapi[all]
+pydantic==2.8.2
+pymycobot==3.4.9
+pymongo==4.6.3
+geti-sdk==1.8.2
+pyserial
+psutil

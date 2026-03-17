@@ -1,0 +1,28 @@
+# Copyright (C) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+services:   
+  mongodb:
+    image: mongo:8.2.5
+    hostname: mongodb
+    user: "999:999"
+    networks:
+      - app-network
+    ports:
+      - '27017:27017'
+    volumes:
+      - database:/data/db
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+networks:
+  app-network:
+    
+volumes:
+  database:

@@ -70,19 +70,19 @@ function Get-ServiceLog {
 }
 
 $thirdpartyDir = Join-Path $PWD "thirdparty"
+$rootThirdpartyDir = Join-Path (Split-Path $PWD -Parent) "thirdparty"
 $uvZipPath = Join-Path $thirdpartyDir "uv.zip"
 $uvZipUrl = "https://github.com/astral-sh/uv/releases/download/0.8.13/uv-x86_64-pc-windows-msvc.zip"
 $uvDir = Join-Path $thirdpartyDir "uv"
 $uvPath = Join-Path $uvDir "uv.exe"
 
 $ovmsZipPath = Join-Path $thirdpartyDir "ovms_windows.zip"
-$ovmsZipUrl = 'https://github.com/openvinotoolkit/model_server/releases/download/v2025.3/ovms_windows_python_on.zip'
+$ovmsZipUrl = 'https://github.com/openvinotoolkit/model_server/releases/download/v2025.4.1/ovms_windows_python_on.zip'
 $ovmsDir = Join-Path $thirdpartyDir "ovms"
 $ovmsPath = Join-Path $ovmsDir "ovms.exe"
 
-$ffmpegZipPath = Join-Path $thirdpartyDir "ffmpeg-release-essentials.zip"
-$ffmpegZipUrl = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
-$ffmpegDir = Join-Path $thirdpartyDir "ffmpeg"
+# FFmpeg is installed at project root thirdparty directory
+$ffmpegDir = Join-Path $rootThirdpartyDir "ffmpeg"
 $ffmpegPath = Join-Path $ffmpegDir "bin\ffmpeg.exe"
 
 # Function to check if uv is installed
@@ -226,78 +226,13 @@ function Get-ThirdPartyDependencies {
         }
     }
     
-    # Install FFmpeg
-    if (Test-Path "ffmpeg") {
-        Write-ColorOutput "✅ FFmpeg directory already exists. Skipping download." "Green"
+    # Verify FFmpeg is available from project root (installed by main setup.ps1)
+    if (-not (Test-Path $ffmpegPath)) {
+        Write-ColorOutput "⚠️  WARNING: FFmpeg not found at $ffmpegPath" "Yellow"
+        Write-ColorOutput "FFmpeg should be installed by the main setup.ps1 script at the project root." "Yellow"
+        Write-ColorOutput "If you're running workers/setup.ps1 directly, please run setup.ps1 from the project root first." "Yellow"
     } else {
-        Write-ColorOutput "Downloading FFmpeg for Windows..." "Yellow"
-        
-        $ffmpegLogFile = Get-ServiceLog -ServiceName "ffmpeg"
-        if (-not $Verbose) {
-            "=== FFmpeg Setup Log - $(Get-Date) ===" | Out-File -FilePath $ffmpegLogFile -Encoding utf8
-            "" | Out-File -FilePath $ffmpegLogFile -Append -Encoding utf8
-            Write-ColorOutput "Logging FFmpeg setup to: $ffmpegLogFile" "White"
-        }
-        
-        try {
-            Write-ColorOutput "Downloading from $ffmpegZipUrl..." "White"
-            Invoke-WebRequest -Uri $ffmpegZipUrl -OutFile $ffmpegZipPath -ErrorAction Stop
-            
-            Write-ColorOutput "Extracting FFmpeg..." "White"
-            Expand-Archive -Path $ffmpegZipPath -DestinationPath $thirdpartyDir -Force -ErrorAction Stop
-            
-            # Find the extracted directory (it usually has a version number)
-            $extractedDir = Get-ChildItem -Path $thirdpartyDir -Directory | Where-Object { $_.Name -like "ffmpeg-*" } | Select-Object -First 1
-            
-            if (-not $extractedDir) {
-                Write-ColorOutput "❌ ERROR: Could not find extracted FFmpeg directory" "Red"
-                Remove-Item $ffmpegZipPath -Force -ErrorAction SilentlyContinue
-                if (-not $Verbose) {
-                    "FFmpeg setup failed at $(Get-Date): Extracted directory not found" | Out-File -FilePath $ffmpegLogFile -Append -Encoding utf8
-                }
-                Set-Location "..\"
-                exit 1
-            }
-            
-            # Rename to simply "ffmpeg"
-            Rename-Item -Path $extractedDir.FullName -NewName "ffmpeg" -ErrorAction Stop
-            
-            Remove-Item $ffmpegZipPath -Force -ErrorAction SilentlyContinue
-            
-            # Verify installation
-            if (-not (Test-Path $ffmpegPath)) {
-                Write-ColorOutput "❌ ERROR: FFmpeg installation verification failed - binary not found" "Red"
-                if (-not $Verbose) {
-                    "FFmpeg setup failed at $(Get-Date): Binary not found" | Out-File -FilePath $ffmpegLogFile -Append -Encoding utf8
-                }
-                Set-Location "..\"
-                exit 1
-            }
-            
-            # Test FFmpeg
-            & $ffmpegPath -version | Out-Null
-            if ($LASTEXITCODE -ne 0) {
-                Write-ColorOutput "❌ ERROR: FFmpeg binary found but not working properly" "Red"
-                if (-not $Verbose) {
-                    "FFmpeg setup failed at $(Get-Date): Binary not working" | Out-File -FilePath $ffmpegLogFile -Append -Encoding utf8
-                }
-                Set-Location "..\"
-                exit 1
-            }
-            
-            Write-ColorOutput "✅ FFmpeg downloaded and extracted successfully." "Green"
-            if (-not $Verbose) {
-                "FFmpeg setup completed successfully at $(Get-Date)" | Out-File -FilePath $ffmpegLogFile -Append -Encoding utf8
-            }
-        } catch {
-            Write-ColorOutput "❌ ERROR: Failed to download FFmpeg" "Red"
-            Write-ColorOutput "Error: $($_.Exception.Message)" "Red"
-            if (-not $Verbose) {
-                "FFmpeg setup failed at $(Get-Date): $($_.Exception.Message)" | Out-File -FilePath $ffmpegLogFile -Append -Encoding utf8
-            }
-            Set-Location "..\"
-            exit 1
-        }
+        Write-ColorOutput "✅ FFmpeg found at $ffmpegPath" "Green"
     }
     
     Set-Location "..\"
@@ -324,7 +259,7 @@ function Invoke-WorkerSetup {
         Write-ColorOutput "=== $WorkerName Setup Started ===" "Cyan"
         
         # Build arguments for the setup script
-        $scriptArgs = @("-File", $setupScript)
+        $scriptArgs = @("-File",  "`"$setupScript`"")
         if ($Verbose) { 
             $scriptArgs += "-Verbose"
             Write-ColorOutput "Verbose mode enabled for $WorkerName" "Magenta"
@@ -405,6 +340,11 @@ Write-ColorOutput "=== Workers Setup ===" "Cyan"
 Setup-Logging
 
 Test-UvInstalled
+
+# Temporarily add UV_EXE to environment
+$env:UV_PATH = $uvPath
+$env:UV_EXE = $uvPath
+
 Get-ThirdPartyDependencies
 
 # Discover all subdirectories with setup.ps1 files

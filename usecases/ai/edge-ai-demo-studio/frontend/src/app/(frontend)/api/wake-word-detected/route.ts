@@ -1,6 +1,7 @@
 // Copyright (C) 2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
+import { logger } from '@/utils/logger'
 import { NextRequest } from 'next/server'
 
 const sseClients = new Set<ReadableStreamDefaultController>()
@@ -14,7 +15,7 @@ function broadcastEvent(data: {
     try {
       controller.enqueue(new TextEncoder().encode(message))
     } catch (error) {
-      console.error('Failed to send SSE message:', error)
+      logger.error('Failed to send SSE message:', error)
       sseClients.delete(controller)
     }
   })
@@ -33,7 +34,7 @@ export async function GET() {
         try {
           controller.enqueue(new TextEncoder().encode(': keep-alive\n\n'))
         } catch (error) {
-          console.error('Failed to send keep-alive ping:', error)
+          logger.error('Failed to send keep-alive ping:', error)
           clearInterval(keepAliveInterval)
           sseClients.delete(controller)
         }
@@ -58,7 +59,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    console.log('Received detection:', JSON.stringify(body))
+    logger.log('Received detection:', JSON.stringify(body))
 
     // Create detection event
     const event = {
@@ -80,7 +81,7 @@ export async function POST(request: NextRequest) {
     if (error instanceof Error) {
       errorMessage = error.message
     }
-    console.error(errorMessage, error)
+    logger.error(errorMessage, error)
 
     return Response.json(
       {

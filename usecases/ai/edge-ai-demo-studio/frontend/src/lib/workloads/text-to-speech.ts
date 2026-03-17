@@ -2,20 +2,22 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { TEXT_TO_SPEECH_PORT } from '@/lib/constants'
+import { CreateWorkload } from '@/types/workload'
 
 export const TEXT_TO_SPEECH_TYPE = 'text-to-speech' as const
 
 export const TEXT_TO_SPEECH_DESCRIPTION =
   'Convert text to natural-sounding speech using advanced TTS models running locally. Perfect for accessibility, voice assistants, and more.'
 
-export const TEXT_TO_SPEECH_WORKLOAD = {
+export const TEXT_TO_SPEECH_WORKLOAD: CreateWorkload = {
   name: TEXT_TO_SPEECH_TYPE,
-  model: 'kokoro',
-  device: 'CPU',
+  models: { default: { name: 'kokoro', device: 'CPU' } },
   type: TEXT_TO_SPEECH_TYPE,
   port: TEXT_TO_SPEECH_PORT,
-  healthUrl: '/healthcheck',
+  healthCheck: { url: '/healthcheck' },
+  engine: 'custom' as const,
 }
+export const TEXT_TO_SPEECH_URL = '/api/text-to-speech'
 
 // Language/Model Options
 export const TTS_MODELS = [
@@ -24,15 +26,16 @@ export const TTS_MODELS = [
     model: 'kokoro',
     type: 'OpenVINO',
     cpuOnly: true,
+    sources: ['huggingface', 'modelscope'],
     languages: [
       {
         name: 'American English',
         id: 'en-US',
         voices: [
+          'af_heart',
+          'af_bella',
           'af_alloy',
           'af_aoede',
-          'af_bella',
-          'af_heart',
           'af_jadzia',
           'af_jessica',
           'af_kore',
@@ -122,6 +125,7 @@ export const TTS_MODELS = [
     model: 'malaya',
     type: 'PyTorch',
     cpuOnly: false,
+    sources: ['huggingface'],
     languages: [
       {
         name: 'Bahasa Malaysia',

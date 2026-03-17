@@ -31,12 +31,13 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { InputArea } from './input-area'
+import { InputArea } from '@/components/common/input-area'
 
 interface ConversationPanelProps {
   sessionId: string
   connectionStatus: string
   disabled: boolean
+  useWakeWordDetection: boolean
   isSTTEnabled: boolean
   isDenoiseEnabled: boolean
   knowledgeBaseId?: number
@@ -48,6 +49,7 @@ export function ConversationPanel({
   sessionId,
   connectionStatus,
   disabled,
+  useWakeWordDetection,
   isSTTEnabled,
   isDenoiseEnabled,
   knowledgeBaseId,
@@ -57,7 +59,7 @@ export function ConversationPanel({
   const chatEndRef = useRef<HTMLDivElement>(null)
   const [selectedLanguage, setSelectedLanguage] = useState<string>('')
   const [selectedVoice, setSelectedVoice] = useState<string>('')
-  const [clearChat, setClearChat] = useState<boolean>(false)
+  const [resetId, setResetId] = useState<number>(0)
   const { data: availableVoices, refetch: refetchVoices } = useGetVoices({
     enabled: !disabled,
   })
@@ -120,8 +122,9 @@ export function ConversationPanel({
     }
   }, [messages])
 
-  // Initialize default selections when component mounts or model changes
-  useEffect(() => {
+  const [prevModel, setPrevModel] = useState<string | undefined>(undefined)
+  if (selectedModel !== prevModel) {
+    setPrevModel(selectedModel)
     const modelConfig = TTS_MODELS.find(
       (model) => model.model === selectedModel,
     )
@@ -130,23 +133,27 @@ export function ConversationPanel({
       setSelectedLanguage(firstLanguage.id)
       setSelectedVoice(firstLanguage.voices[0] || '')
     }
-  }, [selectedModel])
+  }
 
-  // Update voice when language changes
-  useEffect(() => {
+  const [prevLang, setPrevLang] = useState('')
+  if (selectedLanguage !== prevLang) {
+    setPrevLang(selectedLanguage)
     const languageConfig = availableLanguages.find(
       (lang) => lang.id === selectedLanguage,
     )
     if (languageConfig && languageConfig.voices.length > 0) {
       setSelectedVoice(languageConfig.voices[0])
     }
-  }, [selectedLanguage, availableLanguages])
+  }
 
-  const handleSendMessage = (text: string) => {
+  const handleSendMessage = (
+    text: string,
+    isWakeWordDetected: boolean = false,
+  ) => {
     if (!text) return
     setStatus('processing')
     sendMessage(
-      { text: text },
+      { text: text, metadata: { isWakeWordDetected } },
       {
         body: {
           sessionId,
@@ -173,7 +180,7 @@ export function ConversationPanel({
   const handleClearChat = () => {
     handleStopChat() // Stop any ongoing generation
     setMessages([])
-    setClearChat(true)
+    setResetId((prev) => prev + 1)
     toast.success('Chat history cleared')
   }
 
@@ -261,56 +268,61 @@ export function ConversationPanel({
                 </p>
               </div>
             )}
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex items-start gap-3 ${
-                  message.role === 'user' ? 'flex-row-reverse' : 'flex-row'
-                }`}
-              >
-                <div
-                  className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full ${
-                    message.role === 'user'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400'
-                  }`}
-                >
-                  {message.role === 'user' ? (
-                    <User className="h-4 w-4" />
-                  ) : (
-                    <Bot className="h-4 w-4" />
-                  )}
-                </div>
-                <div
-                  className={`max-w-[calc(100%-3rem)] flex-1 rounded-lg px-4 py-2 text-sm break-words ${
-                    message.role === 'user'
-                      ? 'ml-12 bg-blue-600 text-white'
-                      : 'mr-12 bg-white text-slate-900 shadow-sm dark:bg-slate-800 dark:text-slate-100'
-                  }`}
-                >
-                  <div className="space-y-1">
-                    <div className="whitespace-pre-wrap">
-                      <Markdown remarkPlugins={[remarkGfm]}>
-                        {message.parts
-                          .filter((part) => part.type === 'text')
-                          .map((part) => part.text)
-                          .join('')}
-                      </Markdown>
+            {messages.map(
+              (message) =>
+                !(message.metadata as { isWakeWordDetected?: boolean })
+                  ?.isWakeWordDetected && (
+                  <div
+                    key={message.id}
+                    className={`flex items-start gap-3 ${
+                      message.role === 'user' ? 'flex-row-reverse' : 'flex-row'
+                    }`}
+                  >
+                    <div
+                      className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full ${
+                        message.role === 'user'
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400'
+                      }`}
+                    >
+                      {message.role === 'user' ? (
+                        <User className="h-4 w-4" />
+                      ) : (
+                        <Bot className="h-4 w-4" />
+                      )}
+                    </div>
+                    <div
+                      className={`max-w-[calc(100%-3rem)] flex-1 rounded-lg px-4 py-2 text-sm break-words ${
+                        message.role === 'user'
+                          ? 'ml-12 bg-blue-600 text-white'
+                          : 'mr-12 bg-white text-slate-900 shadow-sm dark:bg-slate-800 dark:text-slate-100'
+                      }`}
+                    >
+                      <div className="space-y-1">
+                        <div className="whitespace-pre-wrap">
+                          <Markdown remarkPlugins={[remarkGfm]}>
+                            {message.parts
+                              .filter((part) => part.type === 'text')
+                              .map((part) => part.text)
+                              .join('')}
+                          </Markdown>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </div>
-            ))}
+                ),
+            )}
             <div ref={chatEndRef} />
           </div>
         </ScrollArea>
 
         <InputArea
           disabled={disabled || connectionStatus !== 'connected'}
-          clearChat={clearChat}
-          setClearChat={setClearChat}
+          resetId={resetId}
+          useWakeWordDetection={useWakeWordDetection}
           isSTTEnabled={isSTTEnabled}
           isDenoiseEnabled={isDenoiseEnabled}
+          sttLanguage={selectedLanguage.slice(0, 2)}
           sendMessage={handleSendMessage}
           onStop={handleStopChat}
           isStreaming={status === 'streaming' || isProcessing}
