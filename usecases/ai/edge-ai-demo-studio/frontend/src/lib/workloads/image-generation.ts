@@ -1,8 +1,8 @@
 // Copyright (C) 2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-import { Model } from '@/components/workloads/text-generation/settings'
 import { IMAGE_GENERATION_PORT } from '@/lib/constants'
+import { CreateWorkload, Model } from '@/types/workload'
 
 export const IMAGE_GENERATION_TYPE = 'image-generation' as const
 
@@ -12,16 +12,17 @@ export const IMAGE_GENERATION_DESCRIPTION =
 export const IMAGE_GENERATION_MODELS: Model[] = [
   {
     name: 'OpenVINO/stable-diffusion-v1-5-int8-ov',
-    value: 'OpenVINO/stable-diffusion-v1-5-int8-ov',
-    type: 'predefined',
+    device: 'CPU',
   },
 ]
 
-export const IMAGE_GENERATION_WORKLOAD = {
+export const IMAGE_GENERATION_URL = '/api/image-generation'
+
+export const IMAGE_GENERATION_WORKLOAD: CreateWorkload = {
   name: IMAGE_GENERATION_TYPE,
   type: IMAGE_GENERATION_TYPE,
-  model: IMAGE_GENERATION_MODELS[0].value,
-  device: 'CPU',
+  models: { default: IMAGE_GENERATION_MODELS[0] },
   port: IMAGE_GENERATION_PORT,
-  healthUrl: '/v1/config',
+  healthCheck: { url: '/v1/config' },
+  engine: 'custom' as const,
 }

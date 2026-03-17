@@ -1,6 +1,13 @@
 // Copyright (C) 2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
+import { EMBEDDING_TYPE } from '@/lib/workloads/embedding'
+import { IMAGE_GENERATION_TYPE } from '@/lib/workloads/image-generation'
+import { LIPSYNC_TYPE } from '@/lib/workloads/lipsync'
+import { SPEECH_TO_TEXT_TYPE } from '@/lib/workloads/speech-to-text'
+import { TEXT_GENERATION_TYPE } from '@/lib/workloads/text-generation'
+import { TEXT_TO_SPEECH_TYPE } from '@/lib/workloads/text-to-speech'
+import { WAKE_WORD_DETECTION_TYPE } from '@/lib/workloads/wake-word-detection'
 import {
   Brain,
   Speech,
@@ -23,11 +30,26 @@ export const samples = [
     type: 'digital-avatar',
   },
   {
+    title: 'Digital Avatar Lite',
+    description:
+      'A lightweight animated robot avatar that brings conversations to life with responsive movements and expressions.',
+    icon: User,
+    href: '/digital-avatar-lite',
+    type: 'digital-avatar-lite',
+  },
+  {
     title: 'RAG Chat',
     description: 'A retrieval-augmented generation chat sample.',
     icon: MessageCircle,
     href: '/rag',
     type: 'rag',
+  },
+  {
+    title: 'Synthetic Image Generation',
+    description: 'Generate & edit images from text in real-time.',
+    icon: Image,
+    href: '/synthetic-image-generation',
+    type: 'synthetic-image-generation',
   },
 ]
 
@@ -36,7 +58,7 @@ export const workloads = [
     title: 'Wake Word Detection',
     description: 'Wake word detection for voice-activated applications',
     icon: MessageCircleWarning,
-    type: 'wake-word-detection',
+    type: WAKE_WORD_DETECTION_TYPE,
     href: '/wake-word-detection',
     useCases: ['Voice assistants', 'Smart devices', 'Hands-free control'],
   },
@@ -44,16 +66,16 @@ export const workloads = [
     title: 'Speech-to-Text',
     description: 'Convert spoken words into accurate text transcriptions',
     icon: Mic,
-    type: 'speech-to-text',
+    type: SPEECH_TO_TEXT_TYPE,
     href: '/speech-to-text',
     useCases: ['Voice assistants', 'Meeting transcription', 'Accessibility'],
   },
   {
-    title: 'Embedding',
+    title: 'Embeddings',
     description: 'Generate embeddings and manage documents for RAG workflows',
     icon: FileSearch,
-    href: '/embedding',
-    type: 'embedding',
+    href: '/embeddings',
+    type: EMBEDDING_TYPE,
     useCases: ['Document search', 'RAG systems', 'Semantic similarity'],
   },
   {
@@ -61,7 +83,7 @@ export const workloads = [
     description: 'Generate human-like text using advanced language models',
     icon: Brain,
     href: '/text-generation',
-    type: 'text-generation',
+    type: TEXT_GENERATION_TYPE,
     useCases: ['Content creation', 'Code generation', 'Chatbots'],
   },
   {
@@ -76,7 +98,7 @@ export const workloads = [
     title: 'Text-to-Speech',
     description: 'Transform text into natural-sounding speech',
     icon: Volume2,
-    type: 'text-to-speech',
+    type: TEXT_TO_SPEECH_TYPE,
     href: '/text-to-speech',
     useCases: ['Audiobooks', 'Voice assistants', 'Accessibility'],
   },
@@ -84,7 +106,7 @@ export const workloads = [
     title: 'Lipsync',
     description: 'Synchronized lip movements and natural speech synthesis',
     icon: Speech,
-    type: 'lipsync',
+    type: LIPSYNC_TYPE,
     href: '/lipsync',
     useCases: ['Virtual avatars', 'Video games', 'Accessibility'],
   },
@@ -93,7 +115,7 @@ export const workloads = [
     description: 'Generate images from text prompts using diffusion models',
     icon: Image,
     href: '/image-generation',
-    type: 'image-generation',
+    type: IMAGE_GENERATION_TYPE,
     useCases: ['Digital art', 'Content creation', 'Concept visualization'],
   },
 ]

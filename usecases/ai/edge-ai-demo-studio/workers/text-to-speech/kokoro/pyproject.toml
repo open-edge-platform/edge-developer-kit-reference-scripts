@@ -9,6 +9,7 @@ dependencies = [
     "huggingface-hub>=0.35.1",
     "loguru>=0.7.3",
     "misaki[en,ja,zh]==0.9.3",
+    "modelscope>=1.34.0",
     "numpy>=2.2.6",
     "openvino==2025.1.0",
     "psutil>=7.1.0",

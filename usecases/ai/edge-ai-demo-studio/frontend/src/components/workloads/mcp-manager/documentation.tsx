@@ -1,9 +1,10 @@
 // Copyright (C) 2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-import CodeBlock, { CodeSnippet } from '@/components/common/codeblock'
+import CodeBlock from '@/components/common/codeblock'
+import { CodeSnippet } from '@/types/code'
 
-export default function McpManagerDocumentation({ port }: { port: number }) {
+export default function McpManagerDocumentation({ url }: { url: string }) {
   const completionAPISnippet: CodeSnippet[] = [
     {
       language: 'Python',
@@ -11,7 +12,7 @@ export default function McpManagerDocumentation({ port }: { port: number }) {
       code: `import requests
 
 response = requests.post(
-    "http://localhost:${port}/api/mcp/completions",
+    "${url}/completions",
     json={
         "prompt": "What is the weather like in New York?",
         "stream": False,
@@ -25,7 +26,7 @@ print("response:", result["text"])`,
     {
       language: 'Javascript',
       languageCode: 'js',
-      code: `const response = await fetch('http://localhost:${port}/api/mcp/completions', {
+      code: `const response = await fetch('${url}/api/mcp/completions', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
@@ -48,7 +49,7 @@ console.log(result.text)`,
       code: `import requests
 
 response = requests.post(
-    "http://localhost:${port}/api/mcp/chat/completions",
+    "${url}/api/mcp/chat/completions",
     json={
         "messages": [
             {"role": "system", "content": "You are a helpful assistant."},
@@ -65,7 +66,7 @@ print("response:", result["text"])`,
     {
       language: 'Javascript',
       languageCode: 'js',
-      code: `const response = await fetch('http://localhost:${port}/api/mcp/chat/completions', {
+      code: `const response = await fetch('${url}/api/mcp/chat/completions', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
@@ -91,7 +92,7 @@ console.log(result.text)`,
       code: `import requests
 
 # Get available MCP servers and tools
-servers_response = requests.get("http://localhost:${port}/api/mcp/clients")
+servers_response = requests.get("${url}/api/mcp/clients")
 servers = servers_response.json()
 
 print(f"Total tools available: {servers['totalTools']}")
@@ -104,7 +105,7 @@ for server in servers["servers"]:
       language: 'Javascript',
       languageCode: 'js',
       code: `// Get available MCP servers and tools
-const serversResponse = await fetch('http://localhost:${port}/api/mcp/clients')
+const serversResponse = await fetch('${url}/api/mcp/clients')
 const servers = await serversResponse.json()
 
 console.log(\`Total tools available: \${servers.totalTools}\`)
@@ -125,7 +126,7 @@ servers.servers.forEach((server) => {
 
 # Use specific MCP tools in completion
 response = requests.post(
-    "http://localhost:${port}/api/mcp/completions",
+    "${url}/completions",
     json={
         "prompt": "What is the weather in New York?",
         "stream": False,
@@ -140,7 +141,7 @@ print("response:", result["text"])`,
       language: 'Javascript',
       languageCode: 'js',
       code: `// Use specific MCP tools in completion
-const response = await fetch('http://localhost:${port}/api/mcp/completions', {
+const response = await fetch('${url}/api/mcp/completions', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({

@@ -92,9 +92,7 @@ export interface Config {
   globals: {};
   globalsSelect: {};
   locale: null;
-  user: User & {
-    collection: 'users';
-  };
+  user: User;
   jobs: {
     tasks: unknown;
     workflows: unknown;
@@ -141,6 +139,7 @@ export interface User {
       }[]
     | null;
   password?: string | null;
+  collection: 'users';
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -152,19 +151,34 @@ export interface Workload {
   type:
     | 'wake-word-detection'
     | 'speech-to-text'
-    | 'embedding'
+    | 'embeddings'
     | 'text-generation'
     | 'text-to-speech'
     | 'lipsync'
-    | 'image-generation';
-  model: string;
+    | 'image-generation'
+    | 'synthetic-image-generation';
+  models: {
+    default: {
+      name: string;
+      source?: 'huggingface' | 'modelscope' | 'custom';
+      quant?: string;
+      device: string;
+      params?: string;
+    };
+    /**
+     * This interface was referenced by `undefined`'s JSON-Schema definition
+     * via the `patternProperty` "^(?!default$).*".
+     */
+    [k: string]: {
+      name: string;
+      source?: 'huggingface' | 'modelscope' | 'custom';
+      quant?: string;
+      device: string;
+      params?: string;
+    };
+  };
   port: number;
-  device: string;
   metadata?: {
-    denoise_model?: string;
-    denoise_device?: string;
-    rerankerModel?: string;
-    rerankerDevice?: string;
     /**
      * Turn Server IP for Lipsync
      */
@@ -181,8 +195,21 @@ export interface Workload {
   };
   status?: ('prepare' | 'active' | 'inactive' | 'restart' | 'error') | null;
   statusMessage?: string | null;
-  healthUrl?: string | null;
+  healthCheck?: {
+    /**
+     * Health check endpoint URL
+     */
+    url: string;
+    /**
+     * Map of Workload field paths to JSONata expressions for validation against the response
+     */
+    responseMapper?: {
+      [k: string]: string;
+    };
+    [k: string]: unknown;
+  };
   isHealthy?: boolean | null;
+  engine: 'llamacpp' | 'openvino' | 'custom';
   updatedAt: string;
   createdAt: string;
 }
@@ -306,14 +333,14 @@ export interface UsersSelect<T extends boolean = true> {
 export interface WorkloadsSelect<T extends boolean = true> {
   name?: T;
   type?: T;
-  model?: T;
+  models?: T;
   port?: T;
-  device?: T;
   metadata?: T;
   status?: T;
   statusMessage?: T;
-  healthUrl?: T;
+  healthCheck?: T;
   isHealthy?: T;
+  engine?: T;
   updatedAt?: T;
   createdAt?: T;
 }

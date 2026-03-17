@@ -18,6 +18,7 @@ import React from 'react'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { toast } from 'sonner'
+import { logger } from '@/utils/logger'
 
 export default function McpManagerService({
   loadMcpData,
@@ -41,7 +42,7 @@ export default function McpManagerService({
       try {
         loadMcpData()
       } catch (error) {
-        console.error('Error connecting to MCP servers:', error)
+        logger.error('Error connecting to MCP servers:', error)
         toast.error('Connection Failed', {
           description:
             'An error occurred while connecting to the MCP servers. Please make sure the MCP Servers are configured and accessible.',

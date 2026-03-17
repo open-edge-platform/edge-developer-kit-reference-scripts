@@ -2,13 +2,14 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import os
+import re
 import argparse
 import subprocess  # nosec -- used to spawn ovms in a secured environment
 import sys
 import time
 import threading
 from huggingface_hub import snapshot_download
-from utils.export_model import export_image_generation_model
+from modelscope import snapshot_download as ms_snapshot_download
 from utils.util import (
     validate_and_sanitize_cache_dir,
     create_cache_directory,
@@ -16,6 +17,7 @@ from utils.util import (
 )
 import requests
 import urllib.parse
+import subprocess  # nosec -- used as a catch exception type only
 
 # Global variable to track the OVMS subprocess for cleanup
 ovms_process = None
@@ -68,56 +70,86 @@ def cleanup_ovms_process():
         cleanup_in_progress.release()
 
 
-def download_model(model_id: str):
+def download_model(model_id: str, model_dir: str, source: str = "huggingface") -> str:
     """
     Download the model from Hugging Face Hub if it is not already present.
     """
     try:
         print(f"Downloading model: {model_id}...")
-        path = snapshot_download(repo_id=model_id)
-        return path
+        if source == "modelscope":
+            path = ms_snapshot_download(repo_id=model_id, local_dir=model_dir)
+        else:
+            path = snapshot_download(repo_id=model_id, local_dir=model_dir)
+        return os.path.join(path, model_id)
     except Exception as e:
         print(f"Error downloading {model_id}: {e}")
         raise RuntimeError(f"Failed to download model {model_id}")
 
 
-def prepare_model_env(
-    model_id: str, model_dir: str, device: str = "CPU", precision: str = "int4"
-):
-    print(f"Preparing model environment for {model_id} ...")
-    validated_model_id = validate_and_sanitize_model_id(model_id)
-    config_file_path = os.path.join(model_dir, "config.json")
+def export_model(model_path: str, model_dir: str, params: str = None):
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    python_source = (
+        os.path.join(".venv", "bin", "python3")
+        if os.name != "nt"
+        else os.path.join(".venv", "Scripts", "python.exe")
+    )
+    command = [
+        os.path.join(script_dir, python_source),
+        "thirdparty/export_model.py",
+        "image_generation",
+        "--source_model",
+        model_path,
+        "--model_repository_path",
+        model_dir,
+    ]
+    if params:
+        command.extend(params.split())
+    command.extend(
+        [
+            "--extra_quantization_params",
+            "--library diffusers",
+        ]
+    )
 
-    if not os.path.exists(model_dir):
-        os.makedirs(model_dir, exist_ok=True)
+    print("-" * 50)
+    print(command)
+
+    process = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+        universal_newlines=True,
+        env=os.environ.copy(),
+    )
+    for line in process.stdout:
+        print(line, end="")
+    process.wait()
+    if process.returncode != 0:
+        raise RuntimeError(f"Model export failed with exit code {process.returncode}")
+
+
+def prepare_model_env(
+    model_path: str, model_dir: str, device: str = "CPU", precision: str = "int4"
+):
+    print(f"Preparing model environment for {model_path} ...")
+    if not os.path.exists(model_path):
+        os.makedirs(model_path, exist_ok=True)
 
     try:
-        task_parameters = {
-            "target_device": device,
-            "extra_quantization_params": False,
-            "max_resolution": "",
-            "default_resolution": "",
-            "ov_cache_dir": None,
-            "resolution": "",
-            "num_images_per_prompt": "",
-            "guidance_scale": "",
-            "max_num_images_per_prompt": 0,
-            "default_num_inference_steps": 0,
-            "max_num_inference_steps": 0,
-        }
-        export_image_generation_model(
-            source_model=validated_model_id,
-            model_name=model_id,
-            model_repository_path=model_dir,
-            precision=precision,
-            task_parameters=task_parameters,
-            config_file_path=config_file_path,
-            num_streams=0,
-        )
-        print(f"Model exported successfully to {model_dir}")
+        task_parameters = ""
+        if "." in device:
+            device = device.split(".")[0]
+        if device == "NPU":
+            device = "NPU NPU NPU"
+            task_parameters += " --resolution 512x512"
+        task_parameters += f" --target_device {device}"
+        export_model(model_path, model_dir, task_parameters)
+        print(f"Model exported successfully to {model_path}")
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
-        raise RuntimeError(f"Failed to prepare model environment for {model_dir}")
+        raise RuntimeError(f"Failed to prepare model environment for {model_path}")
 
 
 def setup_ovms_environment():
@@ -125,6 +157,8 @@ def setup_ovms_environment():
     image_gen_dir = os.path.dirname(script_dir)
     ovms_dir = os.path.join(os.path.dirname(image_gen_dir), "thirdparty", "ovms")
     env = {}
+    env["HF_TOKEN"] = os.environ.get("HF_TOKEN", "")
+    env["HF_ENDPOINT"] = os.environ.get("HF_ENDPOINT", "")
 
     # Windows-specific environment setup
     if os.name == "nt":  # Windows
@@ -171,7 +205,6 @@ def start_model_serving(
     port: int,
     model_path: str,
     model_id: str,
-    model_provider: str,
     device: str,
     background: bool = False,
 ):
@@ -180,35 +213,23 @@ def start_model_serving(
     print("Setting environment for model serving ...")
     ovms, env = setup_ovms_environment()
 
-    if model_provider == "OpenVINO":
-        serving_command = [
-            ovms,
-            "--rest_port",
-            str(port),
-            "--source_model",
-            model_id,
-            "--model_repository_path",
-            model_path,
-            "--task",
-            "image_generation",
-            "--target_device",
-            device,
-        ]
+    serving_command = [
+        ovms,
+        "--rest_port",
+        str(port),
+        "--source_model",
+        model_id,
+        "--model_repository_path",
+        model_path,
+        "--task",
+        "image_generation",
+        "--target_device",
+        device,
+    ]
 
-        # Add NPU-specific parameters if using NPU or mixed devices
-        if "NPU" in device.upper():
-            serving_command.extend(["--resolution", "512x512"])
-
-    else:
-        serving_command = [
-            ovms,
-            "--rest_port",
-            str(port),
-            "--model_path",
-            model_path,
-            "--model_name",
-            model_id,
-        ]
+    # Add NPU-specific parameters if using NPU or mixed devices
+    if "NPU" in device.upper():
+        serving_command.extend(["--resolution", "512x512"])
 
     print("Starting model serving...")
     print(f"Command: {serving_command}")
@@ -324,7 +345,11 @@ def wait_for_model_ready(
 
 
 def setup_ovms_server(
-    model_id: str, device: str, precision: str, serving_port: int = 5006
+    model_id: str,
+    device: str,
+    precision: str,
+    serving_port: int = 5006,
+    source: str = "huggingface",
 ):
     """
     Setup and prepare the OVMS server without starting it (for use in FastAPI lifespan).
@@ -372,34 +397,43 @@ def setup_ovms_server(
     project_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
 
     # Set cache directories inside project root
-    app_cache_dir = os.path.join(project_root, "models", "ovms")
+    app_cache_dir = os.path.join(project_root, "models", "huggingface")
+    model_cache_dir = os.path.join(project_root, "models", "ovms")
 
     # Validate and sanitize the cache directories
     app_cache_dir = validate_and_sanitize_cache_dir(app_cache_dir)
+    model_cache_dir = validate_and_sanitize_cache_dir(model_cache_dir)
 
     # Create the directories if they don't exist
     create_cache_directory(app_cache_dir)
+    create_cache_directory(model_cache_dir)
 
-    model_dir = app_cache_dir
-    os.makedirs(model_dir, exist_ok=True)
+    model_dir = model_cache_dir
 
     model_provider = model_id.split("/")[0] if "/" in model_id else "local"
     model_name = model_id.split("/")[-1]
 
+    try:
+        validated_model_id = validate_and_sanitize_model_id(model_id)
+        path = download_model(
+            validated_model_id,
+            os.path.join(
+                app_cache_dir if not model_provider == "OpenVINO" else model_cache_dir,
+                validated_model_id,
+            ),
+            source,
+        )
+    except Exception as e:
+        print(f"Error downloading model {validated_model_id}: {e}")
+        raise RuntimeError(f"Failed to download model {validated_model_id}")
+
+    # Convert model
     if not model_provider == "OpenVINO":
         try:
-            validated_model_id = validate_and_sanitize_model_id(model_id)
-            download_model(validated_model_id)
-        except Exception as e:
-            print(f"Error downloading model {validated_model_id}: {e}")
-            raise RuntimeError(f"Failed to download model {validated_model_id}")
-
-        # Convert model
-        try:
             prepare_model_env(
-                model_id=validated_model_id,
-                model_dir=model_dir,
+                model_path=path,
                 device=device,
+                model_dir=model_dir,
                 precision=precision,
             )
             model_dir = os.path.join(model_dir, model_provider, model_name)
@@ -408,7 +442,7 @@ def setup_ovms_server(
             raise RuntimeError(f"Failed to prepare model environment: {e}")
 
     print(f"Model {model_id} is ready in {model_dir}")
-    return model_dir, model_provider
+    return model_dir
 
 
 def start_ovms_background(
@@ -416,6 +450,7 @@ def start_ovms_background(
     device: str,
     precision: str,
     serving_port: int = 5006,
+    source: str = "huggingface",
 ):
     """
     Start the OVMS server in the background (for use in FastAPI lifespan).
@@ -430,9 +465,7 @@ def start_ovms_background(
         process: The subprocess.Popen object for the OVMS server
     """
     # Setup the server environment
-    model_path, model_provider = setup_ovms_server(
-        model_id, device, precision, serving_port
-    )
+    model_path = setup_ovms_server(model_id, device, precision, serving_port, source)
 
     # Start serving in background
     try:
@@ -440,7 +473,6 @@ def start_ovms_background(
             port=serving_port,
             model_path=model_path,
             model_id=model_id,
-            model_provider=model_provider,
             device=device,
             background=True,
         )
@@ -489,7 +521,7 @@ def main():
     precision = args.precision
     port = args.port
 
-    model_path, model_provider = setup_ovms_server(
+    model_path = setup_ovms_server(
         model_id=model_id,
         device=device,
         precision=precision,
@@ -501,7 +533,6 @@ def main():
             port=port,
             model_path=model_path,
             model_id=model_id,
-            model_provider=model_provider,
             device=device,
             background=False,
         )

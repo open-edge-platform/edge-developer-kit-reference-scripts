@@ -233,7 +233,7 @@ function Invoke-ServiceSetup {
         $scriptArgs = @(
             "-NoProfile",
             "-ExecutionPolicy", "Bypass",
-            "-File", $setupScript
+            "-File", "`"$setupScript`""
         )
         
         # Always add -Verbose to child scripts for detailed logs

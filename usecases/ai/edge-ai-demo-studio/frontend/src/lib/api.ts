@@ -3,6 +3,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+import { logger } from '@/utils/logger'
 import path from 'path'
 
 interface RequestConfig {
@@ -63,7 +64,7 @@ export class FetchAPI {
       const response = await fetch(fullURL, options)
       return raw_response ? response : this.handleResponse(response)
     } catch (err) {
-      console.log(err)
+      logger.error(err)
       throw new Error('Error communicating with backend')
     }
   }
@@ -71,6 +72,9 @@ export class FetchAPI {
   private async handleResponse(response: Response): Promise<any> {
     const data = await response.json()
     if (!response.ok) {
+      if (response.status === 400) {
+        throw new Error(data.detail || 'Bad Request', { cause: 400 })
+      }
       throw new Error('Error communicating with backend')
     }
     // If the response has a status property and it's false, throw an error

@@ -18,8 +18,10 @@ import {
 import { ChatPanel, RagChatSettings } from '@/components/samples/rag-chat'
 import { Badge } from '@/components/ui/badge'
 import { KnowledgeBase } from '@/types/embedding'
-import { TEXT_GENERATION_WORKLOAD } from '@/lib/workloads/text-generation'
+import { TEXT_GENERATION_TYPE } from '@/lib/workloads/text-generation'
 import { SampleHeader, PrerequisiteBanner } from '@/components/samples'
+import { EMBEDDING_TYPE } from '@/lib/workloads/embedding'
+import SamplesBody from '@/components/samples/samples-body'
 
 export default function RagChatPage() {
   const { data: workloads, isLoading: isWorkloadsLoading } =
@@ -33,7 +35,7 @@ export default function RagChatPage() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
 
   const prerequisiteServices = useMemo(() => {
-    const ps = ['text-generation', 'embedding']
+    const ps: string[] = [TEXT_GENERATION_TYPE, EMBEDDING_TYPE]
     return ps
   }, [])
 
@@ -75,15 +77,17 @@ export default function RagChatPage() {
         onOpenSettings={() => setIsSettingsOpen(true)}
         disabled={isDisabled}
         badge={
-          selectedKnowledgeBase ? (
-            <Badge
-              variant="secondary"
-              className="flex items-center gap-1.5 border-blue-200 bg-blue-100 px-3 py-1 text-blue-800 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-200"
-            >
-              <div className="h-2 w-2 animate-pulse rounded-full bg-blue-500"></div>
-              RAG On • {selectedKnowledgeBase.name}
-            </Badge>
-          ) : undefined
+          <>
+            {selectedKnowledgeBase && (
+              <Badge
+                variant="secondary"
+                className="flex items-center gap-1.5 border-blue-200 bg-blue-100 px-3 py-1 text-blue-800 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-200"
+              >
+                <div className="h-2 w-2 animate-pulse rounded-full bg-blue-500"></div>
+                RAG On • {selectedKnowledgeBase.name}
+              </Badge>
+            )}
+          </>
         }
       />
 
@@ -95,15 +99,12 @@ export default function RagChatPage() {
         isStarting={createWorkload.isPending || updateWorkload.isPending}
       />
 
-      <div className="flex flex-1 flex-col overflow-hidden p-6">
-        <div className="mx-auto flex h-full w-full max-w-5xl flex-col overflow-hidden rounded-lg border bg-white shadow-lg dark:bg-slate-900">
-          <ChatPanel
-            disabled={isDisabled}
-            knowledgeBaseId={selectedKnowledgeBase?.id || undefined}
-            selectedModel={TEXT_GENERATION_WORKLOAD.model}
-          />
-        </div>
-      </div>
+      <SamplesBody>
+        <ChatPanel
+          disabled={isDisabled}
+          knowledgeBaseId={selectedKnowledgeBase?.id || undefined}
+        />
+      </SamplesBody>
 
       <RagChatSettings
         isOpen={isSettingsOpen}

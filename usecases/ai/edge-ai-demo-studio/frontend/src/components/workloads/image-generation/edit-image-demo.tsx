@@ -13,17 +13,20 @@ import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@radix-ui/react-label'
 import { ImageIcon, Loader2, Upload } from 'lucide-react'
 import { ImageGallery } from './image-gallery'
-import { ImageEditForm, TaskStatus } from '@/hooks/use-image-generation'
 import { useRef } from 'react'
 import { toast } from 'sonner'
 import Image from 'next/image'
 import { ProgressCard } from './progress-card'
+import {
+  ImageEditForm,
+  ImageGenerationTaskStatus,
+} from '@/types/image-generation'
 
 interface EditImageDemoProps {
   editedImages: string[]
   editForm: ImageEditForm
   imageEditIsPending: boolean
-  taskStatus: TaskStatus | null
+  taskStatus: ImageGenerationTaskStatus | null
   numImages: number
   disabled?: boolean
   handleImageEdit: () => Promise<void>

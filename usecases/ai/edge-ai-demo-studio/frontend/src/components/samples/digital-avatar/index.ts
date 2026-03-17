@@ -3,4 +3,3 @@
 
 export { AvatarStream } from './avatar-stream'
 export { ConversationPanel } from './conversation-panel'
-export { DigitalAvatarSettings } from './settings'

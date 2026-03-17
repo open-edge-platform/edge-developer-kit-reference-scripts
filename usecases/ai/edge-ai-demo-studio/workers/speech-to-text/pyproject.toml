@@ -1,0 +1,20 @@
+[project]
+name = "speech-to-text"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11, <3.12"
+dependencies = [
+    "fastapi[all]==0.128.0",
+    "ffmpeg-python==0.2.0",
+    "modelscope>=1.33.0",
+    "openvino==2025.4.1",
+    "openvino-genai==2025.4.1",
+    "optimum==1.27.0",
+    "optimum-intel[nncf,openvino]==1.25.2",
+    "pydub==0.25.1",
+    "soundfile==0.12.1",
+    "torch==2.8.0",
+    "uvicorn==0.32.1",
+    "protobuf==6.33.5",
+]

@@ -19,15 +19,19 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { MessageSquareText, Info, Zap, Loader2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
-import { useAccelerator, usePytorchAccelerator } from '@/hooks/use-accelerators'
+import { MessageSquareText, Info, Loader2 } from 'lucide-react'
+import { useState } from 'react'
+import {
+  useOpenVINOAccelerator,
+  usePytorchAccelerator,
+} from '@/hooks/use-accelerators'
 import { TTS_MODELS } from '@/lib/workloads/text-to-speech'
-
-export interface TTSSettings {
-  model: string
-  device: string
-}
+import { TTSSettings } from '@/types/workload'
+import { DeviceSelector } from '../../common/device-selector'
+import {
+  ModelSource,
+  ModelSourceSelector,
+} from '../../common/model-source-selector'
 
 interface SettingsModalProps {
   isOpen: boolean
@@ -42,14 +46,19 @@ export function SettingsModal({
   currentSettings,
   updateSettings,
 }: SettingsModalProps) {
-  const [tempSettings, setTempSettings] = useState<TTSSettings>(currentSettings)
+  const [tempModel, setTempModel] = useState<TTSSettings['model']>(
+    currentSettings.model,
+  )
+  const [tempSource, setTempSource] = useState<ModelSource>(
+    (currentSettings.model.source as ModelSource) || 'huggingface',
+  )
   const [isLoading, setIsLoading] = useState(false)
   const { data: pytorchDevices } = usePytorchAccelerator()
-  const { data: ovDevices } = useAccelerator()
+  const { data: ovDevices } = useOpenVINOAccelerator()
 
   // Get current model info
   const currentModel = TTS_MODELS.find(
-    (model) => model.model === tempSettings.model,
+    (model) => model.model === tempModel.name,
   )
 
   // Get available languages for the current model
@@ -81,19 +90,22 @@ export function SettingsModal({
 
   const availableDevices = getAvailableDevices()
 
-  useEffect(() => {
-    setTempSettings(currentSettings)
-  }, [currentSettings, isOpen])
+  const [prevDeps, setPrevDeps] = useState({
+    isOpen: isOpen,
+    settings: currentSettings,
+  })
+
+  if (isOpen !== prevDeps.isOpen || currentSettings !== prevDeps.settings) {
+    setPrevDeps({ isOpen: isOpen, settings: currentSettings })
+    if (isOpen) {
+      setTempModel(currentSettings.model)
+      setTempSource(currentSettings.model.source || 'huggingface')
+    }
+  }
 
   const handleModelChange = (modelName: string) => {
     const selectedModel = TTS_MODELS.find((model) => model.model === modelName)
     if (selectedModel) {
-      const languages = Array.isArray(selectedModel.languages)
-        ? selectedModel.languages
-        : [selectedModel.languages]
-      const firstLanguage = languages[0]
-      const firstVoice = firstLanguage.voices[0]
-
       // Get available devices for the new model
       const allDevices =
         selectedModel.type === 'PyTorch' ? pytorchDevices : ovDevices
@@ -110,29 +122,26 @@ export function SettingsModal({
 
       // Check if current device is still available, otherwise use first available device
       const currentDeviceAvailable = availableDevicesForModel.some(
-        (device) => device.id === tempSettings.device,
+        (device) => device.id === tempModel.device,
       )
       const defaultDevice = currentDeviceAvailable
-        ? tempSettings.device
+        ? tempModel.device
         : availableDevicesForModel[0]?.id || 'CPU'
 
-      setTempSettings((prev) => ({
-        ...prev,
-        model: modelName,
-        language: firstLanguage.id,
-        voice: firstVoice,
+      setTempModel({
+        name: modelName,
         device: defaultDevice,
-      }))
+      })
     }
   }
 
   const handleDeviceChange = (device: string) => {
-    setTempSettings((prev) => ({ ...prev, device }))
+    setTempModel({ ...tempModel, device })
   }
 
   const handleSave = () => {
     setIsLoading(true)
-    updateSettings(tempSettings)
+    updateSettings({ model: { ...tempModel, source: tempSource } })
       .then(() => {
         setIsLoading(false)
         onClose()
@@ -153,13 +162,13 @@ export function SettingsModal({
         </DialogHeader>
 
         <div className="space-y-6">
+          {/* Model Source */}
+          <ModelSourceSelector value={tempSource} onChange={setTempSource} />
+
           {/* Model Selection */}
           <div className="space-y-3">
             <Label className="text-base font-medium">TTS Model</Label>
-            <Select
-              value={tempSettings.model}
-              onValueChange={handleModelChange}
-            >
+            <Select value={tempModel.name} onValueChange={handleModelChange}>
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Select TTS model" />
               </SelectTrigger>
@@ -221,25 +230,12 @@ export function SettingsModal({
 
           {/* Device Selection */}
           <div className="space-y-3">
-            <Label className="text-base font-medium">Processing Device</Label>
-            <Select
-              value={tempSettings.device}
-              onValueChange={handleDeviceChange}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select device" />
-              </SelectTrigger>
-              <SelectContent>
-                {availableDevices.map((device) => (
-                  <SelectItem key={device.id} value={device.id}>
-                    <div className="flex items-center gap-2">
-                      <Zap className="h-4 w-4" />
-                      <span>{device.name}</span>
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <DeviceSelector
+              label="Processing Device"
+              value={tempModel.device}
+              onChange={handleDeviceChange}
+              devices={availableDevices}
+            />
 
             {currentModel?.cpuOnly && (
               <Alert>

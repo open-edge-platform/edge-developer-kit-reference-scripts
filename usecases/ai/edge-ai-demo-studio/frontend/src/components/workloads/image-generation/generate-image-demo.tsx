@@ -13,14 +13,17 @@ import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@radix-ui/react-label'
 import { ImageIcon, Loader2 } from 'lucide-react'
 import { ImageGallery } from './image-gallery'
-import { ImageGenerationForm, TaskStatus } from '@/hooks/use-image-generation'
 import { ProgressCard } from './progress-card'
+import {
+  ImageGenerationForm,
+  ImageGenerationTaskStatus,
+} from '@/types/image-generation'
 
 interface GenerateImageDemoProps {
   generatedImages: string[]
   generationForm: ImageGenerationForm
   imageGenerationIsPending: boolean
-  taskStatus: TaskStatus | null
+  taskStatus: ImageGenerationTaskStatus | null
   disabled?: boolean
   handleGenerate: () => Promise<void>
   downloadImage: (imageData: string, index: number, prefix?: string) => void

@@ -65,7 +65,7 @@ RUN python3 -m pip install fastapi[all] \
         numpy==1.26.4 \
         openai==1.56.2 \
         pyyaml==6.0.1 \
-        pypdf==6.0.0 \
+        pypdf==6.7.5 \
         langchain==0.3.27 \
         langchain-chroma==0.2.5 \
         langchain-community===0.3.27 \
@@ -75,10 +75,10 @@ RUN python3 -m pip install fastapi[all] \
         cached_path==1.6.3 \
         python-magic
 RUN python3 -m pip install --extra-index-url https://download.pytorch.org/whl/cpu \
-        torch==2.8.0 \
-        torchaudio==2.8.0 \
-        openvino==2025.3.0 \
-        optimum-intel[openvino,nncf]==1.26.1
+        torch==2.9.1 \
+        torchaudio==2.9.1 \
+        openvino==2026.0 \
+        optimum-intel[openvino,nncf]==1.27.0
 
 COPY --chown=openvino:openvino backend .
 
