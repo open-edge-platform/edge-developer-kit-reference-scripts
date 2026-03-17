@@ -14,7 +14,6 @@ export const useGetDetectionStatus = ({ enabled }: { enabled: boolean }) => {
       return response
     },
     enabled,
-    refetchInterval: 2000, // Poll every 2 seconds
   })
 }
 
@@ -97,7 +96,7 @@ export const useDeleteWakeWordModel = () => {
 
 export const useStartDetection = () => {
   return useMutation({
-    mutationFn: async (deviceId: number) => {
+    mutationFn: async (deviceId?: number) => {
       const response = await WWD_API.post('v1/wake-word-detection/start', {
         device_id: deviceId,
       })

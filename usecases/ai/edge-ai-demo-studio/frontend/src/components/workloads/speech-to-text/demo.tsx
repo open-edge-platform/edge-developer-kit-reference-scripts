@@ -35,24 +35,14 @@ import {
   Volume2,
   AudioWaveform,
 } from 'lucide-react'
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import { toast } from 'sonner'
+import { logger } from '@/utils/logger'
+import { SUPPORTED_STT_LANGUAGES } from '@/lib/workloads/speech-to-text'
 
 interface SpeechToTextDemoProps {
   disabled?: boolean
 }
-
-const SUPPORTED_LANGUAGES = [
-  { code: 'en', name: 'English' },
-  { code: 'ms', name: 'Malay' },
-  { code: 'zh', name: 'Chinese' },
-  { code: 'hi', name: 'Hindi' },
-  { code: 'ja', name: 'Japanese' },
-  { code: 'es', name: 'Spanish' },
-  { code: 'fr', name: 'French' },
-  { code: 'it', name: 'Italian' },
-  { code: 'pt', name: 'Portuguese' },
-]
 
 export default function SpeechToTextDemo({ disabled }: SpeechToTextDemoProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
@@ -76,15 +66,17 @@ export default function SpeechToTextDemo({ disabled }: SpeechToTextDemoProps) {
     isDeviceFound,
   } = useAudioRecorder()
 
-  // Handle audioBlob availability after recording stops
-  useEffect(() => {
+  const [prevAudioBlob, setPrevAudioBlob] = useState(audioBlob)
+
+  if (audioBlob !== prevAudioBlob) {
+    setPrevAudioBlob(audioBlob)
     if (audioBlob) {
       const file = new File([audioBlob], 'recording.webm', {
         type: 'audio/webm',
       })
       setSelectedFile(file)
     }
-  }, [audioBlob])
+  }
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -136,7 +128,7 @@ export default function SpeechToTextDemo({ disabled }: SpeechToTextDemoProps) {
         toast.success('Translation completed')
       }
     } catch (error) {
-      console.error('Processing error:', error)
+      logger.error('Processing error:', error)
       toast.error('Error', {
         description: `Failed to ${mode} audio. Please try again.`,
       })
@@ -203,7 +195,7 @@ export default function SpeechToTextDemo({ disabled }: SpeechToTextDemoProps) {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {SUPPORTED_LANGUAGES.map((lang) => (
+                {SUPPORTED_STT_LANGUAGES.map((lang) => (
                   <SelectItem key={lang.code} value={lang.code}>
                     {lang.name}
                   </SelectItem>

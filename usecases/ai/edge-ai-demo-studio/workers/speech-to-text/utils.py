@@ -22,6 +22,7 @@ import re
 import ffmpeg
 
 from huggingface_hub import snapshot_download
+from modelscope import snapshot_download as ms_snapshot_download
 
 MAX_PATH_LENGTH = 4096
 
@@ -122,7 +123,7 @@ def validate_and_sanitize_cache_dir(cache_dir: str) -> str:
 
     # Check for valid characters (avoid control characters and potentially dangerous chars)
     # Include platform-specific path separators and Windows drive letter colon
-    valid_chars = string.ascii_letters + string.digits + "/-._~" + os.sep
+    valid_chars = string.ascii_letters + string.digits + "/-._~ " + os.sep
     if os.name == "nt":  # Add ':' for Windows drive letters
         valid_chars += ":"
     if not all(c in valid_chars for c in cache_dir):
@@ -232,20 +233,23 @@ class OptimumCLI:
         subprocess.run(command, check=True)
 
 
-def download_model(model_id: str, model_dir: str):
+def download_model(model_id: str, model_dir: str, source: str = "huggingface") -> str:
     """
     Download the model from Hugging Face Hub if it is not already present.
     """
     try:
         print(f"Downloading model: {model_id}...")
-        path = snapshot_download(repo_id=model_id, local_dir=model_dir)
+        if source == "modelscope":
+            path = ms_snapshot_download(repo_id=model_id, local_dir=model_dir)
+        else:
+            path = snapshot_download(repo_id=model_id, local_dir=model_dir)
         return path
     except Exception as e:
         print(f"Error downloading {model_id}: {e}")
         raise RuntimeError(f"Failed to download model {model_id}")
 
 
-def download_and_export_model(model_name_or_path, output_dir):
+def export_model(model_name_or_path, output_dir):
     logger.info(f"Downloading model: {model_name_or_path} to {output_dir}")
     OptimumCLI.run_export(model_name_or_path, output_dir)
 
@@ -271,7 +275,8 @@ def get_local_ffmpeg_path():
     """Get the path to the locally installed ffmpeg in thirdparty folder."""
     script_dir = os.path.dirname(os.path.abspath(__file__))
     workers_dir = os.path.dirname(script_dir)
-    thirdparty_dir = os.path.join(workers_dir, "thirdparty")
+    project_root = os.path.dirname(workers_dir)
+    thirdparty_dir = os.path.join(project_root, "thirdparty")
 
     # Try Windows first
     ffmpeg_exe = os.path.join(thirdparty_dir, "ffmpeg", "bin", "ffmpeg.exe")

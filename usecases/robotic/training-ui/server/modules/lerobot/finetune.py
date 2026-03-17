@@ -82,8 +82,9 @@ class LeRobotModelFineTuneModule(threading.Thread):
 
         # default policy
         if policy_type == "act":
+            # Map device to 'cpu' for SafeTensors compatibility
             self.policy_cfg = ACTConfig(
-                repo_id="local_policy", device=self.device, push_to_hub=False
+                repo_id="local_policy", device="cpu", push_to_hub=False
             )
 
         self.config_path = None
@@ -135,6 +136,11 @@ class LeRobotModelFineTuneModule(threading.Thread):
             ds_meta=self.dataset.meta,
             rename_map=self.train_cfg.rename_map,
         )
+
+        # Move policy to actual XPU device after loading
+        if str(self.device).startswith('xpu'):
+            self.policy = self.policy.to(self.device)
+        
         self.accelerator.wait_for_everyone()
 
         processor_kwargs = {}
@@ -147,7 +153,7 @@ class LeRobotModelFineTuneModule(threading.Thread):
 
         if self.train_cfg.policy.pretrained_path is not None:
             processor_kwargs["preprocessor_overrides"] = {
-                "device_processor": {"device": self.device.type},
+                "device_processor": {"device": "cpu"}, # Map device for processor compatibility
                 "normalizer_processor": {
                     "stats": self.dataset.meta.stats,
                     "features": {
@@ -227,6 +233,18 @@ class LeRobotModelFineTuneModule(threading.Thread):
             initial_step=self.step,
         )
 
+        # Comprehensive device transfer for all tensor types
+        def move_to_device(obj, device):
+            if isinstance(obj, torch.Tensor):
+                return obj.to(device, non_blocking=True)
+            elif isinstance(obj, dict):
+                return {k: move_to_device(v, device) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [move_to_device(item, device) for item in obj]
+            elif isinstance(obj, tuple):
+                return tuple(move_to_device(item, device) for item in obj)
+            return obj
+
         for _ in range(self.step, self.train_cfg.steps):
             if self.is_training_stopped.is_set():
                 break
@@ -234,6 +252,7 @@ class LeRobotModelFineTuneModule(threading.Thread):
             start_time = time.perf_counter()
             batch = next(dl_iter)
             batch = self.preprocessor(batch)
+            batch = move_to_device(batch, self.device)
             train_tracker.dataloading_s = time.perf_counter() - start_time
 
             train_tracker, output_dict = update_policy(

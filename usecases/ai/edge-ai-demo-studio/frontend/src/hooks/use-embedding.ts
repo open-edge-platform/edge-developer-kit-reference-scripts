@@ -119,15 +119,6 @@ export const useDeleteKnowledgeBaseFile = () => {
   })
 }
 
-export const useCreateKnowledgeBaseEmbeddings = () => {
-  return useMutation({
-    mutationFn: async ({ kbId }: { kbId: number }) => {
-      const response = await EMBEDDINGS_API.post(`kb/${kbId}/create`)
-      return response
-    },
-  })
-}
-
 export const useSearchKnowledgeBase = () => {
   return useMutation({
     mutationFn: async ({
@@ -170,12 +161,12 @@ export const useSearchKnowledgeBase = () => {
   })
 }
 
-export const useCreateKnowledgeBaseEmbeddingsAdvanced = () => {
+export const useCreateKnowledgeBaseEmbeddings = () => {
   return useMutation({
     mutationFn: async ({
       kbId,
       splitterName = 'RecursiveCharacter',
-      chunkSize = 1000,
+      chunkSize = 512,
       chunkOverlap = 200,
     }: {
       kbId: number
@@ -184,6 +175,32 @@ export const useCreateKnowledgeBaseEmbeddingsAdvanced = () => {
       chunkOverlap?: number
     }) => {
       const response = await EMBEDDINGS_API.post(`kb/${kbId}/create`, {
+        splitter_name: splitterName,
+        chunk_size: chunkSize,
+        chunk_overlap: chunkOverlap,
+      })
+      return response
+    },
+  })
+}
+
+export const useCreateFileEmbeddings = () => {
+  return useMutation({
+    mutationFn: async ({
+      kbId,
+      filename,
+      splitterName = 'RecursiveCharacter',
+      chunkSize = 512,
+      chunkOverlap = 200,
+    }: {
+      kbId: number
+      filename: string
+      splitterName?: string
+      chunkSize?: number
+      chunkOverlap?: number
+    }) => {
+      const response = await EMBEDDINGS_API.post(`kb/${kbId}/files/embed`, {
+        filename,
         splitter_name: splitterName,
         chunk_size: chunkSize,
         chunk_overlap: chunkOverlap,
@@ -240,6 +257,19 @@ export const useDeleteChunksFromKnowledgeBase = () => {
       const response = await EMBEDDINGS_API.delete(`kb/${kbId}/chunks`, {
         data: {
           doc_ids: docIds,
+        },
+      })
+      return response
+    },
+  })
+}
+
+export const useDeleteChunksBySource = () => {
+  return useMutation({
+    mutationFn: async ({ kbId, source }: { kbId: number; source: string }) => {
+      const response = await EMBEDDINGS_API.delete(`kb/${kbId}/chunks/source`, {
+        data: {
+          source,
         },
       })
       return response

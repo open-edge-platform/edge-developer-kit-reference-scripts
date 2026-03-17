@@ -1,5 +1,5 @@
 import { McpServer } from '@/payload-types'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -32,7 +32,13 @@ export default function AddServerDialog({
   const [apiKey, setApiKey] = useState('')
   const [disabled, setDisabled] = useState(false)
 
-  useEffect(() => {
+  const [prevDeps, setPrevDeps] = useState({
+    editingServer: editingServer,
+    open: open,
+  })
+
+  if (editingServer !== prevDeps.editingServer || open !== prevDeps.open) {
+    setPrevDeps({ editingServer: editingServer, open: open })
     if (editingServer) {
       setName(editingServer.name)
       setUrl(editingServer.url)
@@ -44,7 +50,7 @@ export default function AddServerDialog({
       setApiKey('')
       setDisabled(false)
     }
-  }, [editingServer, open])
+  }
 
   const handleSave = () => {
     if (!name.trim() || !url.trim()) {

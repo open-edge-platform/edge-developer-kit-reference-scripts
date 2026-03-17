@@ -12,6 +12,7 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { useGetRTCOffer } from '@/hooks/use-lipsync'
+import { logger } from '@/utils/logger'
 import { Loader2, Monitor, Play, Video } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
@@ -88,7 +89,7 @@ export function AvatarStream({
 
     peerConnection.addEventListener('connectionstatechange', () => {
       const state = peerConnection.connectionState
-      console.log('WebRTC connection state:', state)
+      logger.log('WebRTC connection state:', state)
 
       if (state === 'connected') {
         setConnectionStatusRef.current('connected')
@@ -115,7 +116,7 @@ export function AvatarStream({
 
     peerConnection.addEventListener('iceconnectionstatechange', () => {
       const iceState = peerConnection.iceConnectionState
-      console.log('ICE connection state:', iceState)
+      logger.log('ICE connection state:', iceState)
 
       if (iceState === 'connected' || iceState === 'completed') {
         setIsIceConnecting(false)
@@ -181,7 +182,7 @@ export function AvatarStream({
         }
       })
       .catch((error) => {
-        console.error('WebRTC connection error:', error)
+        logger.error('WebRTC connection error:', error)
         setConnectionStatusRef.current('disconnected')
         setIsIceConnecting(false)
         toast.error('Failed to establish avatar connection. Please try again.')
@@ -192,11 +193,18 @@ export function AvatarStream({
     }
   }, [getRTCOffer, peerConnection, disconnectAvatar, turnServerIp])
 
+  const [prevRTCError, setPrevRTCError] = useState(getRTCError)
+  if (getRTCError !== prevRTCError) {
+    setPrevRTCError(getRTCError)
+    if (getRTCError) {
+      setIsIceConnecting(false)
+    }
+  }
+
   useEffect(() => {
     if (getRTCError) {
       toast.error('Error connecting to avatar')
       setConnectionStatusRef.current('disconnected')
-      setIsIceConnecting(false)
     }
   }, [getRTCError])
 
