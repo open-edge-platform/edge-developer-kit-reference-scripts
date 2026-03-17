@@ -16,11 +16,9 @@ import { LogEntry } from '@/types/log'
 import { Workload } from '@/payload-types'
 
 export default function Logs({
-  id,
   engine,
   type,
 }: {
-  id: number
   engine: Workload['engine']
   type: Workload['type']
 }) {
@@ -34,7 +32,7 @@ export default function Logs({
   })
   const scrollRef = useRef<HTMLDivElement>(null)
   const { data } = useLogs(
-    `${engine === 'custom' ? `${type}_${id}` : `${type}_${engine}_${id}`}`,
+    `${type}_${engine}`,
     engine,
     type,
     logIndex.since ?? undefined,

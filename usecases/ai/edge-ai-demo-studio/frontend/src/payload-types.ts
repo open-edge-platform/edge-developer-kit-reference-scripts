@@ -92,9 +92,7 @@ export interface Config {
   globals: {};
   globalsSelect: {};
   locale: null;
-  user: User & {
-    collection: 'users';
-  };
+  user: User;
   jobs: {
     tasks: unknown;
     workflows: unknown;
@@ -141,6 +139,7 @@ export interface User {
       }[]
     | null;
   password?: string | null;
+  collection: 'users';
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -156,7 +155,8 @@ export interface Workload {
     | 'text-generation'
     | 'text-to-speech'
     | 'lipsync'
-    | 'image-generation';
+    | 'image-generation'
+    | 'synthetic-image-generation';
   models: {
     default: {
       name: string;
@@ -209,7 +209,7 @@ export interface Workload {
     [k: string]: unknown;
   };
   isHealthy?: boolean | null;
-  engine: 'llamacpp' | 'ovms' | 'custom';
+  engine: 'llamacpp' | 'openvino' | 'custom';
   updatedAt: string;
   createdAt: string;
 }

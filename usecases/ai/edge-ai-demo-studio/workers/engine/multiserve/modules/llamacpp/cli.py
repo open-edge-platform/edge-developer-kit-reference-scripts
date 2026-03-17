@@ -245,41 +245,13 @@ class LlamaManagerCLI:
         return False
 
     def list_models(self):
-        verified_models = self.downloader.list_verified_models()
-        downloaded_models = self.downloader.list_downloaded_models()
-
-        verified_map = {}
-        for repo_id, task_type, quantizations, sources in verified_models:
-            key = (repo_id, task_type)
-            verified_map[key] = (quantizations, sources)
-
-        downloaded_map = {}
-        for repo_id, task_type, quantizations in downloaded_models:
-            key = (repo_id, task_type)
-            downloaded_map[key] = quantizations
-
-        all_keys = set(verified_map.keys()) | set(downloaded_map.keys())
-
-        detailed_list = []
-        for repo_id, task_type in all_keys:
-            verified_quant, sources = verified_map.get((repo_id, task_type), ([], []))
-            detailed_list.append(
-                {
-                    "repo_id": repo_id,
-                    "task_type": task_type,
-                    "downloaded": downloaded_map.get((repo_id, task_type), []),
-                    "verified": verified_quant,
-                    "sources": sources,
-                }
-            )
-
-        for model in detailed_list:
+        models = self.downloader.list_models()
+        for model in models:
             for quant in model.get("downloaded", []):
                 repo_id = model["repo_id"]
                 repo_id_with_tag = f"{repo_id}:{quant}"
                 self.usable_models[repo_id_with_tag] = model
-
-        return detailed_list
+        return models
 
     def start_server(self) -> None:
         self.is_server_ready = True
