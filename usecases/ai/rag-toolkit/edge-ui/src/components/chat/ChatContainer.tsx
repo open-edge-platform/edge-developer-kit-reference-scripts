@@ -37,6 +37,7 @@ export default function ChatContainer(): React.JSX.Element {
     language,
   } = useRecordAudio();
   const { addQueue, clearAudioQueue, isPlaying } = useAudioPlayer();
+  const DEFAULT_SYSTEM_PROMPT = "You are a helpful assistant. Always reply in English.";
   const [systemPrompt, setSystemPrompt] = useState<string | null>(null);
   const [functionTools, setFunctionTools] = useState<string | null>(null);
 
@@ -44,6 +45,9 @@ export default function ChatContainer(): React.JSX.Element {
     const storedPrompt = localStorage.getItem('systemPrompt');
     if (storedPrompt) {
       setSystemPrompt(storedPrompt);
+    } else {
+      localStorage.setItem('systemPrompt', DEFAULT_SYSTEM_PROMPT);
+      setSystemPrompt(DEFAULT_SYSTEM_PROMPT);
     }
   }, []);
 
