@@ -89,7 +89,9 @@ export default function TextToSpeechDemo({
   }, [disabled, refetchVoices])
 
   // Initialize default selections when component mounts
-  useEffect(() => {
+  const [prevSelectedModel, setPrevSelectedModel] = useState('')
+  if (selectedModel !== prevSelectedModel) {
+    setPrevSelectedModel(selectedModel)
     const modelConfig = TTS_MODELS.find(
       (model) => model.model === selectedModel,
     )
@@ -98,17 +100,22 @@ export default function TextToSpeechDemo({
       setSelectedLanguage(firstLanguage.id)
       setSelectedVoice(firstLanguage.voices[0] || '')
     }
-  }, [selectedModel])
+  }
 
   // Update voice when language changes
-  useEffect(() => {
+  const [prevSelectedLanguage, setPrevSelectedLanguage] =
+    useState(selectedLanguage)
+  // Only update voice if language changed, not just because availableLanguages array changed identity
+  const languageChanged = selectedLanguage !== prevSelectedLanguage
+  if (languageChanged) {
+    setPrevSelectedLanguage(selectedLanguage)
     const languageConfig = availableLanguages.find(
       (lang) => lang.id === selectedLanguage,
     )
     if (languageConfig && languageConfig.voices.length > 0) {
       setSelectedVoice(languageConfig.voices[0])
     }
-  }, [selectedLanguage, availableLanguages])
+  }
 
   const handleSynthesize = async () => {
     if (!text.trim()) {

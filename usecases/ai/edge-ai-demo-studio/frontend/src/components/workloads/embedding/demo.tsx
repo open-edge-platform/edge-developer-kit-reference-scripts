@@ -198,11 +198,19 @@ export default function EmbeddingDemo({ disabled }: EmbeddingDemoProps) {
           <CardContent>
             <Tabs defaultValue="search" className="w-full">
               <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="search" className="flex items-center gap-2">
+                <TabsTrigger
+                  data-testid="search-tab"
+                  value="search"
+                  className="flex items-center gap-2"
+                >
                   <Search className="h-4 w-4" />
                   Search
                 </TabsTrigger>
-                <TabsTrigger value="chunks" className="flex items-center gap-2">
+                <TabsTrigger
+                  data-testid="chunks-tab"
+                  value="chunks"
+                  className="flex items-center gap-2"
+                >
                   <Eye className="h-4 w-4" />
                   Manage Chunks
                 </TabsTrigger>
@@ -352,6 +360,7 @@ function KnowledgeBaseSelector({
               size="sm"
               onClick={() => setShowCreateForm(true)}
               disabled={disabled}
+              data-testid="create-kb-button"
             >
               <Plus className="mr-2 h-4 w-4" />
               New
@@ -367,12 +376,14 @@ function KnowledgeBaseSelector({
               onChange={(e) => setKbName(e.target.value)}
               disabled={disabled}
               onKeyDown={(e) => e.key === 'Enter' && handleCreateKB()}
+              data-testid="kb-name-input"
             />
             <Button
               onClick={handleCreateKB}
               disabled={
                 disabled || createKnowledgeBase.isPending || !kbName.trim()
               }
+              data-testid="create-kb-confirm-button"
             >
               {createKnowledgeBase.isPending ? (
                 <Loader2 className="size-4 animate-spin" />
@@ -396,7 +407,7 @@ function KnowledgeBaseSelector({
       {/* Existing Knowledge Bases List */}
       {knowledgeBases.length > 0 && (
         <Collapsible>
-          <CollapsibleTrigger asChild>
+          <CollapsibleTrigger data-testid="manage-kb-trigger" asChild>
             <Button variant="ghost" className="w-full justify-between">
               <span>
                 Manage Existing Knowledge Bases ({knowledgeBases.length})
@@ -408,6 +419,7 @@ function KnowledgeBaseSelector({
             {knowledgeBases.map((kb: KnowledgeBase) => (
               <div
                 key={kb.id}
+                data-testid={`kb-item-${kb.id}`}
                 className="flex items-center justify-between rounded-lg border p-3"
               >
                 <div className="flex-1">
@@ -419,6 +431,7 @@ function KnowledgeBaseSelector({
                 <Button
                   variant="ghost"
                   size="sm"
+                  data-testid={`delete-kb-button`}
                   className="text-destructive hover:text-destructive"
                   onClick={() => kb.id && handleDeleteKB(kb.id, kb.name)}
                   disabled={deletingKbId === kb.id}
@@ -1236,9 +1249,12 @@ function ChunkManager({
 
       {/* Chunks List */}
       {chunks.length > 0 ? (
-        <div className="space-y-3">
+        <div className="space-y-3" data-testid="chunks-list">
           {chunks.map((chunk: ChunkResult, index: number) => (
-            <Card key={chunk.doc_id || index}>
+            <Card
+              key={chunk.doc_id || index}
+              data-testid={`chunk-card-${chunk.doc_id || index}`}
+            >
               <CardContent>
                 <div className="flex items-start gap-3">
                   <input

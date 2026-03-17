@@ -9,12 +9,12 @@ import { toast } from 'sonner'
 
 export const InputArea = ({
   disabled,
-  clearChat,
-  setClearChat,
-  useWakeWordDetection = false,
+  resetId,
   wakeWordDetectedPrompt = 'Hello',
+  useWakeWordDetection = false,
   isSTTEnabled,
   isDenoiseEnabled,
+  sttLanguage = 'en',
   sendMessage,
   onStop,
   isStreaming,
@@ -23,12 +23,12 @@ export const InputArea = ({
   isGeneratingAudio,
 }: {
   disabled: boolean
-  clearChat?: boolean
-  setClearChat?: (value: boolean) => void
+  resetId?: number
   wakeWordDetectedPrompt?: string
   useWakeWordDetection?: boolean
   isSTTEnabled: boolean
   isDenoiseEnabled: boolean
+  sttLanguage?: string
   sendMessage: (text: string, isWakeWordDetected?: boolean) => void
   onStop: () => void
   isStreaming: boolean
@@ -55,7 +55,6 @@ export const InputArea = ({
   const [input, setInput] = useState('')
   const [isTranscribing, setIsTranscribing] = useState(false)
 
-  const [triggerSTT, setTriggerSTT] = useState(false)
   const hasDetectedRef = useRef(false)
 
   // Determine overall loading response state
@@ -85,7 +84,7 @@ export const InputArea = ({
           if (data.type === 'detection' && !hasDetectedRef.current) {
             hasDetectedRef.current = true
             sendMessage(wakeWordDetectedPrompt, true) // Trigger greeting from assistant
-            if (isSTTEnabled) setTriggerSTT(true) // Trigger STT after wake word detection
+            if (isSTTEnabled) startRecording() // Trigger STT after wake word detection
             // close connection after detection
             eventSource?.close()
           }
@@ -121,6 +120,7 @@ export const InputArea = ({
     sendMessage,
     isSTTEnabled,
     wakeWordDetectedPrompt,
+    startRecording,
   ])
 
   const toggleVoiceRecognition = () => {
@@ -131,33 +131,20 @@ export const InputArea = ({
     }
   }
 
-  useEffect(() => {
-    if (clearChat) {
-      stopRecording()
-      clearRecording()
-      processedAudioBlobRef.current = null
-      setInput('')
-      if (setClearChat) {
-        setClearChat(false)
-      }
-    }
-  }, [clearChat, stopRecording, clearRecording, setClearChat])
+  const [prevResetId, setPrevResetId] = useState(resetId)
+  if (resetId !== prevResetId) {
+    setPrevResetId(resetId)
+    setInput('')
+  }
 
   useEffect(() => {
-    if (
-      triggerSTT &&
-      !isLoading &&
-      !isListening &&
-      !wasAutomaticallyStoppedRef.current &&
-      isSTTEnabled &&
-      !isTranscribing
-    ) {
-      // Trigger STT if wake word was detected
-      startRecording()
-      setTriggerSTT(false)
-      return
-    }
+    if (resetId === prevResetId) return
+    stopRecording()
+    clearRecording()
+    processedAudioBlobRef.current = null
+  }, [resetId, prevResetId, stopRecording, clearRecording])
 
+  useEffect(() => {
     if (
       !isLoading &&
       !isListening &&
@@ -173,17 +160,15 @@ export const InputArea = ({
 
     // Reset the detection flag when the conversation cycle is complete
     // (not loading and not listening means ready for next wake word)
-    if (!isLoading && !isListening && hasDetectedRef.current && !triggerSTT) {
+    if (!isLoading && !isListening && hasDetectedRef.current) {
       hasDetectedRef.current = false
     }
   }, [
     isListening,
     isLoading,
-    isSTTEnabled,
     isTranscribing,
     audioBlob,
     startRecording,
-    triggerSTT,
     wasAutomaticallyStoppedRef,
   ])
 
@@ -207,7 +192,7 @@ export const InputArea = ({
 
           const response = await transcription.mutateAsync({
             file: audioFile,
-            language: 'en',
+            language: sttLanguage,
             useDenoise: isDenoiseEnabled,
           })
 
@@ -239,6 +224,7 @@ export const InputArea = ({
     hasSoundRef,
     isDenoiseEnabled,
     sendMessage,
+    sttLanguage,
     transcription,
   ])
 
@@ -250,7 +236,6 @@ export const InputArea = ({
     }
     // Reset all flags that could trigger auto-restart
     wasAutomaticallyStoppedRef.current = false
-    setTriggerSTT(false)
     processedAudioBlobRef.current = null
     hasDetectedRef.current = false
   }

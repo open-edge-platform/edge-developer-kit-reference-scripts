@@ -16,11 +16,9 @@ import { LogEntry } from '@/types/log'
 import { Workload } from '@/payload-types'
 
 export default function Logs({
-  id,
   engine,
   type,
 }: {
-  id: number
   engine: Workload['engine']
   type: Workload['type']
 }) {
@@ -34,7 +32,7 @@ export default function Logs({
   })
   const scrollRef = useRef<HTMLDivElement>(null)
   const { data } = useLogs(
-    `${engine === 'custom' ? `${type}_${id}` : `${type}_${engine}_${id}`}`,
+    `${type}_${engine}`,
     engine,
     type,
     logIndex.since ?? undefined,
@@ -43,15 +41,15 @@ export default function Logs({
 
   const MAX_LINES = 500
 
-  useEffect(() => {
-    if (data?.logs && data.logs.length > 0) {
-      setLogs((prev) => {
-        return [...prev, ...data.logs].slice(-MAX_LINES)
-      })
+  const [prevData, setPrevData] = useState(data)
 
+  if (data !== prevData) {
+    setPrevData(data)
+    if (data?.logs && data.logs.length > 0) {
+      setLogs((prev) => [...prev, ...data.logs].slice(-MAX_LINES))
       setLogIndex({ since: data.timestamp, offset: data.offset })
     }
-  }, [data])
+  }
 
   // Auto-scroll to bottom when new logs are added
   useEffect(() => {

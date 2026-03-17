@@ -12,7 +12,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Loader2 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import {
   EmbeddingSettings,
   InferenceEngine,
@@ -63,7 +63,7 @@ export function EmbeddingSettingsModal({
   )
 
   const [tempEngine, setTempEngine] = useState<Workload['engine']>(
-    selectedEngine || 'ovms',
+    selectedEngine || 'openvino',
   )
 
   // Fetch models
@@ -81,143 +81,142 @@ export function EmbeddingSettingsModal({
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false)
 
   // Embedding state
-  const [tempEmbeddingModel, setTempEmbeddingModel] = useState('')
+  const [tempEmbeddingModelOverride, setTempEmbeddingModelOverride] = useState<
+    string | null
+  >(null)
   const [tempEmbeddingDevice, setTempEmbeddingDevice] = useState(
     selectedEmbeddingModel?.device || 'CPU',
   )
   const [tempEmbeddingParams, setTempEmbeddingParams] = useState(
     selectedEmbeddingModel?.params || '',
   )
-  const [embeddingTabValue, setEmbeddingTabValue] = useState('predefined')
+  const [embeddingTabValue, setEmbeddingTabValue] = useState<string | null>(
+    null,
+  )
   const [isEmbeddingValid, setIsEmbeddingValid] = useState(true)
   const [embeddingSource, setEmbeddingSource] = useState<
     'huggingface' | 'modelscope' | 'custom'
   >(selectedEmbeddingModel?.source ?? 'huggingface')
 
   // Reranker state
-  const [tempRerankerModel, setTempRerankerModel] = useState('')
+  const [tempRerankerModelOverride, setTempRerankerModelOverride] = useState<
+    string | null
+  >(null)
   const [tempRerankerDevice, setTempRerankerDevice] = useState(
     selectedRerankerModel?.device || 'CPU',
   )
   const [tempRerankerParams, setTempRerankerParams] = useState(
     selectedRerankerModel?.params || '',
   )
-  const [rerankerTabValue, setRerankerTabValue] = useState('predefined')
+  const [rerankerTabValue, setRerankerTabValue] = useState<string | null>(null)
   const [isRerankerValid, setIsRerankerValid] = useState(true)
   const [rerankerSource, setRerankerSource] = useState<
     'huggingface' | 'modelscope' | 'custom'
   >(selectedRerankerModel?.source ?? 'huggingface')
 
-  const [verifiedEmbedding, setVerifiedEmbedding] = useState<ModelList>([])
-  const [customEmbedding, setCustomEmbedding] = useState<ModelList>([])
-  const [verifiedReranker, setVerifiedReranker] = useState<ModelList>([])
-  const [customReranker, setCustomReranker] = useState<ModelList>([])
-
   const [isLoading, setIsLoading] = useState(false)
-  const [hasInitialized, setHasInitialized] = useState(false)
 
   // Temp file paths (unused in final logic but needed for state)
-  const [, setTempEmbeddingLocalFilePath] = useState('')
-  const [, setTempRerankerLocalFilePath] = useState('')
+  const [tempEmbeddingLocalFilePath, setTempEmbeddingLocalFilePath] =
+    useState('')
+  const [tempRerankerLocalFilePath, setTempRerankerLocalFilePath] = useState('')
 
-  // Process models
-  useEffect(() => {
+  const derivedEmbeddingModels = useMemo(() => {
+    const verified: ModelList = []
+    const custom: ModelList = []
+
     if (embeddingModelsList) {
-      const verified: ModelList = []
-      const custom: ModelList = []
       embeddingModelsList.forEach((m) => {
         if (m.verified) verified.push(m)
         else custom.push(m)
       })
-      setVerifiedEmbedding(verified)
-      setCustomEmbedding(custom)
     }
+
+    return { verified, custom }
   }, [embeddingModelsList])
 
-  useEffect(() => {
+  const derivedRerankerModels = useMemo(() => {
+    const verified: ModelList = []
+    const custom: ModelList = []
+
     if (rerankerModelsList) {
-      const verified: ModelList = []
-      const custom: ModelList = []
       rerankerModelsList.forEach((m) => {
         if (m.verified) verified.push(m)
         else custom.push(m)
       })
-      setVerifiedReranker(verified)
-      setCustomReranker(custom)
     }
+
+    return { verified, custom }
   }, [rerankerModelsList])
 
+  const verifiedEmbedding = useMemo(() => {
+    return tempEngine ? derivedEmbeddingModels.verified : []
+  }, [derivedEmbeddingModels.verified, tempEngine])
+
+  const customEmbedding = useMemo(() => {
+    return tempEngine ? derivedEmbeddingModels.custom : []
+  }, [derivedEmbeddingModels.custom, tempEngine])
+
+  const verifiedReranker = useMemo(() => {
+    return tempEngine ? derivedRerankerModels.verified : []
+  }, [derivedRerankerModels.verified, tempEngine])
+
+  const customReranker = useMemo(() => {
+    return tempEngine ? derivedRerankerModels.custom : []
+  }, [derivedRerankerModels.custom, tempEngine])
+
   const embeddingSavedModelType = useMemo(() => {
+    if (tempEngine !== selectedEngine) return 'verified'
     const name = getModelName('embedding')
-    const isVerified = verifiedEmbedding.some((m) => m.id === name)
-    return isVerified ? 'verified' : 'custom'
-  }, [getModelName, verifiedEmbedding])
+    const isCustomModel = !verifiedEmbedding.some((model) => model.id === name)
+    return isCustomModel ? 'custom' : 'verified'
+  }, [getModelName, verifiedEmbedding, tempEngine, selectedEngine])
 
   const rerankerSavedModelType = useMemo(() => {
+    if (tempEngine !== selectedEngine) return 'verified'
     const name = getModelName('reranker')
-    const isVerified = verifiedReranker.some((m) => m.id === name)
-    return isVerified ? 'verified' : 'custom'
-  }, [getModelName, verifiedReranker])
+    const isCustomModel = !verifiedReranker.some((model) => model.id === name)
+    return isCustomModel ? 'custom' : 'verified'
+  }, [getModelName, verifiedReranker, tempEngine, selectedEngine])
 
-  // Initialization
-  useEffect(() => {
-    if (!isOpen) {
-      setHasInitialized(false)
-      return
-    }
+  const resolvedEmbeddingTabValue = useMemo(() => {
+    if (embeddingTabValue) return embeddingTabValue
+    return embeddingSavedModelType === 'custom' ? 'custom' : 'predefined'
+  }, [embeddingSavedModelType, embeddingTabValue])
 
-    if (!hasInitialized && embeddingModelsList && rerankerModelsList) {
-      setTempEngine(selectedEngine || 'ovms')
+  const resolvedRerankerTabValue = useMemo(() => {
+    if (rerankerTabValue) return rerankerTabValue
+    return rerankerSavedModelType === 'custom' ? 'custom' : 'predefined'
+  }, [rerankerSavedModelType, rerankerTabValue])
 
-      // Embedding Init
-      setTempEmbeddingDevice(selectedEmbeddingModel?.device || 'CPU')
-      setEmbeddingSource(selectedEmbeddingModel?.source || 'huggingface')
-      const embeddingName = getModelName('embedding')
-      const isEmbeddingVerified = verifiedEmbedding.some(
-        (m) => m.id === embeddingName,
-      )
-      if (isEmbeddingVerified) {
-        setEmbeddingTabValue('predefined')
-        setTempEmbeddingModel(embeddingName)
-      } else if (embeddingName) {
-        setEmbeddingTabValue('custom')
-        setTempEmbeddingModel(embeddingName)
-      } else {
-        setEmbeddingTabValue('predefined')
-        setTempEmbeddingModel(verifiedEmbedding[0]?.id || '')
-      }
-
-      // Reranker Init
-      setTempRerankerDevice(selectedRerankerModel?.device || 'CPU')
-      setRerankerSource(selectedRerankerModel?.source || 'huggingface')
-      const rerankerName = getModelName('reranker')
-      const isRerankerVerified = verifiedReranker.some(
-        (m) => m.id === rerankerName,
-      )
-      if (isRerankerVerified) {
-        setRerankerTabValue('predefined')
-        setTempRerankerModel(rerankerName)
-      } else if (rerankerName) {
-        setRerankerTabValue('custom')
-        setTempRerankerModel(rerankerName)
-      } else {
-        setRerankerTabValue('predefined')
-        setTempRerankerModel(verifiedReranker[0]?.id || '')
-      }
-
-      setHasInitialized(true)
-    }
+  const resolvedTempEmbeddingModel = useMemo(() => {
+    if (tempEmbeddingModelOverride !== null) return tempEmbeddingModelOverride
+    if (tempEngine !== selectedEngine) return verifiedEmbedding[0]?.id || ''
+    if (embeddingSavedModelType === 'custom')
+      return getModelName('embedding') || ''
+    return getModelName('embedding') || verifiedEmbedding[0]?.id || ''
   }, [
-    isOpen,
-    hasInitialized,
-    selectedEngine,
-    selectedEmbeddingModel,
-    selectedRerankerModel,
+    embeddingSavedModelType,
     getModelName,
-    embeddingModelsList,
-    rerankerModelsList,
+    tempEmbeddingModelOverride,
     verifiedEmbedding,
+    tempEngine,
+    selectedEngine,
+  ])
+
+  const resolvedTempRerankerModel = useMemo(() => {
+    if (tempRerankerModelOverride !== null) return tempRerankerModelOverride
+    if (tempEngine !== selectedEngine) return verifiedReranker[0]?.id || ''
+    if (rerankerSavedModelType === 'custom')
+      return getModelName('reranker') || ''
+    return getModelName('reranker') || verifiedReranker[0]?.id || ''
+  }, [
+    getModelName,
+    rerankerSavedModelType,
+    tempRerankerModelOverride,
     verifiedReranker,
+    tempEngine,
+    selectedEngine,
   ])
 
   // Handlers
@@ -226,6 +225,10 @@ export function EmbeddingSettingsModal({
     // Devices reset to CPU handled by state init if needed, or user selecting
     setTempEmbeddingDevice('CPU')
     setTempRerankerDevice('CPU')
+    setTempEmbeddingModelOverride(null)
+    setTempRerankerModelOverride(null)
+    setEmbeddingTabValue(null)
+    setRerankerTabValue(null)
   }
 
   const handleDeleteModel = async (
@@ -251,15 +254,15 @@ export function EmbeddingSettingsModal({
             setIsDeleteConfirmOpen(false)
             if (
               modelToDelete.type === EMBEDDING_TYPE &&
-              tempEmbeddingModel === modelToDelete.id
+              resolvedTempEmbeddingModel === modelToDelete.id
             ) {
-              setTempEmbeddingModel('')
+              setTempEmbeddingModelOverride('')
             }
             if (
               modelToDelete.type === RERANKER_TYPE &&
-              tempRerankerModel === modelToDelete.id
+              resolvedTempRerankerModel === modelToDelete.id
             ) {
-              setTempRerankerModel('')
+              setTempRerankerModelOverride('')
             }
             setModelToDelete(null)
           },
@@ -298,15 +301,15 @@ export function EmbeddingSettingsModal({
   const handleSave = () => {
     if (
       !validateModelName(
-        tempEmbeddingModel,
+        resolvedTempEmbeddingModel,
         'embedding',
-        embeddingTabValue,
+        resolvedEmbeddingTabValue,
         embeddingSource,
       ) ||
       !validateModelName(
-        tempRerankerModel,
+        resolvedTempRerankerModel,
         'reranker',
-        rerankerTabValue,
+        resolvedRerankerTabValue,
         rerankerSource,
       )
     ) {
@@ -315,15 +318,15 @@ export function EmbeddingSettingsModal({
 
     // Embedding Model Construction
     let embeddingModel: Model = {
-      name: tempEmbeddingModel,
+      name: resolvedTempEmbeddingModel,
       source: embeddingSource,
       device: tempEmbeddingDevice,
       params: tempEmbeddingParams,
     }
 
-    if (embeddingTabValue !== 'custom') {
+    if (resolvedEmbeddingTabValue !== 'custom') {
       const selected = verifiedEmbedding.find(
-        (m) => m.id === tempEmbeddingModel,
+        (m) => m.id === resolvedTempEmbeddingModel,
       )
       if (selected) {
         let id = { ...selected }.id
@@ -340,11 +343,11 @@ export function EmbeddingSettingsModal({
         }
       }
     } else {
-      const colonIndex = tempEmbeddingModel.indexOf(':')
+      const colonIndex = resolvedTempEmbeddingModel.indexOf(':')
       if (colonIndex !== -1) {
         embeddingModel = {
-          name: tempEmbeddingModel.substring(0, colonIndex),
-          quant: tempEmbeddingModel.substring(colonIndex + 1),
+          name: resolvedTempEmbeddingModel.substring(0, colonIndex),
+          quant: resolvedTempEmbeddingModel.substring(colonIndex + 1),
           source: embeddingSource,
           device: tempEmbeddingDevice,
           params: tempEmbeddingParams,
@@ -354,14 +357,16 @@ export function EmbeddingSettingsModal({
 
     // Reranker Model Construction
     let rerankerModel: Model = {
-      name: tempRerankerModel,
+      name: resolvedTempRerankerModel,
       source: rerankerSource,
       device: tempRerankerDevice,
       params: tempRerankerParams,
     }
 
-    if (rerankerTabValue !== 'custom') {
-      const selected = verifiedReranker.find((m) => m.id === tempRerankerModel)
+    if (resolvedRerankerTabValue !== 'custom') {
+      const selected = verifiedReranker.find(
+        (m) => m.id === resolvedTempRerankerModel,
+      )
       if (selected) {
         let id = { ...selected }.id
         const colonIndex = id.indexOf(':')
@@ -377,11 +382,11 @@ export function EmbeddingSettingsModal({
         }
       }
     } else {
-      const colonIndex = tempRerankerModel.indexOf(':')
+      const colonIndex = resolvedTempRerankerModel.indexOf(':')
       if (colonIndex !== -1) {
         rerankerModel = {
-          name: tempRerankerModel.substring(0, colonIndex),
-          quant: tempRerankerModel.substring(colonIndex + 1),
+          name: resolvedTempRerankerModel.substring(0, colonIndex),
+          quant: resolvedTempRerankerModel.substring(colonIndex + 1),
           source: rerankerSource,
           device: tempRerankerDevice,
           params: tempRerankerParams,
@@ -404,16 +409,132 @@ export function EmbeddingSettingsModal({
       })
   }
 
-  const canSave =
-    tempEmbeddingModel &&
-    tempRerankerModel &&
-    isEmbeddingValid &&
-    isRerankerValid &&
-    tempEmbeddingDevice &&
-    tempRerankerDevice
+  const canSave = useMemo(() => {
+    // Embedding Check
+    const isEmbeddingReady = (() => {
+      if (!tempEmbeddingDevice) return false
+      if (!tempEngine) return false
+      if (
+        !resolvedTempEmbeddingModel ||
+        resolvedTempEmbeddingModel.trim().length === 0
+      )
+        return false
+
+      if (resolvedEmbeddingTabValue === 'custom') {
+        if (embeddingSource === 'custom') {
+          return (
+            !!resolvedTempEmbeddingModel &&
+            resolvedTempEmbeddingModel.trim().length > 0 &&
+            (!!tempEmbeddingLocalFilePath ||
+              !!customEmbedding.find((m) => m.id === resolvedTempEmbeddingModel)
+                ?.downloaded)
+          )
+        }
+        return (
+          !!resolvedTempEmbeddingModel &&
+          resolvedTempEmbeddingModel.trim().length > 0 &&
+          isEmbeddingValid
+        )
+      } else {
+        if (
+          resolvedTempEmbeddingModel.trim() === '' ||
+          !verifiedEmbedding.find((m) => m.id === resolvedTempEmbeddingModel)
+        ) {
+          return false
+        }
+      }
+      return true
+    })()
+
+    // Reranker Check
+    const isRerankerReady = (() => {
+      if (!tempRerankerDevice) return false
+      if (!tempEngine) return false
+      if (
+        !resolvedTempRerankerModel ||
+        resolvedTempRerankerModel.trim().length === 0
+      )
+        return false
+
+      if (resolvedRerankerTabValue === 'custom') {
+        if (rerankerSource === 'custom') {
+          return (
+            !!resolvedTempRerankerModel &&
+            resolvedTempRerankerModel.trim().length > 0 &&
+            (!!tempRerankerLocalFilePath ||
+              !!customReranker.find((m) => m.id === resolvedTempRerankerModel)
+                ?.downloaded)
+          )
+        }
+        return (
+          !!resolvedTempRerankerModel &&
+          resolvedTempRerankerModel.trim().length > 0 &&
+          isRerankerValid
+        )
+      } else {
+        if (
+          resolvedTempRerankerModel.trim() === '' ||
+          !verifiedReranker.find((m) => m.id === resolvedTempRerankerModel)
+        ) {
+          return false
+        }
+      }
+      return true
+    })()
+
+    return isEmbeddingReady && isRerankerReady
+  }, [
+    customEmbedding,
+    customReranker,
+    embeddingSource,
+    resolvedEmbeddingTabValue,
+    isEmbeddingValid,
+    isRerankerValid,
+    rerankerSource,
+    resolvedRerankerTabValue,
+    tempEmbeddingDevice,
+    tempEmbeddingLocalFilePath,
+    resolvedTempEmbeddingModel,
+    tempEngine,
+    tempRerankerDevice,
+    tempRerankerLocalFilePath,
+    resolvedTempRerankerModel,
+    verifiedEmbedding,
+    verifiedReranker,
+  ])
+
+  const resetState = () => {
+    setTempEngine(selectedEngine || 'openvino')
+    setTempEmbeddingDevice(selectedEmbeddingModel?.device || 'CPU')
+    setTempEmbeddingParams(selectedEmbeddingModel?.params || '')
+    setEmbeddingSource(selectedEmbeddingModel?.source ?? 'huggingface')
+    setTempRerankerDevice(selectedRerankerModel?.device || 'CPU')
+    setTempRerankerParams(selectedRerankerModel?.params || '')
+    setRerankerSource(selectedRerankerModel?.source ?? 'huggingface')
+    setTempEmbeddingLocalFilePath('')
+    setTempRerankerLocalFilePath('')
+    setIsEmbeddingValid(true)
+    setIsRerankerValid(true)
+    setEmbeddingTabValue(null)
+    setRerankerTabValue(null)
+    setTempEmbeddingModelOverride(null)
+    setTempRerankerModelOverride(null)
+  }
+
+  const handleCancel = () => {
+    resetState()
+    onClose()
+  }
+
+  const handleDialogChange = (open: boolean) => {
+    if (!open) {
+      resetState()
+      onClose()
+    }
+  }
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={handleDialogChange}>
       <DialogContent className="flex max-h-[90vh] flex-col sm:max-w-[700px]">
         <DialogHeader>
           <DialogTitle className="text-xl">
@@ -471,9 +592,9 @@ export function EmbeddingSettingsModal({
               engine={tempEngine}
               verifiedModels={verifiedEmbedding}
               customModels={customEmbedding}
-              selectedModel={tempEmbeddingModel}
-              onModelSelect={setTempEmbeddingModel}
-              tabValue={embeddingTabValue}
+              selectedModel={resolvedTempEmbeddingModel}
+              onModelSelect={setTempEmbeddingModelOverride}
+              tabValue={resolvedEmbeddingTabValue}
               onTabChange={setEmbeddingTabValue}
               source={embeddingSource}
               onSourceChange={setEmbeddingSource}
@@ -498,9 +619,9 @@ export function EmbeddingSettingsModal({
               engine={tempEngine}
               verifiedModels={verifiedReranker}
               customModels={customReranker}
-              selectedModel={tempRerankerModel}
-              onModelSelect={setTempRerankerModel}
-              tabValue={rerankerTabValue}
+              selectedModel={resolvedTempRerankerModel}
+              onModelSelect={setTempRerankerModelOverride}
+              tabValue={resolvedRerankerTabValue}
               onTabChange={setRerankerTabValue}
               source={rerankerSource}
               onSourceChange={setRerankerSource}
@@ -524,7 +645,7 @@ export function EmbeddingSettingsModal({
           <Button
             variant="outline"
             disabled={isLoading}
-            onClick={onClose}
+            onClick={handleCancel}
             className="min-w-[100px]"
           >
             Cancel

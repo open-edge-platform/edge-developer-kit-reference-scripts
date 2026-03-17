@@ -11,7 +11,7 @@ $WORKER_THIRDPARTY_DIR = Join-Path $WORKER_DIR "thirdparty"
 $HOME_DIR = Split-Path $WORKER_DIR -Parent
 $HOME_THIRDPARTY_DIR = Join-Path $HOME_DIR "thirdparty"
 
-$VenvDir = Join-Path $SCRIPT_DIR ".venv"
+$VENV_DIR = Join-Path $SCRIPT_DIR ".venv"
 $UVPath = Join-Path $WORKER_THIRDPARTY_DIR "uv\uv.exe"
 $script:uvCommand = $UVPath
 $FFmpegPath = Join-Path $HOME_THIRDPARTY_DIR "ffmpeg\bin\ffmpeg.exe"
@@ -45,40 +45,32 @@ function Test-UvInstalled {
     }
 }
 
-# Function to install Python dependencies
-function Install-PythonDependencies {
-    Write-Host "Checking for virtual environment..." -ForegroundColor Yellow
-    if (Test-Path $VenvDir) {
-        Write-Host "Virtual environment already exists." -ForegroundColor Green
+function New-VirtualEnvironment {
+    if (Test-Path $VENV_DIR) {
+        Write-Host "Virtual environment already exists at $VENV_DIR." -ForegroundColor Green
     } else {
-        Write-Host "Creating virtual environment with uv..." -ForegroundColor Yellow
-        & $script:uvCommand venv
+        Write-Host "Creating Python 3.11 virtual environment with uv ..." -ForegroundColor Yellow
+        & $script:uvCommand venv --python 3.11 --seed
         if ($LASTEXITCODE -ne 0) {
             throw "Failed to create virtual environment. uv venv exited with code $LASTEXITCODE"
         }
     }
-    
-    Write-Host "Installing Python dependencies with uv (this may take a few minutes)..." -ForegroundColor Yellow
-    Write-Host "Note: If this seems stuck, it might be resolving PyTorch dependencies..." -ForegroundColor Cyan
-    
-    if (Test-Path "requirements.txt") {
-        Write-Host "Installing requirements.txt dependencies..." -ForegroundColor Yellow
-        & $script:uvCommand pip install -r requirements.txt --refresh --pre --verbose --index-strategy unsafe-best-match
-        if ($LASTEXITCODE -ne 0) {
-            throw "Failed to install Python dependencies. uv pip install exited with code $LASTEXITCODE"
-        }
-        Write-Host "Python dependencies installed successfully." -ForegroundColor Green
-    } else {
-        Write-Host "requirements.txt not found, skipping requirements installation." -ForegroundColor Yellow
+    & $script:uvCommand sync
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to sync dependencies. uv sync exited with code $LASTEXITCODE"
+    }
+    & $script:uvCommand run python -m ensurepip
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to ensure pip. uv run exited with code $LASTEXITCODE"
     }
 }
 
 # Main execution
 try {
     Write-Host "Starting Speech-to-Text Setup..." -ForegroundColor Green
-    Test-UvInstalled
     Test-FFmpegAvailable
-    Install-PythonDependencies
+    Test-UvInstalled
+    New-VirtualEnvironment
     Write-Host "Setup completed successfully!" -ForegroundColor Green
     exit 0
 } catch {

@@ -20,7 +20,7 @@ LLAMA_RELEASE_URL="https://github.com/ggml-org/llama.cpp/releases/download/b7406
 LLAMA_DOWNLOAD_FILE="llama-ubuntu.zip"
 LLAMA_EXTRACT_DIR="engine/llama.cpp-vulkan"
 
-XPU_SMI_RELEASE_URL="https://github.com/intel/xpumanager/releases/download/v1.3.4/xpu-smi_1.3.4_20251105.132841.7410e65e.u24.04_amd64.deb"
+XPU_SMI_RELEASE_URL="https://github.com/intel/xpumanager/releases/download/V1.3.4/xpu-smi_1.3.4_20251105.132841.7410e65e.u24.04_amd64.deb"
 XPU_SMI_DOWNLOAD_FILE="xpu-smi.deb"
 XPU_SMI_INSTALL_DIR="engine/xpu-smi"
 

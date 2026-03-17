@@ -97,19 +97,6 @@ export default function SpeechToTextPage() {
     })
   }
 
-  const SettingsButton = () => {
-    return (
-      <Button
-        variant="secondary"
-        size="icon"
-        className="size-8"
-        onClick={onOpen}
-      >
-        <Settings />
-      </Button>
-    )
-  }
-
   return (
     <>
       <SettingsModal
@@ -128,7 +115,16 @@ export default function SpeechToTextPage() {
       />
       <WorkloadComponent
         title="Speech-to-Text"
-        settingsButton={<SettingsButton />}
+        settingsButton={
+          <Button
+            variant="secondary"
+            size="icon"
+            className="size-8"
+            onClick={onOpen}
+          >
+            <Settings />
+          </Button>
+        }
         workload={workload}
         description={DESCRIPTION}
         workloadType={TYPE}
@@ -140,7 +136,6 @@ export default function SpeechToTextPage() {
         docsElement={<DocumentationTemplate data={data} />}
         logsElement={
           <Logs
-            id={workload?.id || 0}
             type={workload?.type || SPEECH_TO_TEXT_TYPE}
             engine={workload?.engine ?? 'custom'}
           />

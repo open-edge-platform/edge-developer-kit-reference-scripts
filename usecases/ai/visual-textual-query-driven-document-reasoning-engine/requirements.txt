@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0 
 
 colpali-engine==0.3.13
-gradio==5.49.1
+gradio>=5.49.1
 imagehash==4.3.2
 nncf==2.18.0
 openvino==2025.3.0

@@ -3,18 +3,19 @@
 
 import { Workload } from '@/payload-types'
 import { listProcesses, spawnProcess, stopProcess } from '@/lib/process-handler'
-import { MULTISERVE_REPO_PATH } from './constants'
+import { MULTISERVE_REPO_PATH, WORKER_DIR } from './constants'
 import { BasePayload } from 'payload'
 import {
-  DEFAULT_MULTISERVE_FIELDS,
   getMultiserveLogsDir,
   getMultiserveModelsDir,
 } from './engine/multiserve'
+import path from 'path'
 import { MultiserveModel } from '@/types/multiserve'
 import { getModelNameWithQuant } from '@/utils/common'
 import { logger } from '@/utils/logger'
 import { fileLogger } from '@/utils/file-logger'
 import { Model } from '@/types/workload'
+import { EMBEDDING_TYPE } from './workloads/embedding'
 
 // Health check function to wait for multiserve to be ready
 const waitForHealthCheck = async (
@@ -48,13 +49,14 @@ const waitForHealthCheck = async (
 }
 
 const downloadModel = async (
+  id: number,
   modelConfig: Model,
   engine: Workload['engine'],
   taskType: string,
   port: number,
 ): Promise<boolean> => {
   try {
-    const downloadModelURL = `http://localhost:${port}/v1/model/download/unverified`
+    const downloadModelURL = `http://localhost:${port}/v1/api/model/download/unverified?backend=${engine}`
     const downloadResponse = await fetch(new URL(downloadModelURL), {
       method: 'POST',
       headers: {
@@ -81,7 +83,7 @@ const downloadModel = async (
     const reader = downloadResponse.body.getReader()
     const decoder = new TextDecoder()
     let hasError = false
-    const logFileName = `${taskType}_${engine}.log`
+    const logFileName = `${taskType}_${engine}_${id}.log`
 
     while (true) {
       const { done, value } = await reader.read()
@@ -118,7 +120,7 @@ const startModel = async (
   port: number,
 ): Promise<boolean> => {
   try {
-    const startModelURL = `http://localhost:${port}/v1/start`
+    const startModelURL = `http://localhost:${port}/v1/start?backend=${engine}`
     const body: Record<string, string | number> = {
       repo_id: getModelNameWithQuant(modelConfig, engine),
       task: taskType.replace('-', '_'),
@@ -183,6 +185,7 @@ const initializeModel = async (workload: Workload): Promise<boolean> => {
         // Model not downloaded, need to download it
         logger.log(`Downloading model ${workloadModel.name}...`)
         const downloaded = await downloadModel(
+          workload.id,
           workloadModel,
           workload.engine,
           modelKey === 'default' ? workload.type : modelKey,
@@ -216,33 +219,40 @@ const initializeModel = async (workload: Workload): Promise<boolean> => {
 }
 
 export const startMultiserveServer = async (workload: Workload) => {
-  const processName = `${workload.name}_${workload.engine}_${workload.id}`
+  const processName = `${workload.name}_${workload.engine}`
   const workloadModel = workload.models.default
   const device = workloadModel.device
   const port = workload.port
   const processes = listProcesses()
-
-  for (const proc of processes) {
-    //stop if task engine does not match
-    if (
-      proc.name.startsWith(workload.name) &&
-      !proc.name.endsWith(workload.engine)
-    ) {
-      await stopProcess(proc.name)
-    }
+  logger.info(`Existing processes: ${processes.map((p) => p.name).join(', ')}`)
+  // check if process is already running
+  if (processes.some((p) => p.name === processName)) {
+    logger.log(
+      `${workload.name} with ${workload.engine} backend already running on this port: ${port}`,
+    )
+    return
   }
 
-  const existingProcess = processes.find((p) => p.name === processName)
+  const existingProcess = processes.find((p) => p.name.includes(workload.name))
 
   const isGPU = device.toLowerCase().startsWith('gpu')
   const gpuIndex = isGPU ? device.split('.')[1] : null
+  const existingNameParts = existingProcess
+    ? existingProcess.name.split('_')
+    : null
+  const existingWorkloadName = existingNameParts ? existingNameParts[0] : null
+  const existingEngine = existingNameParts
+    ? existingNameParts.slice(1).join('_')
+    : null
 
-  if (workload.engine === 'llamacpp' && existingProcess) {
-    if (isGPU) {
+  if (existingProcess && existingWorkloadName === workload.name) {
+    if (existingEngine && existingEngine !== workload.engine) {
+      await stopProcess(existingProcess.name)
+    } else if (workload.engine === 'llamacpp' && isGPU) {
       logger.log(
         `Restarting ${workload.name} with ${workload.engine} backend for GPU ${gpuIndex}`,
       )
-      await stopProcess(processName)
+      await stopProcess(existingProcess.name)
     } else {
       logger.log(
         `${workload.name} with ${workload.engine} backend already running on port ${port}`,
@@ -259,11 +269,7 @@ export const startMultiserveServer = async (workload: Workload) => {
   if (workload.engine === 'llamacpp') {
     env.MULTISERVE_BACKEND = 'llamacpp'
   } else {
-    env.MULTISERVE_BACKEND = 'ovms'
-  }
-
-  if (workloadModel.source === 'modelscope') {
-    env.HF_ENDPOINT = 'https://www.modelscope.cn/models'
+    env.MULTISERVE_BACKEND = 'openvino'
   }
 
   env.HF_TOKEN = process.env.HF_TOKEN || ''
@@ -271,21 +277,28 @@ export const startMultiserveServer = async (workload: Workload) => {
   logger.log(
     `Starting multiserve with ${workload.engine} of ${workload.name} backend on port ${port}${isGPU ? ` with GPU ${gpuIndex}` : ''}`,
   )
-  const command = [
-    'run',
-    'app.py',
-    '--headless',
-    '--debug',
-    `--port`,
-    `${port}`,
-  ]
+  const command = ['run']
+  let cwd = MULTISERVE_REPO_PATH
 
-  const logDir = getMultiserveLogsDir(workload.type, workload.id)
+  if (workload.type === EMBEDDING_TYPE) {
+    command.push(
+      'main.py',
+      '--backend',
+      `${workload.engine}`,
+      `--port`,
+      `${port}`,
+    )
+    cwd = path.join(WORKER_DIR, workload.type)
+  } else {
+    command.push('app.py', '--headless', '--debug', `--port`, `${port}`)
+  }
+
+  const logDir = getMultiserveLogsDir(workload.type)
   const modelsDir = getMultiserveModelsDir(workload.type)
   command.push('--logs-dir', logDir, '--model-dir', modelsDir)
 
   await spawnProcess(processName, 'uv', command, {
-    cwd: MULTISERVE_REPO_PATH,
+    cwd: cwd,
     env: env,
   })
 
@@ -323,16 +336,6 @@ export const startMultiserveModel = async (
     if (!result) {
       updateWorkloadStatus(workload, 'error', payload)
       logger.log(`Failed to initialize ${workload.name}`)
-    } else {
-      //update workload to make sure it uses field matching for multiserve
-      payload.update({
-        collection: 'workloads',
-        id: workload.id,
-        data: {
-          ...DEFAULT_MULTISERVE_FIELDS.healthCheck,
-          port: workload.port,
-        },
-      })
     }
   } catch (error) {
     updateWorkloadStatus(workload, 'error', payload)

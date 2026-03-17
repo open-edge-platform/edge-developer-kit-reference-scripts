@@ -26,7 +26,7 @@ import { Button } from '@/components/ui/button'
 import { Settings } from 'lucide-react'
 import useDisclosure from '@/hooks/use-disclosure'
 import { SettingsModal } from '@/components/workloads/lipsync/settings'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { DocumentationProps, LipsyncSettings } from '@/types/workload'
 import { getBaseURL } from '@/utils/common'
 
@@ -34,7 +34,6 @@ const TYPE = LIPSYNC_TYPE
 const DESCRIPTION = LIPSYNC_DESCRIPTION
 
 export default function LipsyncPage() {
-  const [resetIndex, setResetIndex] = useState(0)
   const url = getBaseURL(LIPSYNC_URL)
 
   const { data: workload, isLoading } = useGetWorkloadByType(TYPE)
@@ -50,12 +49,11 @@ export default function LipsyncPage() {
     endpoints: <Endpoint apis={lipsyncEndpoints} url={url} />,
   }
 
-  useEffect(() => {
-    if (workload?.status !== 'active') {
-      setResetIndex((prev) => prev + 1)
-    }
-  }, [workload])
+  // Derive reset key from workload id and status to force re-render when needed
+  const resetKey = `${workload?.id ?? 'no-id'}-${workload?.status ?? 'no-status'}`
 
+  // Use explicit fallback for Coverity static analysis
+  const currentWorkload = workload ?? LIPSYNC_WORKLOAD
   const updateSettings = (settings: LipsyncSettings) => {
     const { turnServerIp, model } = settings
     return new Promise<void>((resolve) => {
@@ -93,19 +91,6 @@ export default function LipsyncPage() {
     })
   }
 
-  const SettingsButton = () => {
-    return (
-      <Button
-        variant="secondary"
-        size="icon"
-        className="size-8"
-        onClick={onOpen}
-      >
-        <Settings />
-      </Button>
-    )
-  }
-
   return (
     <>
       <SettingsModal
@@ -113,9 +98,7 @@ export default function LipsyncPage() {
         onClose={onClose}
         updateSettings={updateSettings}
         currentSettings={{
-          turnServerIp:
-            workload?.metadata?.turnServerIp ??
-            LIPSYNC_WORKLOAD.metadata!.turnServerIp!,
+          turnServerIp: currentWorkload.metadata?.turnServerIp ?? '',
           model: workloadModel || LIPSYNC_WORKLOAD.models.default,
         }}
       />
@@ -124,21 +107,26 @@ export default function LipsyncPage() {
         workload={workload}
         description={DESCRIPTION}
         workloadType={TYPE}
-        settingsButton={<SettingsButton />}
+        settingsButton={
+          <Button
+            variant="secondary"
+            size="icon"
+            className="size-8"
+            onClick={onOpen}
+          >
+            <Settings />
+          </Button>
+        }
         demoElement={
           <LipsyncDemo
-            key={resetIndex}
+            key={resetKey}
             disabled={!workload || workload.status !== 'active'}
-            turnServerIp={
-              workload?.metadata?.turnServerIp ??
-              LIPSYNC_WORKLOAD.metadata!.turnServerIp!
-            }
+            turnServerIp={currentWorkload.metadata?.turnServerIp ?? ''}
           />
         }
         docsElement={<DocumentationTemplate data={data} />}
         logsElement={
           <Logs
-            id={workload?.id || 0}
             type={workload?.type || LIPSYNC_TYPE}
             engine={workload?.engine ?? 'custom'}
           />
