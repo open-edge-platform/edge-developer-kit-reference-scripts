@@ -242,9 +242,33 @@ setup_device_permissions() {
    # Reload udev rules
    udevadm control --reload-rules
    udevadm trigger --subsystem-match=accel
-   
+
    print_success "Device permissions configured"
    return 0
+}
+
+# User configuration
+configure_user_groups() {
+   echo -e "\n# Configuring user groups"
+   
+   local groups=("video" "render")
+   local users=("$USER")
+   
+   # Add native user if running via sudo
+   if [ -n "${SUDO_USER:-}" ]; then
+      users+=("$SUDO_USER")
+   fi
+   
+   for user in "${users[@]}"; do
+      for group in "${groups[@]}"; do
+         if ! id -nG "$user" | grep -q -w "$group"; then
+            log_info "Adding user $user to group $group"
+            usermod -aG "$group" "$user"
+         else
+            log_success "User $user already in group $group"
+         fi
+      done
+   done
 }
 
 # Check NPU device and dmesg
@@ -353,6 +377,7 @@ install_npu() {
 
    print_info "Step 5: Setting up device permissions..."
    setup_device_permissions || { print_error "Failed to setup device permissions"; exit 1; }
+   configure_user_groups
    
    # Cleanup
    print_info "Step 6: Cleaning up temporary files..."

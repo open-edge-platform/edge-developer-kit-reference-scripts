@@ -44,6 +44,13 @@ export const samples = [
     href: '/rag',
     type: 'rag',
   },
+  {
+    title: 'Synthetic Image Generation',
+    description: 'Generate & edit images from text in real-time.',
+    icon: Image,
+    href: '/synthetic-image-generation',
+    type: 'synthetic-image-generation',
+  },
 ]
 
 export const workloads = [

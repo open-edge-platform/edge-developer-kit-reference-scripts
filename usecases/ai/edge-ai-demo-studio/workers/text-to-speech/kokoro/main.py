@@ -24,15 +24,10 @@ from kokoro import KPipeline, KModel
 
 from misaki.espeak import EspeakWrapper
 
-# Disable espeakng-loader, use system wide espeak (should be installed)
-EspeakWrapper.set_library(None)
-EspeakWrapper.set_data_path(None)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-ESPEAK_NG_VERSION = "1.52.0"
 
 
 class NormalizationOptions(BaseModel):
@@ -480,15 +475,10 @@ def setup_environment():
 
     if is_windows():
         os.environ["PYTHONUTF8"] = "1"
-        os.environ["PHONEMIZER_ESPEAK_LIBRARY"] = os.path.join(
-            script_dir,
-            os.path.pardir,
-            f"espeak-ng-{ESPEAK_NG_VERSION}",
-            "src",
-            "libespeak-ng",
-            "libespeak-ng.dll",
-        )
     else:
+        # Disable espeakng-loader, use system wide espeak (should be installed)
+        EspeakWrapper.set_library(None)
+        EspeakWrapper.set_data_path(None)
         os.environ["PHONEMIZER_ESPEAK_PATH"] = "/usr/bin"
         os.environ["PHONEMIZER_ESPEAK_DATA"] = "/usr/share/espeak-ng-data"
         os.environ["ESPEAK_DATA_PATH"] = "/usr/share/espeak-ng-data"

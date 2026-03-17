@@ -668,10 +668,7 @@ const processHealthChecks = async (payload: BasePayload): Promise<void> => {
             return
           }
 
-          const processName =
-            sanitizedEngine === 'custom'
-              ? `${sanitizedType}_${sanitizedId}`
-              : `${sanitizedType}_${sanitizedEngine}_${sanitizedId}`
+          const processName = `${sanitizedType}_${sanitizedEngine}`
           const process = processes.find((p) => p.name === processName)
 
           await processWorkloadHealthCheck(
