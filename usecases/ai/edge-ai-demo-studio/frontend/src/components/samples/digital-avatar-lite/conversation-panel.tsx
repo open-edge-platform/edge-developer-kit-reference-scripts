@@ -368,6 +368,7 @@ export function ConversationPanel({
           useWakeWordDetection={useWakeWordDetection}
           isSTTEnabled={isSTTEnabled}
           isDenoiseEnabled={isDenoiseEnabled}
+          sttLanguage={selectedLanguage.slice(0, 2)}
           sendMessage={handleSendMessage}
           onStop={handleStopChat}
           isStreaming={status === 'streaming'}

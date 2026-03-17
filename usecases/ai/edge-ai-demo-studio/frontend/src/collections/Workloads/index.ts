@@ -14,6 +14,7 @@ import { EMBEDDING_TYPE } from '@/lib/workloads/embedding'
 import { TEXT_TO_SPEECH_TYPE } from '@/lib/workloads/text-to-speech'
 import { LIPSYNC_TYPE } from '@/lib/workloads/lipsync'
 import { IMAGE_GENERATION_TYPE } from '@/lib/workloads/image-generation'
+import { SYNTHETIC_IMAGE_GENERATION_TYPE } from '@/lib/workloads/synthetic-image-generation'
 
 export const Workloads: CollectionConfig = {
   slug: 'workloads',
@@ -34,6 +35,10 @@ export const Workloads: CollectionConfig = {
         { label: 'Text-To-Speech', value: TEXT_TO_SPEECH_TYPE },
         { label: 'Lipsync', value: LIPSYNC_TYPE },
         { label: 'Image Generation', value: IMAGE_GENERATION_TYPE },
+        {
+          label: 'Synthetic Image Generation',
+          value: SYNTHETIC_IMAGE_GENERATION_TYPE,
+        },
       ],
       required: true,
     },
@@ -170,7 +175,7 @@ export const Workloads: CollectionConfig = {
       type: 'select',
       options: [
         { label: 'Llama.cpp', value: 'llamacpp' },
-        { label: 'OVMS', value: 'ovms' },
+        { label: 'OpenVINO', value: 'openvino' },
         { label: 'Custom', value: 'custom' }, //This is for workloads with no specific engine
       ],
       required: true,

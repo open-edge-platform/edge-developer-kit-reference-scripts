@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
     const result = streamText({
       model: provider(modelID),
       system: systemPrompt,
-      messages: convertToModelMessages(conversationMessages),
+      messages: await convertToModelMessages(conversationMessages),
       maxOutputTokens: maxTokens,
       temperature,
       headers: {

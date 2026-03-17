@@ -29,11 +29,9 @@ from openai import OpenAI
 from openai.types import EmbeddingCreateParams
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
+from urllib.parse import parse_qsl, urlencode
 
-from utils.multiserve import (
-    start_multiserve_background,
-    wait_for_model_ready,
-)
+from utils.multiserve import start_multiserve_background
 from utils.rag_engine import (
     configure_rag_engine,
     create_data_embedding,
@@ -56,12 +54,22 @@ VECTORDB_DIR = "../../data/embeddings"
 DOCSTORE_DIR = "../../data/embeddings/documents"
 
 CONFIG = {
-    "embedding_model_id": "OpenVINO/bge-base-en-v1.5-int8-ov",
-    "embedding_device": "cpu",
-    "reranker_model_id": "OpenVINO/bge-reranker-base-int8-ov",
-    "reranker_device": "cpu",
     "serving_port": 8000,
+    "embedding_model": None,
+    "embedding_device": "CPU",
+    "reranker_model": None,
+    "reranker_device": "CPU",
 }
+
+
+class StartModelRequest(BaseModel):
+    """Request model for starting a single model on the serving backend."""
+
+    device: str
+    repo_id: str
+    task: str
+    context_size: Optional[int] = None
+    model_path: Optional[str] = None
 
 
 class RerankParams(BaseModel):
@@ -187,14 +195,6 @@ async def lifespan(app: FastAPI):
         logger.info("Starting server...")
         SERVER_PROCESS = await asyncio.to_thread(
             start_multiserve_background,
-            CONFIG["embedding_model_id"],
-            CONFIG["embedding_device"],
-            CONFIG["embedding_params"],
-            CONFIG["embedding_source"],
-            CONFIG["reranker_model_id"],
-            CONFIG["reranker_device"],
-            CONFIG["reranker_params"],
-            CONFIG["reranker_source"],
             CONFIG["backend"],
             CONFIG["serving_port"],
             CONFIG["multiserve-models-dir"],
@@ -206,53 +206,6 @@ async def lifespan(app: FastAPI):
             logger.info(f"Server started with PID: {SERVER_PROCESS.pid}")
         else:
             logger.warning("Could not determine server process ID")
-
-        # Wait for the server to be ready
-        logger.info("Waiting for server to be ready...")
-
-        # Check both models concurrently for faster startup
-        embedding_task = asyncio.to_thread(
-            wait_for_model_ready,
-            CONFIG["serving_port"],
-            CONFIG["embedding_model_id"],
-            "embeddings",
-            CONFIG["embedding_device"],
-            timeout=120,  # 2 minutes timeout
-        )
-
-        reranker_task = asyncio.to_thread(
-            wait_for_model_ready,
-            CONFIG["serving_port"],
-            CONFIG["reranker_model_id"],  # Fixed: was using embedding_model_id
-            "rerank",
-            CONFIG["reranker_device"],
-            timeout=120,  # 2 minutes timeout
-        )
-
-        # Wait for both tasks to complete concurrently
-        results = await asyncio.gather(
-            embedding_task, reranker_task, return_exceptions=True
-        )
-
-        for result in results:
-            if isinstance(result, Exception):
-                raise result
-
-        embedding_ready, reranker_ready = results
-
-        if not embedding_ready or not reranker_ready:
-            raise RuntimeError("OVMS server failed to start within timeout period")
-
-        # Configure RAG engine with the same models and port
-        logger.info("Configuring RAG engine...")
-        backend = (
-            "openvino" if CONFIG.get("backend") == "ovms" else CONFIG.get("backend")
-        )
-        configure_rag_engine(
-            serving_port=CONFIG["serving_port"],
-            embedding_model=f"{backend}:{CONFIG['embedding_model_id']}",
-            rerank_model=f"{backend}:{CONFIG['reranker_model_id']}",
-        )
 
         logger.info("Server services initialized successfully")
 
@@ -304,9 +257,16 @@ async def proxy_multiserve(path: str, request: Request):
 
     target_url = httpx.URL(f"http://localhost:{CONFIG['serving_port']}/{path}")
     if request.url.query:
-        target_url = target_url.copy_with(query=request.url.query.encode("utf-8"))
+        # Remove 'backend' param from proxied query string
+        qs_items = [
+            (k, v)
+            for k, v in parse_qsl(request.url.query, keep_blank_values=True)
+            if k != "backend"
+        ]
+        if qs_items:
+            target_url = target_url.copy_with(query=urlencode(qs_items).encode("utf-8"))
 
-    client = httpx.AsyncClient()
+    client = httpx.AsyncClient(timeout=30)
 
     try:
         req = client.build_request(
@@ -338,14 +298,163 @@ def get_healthcheck():
     return "OK"
 
 
+@v1_router.get("/health", status_code=200)
+async def get_multiserve_health(request: Request):
+    client = httpx.AsyncClient(timeout=30)
+    try:
+        params = dict(request.query_params)
+        r = await client.get(
+            f"http://localhost:{CONFIG['serving_port']}/v1/health",
+            params=params,
+        )
+        return JSONResponse(content=r.json(), status_code=r.status_code)
+    finally:
+        await client.aclose()
+
+
+@v1_router.post("/api/model/download/unverified", status_code=200)
+async def download_unverified(request: Request, data: dict, backend: str):
+    client = httpx.AsyncClient(timeout=300)
+    try:
+        # Build and forward the request to the serving backend so we can
+        # correctly stream non-JSON responses (e.g., file downloads).
+        req = client.build_request(
+            "POST",
+            f"http://localhost:{CONFIG['serving_port']}/v1/api/model/download/unverified",
+            params=request.query_params,
+            headers=request.headers.raw,
+            json=data,
+            content=request.stream(),
+        )
+
+        r = await client.send(req, stream=True)
+
+        # If the upstream returns JSON (typical API response), return it as JSON.
+        ctype = r.headers.get("content-type", "")
+        if "application/json" in ctype or r.status_code >= 400:
+            try:
+                payload = r.json()
+            except Exception:
+                # Fallback to text if JSON parsing fails
+                body = await r.aread()
+                await r.aclose()
+                await client.aclose()
+                return JSONResponse(
+                    content=body.decode("utf-8", errors="replace"),
+                    status_code=r.status_code,
+                )
+
+            await r.aclose()
+            await client.aclose()
+            return JSONResponse(content=payload, status_code=r.status_code)
+
+        # Otherwise stream the raw response (binary/file) back to the caller.
+        async def close_client():
+            await r.aclose()
+            await client.aclose()
+
+        return StreamingResponse(
+            r.aiter_raw(),
+            status_code=r.status_code,
+            headers=r.headers,
+            background=BackgroundTask(close_client),
+        )
+
+    except Exception:
+        await client.aclose()
+        raise
+
+
+@v1_router.post("/start", status_code=200)
+async def start_server(backend: str, model: StartModelRequest):
+    client = httpx.AsyncClient(timeout=30)
+    try:
+        r = await client.post(
+            f"http://localhost:{CONFIG['serving_port']}/v1/start",
+            json=model.model_dump(),
+        )
+        if r.status_code != 200:
+            try:
+                payload = r.json()
+            except Exception:
+                body = await r.aread()
+                payload = body.decode("utf-8", errors="replace")
+            return JSONResponse(content=payload, status_code=r.status_code)
+
+        task = model.task.lower() if model.task else ""
+        if task in ("embeddings"):
+            CONFIG["embedding_model"] = model.repo_id
+            CONFIG["embedding_device"] = model.device
+            CONFIG["embedding_model"] = model.repo_id
+            logger.info(
+                f"Configured embedding model id={model.repo_id} device={model.device}"
+            )
+        elif task in ("rerank"):
+            CONFIG["reranker_model"] = model.repo_id
+            CONFIG["reranker_device"] = model.device
+            CONFIG["reranker_model"] = model.repo_id
+            logger.info(
+                f"Configured reranker model id={model.repo_id} device={model.device}"
+            )
+        else:
+            logger.warning(f"Unknown task '{model.task}' in start request")
+
+        # If both embedding and reranker are configured, configure the RAG engine
+        if CONFIG.get("embedding_model") and CONFIG.get("reranker_model"):
+            logger.info("Configuring RAG engine...")
+            backend = CONFIG.get("backend", "openvino")
+            configure_rag_engine(
+                serving_port=CONFIG["serving_port"],
+                embedding_model=f"{backend}:{CONFIG['embedding_model']}",
+                rerank_model=f"{backend}:{CONFIG['reranker_model']}",
+            )
+        try:
+            payload = r.json()
+        except Exception:
+            body = await r.aread()
+            payload = body.decode("utf-8", errors="replace")
+        return JSONResponse(content=payload, status_code=r.status_code)
+    finally:
+        await client.aclose()
+
+
+@v1_router.get("/api/models", status_code=200)
+async def get_models(request: Request):
+    client = httpx.AsyncClient()
+    try:
+        params = dict(request.query_params)
+        r = await client.get(
+            f"http://localhost:{CONFIG['serving_port']}/v1/api/models",
+            params=params,
+        )
+        return JSONResponse(content=r.json(), status_code=r.status_code)
+    finally:
+        await client.aclose()
+
+
+@v1_router.get("/model", status_code=200)
+async def get_models(request: Request):
+    client = httpx.AsyncClient(timeout=30)
+    try:
+        params = dict(request.query_params)
+        r = await client.get(
+            f"http://localhost:{CONFIG['serving_port']}/v1/model",
+            params=params,
+        )
+        return JSONResponse(content=r.json(), status_code=r.status_code)
+    finally:
+        await client.aclose()
+
+
 @v1_router.get("/logs", status_code=200)
 async def get_logs(request: Request):
     # Proxy the request to the multiserve logs endpoint
-    client = httpx.AsyncClient()
+    client = httpx.AsyncClient(timeout=30)
     try:
+        params = dict(request.query_params)
         r = await client.get(
             f"http://localhost:{CONFIG['serving_port']}/v1/logs",
-            params=request.query_params,
+            params=params,
         )
         return JSONResponse(content=r.json(), status_code=r.status_code)
     finally:
@@ -358,11 +467,11 @@ def get_models():
 
     return {
         "embeddings": {
-            "model": CONFIG["embedding_model_id"],
+            "model": CONFIG["embedding_model"],
             "device": CONFIG["embedding_device"],
         },
         "reranker": {
-            "model": CONFIG["reranker_model_id"],
+            "model": CONFIG["reranker_model"],
             "device": CONFIG["reranker_device"],
         },
         "serving_port": CONFIG["serving_port"],
@@ -883,76 +992,26 @@ def parse_args():
     parser.add_argument(
         "--port",
         type=int,
-        default=5003,
+        default=5004,
         help="Port for the worker to listen on",
-    )
-    parser.add_argument(
-        "--serving-port",
-        type=int,
-        default=8000,
-        help="Port for the embedding OpenVINO Model Server to listen on",
-    )
-    parser.add_argument(
-        "--embedding-model-id",
-        type=str,
-        required=True,
-        help="Path to the embedding model directory or Hugging Face model name",
-    )
-    parser.add_argument(
-        "--embedding-device",
-        type=str,
-        default="CPU",
-        help="Device to run the embedding model on (e.g., CPU, GPU, NPU)",
-    )
-    parser.add_argument(
-        "--embedding-params",
-        type=str,
-        help="Parameters for embedding model",
-    )
-    parser.add_argument(
-        "--embedding-source",
-        type=str,
-        choices=["huggingface", "modelscope"],
-        help="Parameters for embedding model",
-    )
-    parser.add_argument(
-        "--reranker-model-id",
-        type=str,
-        required=True,
-        help="Path to the reranker model directory or Hugging Face model name",
-    )
-    parser.add_argument(
-        "--reranker-device",
-        type=str,
-        default="CPU",
-        help="Device to run the reranker model on (e.g., CPU, GPU, NPU)",
-    )
-    parser.add_argument(
-        "--reranker-params",
-        type=str,
-        help="Parameters for reranker model",
-    )
-    parser.add_argument(
-        "--reranker-source",
-        type=str,
-        choices=["huggingface", "modelscope"],
-        help="Parameters for embedding model",
     )
     parser.add_argument(
         "--backend",
         type=str,
-        choices=["ovms", "llamacpp"],
-        default="ovms",
-        help="Backend to use for model serving (default: ovms)",
+        choices=["openvino", "llamacpp"],
+        default="openvino",
+        help="Backend to use for model serving (default: openvino)",
     )
     parser.add_argument(
-        "--multiserve-models-dir",
+        "--model-dir",
         type=str,
+        default="./models",
         help="Directory for multiserve models",
     )
     parser.add_argument(
-        "--multiserve-logs-dir",
+        "--logs-dir",
         type=str,
+        default="./logs",
         help="Directory for multiserve logs",
     )
     return parser.parse_args()
@@ -962,21 +1021,9 @@ def main():
     global CONFIG
 
     args = parse_args()
-    CONFIG["serving_port"] = args.serving_port
-    CONFIG["embedding_model_id"] = args.embedding_model_id
-    CONFIG["embedding_device"] = str(args.embedding_device)
-    CONFIG["embedding_params"] = str(args.embedding_params)
-    CONFIG["embedding_source"] = str(args.embedding_source)
-    CONFIG["reranker_model_id"] = args.reranker_model_id
-    CONFIG["reranker_device"] = str(args.reranker_device)
-    CONFIG["reranker_params"] = str(args.reranker_params)
-    CONFIG["reranker_source"] = str(args.reranker_source)
-    CONFIG["multiserve-models-dir"] = validate_and_sanitize_cache_dir(
-        args.multiserve_models_dir
-    )
-    CONFIG["multiserve-logs-dir"] = validate_and_sanitize_cache_dir(
-        args.multiserve_logs_dir
-    )
+    CONFIG["serving_port"] = args.port + 1
+    CONFIG["multiserve-models-dir"] = validate_and_sanitize_cache_dir(args.model_dir)
+    CONFIG["multiserve-logs-dir"] = validate_and_sanitize_cache_dir(args.logs_dir)
     CONFIG["backend"] = args.backend
 
     multiprocessing.freeze_support()
