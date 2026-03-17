@@ -16,8 +16,8 @@
     "format:check": "prettier --check \"**/*.{js,jsx,mjs,ts,tsx,mdx}\" --cache"
   },
   "dependencies": {
-    "@ai-sdk/openai-compatible": "^1.0.28",
-    "@ai-sdk/react": "^2.0.105",
+    "@ai-sdk/openai-compatible": "^2.0.35",
+    "@ai-sdk/react": "^3.0.118",
     "@emotion/cache": "11.11.0",
     "@emotion/react": "^11.11.4",
     "@emotion/server": "11.11.0",
@@ -35,13 +35,13 @@
     "@mui/x-date-pickers": "7.7.1",
     "@phosphor-icons/react": "2.1.6",
     "@tanstack/react-query": "5.51.11",
-    "ai": "^5.0.105",
+    "ai": "^6.0.116",
     "apexcharts": "3.49.2",
     "dayjs": "1.11.11",
     "dompurify": "^3.3.1",
     "extendable-media-recorder": "^9.2.11",
     "extendable-media-recorder-wav-encoder": "^7.0.115",
-    "next": "^14.2.25",
+    "next": "^16.1.6",
     "notistack": "^3.0.1",
     "openai": "4.53.0",
     "react": "18.3.1",
@@ -65,12 +65,15 @@
     "@types/react": "18.3.3",
     "@types/react-dom": "18.3.0",
     "@types/react-syntax-highlighter": "15.5.13",
-    "eslint": "9.39.1",
-    "eslint-config-next": "16.0.6",
-    "eslint-config-prettier": "9.1.0",
+    "eslint": "^10.0.2",
+    "eslint-config-next": "^16.1.6",
+    "eslint-config-prettier": "^10.1.8",
     "jest": "29.7.0",
     "jest-environment-jsdom": "29.7.0",
     "prettier": "3.3.2",
     "typescript": "5.5.2"
+  },
+  "overrides": {
+    "@tootallnate/once": "^3.0.1"
   }
 }

@@ -24,7 +24,7 @@ export async function GET() {
     const scriptPath = path.join(WORKER_DIR, 'helper', 'openvino_device.py')
 
     // Arguments for uv run command
-    const args = ['run', '--no-sync', '--frozen', scriptPath]
+    const args = ['run', '--frozen', scriptPath]
 
     // Create and await the child process
     const result = await new Promise<{

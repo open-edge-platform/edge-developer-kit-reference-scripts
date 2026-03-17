@@ -57,3 +57,15 @@ export const SPEECH_TO_TEXT_WORKLOAD: CreateWorkload = {
   healthCheck: { url: '/healthcheck' },
   engine: 'custom',
 }
+
+export const SUPPORTED_STT_LANGUAGES = [
+  { code: 'en', name: 'English' },
+  { code: 'ms', name: 'Malay' },
+  { code: 'zh', name: 'Chinese' },
+  { code: 'hi', name: 'Hindi' },
+  { code: 'ja', name: 'Japanese' },
+  { code: 'es', name: 'Spanish' },
+  { code: 'fr', name: 'French' },
+  { code: 'it', name: 'Italian' },
+  { code: 'pt', name: 'Portuguese' },
+]
