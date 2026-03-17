@@ -1,3 +1,5 @@
+# Deprecated: This application is no longer maintained and will be removed soon. It will be replaced by Physical AI Studio; for more information, see the [Physical AI Studio repository](https://github.com/open-edge-platform/physical-ai-studio).
+
 # Robotic Imitation Learning
 
 A lightweight UI and server for robotic imitation learning—covering data capture, conversion, and inference—for a robotic arm demo integrated with Intel® Robotics AI Suite components. The project provides a Python server for data handling and a web UI for interaction.
