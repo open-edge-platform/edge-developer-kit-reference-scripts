@@ -153,38 +153,6 @@ class RoboticArm:
                 self.mc.focus_servo(i)
                 time.sleep(self.sleep_time)
 
-    def trigger_suction_control(self):
-        """
-        Trigger the suction control API to move the robotic arm.
-        """
-        try:
-            # Send 'state' as a query parameter
-            response = requests.post(f"http://{self.ip_address}:{self.ip_port}/control_suction", params={"state": 0})
-            if response.status_code == 200:
-                print("Suction control API triggered successfully:", response.json())
-            else:
-                print("Failed to trigger suction control API:", response.status_code, response.text)
-        except requests.RequestException as e:
-            print("Error while triggering suction control API:", e)
-
-
-    def trigger_move(self, angles):
-        """
-        Trigger the move API to control the robotic arm.
-        """
-        try:
-            # Send 'angles' as JSON in the request body
-            response = requests.post(
-                f"http://{self.ip_address}:{self.ip_port}/move",
-                json={"angles": [angles]}
-            )
-            if response.status_code == 200:
-                print("Suction control API triggered successfully:", response.json())
-            else:
-                print("Failed to trigger suction control API:", response.status_code, response.text)
-        except requests.RequestException as e:
-            print("Error while triggering suction control API:", e)
-
 
 if __name__ == '__main__':
     robot = RoboticArm()
