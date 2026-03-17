@@ -140,7 +140,6 @@ export default function TextGenerationPage() {
         docsElement={<DocumentationTemplate data={data} />}
         logsElement={
           <Logs
-            id={workload?.id || 0}
             type={workload?.type || WAKE_WORD_DETECTION_TYPE}
             engine={workload?.engine ?? 'custom'}
           />

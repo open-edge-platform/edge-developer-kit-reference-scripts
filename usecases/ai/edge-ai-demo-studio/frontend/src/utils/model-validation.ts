@@ -1,4 +1,4 @@
-export const validateOVMSModelName = (name: string): boolean => {
+export const validateOpenVINOModelName = (name: string): boolean => {
   if (!name || name.trim() === '') return false
 
   // Common validation for invalid characters

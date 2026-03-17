@@ -23,7 +23,9 @@ import threading
 class OVMSManager:
     IS_WINDOWS = os.name == "nt"
     OVMS_EXECUTABLE = (
-        os.path.join(".", "engine", "ovms", "ovms.exe") if IS_WINDOWS else os.path.join(".", "engine", "ovms", "bin", "ovms")
+        os.path.join(".", "engine", "ovms", "ovms.exe")
+        if IS_WINDOWS
+        else os.path.join(".", "engine", "ovms", "bin", "ovms")
     )
     CONFIG_PATH = os.path.join(".", "models", "OV", "config.json")
 

@@ -14,6 +14,7 @@ const isWindows = os.platform() === 'win32'
 interface PortInfo {
   port: number
   pid: number
+  ppid?: number
   processName: string
   commandLine?: string
 }
@@ -170,15 +171,17 @@ async function getPortInfoWindows(port: number): Promise<PortInfo | null> {
     // Get process name and command line using WMIC
     try {
       const { stdout: wmicOut } = await execPromise(
-        `wmic process where ProcessId=${pid} get Name,CommandLine /format:list`,
+        `wmic process where ProcessId=${pid} get Name,CommandLine,ParentProcessId /format:list`,
       )
 
       const nameMatch = wmicOut.match(/Name=(.+?)[\r\n]/i)
       const cmdMatch = wmicOut.match(/CommandLine=(.+?)[\r\n]/i)
+      const ppidMatch = wmicOut.match(/ParentProcessId=(.+?)[\r\n]/i)
 
       return {
         port,
         pid,
+        ppid: ppidMatch ? parseInt(ppidMatch[1].trim()) : undefined,
         processName: nameMatch ? nameMatch[1].trim() : 'Unknown',
         commandLine: cmdMatch ? cmdMatch[1].trim() : undefined,
       }
@@ -216,15 +219,19 @@ async function getPortInfoUnix(port: number): Promise<PortInfo | null> {
 
     // Get process details
     const { stdout: psOut } = await execPromise(
-      `ps -p ${pid} -o comm=,command=`,
+      `ps -p ${pid} -o ppid=,comm=,command=`,
     )
 
-    const [processName, ...cmdParts] = psOut.trim().split(/\s+/)
+    const parts = psOut.trim().split(/\s+/)
+    const ppid = parseInt(parts[0])
+    const processName = parts[1]
+    const cmdParts = parts.slice(2)
     const commandLine = cmdParts.join(' ')
 
     return {
       port,
       pid,
+      ppid,
       processName,
       commandLine,
     }
@@ -285,6 +292,54 @@ export async function killProcess(pid: number): Promise<boolean> {
 }
 
 /**
+ * Get the parent process ID of a given PID
+ */
+async function getParentPid(pid: number): Promise<number | null> {
+  try {
+    if (isWindows) {
+      const { stdout } = await execPromise(
+        `wmic process where ProcessId=${pid} get ParentProcessId /format:value`,
+      )
+      const match = stdout.match(/ParentProcessId=(\d+)/)
+      return match ? parseInt(match[1]) : null
+    } else {
+      const { stdout } = await execPromise(`ps -p ${pid} -o ppid=`)
+      const trimmed = stdout.trim()
+      return trimmed ? parseInt(trimmed) : null
+    }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Check if a process is a descendant of another process
+ */
+async function isDescendant(
+  pid: number,
+  ancestorPid: number,
+  knownPpid?: number,
+): Promise<boolean> {
+  if (pid === ancestorPid) return true
+
+  let currentPid = pid
+  let nextPpid = knownPpid ?? (await getParentPid(currentPid))
+  const MAX_DEPTH = 10
+  let depth = 0
+
+  while (nextPpid && depth < MAX_DEPTH) {
+    if (nextPpid === ancestorPid) return true
+
+    // Prepare for next iteration
+    currentPid = nextPpid
+    nextPpid = await getParentPid(currentPid)
+    depth++
+  }
+
+  return false
+}
+
+/**
  * Kill all project-related processes occupying the required ports
  */
 export async function killProjectProcessesOnPorts(): Promise<{
@@ -297,6 +352,20 @@ export async function killProjectProcessesOnPorts(): Promise<{
 
   for (const result of portResults) {
     if (result.inUse && result.belongsToProject && result.processInfo) {
+      // Check if the process was spawned by the current process (or its descendants)
+      const isSpawnedByUs = await isDescendant(
+        result.processInfo.pid,
+        process.pid,
+        result.processInfo.ppid,
+      )
+
+      if (isSpawnedByUs) {
+        logger.log(
+          `Skipping process on port ${result.port} (PID: ${result.processInfo.pid}) as it is a descendant of this process`,
+        )
+        continue
+      }
+
       const success = await killProcess(result.processInfo.pid)
       if (success) {
         killed.push(result.port)
