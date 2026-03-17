@@ -35,6 +35,15 @@ export const EMBEDDING_WORKLOAD: CreateWorkload = {
   port: EMBEDDING_PORT,
   ...DEFAULT_MULTISERVE_FIELDS,
   healthCheck: {
-    url: '/healthcheck',
+    url: '/multiserve/v1/status',
+    responseMapper: {
+      ...DEFAULT_MULTISERVE_FIELDS.healthCheck.responseMapper,
+      'models.rerank.name':
+        "($id := $workload.models.rerank.quant ? $workload.models.rerank.name & ':' & $workload.models.rerank.quant : $workload.models.rerank.name; $matched := status[repo_id=$id and task='rerank']; $split($matched.repo_id, ':')[0])",
+      'models.rerank.quant':
+        "($id := $workload.models.rerank.quant ? $workload.models.rerank.name & ':' & $workload.models.rerank.quant : $workload.models.rerank.name; $matched := status[repo_id=$id and task='rerank']; $split($matched.repo_id, ':')[1])",
+      '($d := $lowercase(models.rerank.device); $replace($d, /^gpu(\\..*)?$/, "gpu"))':
+        "($id := $workload.models.rerank.quant ? $workload.models.rerank.name & ':' & $workload.models.rerank.quant : $workload.models.rerank.name; $dev := $lowercase(status[repo_id=$id and task='rerank'].device); $replace($dev, /^gpu(\\..*)?$/, 'gpu'))",
+    },
   },
 }

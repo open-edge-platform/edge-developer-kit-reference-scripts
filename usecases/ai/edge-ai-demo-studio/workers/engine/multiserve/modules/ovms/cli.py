@@ -162,35 +162,7 @@ class OVMSManagerCLI:
         )
 
     def list_models(self):
-        verified_models = self.downloader.list_verified_models()
-        downloaded_models = self.downloader.list_downloaded_models()
-
-        verified_map = {}
-        for repo_id, task_type, quantizations, sources in verified_models:
-            key = (repo_id, task_type)
-            verified_map[key] = (quantizations, sources)
-
-        downloaded_map = {}
-        for repo_id, task_type, quantizations in downloaded_models:
-            key = (repo_id, task_type)
-            downloaded_map[key] = quantizations
-
-        all_keys = set(verified_map.keys()) | set(downloaded_map.keys())
-
-        detailed_list = []
-        for repo_id, task_type in all_keys:
-            verified_quant, sources = verified_map.get((repo_id, task_type), ([], []))
-            detailed_list.append(
-                {
-                    "repo_id": repo_id,
-                    "task_type": task_type,
-                    "downloaded": downloaded_map.get((repo_id, task_type), []),
-                    "verified": verified_quant,
-                    "sources": sources,
-                }
-            )
-
-        return detailed_list
+        return self.downloader.list_models()
 
     def list_active_models(self):
         active_servers = self.ovms_manager.get_active_servers()

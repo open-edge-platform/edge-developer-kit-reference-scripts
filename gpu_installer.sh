@@ -408,6 +408,31 @@ verify_drivers() {
    return 0
 }
 
+
+# Temporary fix for Intel Core Series 2 + Arc B60
+apply_arc_b60_fix() {
+   local cpu gpu
+   cpu=$(grep -m1 'model name' /proc/cpuinfo | grep -oP 'Intel\(R\) Core\(TM\) [0-9] \K2' || true)
+   gpu=$(lspci -nn | grep -i 'VGA' | grep 'e211' || true)
+
+   if [ -n "$cpu" ] && [ -n "$gpu" ]; then
+      log_info "Detected Intel Core Series 2 CPU with Arc B60 GPU. Applying kernel command line fix."
+      local grub_file="/etc/default/grub"
+      local param="xe.force_probe=e211 i915.force_probe=!e211"
+      if grep -q "GRUB_CMDLINE_LINUX" "$grub_file"; then
+         if ! grep -q "$param" "$grub_file"; then
+            sed -i "/^GRUB_CMDLINE_LINUX=/ s/\"$/ $param\"/" "$grub_file"
+            log_success "Added '$param' to GRUB_CMDLINE_LINUX. Updating GRUB. Please reboot after installation."
+            update-grub
+         else
+            log_info "Kernel parameters already present in GRUB_CMDLINE_LINUX."
+         fi
+      else
+         log_info "GRUB_CMDLINE_LINUX not found in $grub_file. Skipping fix."
+      fi
+   fi
+}
+
 # Temporary fix for PTL platform (Intel Core Ultra X7 358H + GPU 8086:b08f)
 apply_xe_ptl_fix() {
    # Apply fix only when regex-based PTL detection is true and target GPU is present
@@ -450,6 +475,7 @@ main() {
    detect_ptl_platform
 
    # Apply temporary fixes
+   apply_arc_b60_fix
    apply_xe_ptl_fix
 
    install_gpu_drivers || echo "$S_ERROR install_gpu_drivers reported failure"

@@ -23,6 +23,7 @@ from modules.llamacpp.cli import LlamaManagerCLI
 from routers.llamacpp_api_router import create_llamacpp_api_router
 from routers.llamacpp_openai_proxy_router import create_llamacpp_openai_proxy_router
 from routers.log_router import create_log_router
+from routers.general_router import create_general_router
 
 from modules.ovms.cli import OVMSManagerCLI
 from routers.ovms_api_router import create_ovms_api_router
@@ -64,7 +65,7 @@ if MULTISERVE_BACKEND == "llamacpp":
     index_file = "index.html"
     manager = LlamaManagerCLI(
         verified_model_path=get_resource_path("verified.yaml"),
-        models_directory=f"{MODELS_DIR}/GGUF",
+        models_directory=os.path.join(MODELS_DIR, "GGUF"),
         logs_dir=LOGS_DIR,
         port=int(args.port),
     )
@@ -74,7 +75,7 @@ else:
     index_file = "index_ov.html"
     manager = OVMSManagerCLI(
         verified_model_path=get_resource_path("verified.yaml"),
-        models_directory=f"{MODELS_DIR}/OV",
+        models_directory=os.path.join(MODELS_DIR, "OV"),
         logs_dir=LOGS_DIR,
         rest_port=int(args.port),
     )
@@ -125,6 +126,9 @@ app.include_router(openai_router)
 log_router = create_log_router(backend=MULTISERVE_BACKEND, logs_dir=LOGS_DIR)
 app.include_router(log_router, prefix="/v1", tags=["logs"])
 
+general_router = create_general_router(models_dir=MODELS_DIR)
+app.include_router(general_router)
+
 if __name__ == "__main__":
     deps_versions = manager.get_dependencies_versions()
     if args.version:
@@ -140,6 +144,7 @@ if __name__ == "__main__":
 
     if not args.headless:
         from modules.tray_app import InferenceServerTrayApp
+
         tray_app = InferenceServerTrayApp(app, manager)
         tray_app.start(args.port)
     else:
