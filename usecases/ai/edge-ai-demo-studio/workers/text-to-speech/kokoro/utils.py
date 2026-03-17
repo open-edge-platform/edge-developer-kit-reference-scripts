@@ -120,7 +120,7 @@ def validate_and_sanitize_cache_dir(cache_dir: str) -> str:
 
     # Check for valid characters (avoid control characters and potentially dangerous chars)
     # Include platform-specific path separators and Windows drive letter colon
-    valid_chars = string.ascii_letters + string.digits + "/-._~" + os.sep
+    valid_chars = string.ascii_letters + string.digits + "/-._~ " + os.sep
     if os.name == "nt":  # Add ':' for Windows drive letters
         valid_chars += ":"
     if not all(c in valid_chars for c in cache_dir):

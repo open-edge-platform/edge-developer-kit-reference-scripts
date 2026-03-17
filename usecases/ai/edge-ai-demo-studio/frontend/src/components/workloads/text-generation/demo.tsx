@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
 import { useChat } from '@/hooks/use-chat'
+import { logger } from '@/utils/logger'
 import { Play, Zap } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
@@ -50,7 +51,7 @@ export default function TextGenerationDemo({
         }
       })
       .catch((error) => {
-        console.error('Text generation error:', error)
+        logger.error('Text generation error:', error)
         toast.error('Error', {
           description:
             'An error occurred while generating text. Please try again.',
@@ -113,7 +114,7 @@ export default function TextGenerationDemo({
               </label>
             </div>
             <div className="rounded-lg border bg-slate-50 p-4">
-              <p id="generated-text" className="text-slate-700">
+              <p data-testid="generated-text" className="text-slate-700">
                 {generatedText}
               </p>
             </div>

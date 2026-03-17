@@ -53,3 +53,53 @@ export interface ImageGenerationError {
     code?: string
   }
 }
+
+export interface ImageGenerationTaskStatus {
+  status: 'pending' | 'in_progress' | 'completed' | 'failed'
+  elapsed_time: number
+  estimated_time?: number
+  result?: ImageGenerationResponse | string
+}
+
+export interface ImageGenerationForm {
+  formData: ImageGenerationFormData
+  updateField: (
+    field: keyof ImageGenerationFormData,
+    value: string | number | boolean | null,
+  ) => void
+  getFormattedSize: () => string
+  reset: () => void
+}
+
+export interface ImageGenerationFormData {
+  prompt: string
+  negativePrompt: string
+  sizeMode: 'auto' | 'custom'
+  customWidth: number
+  customHeight: number
+  numImages: number
+  steps: number
+  rngSeed: number
+  guidanceScale: number
+  showAdvanced: boolean
+}
+
+export interface ImageEditFormData extends Omit<
+  ImageGenerationFormData,
+  'numImages'
+> {
+  numImages: number
+  sourceImage: File | null
+  sourceImagePreview: string
+}
+
+export interface ImageEditForm {
+  formData: ImageEditFormData
+  updateField: (
+    field: keyof ImageEditFormData,
+    value: string | number | boolean | null,
+  ) => void
+  getFormattedSize: () => string
+  handleFileUpload: (file: File) => Promise<string>
+  reset: () => void
+}

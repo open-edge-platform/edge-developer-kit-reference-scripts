@@ -9,6 +9,7 @@ dependencies = [
     "malaya",
     "malaya-speech",
     "markupsafe==2.1.5",
+    "modelscope>=1.34.0",
     "psutil>=7.1.0",
     "pysastrawi>=1.2.0",
     "pytorch-triton-xpu==3.4.0",

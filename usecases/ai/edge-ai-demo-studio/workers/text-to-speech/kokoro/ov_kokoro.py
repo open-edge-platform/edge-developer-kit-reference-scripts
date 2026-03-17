@@ -7,16 +7,22 @@ import json
 import openvino as ov
 
 from pathlib import Path
-from huggingface_hub import hf_hub_download
+from huggingface_hub import snapshot_download
+from modelscope.hub.file_download import model_file_download as ms_hub_download
 
 from kokoro import KPipeline, KModel
 
 
 class OVKModel(KModel):
     def __init__(
-        self, model_dir: str, device: str, repo_id: str = "hexgrad/Kokoro-82M"
+        self,
+        model_dir: str,
+        device: str,
+        repo_id: str = "hexgrad/Kokoro-82M",
+        source: str = "huggingface",
     ):
         torch.nn.Module.__init__(self)
+        self.source = source
 
         core = ov.Core()
         if device == "CPU":
@@ -48,9 +54,46 @@ class OVKModel(KModel):
         outputs = self.model([input_ids, ref_s, torch.tensor(speed)])
         return torch.from_numpy(outputs[0]), torch.from_numpy(outputs[1])
 
+    def download(self, repo_id, filename, model_dir):
+        print("Downloading", repo_id, "from", repo_id)
+        if self.source == "modelscope":
+            res = ms_hub_download(
+                model_id=repo_id,
+                file_path=filename,
+                local_dir=model_dir,
+            )
+        else:
+            res = snapshot_download(
+                repo_id=repo_id,
+                filename=filename,
+                local_dir=model_dir,
+            )
+        return res
+
+    def download_kokoro_config(self):
+        config = self.download(
+            repo_id=self.repo_id,
+            filename="config.json",
+            model_dir=self.model_dir,
+        )
+        with open(config, "r", encoding="utf-8") as r:
+            config = json.load(r)
+            return config
+
     def download_kokoro_model(self):
         if not Path(f"{self.model_dir}/openvino_model.xml").exists():
-            pipeline = KPipeline(lang_code="a", repo_id="hexgrad/Kokoro-82M")
+            config = self.download_kokoro_config()
+            kokoro_model = self.download(
+                repo_id=self.repo_id,
+                filename=KModel.MODEL_NAMES[self.repo_id],
+                model_dir=self.model_dir,
+            )
+            model = KModel(
+                repo_id=self.repo_id, config=config, model=kokoro_model
+            ).eval()
+            pipeline = KPipeline(
+                lang_code="a", repo_id="hexgrad/Kokoro-82M", model=model
+            )
             model = pipeline.model
             model.forward = model.forward_with_tokens
             # Use os.urandom for entropy instead of torch.randint
@@ -70,8 +113,5 @@ class OVKModel(KModel):
                 input=[ov.PartialShape("[1, 2..]"), ov.PartialShape([1, -1])],
             )
             ov.save_model(ov_model, Path(f"{self.model_dir}/openvino_model.xml"))
-            hf_hub_download(
-                repo_id=self.repo_id, filename="config.json", local_dir=self.model_dir
-            )
 
             del model

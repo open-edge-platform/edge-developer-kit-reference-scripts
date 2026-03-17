@@ -188,6 +188,60 @@ def generate_gallery(
     return gallery
 
 
+def handle_answer(
+    query_text,
+    component_image,
+    component_description,
+    embeddings,
+    page_images,
+    k,
+):
+    """Main handler that validates inputs and orchestrates the answer generation flow."""
+    # Validate inputs first - return early with warning message instead of raising exception
+    if not query_text and not component_image:
+        print("Warning: Both Query and Component Image are required. Please provide both before clicking Answer.")
+        gr.Warning("Both Query and Component Image are required. Please provide both before clicking Answer.")
+        yield None, gr.skip(), ""
+        return
+    if not query_text:
+        print("Warning: Query is required. Please enter a query before clicking Answer.")
+        gr.Warning("Query is required. Please enter a query before clicking Answer.")
+        yield None, gr.skip(), ""
+        return
+    if not component_image:
+        print("Warning: Component Image is required. Please upload an image before clicking Answer.")
+        gr.Warning("Component Image is required. Please upload an image before clicking Answer.")
+        yield None, gr.skip(), ""
+        return
+    if not embeddings or len(embeddings) == 0:
+        print("Warning: No PDF documents indexed. Please upload and index PDFs first before clicking Answer.")
+        gr.Warning("No PDF documents indexed. Please upload and index PDFs first before clicking Answer.")
+        yield None, gr.skip(), ""
+        return
+
+    # Step 1: Identify component
+    component_name = visual_understanding_agent.identify_component(
+        component_image, component_description
+    )
+
+    # Step 2: Generate gallery
+    gallery = generate_gallery(
+        embeddings,
+        page_images,
+        k,
+        query_text,
+        component_image,
+        component_name,
+    )
+
+    # Step 3: Update history
+    history_dataset = update_history(query_text, component_image)
+
+    # Step 4: Generate response (this is a generator, so we need to yield from it)
+    for response_chunk in visual_understanding_agent.generate_response(query_text, gallery):
+        yield gallery, history_dataset, response_chunk
+
+
 def build():
     with gr.Blocks(title=APP_TITLE, theme=gr.themes.Ocean()) as demo:
         gr.Markdown(f"# {APP_TITLE}")
@@ -261,30 +315,16 @@ def build():
             outputs=[index_status, embeddings, page_images],
         )
         answer_button.click(
-            lambda img, desc: (
-                visual_understanding_agent.identify_component(img, desc) if img else ""
-            ),
-            inputs=[component_image, component_description],
-            outputs=[component_name],
-        ).then(
-            generate_gallery,
+            handle_answer,
             inputs=[
+                query,
+                component_image,
+                component_description,
                 embeddings,
                 page_images,
                 k,
-                query,
-                component_image,
-                component_name,
             ],
-            outputs=[gallery],
-        ).then(
-            update_history,
-            inputs=[query, component_image],
-            outputs=history.dataset,
-        ).then(
-            visual_understanding_agent.generate_response,
-            inputs=[query, gallery],
-            outputs=[answer],
+            outputs=[gallery, history.dataset, answer],
         )
 
     return demo

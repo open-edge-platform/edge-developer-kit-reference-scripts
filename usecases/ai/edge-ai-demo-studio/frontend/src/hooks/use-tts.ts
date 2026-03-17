@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { FetchAPI } from '@/lib/api'
+import { TEXT_TO_SPEECH_URL } from '@/lib/workloads/text-to-speech'
 import { useMutation, useQuery } from '@tanstack/react-query'
 
-const TTS_API = new FetchAPI(`/api/tts`, 'v1')
+const TTS_API = new FetchAPI(TEXT_TO_SPEECH_URL, 'v1')
 
 export const useTextToSpeech = () => {
   return useMutation({
@@ -22,19 +23,13 @@ export const useTextToSpeech = () => {
       responseFormat?: string
       speed?: number
     }) => {
-      const response = await fetch('/api/tts', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model,
-          voice,
-          input,
-          responseFormat,
-          speed,
-          stream: false,
-        }),
+      const response = await TTS_API.file('audio/speech', {
+        model,
+        voice,
+        input,
+        responseFormat,
+        speed,
+        stream: false,
       })
       if (!response.ok) {
         throw new Error('Network response was not ok')

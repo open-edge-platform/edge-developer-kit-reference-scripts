@@ -5,11 +5,11 @@ import React from 'react'
 import CodeBlock from '@/components/common/codeblock'
 
 export default function EmbeddingDocumentation({
-  port,
-  model,
+  url,
+  models,
 }: {
-  port: number
-  model: string
+  url: string
+  models: { default: string; rerank: string }
 }) {
   const embeddingsAPISnippet = [
     {
@@ -18,13 +18,13 @@ export default function EmbeddingDocumentation({
       code: `from openai import OpenAI
 
 client = OpenAI(
-    base_url="http://localhost:${port}/v1",
+    base_url="${url}/v1",
     api_key="unused"
 )
 
 response = client.embeddings.create(
     input="The quick brown fox jumps over the lazy dog",
-    model="${model}",
+    model="${models.default}",
     encoding_format="float"
 )
 
@@ -37,13 +37,13 @@ print("Vector length:", len(response.data[0].embedding))`,
       code: `import OpenAI from 'openai'
 
 const client = new OpenAI({
-    baseURL: 'http://localhost:${port}/v1',
+    baseURL: '${url}/v1',
     apiKey: 'unused',
 })
 
 const response = await client.embeddings.create({
     input: 'The quick brown fox jumps over the lazy dog',
-    model: '${model}',
+    model: '${models.default}',
     encoding_format: 'float'
 })
 
@@ -60,7 +60,7 @@ console.log('Vector length:', response.data[0].embedding.length)`,
 
 # Create a knowledge base
 kb_data = {"name": "My Knowledge Base", "db": ""}
-response = requests.post("http://localhost:${port}/v1/kb", json=kb_data)
+response = requests.post("${url}/v1/kb", json=kb_data)
 kb = response.json()
 print("Created KB:", kb)
 
@@ -69,20 +69,20 @@ kb_id = kb["id"]
 # Upload a document to the knowledge base
 with open("document.pdf", "rb") as f:
     files = {"file": ("document.pdf", f, "application/pdf")}
-    response = requests.post(f"http://localhost:${port}/v1/kb/{kb_id}/files", files=files)
+    response = requests.post(f"${url}/v1/kb/{kb_id}/files", files=files)
     print("Upload result:", response.json())
 
 # Create embeddings with default settings
-response = requests.post(f"http://localhost:${port}/v1/kb/{kb_id}/create")
+response = requests.post(f"${url}/v1/kb/{kb_id}/create")
 print("Embeddings result:", response.json())
 
 # Or create embeddings with advanced configuration
 embedding_config = {
     "splitter_name": "RecursiveCharacter",  # 'Character', 'RecursiveCharacter', or 'Markdown'
-    "chunk_size": 1000,
+    "chunk_size": 512,
     "chunk_overlap": 200
 }
-response = requests.post(f"http://localhost:${port}/v1/kb/{kb_id}/create", json=embedding_config)
+response = requests.post(f"${url}/v1/kb/{kb_id}/create", json=embedding_config)
 print("Advanced embeddings result:", response.json())`,
     },
     {
@@ -93,7 +93,7 @@ import fetch from 'node-fetch'
 
 // Create a knowledge base
 const kbData = { name: "My Knowledge Base", db: "" }
-let response = await fetch('http://localhost:${port}/v1/kb', {
+let response = await fetch('${url}/v1/kb', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify(kbData)
@@ -108,7 +108,7 @@ const fileBuffer = fs.readFileSync('document.pdf')
 const formData = new FormData()
 formData.append('file', new Blob([fileBuffer], { type: 'application/pdf' }), 'document.pdf')
 
-response = await fetch(\`http://localhost:${port}/v1/kb/\${kbId}/files\`, {
+response = await fetch(\`${url}/v1/kb/\${kbId}/files\`, {
   method: 'POST',
   body: formData
 })
@@ -116,7 +116,7 @@ const uploadResult = await response.json()
 console.log('Upload result:', uploadResult)
 
 // Create embeddings with default settings
-response = await fetch(\`http://localhost:${port}/v1/kb/\${kbId}/create\`, {
+response = await fetch(\`${url}/v1/kb/\${kbId}/create\`, {
   method: 'POST'
 })
 let embeddingsResult = await response.json()
@@ -125,10 +125,10 @@ console.log('Embeddings result:', embeddingsResult)
 // Or create embeddings with advanced configuration
 const embeddingConfig = {
   splitter_name: 'RecursiveCharacter', // 'Character', 'RecursiveCharacter', or 'Markdown'
-  chunk_size: 1000,
+  chunk_size: 512,
   chunk_overlap: 200
 }
-response = await fetch(\`http://localhost:${port}/v1/kb/\${kbId}/create\`, {
+response = await fetch(\`${url}/v1/kb/\${kbId}/create\`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify(embeddingConfig)
@@ -145,29 +145,29 @@ console.log('Advanced embeddings result:', embeddingsResult)`,
       code: `import requests
 
 # Get all knowledge bases
-response = requests.get("http://localhost:${port}/v1/kb")
+response = requests.get("${url}/v1/kb")
 knowledge_bases = response.json()
 print("Knowledge Bases:", knowledge_bases)
 
 # Get specific knowledge base
 kb_id = 1
-response = requests.get(f"http://localhost:${port}/v1/kb/{kb_id}")
+response = requests.get(f"${url}/v1/kb/{kb_id}")
 kb_details = response.json()
 print("KB Details:", kb_details)
 
 # Get files in a knowledge base
-response = requests.get(f"http://localhost:${port}/v1/kb/{kb_id}/files")
+response = requests.get(f"${url}/v1/kb/{kb_id}/files")
 files = response.json()
 print("Files:", files)
 
 # Delete a file from knowledge base
 file_data = {"name": "document.pdf"}
-response = requests.delete(f"http://localhost:${port}/v1/kb/{kb_id}/files", json=file_data)
+response = requests.delete(f"${url}/v1/kb/{kb_id}/files", json=file_data)
 print("Delete file result:", response.json())
 
 # Search in knowledge base with basic query
 search_data = {"query": "your search query"}
-response = requests.post(f"http://localhost:${port}/v1/kb/{kb_id}/search", json=search_data)
+response = requests.post(f"${url}/v1/kb/{kb_id}/search", json=search_data)
 
 results = response.json()
 print("Search results:", results)
@@ -182,12 +182,12 @@ advanced_search = {
     "fetch_k": 20,  # For MMR search
     "lambda_mult": 0.5  # MMR diversity (0=max diversity, 1=min diversity)
 }
-response = requests.post(f"http://localhost:${port}/v1/kb/{kb_id}/search", json=advanced_search)
+response = requests.post(f"${url}/v1/kb/{kb_id}/search", json=advanced_search)
 results = response.json()
 print("Advanced search results:", results)
 
 # Delete knowledge base
-response = requests.delete(f"http://localhost:${port}/v1/kb/{kb_id}")
+response = requests.delete(f"${url}/v1/kb/{kb_id}")
 print("Delete KB result:", response.json())`,
     },
     {
@@ -196,24 +196,24 @@ print("Delete KB result:", response.json())`,
       code: `import fetch from 'node-fetch'
 
 // Get all knowledge bases
-let response = await fetch('http://localhost:${port}/v1/kb')
+let response = await fetch('${url}/v1/kb')
 const knowledgeBases = await response.json()
 console.log('Knowledge Bases:', knowledgeBases)
 
 // Get specific knowledge base
 const kbId = 1
-response = await fetch(\`http://localhost:${port}/v1/kb/\${kbId}\`)
+response = await fetch(\`${url}/v1/kb/\${kbId}\`)
 const kbDetails = await response.json()
 console.log('KB Details:', kbDetails)
 
 // Get files in a knowledge base
-response = await fetch(\`http://localhost:${port}/v1/kb/\${kbId}/files\`)
+response = await fetch(\`${url}/v1/kb/\${kbId}/files\`)
 const files = await response.json()
 console.log('Files:', files)
 
 // Delete a file from knowledge base
 const fileData = { name: 'document.pdf' }
-response = await fetch(\`http://localhost:${port}/v1/kb/\${kbId}/files\`, {
+response = await fetch(\`${url}/v1/kb/\${kbId}/files\`, {
   method: 'DELETE',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify(fileData),
@@ -223,7 +223,7 @@ console.log('Delete result:', deleteFileResult)
 
 // Search in knowledge base with basic query
 const searchData = { query: 'your search query' }
-response = await fetch(\`http://localhost:${port}/v1/kb/\${kbId}/search\`, {
+response = await fetch(\`${url}/v1/kb/\${kbId}/search\`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify(searchData)
@@ -241,7 +241,7 @@ const advancedSearch = {
   fetch_k: 20, // For MMR search
   lambda_mult: 0.5 // MMR diversity (0=max diversity, 1=min diversity)
 }
-response = await fetch(\`http://localhost:${port}/v1/kb/\${kbId}/search\`, {
+response = await fetch(\`${url}/v1/kb/\${kbId}/search\`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify(advancedSearch)
@@ -250,7 +250,7 @@ results = await response.json()
 console.log('Advanced search results:', results)
 
 // Delete knowledge base
-response = await fetch(\`http://localhost:${port}/v1/kb/\${kbId}\`, {
+response = await fetch(\`${url}/v1/kb/\${kbId}\`, {
   method: 'DELETE',
 })
 const deleteKbResult = await response.json()
@@ -267,12 +267,12 @@ console.log('Delete result:', deleteKbResult)`,
 kb_id = 1
 
 # Get all chunks from a knowledge base
-response = requests.get(f"http://localhost:${port}/v1/kb/{kb_id}/chunks")
+response = requests.get(f"${url}/v1/kb/{kb_id}/chunks")
 chunks = response.json()
 print(f"Found {chunks['total_chunks']} chunks")
 
 # Get chunks with embedding vectors included
-response = requests.get(f"http://localhost:${port}/v1/kb/{kb_id}/chunks?include_embeddings=true")
+response = requests.get(f"${url}/v1/kb/{kb_id}/chunks?include_embeddings=true")
 chunks_with_embeddings = response.json()
 print("Chunks with embeddings:", len(chunks_with_embeddings['chunks']))
 
@@ -281,14 +281,14 @@ chunk_data = {
     "content": "This is a manually added text chunk.",
     "metadata": {"source": "manual_entry"}
 }
-response = requests.post(f"http://localhost:${port}/v1/kb/{kb_id}/chunks", json=chunk_data)
+response = requests.post(f"${url}/v1/kb/{kb_id}/chunks", json=chunk_data)
 result = response.json()
 print("Added chunk:", result)
 
 # Delete specific chunks by document IDs
 doc_ids = [chunk["doc_id"] for chunk in chunks["chunks"][:2]]
 delete_data = {"doc_ids": doc_ids}
-response = requests.delete(f"http://localhost:${port}/v1/kb/{kb_id}/chunks", json=delete_data)
+response = requests.delete(f"${url}/v1/kb/{kb_id}/chunks", json=delete_data)
 delete_result = response.json()
 print("Deletion result:", delete_result)`,
     },
@@ -300,12 +300,12 @@ print("Deletion result:", delete_result)`,
 const kbId = kb.id
 
 // Get all chunks from a knowledge base
-let response = await fetch(\`http://localhost:${port}/v1/kb/\${kbId}/chunks\`)
+let response = await fetch(\`${url}/v1/kb/\${kbId}/chunks\`)
 const chunks = await response.json()
 console.log(\`Found \${chunks.total_chunks} chunks\`)
 
 // Get chunks with embedding vectors included
-response = await fetch(\`http://localhost:${port}/v1/kb/\${kbId}/chunks?include_embeddings=true\`)
+response = await fetch(\`${url}/v1/kb/\${kbId}/chunks?include_embeddings=true\`)
 const chunksWithEmbeddings = await response.json()
 console.log('Chunks with embeddings:', chunksWithEmbeddings.chunks.length)
 
@@ -314,7 +314,7 @@ const chunkData = {
   content: 'This is a manually added text chunk.',
   metadata: { source: 'manual_entry' }
 }
-response = await fetch(\`http://localhost:${port}/v1/kb/\${kbId}/chunks\`, {
+response = await fetch(\`${url}/v1/kb/\${kbId}/chunks\`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify(chunkData)
@@ -325,7 +325,7 @@ console.log('Added chunk:', result)
 // Delete specific chunks by document IDs
 const docIdsToDelete = chunks.chunks.slice(0, 2).map((chunk) => chunk.doc_id)
 const deleteData = { doc_ids: docIdsToDelete }
-response = await fetch(\`http://localhost:${port}/v1/kb/\${kbId}/chunks\`, {
+response = await fetch(\`${url}/v1/kb/\${kbId}/chunks\`, {
   method: 'DELETE',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify(deleteData)
@@ -342,7 +342,7 @@ console.log('Deletion result:', deleteResult)`,
       code: `import cohere
 
 client = cohere.Client(
-    base_url="http://localhost:${port}",
+    base_url="${url}",
     api_key="unused"
 )
 
@@ -355,7 +355,7 @@ docs = [
 ]
 
 response = client.rerank(
-    model="OpenVINO/bge-reranker-base-int8-ov",
+    model="${models.rerank}",
     query="What is the capital of the United States?",
     documents=docs,
     top_n=3,
@@ -369,7 +369,7 @@ print(response)`,
       code: `import { CohereClient } from 'cohere-ai'
 
 const cohere = new CohereClient({
-  baseUrl: 'http://localhost:${port}',
+  baseUrl: 'http://localhost:${url}',
   token: 'unused',
 })
 
@@ -383,7 +383,7 @@ const rerank = await cohere.rerank({
   ],
   query: 'What is the capital of the United States?',
   topN: 3,
-  model: 'OpenVINO/bge-reranker-base-int8-ov',
+  model: "${models.rerank}",
   returnDocuments: true,
 })
 

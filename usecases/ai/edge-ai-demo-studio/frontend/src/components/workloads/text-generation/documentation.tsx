@@ -1,13 +1,14 @@
 // Copyright (C) 2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-import CodeBlock, { CodeSnippet } from '@/components/common/codeblock'
+import CodeBlock from '@/components/common/codeblock'
+import { CodeSnippet } from '@/types/code'
 
 export default function TextGenerationDocumentation({
-  port,
+  url,
   model,
 }: {
-  port: number
+  url: string
   model: string
 }) {
   const completionAPISnippet: CodeSnippet[] = [
@@ -16,7 +17,7 @@ export default function TextGenerationDocumentation({
       languageCode: 'py',
       code: `from openai import OpenAI
 
-client = OpenAI(base_url="http://localhost:${port}/v3", api_key="unused")
+client = OpenAI(base_url="${url}/v1", api_key="unused")
 model = "${model}"
 response = client.completions.create(
     model=model,
@@ -32,7 +33,7 @@ print("response:", response.choices[0].text)`,
       code: `import OpenAI from 'openai'
 
 const client = new OpenAI({
-    baseURL: 'http://localhost:${port}/v3',
+    baseURL: '${url}/v1',
     apiKey: 'unused',
   })
 const model = "${model}"
@@ -52,9 +53,9 @@ console.log(response.choices[0].text)`,
       languageCode: 'py',
       code: `from openai import OpenAI
 
-client = OpenAI(base_url="http://localhost:${port}/v3", api_key="unused")
+client = OpenAI(base_url="${url}/v1", api_key="unused")
 model = "${model}"
-response = completion = client.chat.completions.create(
+response = client.chat.completions.create(
     model=model,
     messages=[
         {"role": "system", "content": "You are a helpful assistant."},
@@ -69,7 +70,7 @@ print("response:", response.choices[0].message)`,
       code: `import OpenAI from 'openai'
 
 const client = new OpenAI({
-    baseURL: 'http://localhost:${port}/v3',
+    baseURL: '${url}/v1',
     apiKey: 'unused',
   })
 const model = "${model}"
@@ -92,7 +93,7 @@ console.log(response.choices[0].text)`,
       languageCode: 'py',
       code: `from openai import OpenAI
 
-client = OpenAI(base_url="http://localhost:${port}/v3", api_key="unused")
+client = OpenAI(base_url="${url}/v1", api_key="unused")
 model = "${model}"
 response = client.completions.create(
     model=model,
@@ -109,7 +110,7 @@ print("response:", response.choices[0].text)`,
       code: `import OpenAI from 'openai'
 
 const client = new OpenAI({
-    baseURL: 'http://localhost:${port}/v3',
+    baseURL: '${url}/v1',
     apiKey: 'unused',
     // @ts-expect-error --undocumented param
     top_k: 1,

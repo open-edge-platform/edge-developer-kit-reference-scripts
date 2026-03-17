@@ -4,6 +4,7 @@
 
 import { getMcpManager } from '@/lib/mcp-manager'
 import { getActiveMcpServers } from '@/lib/server-db-utils'
+import { logger } from '@/utils/logger'
 
 // Get server-side MCP manager
 const mcpManager = getMcpManager()
@@ -42,7 +43,7 @@ export async function GET() {
       lastUpdate: new Date().toISOString(),
     })
   } catch (error) {
-    console.error('Error getting MCP server info:', error)
+    logger.error('Error getting MCP server info:', error)
     // Cleanup all clients
     await mcpManager.cleanup()
     return Response.json(

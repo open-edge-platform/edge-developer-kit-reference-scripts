@@ -22,10 +22,11 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Settings, Database, ExternalLink, Info } from 'lucide-react'
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useGetKnowledgeBases } from '@/hooks/use-embedding'
 import { KnowledgeBase } from '@/types/embedding'
 import { useGetWorkloadByType } from '@/hooks/use-workload'
+import { EMBEDDING_TYPE } from '@/lib/workloads/embedding'
 
 interface RagChatSettingsProps {
   isOpen: boolean
@@ -45,7 +46,7 @@ export function RagChatSettings({
   selectedKnowledgeBase,
   onSettingsUpdate,
 }: RagChatSettingsProps) {
-  const { data: embeddingService } = useGetWorkloadByType('embedding')
+  const { data: embeddingService } = useGetWorkloadByType(EMBEDDING_TYPE)
   const [localUseEmbedding, setLocalUseEmbedding] = useState(useEmbedding)
   const [localSelectedKnowledgeBase, setLocalSelectedKnowledgeBase] =
     useState<KnowledgeBase | null>(selectedKnowledgeBase)
@@ -55,10 +56,14 @@ export function RagChatSettings({
       disabled: !localUseEmbedding,
     })
 
-  useEffect(() => {
-    setLocalUseEmbedding(useEmbedding)
-    setLocalSelectedKnowledgeBase(selectedKnowledgeBase)
-  }, [useEmbedding, selectedKnowledgeBase, isOpen])
+  const [prevIsOpen, setPrevIsOpen] = useState(isOpen)
+  if (isOpen !== prevIsOpen) {
+    setPrevIsOpen(isOpen)
+    if (isOpen) {
+      setLocalUseEmbedding(useEmbedding)
+      setLocalSelectedKnowledgeBase(selectedKnowledgeBase)
+    }
+  }
 
   const handleApplySettings = () => {
     onSettingsUpdate({

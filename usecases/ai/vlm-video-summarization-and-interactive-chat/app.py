@@ -173,7 +173,7 @@ with gr.Blocks(
                 value=USECASES[usecase_dropdown.value]["video_path"],
                 loop=True,
                 autoplay=True,
-                show_download_button=False,
+                buttons=["play", "progress"],
                 container=False,
                 interactive=False,
             )

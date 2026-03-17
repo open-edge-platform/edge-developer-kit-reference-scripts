@@ -12,11 +12,7 @@ import {
 } from '../ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs'
 import React from 'react'
-
-export interface DocumentationProps {
-  overview: React.ReactNode
-  endpoints: React.ReactNode
-}
+import { DocumentationProps } from '@/types/workload'
 
 export function DocumentationTemplate({ data }: { data: DocumentationProps }) {
   return (

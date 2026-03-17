@@ -5,6 +5,7 @@
 
 Edge AI Demo Studio is a modern toolkit for deploying, managing, and serving AI models on edge platforms. It features a web-based UI for device, workload, and user management, and is optimized for Intel hardware and edge environments.
 
+![Demo](./docs/demo.gif)
 
 ## Features
 

@@ -13,8 +13,8 @@
 # Fail fast, treat unset variables as errors, and catch pipeline failures
 set -euo pipefail
 
-# Script directory
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Script directory (where main_installer.sh is located)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 
 # Status indicators - using ASCII for better compatibility
 S_ERROR="[ERROR]"
@@ -95,7 +95,7 @@ check_privileges() {
 }
 
 download_scripts() {
-    local REPO_OWNER="intel"
+    local REPO_OWNER="open-edge-platform"
     local REPO_NAME="edge-developer-kit-reference-scripts"
     local BRANCH="main"
     local BASE_URL="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/refs/heads/${BRANCH}"
@@ -110,6 +110,7 @@ download_scripts() {
     )
 
     # Download scripts
+    apt update
     apt install -y curl
     mkdir -p "$DOWNLOAD_DIR"
     for script in "${REQUIRED_SCRIPTS[@]}"; do
@@ -167,33 +168,39 @@ verify_ubuntu_24() {
         exit 1
     fi
 
-   # Kernel policy: Accept 6.14.x (standard) OR 6.17.x (OEM) when PTL_PLATFORM=true
-   local kernel_major kernel_minor running_kernel
-   running_kernel=$(uname -r)
-   kernel_major=$(echo "$running_kernel" | cut -d'.' -f1)
-   kernel_minor=$(echo "$running_kernel" | cut -d'.' -f2)
+    # Kernel policy: Accept 6.14.x (standard) OR 6.17.x (OEM) when PTL_PLATFORM=true
+    local kernel_major kernel_minor running_kernel
+    running_kernel=$(uname -r)
+    kernel_major=$(echo "$running_kernel" | cut -d'.' -f1)
+    kernel_minor=$(echo "$running_kernel" | cut -d'.' -f2)
 
-   if { [ "$kernel_major" = "6" ] && [ "$kernel_minor" = "14" ]; }; then
-       echo "$S_VALID Ubuntu 24.04 LTS with supported HWE kernel $running_kernel detected"
-   elif { [ "${PTL_PLATFORM:-false}" = true ] && [ "$kernel_major" = "6" ] && [ "$kernel_minor" = "17" ]; }; then
-       echo "$S_VALID PTL platform OEM kernel $running_kernel accepted"
-   else
-       echo "$S_WARNING Unsupported kernel version: $running_kernel"
-       if [ "${PTL_PLATFORM:-false}" = true ]; then
-           echo "PTL platform detected; proceeding to install OEM 6.17 kernel via prerequisites phase."
-           # Do not exit; apply_ptl_platform_prereqs will manage kernel upgrade & reboot gate.
-       else
-           echo "This installer requires Ubuntu 24.04 LTS with kernel 6.14.x"
-           if command -v hwe-support-status >/dev/null 2>&1; then
-              echo "Checking HWE support status..."
-              hwe-support-status --verbose || true
-           fi
-           echo "Installing HWE kernel..."
-           apt update && apt install -y linux-generic-hwe-24.04
-           echo "$S_VALID HWE kernel installed. Please reboot and run this installer again."
-           exit 0
-       fi
-   fi
+    if { [ "$kernel_major" = "6" ] && [ "$kernel_minor" = "14" ]; }; then
+        echo "$S_VALID Ubuntu 24.04 LTS with supported HWE kernel $running_kernel detected"
+    elif { [ "${PTL_PLATFORM:-false}" = true ] && [ "$kernel_major" = "6" ] && [ "$kernel_minor" = "17" ]; }; then
+        echo "$S_VALID PTL platform OEM kernel $running_kernel accepted"
+    else
+        echo "$S_WARNING Unsupported kernel version: $running_kernel"
+        if [ "${PTL_PLATFORM:-false}" = true ]; then
+            echo "PTL platform detected; proceeding to install OEM 6.17 kernel via prerequisites phase."
+            # Do not exit; apply_ptl_platform_prereqs will manage kernel upgrade & reboot gate.
+        else 
+            echo "Currently only PTL platform validated with 6.17.x kernel version. For non-PTL platforms, 6.14.x is validated kernel version."
+            if { [ "$kernel_major" = "6" ] && [ "$kernel_minor" -lt "14" ]; }; then
+                # If kernel is older than 6.14
+                echo "System kernel version is lower than 6.14.x, proceed upgrade to 6.14.x"
+                apt update && apt install -y linux-image-6.14.0-37-generic \
+                linux-modules-6.14.0-37-generic \
+                linux-modules-extra-6.14.0-37-generic \
+                linux-headers-6.14.0-37-generic
+                echo "$S_VALID HWE kernel installed. Please reboot and run this installer again."
+                exit 0
+            else
+                # If kernel is newer than 6.14 but not PTL
+                echo "Kernel newer than 6.14.x are not validated. You may proceed at your own risk by manually install ./gpu_installer.sh and ./npu_installer.sh scripts."
+                exit 0
+            fi
+        fi
+    fi
 }
 
 # Apply PTL platform prerequisites before standard GPU driver installation
@@ -238,8 +245,18 @@ apply_ptl_platform_prereqs() {
     running_kernel=$(uname -r)
     new_kernel_info=$(dpkg -l | grep '^ii' | grep 'linux-image-oem-24.04d' | awk '{print $2"="$3}' || true)
     if ! echo "$running_kernel" | grep -q '^6\.17'; then
+        # Install GPU drivers before reboot
+        # shellcheck disable=SC1091
+        GPU_INSTALLER_NO_MAIN=1 source "${SCRIPT_DIR}/gpu_installer.sh"
+        apply_xe_ptl_fix
+        remove_conflicting_packages
+        configure_kobuk_repository
+        install_packages "${DEPENDENCIES[@]}"
+        install_packages "${COMMON_GPU_PACKAGES[@]}"
+        install_packages "${MEDIA_GPU_PACKAGES[@]}"
+
         echo "$S_WARNING Running kernel ($running_kernel) differs from installed OEM 6.17 kernel ($new_kernel_info)."
-        echo "Please reboot now, then re-run this installer to continue driver installations."
+        echo "Please reboot and run this installer again."
         echo "$S_VALID PTL stage 1 complete (kernel + mesa). Exiting early."
         exit 0
     else
@@ -586,7 +603,7 @@ main() {
     detect_platform
     echo ""
 
-    # 2. Verify Ubuntu version & kernel (allows 6.17 if PTL)
+    # 2. Verify Ubuntu version
     verify_ubuntu_24
     echo ""
 
@@ -630,6 +647,7 @@ main() {
         fi
         
     else
+        # Any platform that is not PTL
         echo ""
         echo "========================================================================"
         echo "# STANDARD INTEL PLATFORM INSTALLATION"

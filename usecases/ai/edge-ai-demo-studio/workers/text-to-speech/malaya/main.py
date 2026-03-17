@@ -22,6 +22,7 @@ import socket
 import io
 import numpy as np
 from schemas import OpenAISpeechRequest
+from modelscope import snapshot_download as ms_snapshot_download
 
 try:
     from malaya_boilerplate.hparams import HParams
@@ -32,12 +33,15 @@ except BaseException:
 # Global constants
 AVAILABLE_VOICES = ["Husein", "Shafiqah Idayu", "Anwar Ibrahim"]
 AVAILABLE_MODEL = "malaysia-ai/malay-VITS-multispeaker"
+CONFIG = {
+    "source": "huggingface",
+}
 # Global variables for model state
 model_state = {"model": None, "hps": None, "device": None}
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI, source="huggingface"):
     """FastAPI lifespan context manager for model loading and cleanup"""
     # Startup: Load the model
     print("Starting up Malaya TTS server...")
@@ -53,7 +57,7 @@ async def lifespan(app: FastAPI):
     else:
         print(f"FP16 mode: auto (will use FP16 on XPU devices)")
 
-    model, hps = load_model(device, use_fp16)
+    model, hps = load_model(device, use_fp16, source)
 
     # Store in global state
     model_state["model"] = model
@@ -106,7 +110,7 @@ def get_device(device_arg):
         return "cpu"
 
 
-def load_model(device, use_fp16=None):
+def load_model(device, use_fp16=None, source="huggingface"):
     """Load and configure the VITS model."""
     print("Loading model...")
     # Download model files
@@ -118,8 +122,9 @@ def load_model(device, use_fp16=None):
         not Path(f"{model_dir}/config.json").exists()
         or not Path(f"{model_dir}/model.pth").exists()
     ):
-        print("Downloading model from Hugging Face...")
-        snapshot_download(
+        print(f"Downloading model from {source}...")
+        download = ms_snapshot_download if source == "modelscope" else snapshot_download
+        download(
             repo_id=AVAILABLE_MODEL,
             local_dir=model_dir,
         )
@@ -251,6 +256,13 @@ def parse_arguments():
         "--no-fp16",
         action="store_true",
         help="Disable FP16 precision even on GPU",
+    )
+    parser.add_argument(
+        "--source",
+        type=str,
+        default="huggingface",
+        choices=["huggingface", "modelscope"],
+        help="Source to download the model from (default: huggingface)",
     )
     return parser.parse_args()
 
@@ -480,6 +492,7 @@ def main():
     """Main function."""
     # Parse arguments
     args = parse_arguments()
+    CONFIG["source"] = args.source
 
     # Get device from args
     device = args.device

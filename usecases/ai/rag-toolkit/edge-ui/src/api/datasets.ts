@@ -21,8 +21,8 @@ export const createTextEmbeddingsAPI = async (
     { headers: {} }
   );
   if (response.status) {
-    revalidateTag(`rag/text_embeddings`);
-    revalidateTag(`rag/text_embedding_sources`);
+    revalidateTag(`rag/text_embeddings`, {});
+    revalidateTag(`rag/text_embedding_sources`, {});
   }
   return response;
 };
@@ -51,7 +51,7 @@ export const deleteTextEmbeddingByUUIDAPI = async (
 ): Promise<APIResponse> => {
   const response = await API.delete(`rag/text_embeddings/${uuid}`);
   if (response.status) {
-    revalidateTag(`rag/text_embeddings`);
+    revalidateTag(`rag/text_embeddings`, {});
   }
   return response;
 };
@@ -61,8 +61,8 @@ export const deleteTextEmbeddingBySourceAPI = async (
 ): Promise<APIResponse> => {
   const response = await API.delete(`rag/text_embeddings/source/${source}`);
   if (response.status) {
-    revalidateTag(`rag/text_embedding`);
-    revalidateTag(`rag/text_embedding_sources`);
+    revalidateTag(`rag/text_embedding`, {});
+    revalidateTag(`rag/text_embedding_sources`, {});
   }
   return response;
 };

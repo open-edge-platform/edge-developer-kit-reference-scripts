@@ -15,12 +15,7 @@ import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { JSCode, PYCode } from './code'
 import { BundledLanguage } from 'shiki/bundle/web'
-
-export interface CodeSnippet {
-  language: string
-  languageCode: BundledLanguage
-  code: string
-}
+import { CodeSnippet } from '@/types/code'
 
 export default function CodeBlock({
   title,
