@@ -11,12 +11,21 @@ This script provides automated setup for Intel IPU6 DKMS drivers, ECI repositori
 ## Table of Contents
 
 - [System Requirements](#system-requirements)
+   - [Operating System](#operating-system)
+   - [Hardware Requirements](#hardware-requirements)
+   - [Software Dependencies](#software-dependencies)
+   - [Supported Hardware IDs](#supported-hardware-ids)
+   - [Network Requirements](#network-requirements)
+   - [Validated Hardware](#validated-hardware)
 - [Hardware Setup and Connections](#hardware-setup-and-connections)
+   - [Connection Steps](#connection-steps)
 - [BIOS Configurations](#bios-configurations)
 - [Quick Start Guide](#quick-start-guide)
+   - [Prerequisites](#prerequisites)
+   - [Installation Steps](#installation-steps)
+   - [Post-Installation Verification](#post-installation-verification)
 - [Usage](#usage)
-  - [Script Execution Modes](#script-execution-modes)
-  - [Cleanup and Reset](#cleanup-and-reset)
+   - [Script Execution Modes](#script-execution-modes)
 - [Support and Documentation](#support-and-documentation)
 - [Disclaimer](#disclaimer)
 
@@ -48,6 +57,13 @@ This script provides automated setup for Intel IPU6 DKMS drivers, ECI repositori
 - Access to `eci.intel.com` for ECI repository
 - Access to `packages.ros.org` for ROS packages
 - Access to `raw.githubusercontent.com` for GPG keys
+
+### Validated Hardware
+
+| Product Collection | Camera |Validated Hardware | 
+|---|---|---|
+| 12th/13th/14th Gen Intel® Core™ | RealSense™ Depth Camera D457, D3 Embedded® (ISX031, IMX390), oToBrite® (ISX031, ISX021) |Axiomtek* ROBOX500 |
+| Intel® Core™ Ultra Series 1 and 2 | RealSense™ Depth Camera D457, D3 Embedded® (ISX031, IMX390), oToBrite® (ISX031, ISX021) | SEAVO* Embedded Computer HB03, Advantech* AFE-R360 series, ASR-A502 series with Advantech* GMSL Input Module Card |
 
 ## Hardware Setup and Connections
 

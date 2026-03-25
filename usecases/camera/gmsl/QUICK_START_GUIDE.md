@@ -1,4 +1,4 @@
-# IPU7 GMSL Camera Quick Start Guide (Draft)
+# IPU7 GMSL Camera Quick Start Guide
 
 ## 1. Introduction
 
