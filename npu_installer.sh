@@ -22,6 +22,10 @@ NPU_VERSION="${NPU_VERSION:-}"
 NPU_BUILD_ID="${NPU_BUILD_ID:-}"
 NPU_ASSET_URL="${NPU_ASSET_URL:-}"
 
+log_success() {
+   echo "$S_VALID $1"
+}
+
 # Resolve latest release and asset URL from GitHub (no jq required)
 resolve_latest_release() {
    local json url tag asset_name

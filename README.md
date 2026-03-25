@@ -9,7 +9,7 @@ This repository provides simplified developer kit reference setup scripts for va
 
 > **Note:** The main branch contains the latest development version of the project. It may include experimental features, work in progress, or unstable code.
 
-- Officially Supported: Ubuntu 24.04 LTS (tested on `Ubuntu 24.04.3 LTS`) with the 6.14 HWE kernel (for example `6.14.0-33-generic`).
+- Officially Supported: Ubuntu 24.04 LTS (tested on `Ubuntu 24.04.4 LTS`) with the 6.17 kernel.
 - Kernel / HWE Guidance: The setup and reference scripts are validated against the Ubuntu 24.04 HWE stack (Linux 6.14). We recommend using the HWE kernel matching the tested version for best compatibility and to avoid driver/packaging mismatches.
 
 ## Who Is This For?

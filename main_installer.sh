@@ -168,99 +168,23 @@ verify_ubuntu_24() {
         exit 1
     fi
 
-    # Kernel policy: Accept 6.14.x (standard) OR 6.17.x (OEM) when PTL_PLATFORM=true
+    # Kernel policy: Accept 6.17
     local kernel_major kernel_minor running_kernel
     running_kernel=$(uname -r)
     kernel_major=$(echo "$running_kernel" | cut -d'.' -f1)
     kernel_minor=$(echo "$running_kernel" | cut -d'.' -f2)
 
-    if { [ "$kernel_major" = "6" ] && [ "$kernel_minor" = "14" ]; }; then
+    if { [ "$kernel_major" = "6" ] && [ "$kernel_minor" = "17" ]; }; then
         echo "$S_VALID Ubuntu 24.04 LTS with supported HWE kernel $running_kernel detected"
-    elif { [ "${PTL_PLATFORM:-false}" = true ] && [ "$kernel_major" = "6" ] && [ "$kernel_minor" = "17" ]; }; then
-        echo "$S_VALID PTL platform OEM kernel $running_kernel accepted"
     else
         echo "$S_WARNING Unsupported kernel version: $running_kernel"
-        if [ "${PTL_PLATFORM:-false}" = true ]; then
-            echo "PTL platform detected; proceeding to install OEM 6.17 kernel via prerequisites phase."
-            # Do not exit; apply_ptl_platform_prereqs will manage kernel upgrade & reboot gate.
-        else 
-            echo "Currently only PTL platform validated with 6.17.x kernel version. For non-PTL platforms, 6.14.x is validated kernel version."
-            if { [ "$kernel_major" = "6" ] && [ "$kernel_minor" -lt "14" ]; }; then
-                # If kernel is older than 6.14
-                echo "System kernel version is lower than 6.14.x, proceed upgrade to 6.14.x"
-                apt update && apt install -y linux-image-6.14.0-37-generic \
-                linux-modules-6.14.0-37-generic \
-                linux-modules-extra-6.14.0-37-generic \
-                linux-headers-6.14.0-37-generic
-                echo "$S_VALID HWE kernel installed. Please reboot and run this installer again."
-                exit 0
-            else
-                # If kernel is newer than 6.14 but not PTL
-                echo "Kernel newer than 6.14.x are not validated. You may proceed at your own risk by manually install ./gpu_installer.sh and ./npu_installer.sh scripts."
-                exit 0
-            fi
-        fi
-    fi
-}
-
-# Apply PTL platform prerequisites before standard GPU driver installation
-apply_ptl_platform_prereqs() {
-    echo "# Applying PTL platform prerequisites..."
-
-    # 1. Install OEM 6.17 kernel (24.04d stream)
-    echo "Checking available OEM kernel packages (linux-image-oem-24.04d / linux-headers-oem-24.04d)"
-    apt-get update
-    if ! dpkg -l | grep -q 'linux-image-oem-24.04d'; then
-        echo "Installing OEM 6.17 kernel packages..."
-        apt-get install -y linux-image-oem-24.04d linux-headers-oem-24.04d || {
-            echo "$S_ERROR Failed to install OEM kernel packages"; exit 1; }
-    else
-        echo "$S_VALID OEM kernel already installed"
-    fi
-
-    # 2. Add Kisak Mesa PPA for updated Mesa stack
-    if ! grep -R "kisak-mesa" /etc/apt/sources.list /etc/apt/sources.list.d 2>/dev/null | grep -q kisak; then
-        echo "Adding Kisak Mesa PPA..."
-        apt-get install -y software-properties-common
-        add-apt-repository -y ppa:kisak/kisak-mesa || { echo "$S_ERROR Failed to add Kisak Mesa PPA"; exit 1; }
-    else
-        echo "$S_VALID Kisak Mesa PPA already configured"
-    fi
-
-    # 3. Update & upgrade packages
-    echo "Updating and upgrading packages (this may take a while)..."
-    apt-get update
-    DEBIAN_FRONTEND=noninteractive apt-get -y upgrade || echo "$S_WARNING Some packages failed to upgrade"
-
-    # 4. Reinstall Xorg core (requested workaround)
-    echo "Reinstalling xserver-xorg-core..."
-    apt-get install -y --reinstall xserver-xorg-core || echo "$S_WARNING Failed to reinstall xserver-xorg-core"
-
-    # 5. Configure any pending dpkg states & fix broken packages
-    dpkg --configure -a || echo "$S_WARNING dpkg configure reported issues"
-    apt-get -y --fix-broken install || echo "$S_WARNING fix-broken reported issues"
-
-    # Reboot gate: if running kernel not yet 6.17 after install, instruct reboot & exit early
-    local running_kernel new_kernel_info
-    running_kernel=$(uname -r)
-    new_kernel_info=$(dpkg -l | grep '^ii' | grep 'linux-image-oem-24.04d' | awk '{print $2"="$3}' || true)
-    if ! echo "$running_kernel" | grep -q '^6\.17'; then
-        # Install GPU drivers before reboot
-        # shellcheck disable=SC1091
-        GPU_INSTALLER_NO_MAIN=1 source "${SCRIPT_DIR}/gpu_installer.sh"
-        apply_xe_ptl_fix
-        remove_conflicting_packages
-        configure_kobuk_repository
-        install_packages "${DEPENDENCIES[@]}"
-        install_packages "${COMMON_GPU_PACKAGES[@]}"
-        install_packages "${MEDIA_GPU_PACKAGES[@]}"
-
-        echo "$S_WARNING Running kernel ($running_kernel) differs from installed OEM 6.17 kernel ($new_kernel_info)."
-        echo "Please reboot and run this installer again."
-        echo "$S_VALID PTL stage 1 complete (kernel + mesa). Exiting early."
+        echo "Updating kernel to 6.17"
+        apt update && apt install -y linux-image-6.17.0-19-generic \
+        linux-modules-6.17.0-19-generic \
+        linux-modules-extra-6.17.0-19-generic \
+        linux-headers-6.17.0-19-generic
+        echo "$S_VALID HWE kernel installed. Please reboot and run this installer again."
         exit 0
-    else
-        echo "$S_VALID PTL platform prerequisites applied; OEM kernel already active ($running_kernel)."
     fi
 }
 
@@ -491,22 +415,6 @@ detect_platform() {
     
     echo "  CPU Model: $CPU_MODEL"
     echo "  Platform Family: $PLATFORM_FAMILY"
-
-    # PTL platform detection:
-    # Matches Intel Core Ultra 3xx U/P/H SKUs (e.g. 325U, 355H, 385P, 358H)
-    # Regex explanation:
-    #   Intel(R) Core(TM) Ultra  ...  space + '3' + two digits + one of U/P/H
-    local ptl_regex='Intel\(R\) Core\(TM\) Ultra .* 3[0-9]{2}[UPH]'
-    PTL_PLATFORM=false
-    if echo "$CPU_MODEL" | grep -Eq "$ptl_regex"; then
-        PTL_PLATFORM=true
-        echo "$S_VALID PTL platform detected"
-    else
-        if [ "$IS_COREULTRA" = true ]; then
-            echo "$S_WARNING Core Ultra platform (non-PTL SKU)"
-        fi
-    fi
-    export PTL_PLATFORM
 }
 
 # Check if Core Ultra platform
@@ -610,16 +518,8 @@ main() {
     # 3. Install essential development tools
     install_build_essentials
     echo ""
-
-    # 4. Apply PTL prerequisites only if PTL platform and not already on 6.17
-    if [ "${PTL_PLATFORM}" = true ] && ! uname -r | grep -q '^6\.17'; then
-        echo "# PTL platform prerequisites detected (kernel upgrade path) ..."
-        apply_ptl_platform_prereqs
-        # Function may exit early; if it doesn't, continue with flow
-        echo ""
-    fi
     
-    # 5. Platform Installation Flow
+    # 4. Platform Installation Flow
     echo "# Platform Installation Flow..."
     echo "$S_VALID Platform detected: $CPU_MODEL"
     
@@ -647,7 +547,7 @@ main() {
         fi
         
     else
-        # Any platform that is not PTL
+        # Any platform that is not coreultra
         echo ""
         echo "========================================================================"
         echo "# STANDARD INTEL PLATFORM INSTALLATION"
@@ -675,6 +575,7 @@ main() {
     echo "========================================================================"
     echo "Installation completed: $(date '+%Y-%m-%d %H:%M:%S')"
     echo "Log file saved: $LOG_FILE"
+    echo "Installation completed. Please reboot the system to ensure all changes take effect"
     echo "========================================================================"
 }
 
