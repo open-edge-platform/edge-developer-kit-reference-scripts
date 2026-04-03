@@ -13,7 +13,7 @@
     "license": "ISC",
     "description": "Edge AI Demo Studio - Electron Builder Version",
     "devDependencies": {
-        "electron": ">=39.2.1",
+        "electron": ">=39.8.5",
         "electron-builder": "^26.2.0",
         "@electron/fuses": "^2.0.0"
     },
