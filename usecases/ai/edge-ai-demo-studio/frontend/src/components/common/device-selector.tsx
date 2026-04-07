@@ -54,12 +54,19 @@ export function DeviceSelector({
         {label}
       </Label>
       <Select value={value} onValueChange={onChange}>
-        <SelectTrigger className="mt-2 w-full">
+        <SelectTrigger
+          className="mt-2 w-full"
+          data-testid="device-selector-trigger"
+        >
           <SelectValue placeholder="Choose a device" />
         </SelectTrigger>
         <SelectContent>
           {(devices ?? []).map((device) => (
-            <SelectItem key={device.id} value={device.id}>
+            <SelectItem
+              key={device.id}
+              value={device.id}
+              data-testid={`device-option-${device.id}`}
+            >
               <div className="flex flex-col">
                 <span className="font-medium">{device.name}</span>
               </div>

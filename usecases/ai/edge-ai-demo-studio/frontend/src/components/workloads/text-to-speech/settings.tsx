@@ -70,11 +70,11 @@ export function SettingsModal({
 
   // Get available devices based on model type and cpuOnly constraint
   const getAvailableDevices = () => {
-    if (!currentModel) return [{ id: 'CPU', name: 'CPU' }]
+    if (!currentModel) return []
 
     const allDevices =
       currentModel.type === 'PyTorch' ? pytorchDevices : ovDevices
-    const devices = allDevices || [{ id: 'CPU', name: 'CPU' }]
+    const devices = allDevices || []
 
     // If model is cpuOnly, filter to only show CPU devices
     if (currentModel.cpuOnly) {
@@ -109,7 +109,7 @@ export function SettingsModal({
       // Get available devices for the new model
       const allDevices =
         selectedModel.type === 'PyTorch' ? pytorchDevices : ovDevices
-      const devices = allDevices || [{ id: 'CPU', name: 'CPU' }]
+      const devices = allDevices || []
 
       let availableDevicesForModel = devices
       if (selectedModel.cpuOnly) {
@@ -153,7 +153,10 @@ export function SettingsModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[700px]">
+      <DialogContent
+        className="sm:max-w-[700px]"
+        data-testid="tts-settings-dialog"
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-xl font-semibold">
             <MessageSquareText className="h-5 w-5" />
@@ -169,7 +172,7 @@ export function SettingsModal({
           <div className="space-y-3">
             <Label className="text-base font-medium">TTS Model</Label>
             <Select value={tempModel.name} onValueChange={handleModelChange}>
-              <SelectTrigger className="w-full">
+              <SelectTrigger className="w-full" data-testid="tts-model-trigger">
                 <SelectValue placeholder="Select TTS model" />
               </SelectTrigger>
               <SelectContent>
@@ -257,6 +260,7 @@ export function SettingsModal({
             onClick={handleSave}
             disabled={isLoading}
             className="bg-blue-600 text-white"
+            data-testid="settings-save-button"
           >
             {isLoading ? (
               <Loader2 className="h-4 w-4 animate-spin" />

@@ -8,6 +8,7 @@ param(
 # Set UTF-8 encoding for console output
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
+$ProgressPreference = 'SilentlyContinue'
 
 # Global variables to track PATH changes
 $script:originalPath = $null
@@ -120,6 +121,7 @@ function Build-Frontend {
 }
 
 # Main execution
+Push-Location $PSScriptRoot
 try {
     Write-Host "Starting setup..." -ForegroundColor Green
     Add-FrontendEnv
@@ -135,4 +137,5 @@ try {
 } finally {
     # Always restore the original PATH
     Remove-NodeFromPath
+    Pop-Location
 }

@@ -1,5 +1,8 @@
 # Copyright (C) 2025 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
+
+$ProgressPreference = 'SilentlyContinue'
+
 $SCRIPT_DIR = $PSScriptRoot
 $ROOT_THIRDPARTY_DIR = "$SCRIPT_DIR\..\..\..\thirdparty"
 $PARENT_GIT_PATH = "$ROOT_THIRDPARTY_DIR\git\cmd"

@@ -4,7 +4,9 @@
 import { spawn, ChildProcess, exec } from 'child_process'
 import fs from 'fs'
 import { promises as fsPromises } from 'fs'
+import { pipeline } from 'stream/promises'
 import path from 'path'
+import { pathToFileURL } from 'url'
 import { LOG_FILE_PATH, WORKER_DIR } from './constants'
 import os from 'os'
 import { createStream } from 'rotating-file-stream'
@@ -106,6 +108,80 @@ function createLogEntry(
   )
 }
 
+// Helper function to archive previous logs to logs/old/<name>.log before starting a new process
+async function archiveProcessLogs(name: string): Promise<void> {
+  const logFilePath = path.join(LOG_FILE_PATH, `${name}.log`)
+  const oldLogsDirPath = path.join(LOG_FILE_PATH, 'old')
+  const oldLogFilePath = path.join(oldLogsDirPath, `${name}.log`)
+
+  const logFileUrl = pathToFileURL(logFilePath)
+  const oldLogsDirUrl = pathToFileURL(oldLogsDirPath)
+  const oldLogFileUrl = pathToFileURL(oldLogFilePath)
+
+  const existingStream = logStreams.get(name)
+  if (existingStream) {
+    await new Promise<void>((resolve) => {
+      existingStream.once('finish', resolve)
+      existingStream.once('close', resolve)
+      try {
+        existingStream.end()
+      } catch {
+        resolve()
+      }
+    })
+    logStreams.delete(name)
+  }
+
+  // Check whether the log file exists. Only treat ENOENT as "nothing to archive";
+  // rethrow any other filesystem error so it isn't silently swallowed.
+  let stats: fs.Stats
+  try {
+    stats = await fsPromises.stat(logFileUrl)
+  } catch (err: unknown) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      logger.log(`No existing log file for ${name} to archive.`)
+      return
+    }
+    throw err
+  }
+
+  if (stats.size === 0) return
+
+  // Ensure logs/old/ directory exists
+  await fsPromises.mkdir(oldLogsDirUrl, { recursive: true })
+
+  // Stream-copy (append) current log contents to logs/old/<name>.log
+  // This avoids buffering the entire file into memory.
+  const readStream = fs.createReadStream(logFileUrl)
+  const writeStream = fs.createWriteStream(oldLogFileUrl, { flags: 'a' })
+  try {
+    await pipeline(readStream, writeStream)
+  } catch (err) {
+    logger.error(`Failed streaming logs for ${name}:`, err)
+    throw err
+  }
+
+  // Truncate the active log so only new-process logs are stored there
+  await fsPromises.truncate(logFileUrl, 0)
+
+  // Bound the archived log file to avoid unbounded growth. Keep the
+  // last MAX_OLD_BYTES bytes if it grew too large.
+  const MAX_OLD_BYTES = 1 * 1024 * 1024 // 1MB cap for archived log
+  try {
+    const oldStats = await fsPromises.stat(oldLogFileUrl)
+    if (oldStats.size > MAX_OLD_BYTES) {
+      const start = oldStats.size - MAX_OLD_BYTES
+      const tmpFileUrl = pathToFileURL(`${oldLogFilePath}.tmp`)
+      const readOld = fs.createReadStream(oldLogFileUrl, { start })
+      const tmpWrite = fs.createWriteStream(tmpFileUrl, { flags: 'w' })
+      await pipeline(readOld, tmpWrite)
+      await fsPromises.rename(tmpFileUrl, oldLogFileUrl)
+    }
+  } catch (capErr) {
+    logger.error(`Failed to cap archived log ${oldLogFileUrl.href}:`, capErr)
+  }
+}
+
 // Helper function to write log entry to rotating file stream
 async function writeToLog(
   processName: string,
@@ -144,6 +220,9 @@ async function spawnProcess(
     logger.error(`[${name}] Unknown command type: ${commandType}`)
     return
   }
+
+  // Archive previous logs before starting fresh
+  await archiveProcessLogs(name)
 
   // Log process start
   const startLogEntry = createLogEntry(

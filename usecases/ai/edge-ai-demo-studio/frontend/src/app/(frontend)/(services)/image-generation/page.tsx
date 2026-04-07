@@ -107,6 +107,7 @@ export default function ImageGenerationPage() {
             variant="secondary"
             size="icon"
             className="size-8"
+            data-testid="workload-settings-button"
             onClick={onOpen}
           >
             <Settings />
@@ -126,6 +127,7 @@ export default function ImageGenerationPage() {
           <Logs
             type={workload?.type || IMAGE_GENERATION_TYPE}
             engine={workload?.engine ?? 'custom'}
+            status={workload?.status}
           />
         }
         isLoading={isLoading}

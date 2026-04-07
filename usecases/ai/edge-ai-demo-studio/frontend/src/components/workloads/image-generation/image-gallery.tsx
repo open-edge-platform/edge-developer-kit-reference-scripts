@@ -30,7 +30,7 @@ export function ImageGallery({
   if (images.length === 0) return null
 
   return (
-    <Card>
+    <Card data-testid="imggen-gallery">
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>

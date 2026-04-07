@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Exit immediately if a command fails
 $ErrorActionPreference = "Stop"
+$ProgressPreference = 'SilentlyContinue'
 
 # Define variables
 $SCRIPT_DIR = $PSScriptRoot

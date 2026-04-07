@@ -124,6 +124,7 @@ export default function TextGenerationPage() {
             variant="secondary"
             size="icon"
             className="size-8"
+            data-testid="workload-settings-button"
             onClick={onOpen}
           >
             <Settings />
@@ -142,6 +143,7 @@ export default function TextGenerationPage() {
           <Logs
             type={workload?.type || WAKE_WORD_DETECTION_TYPE}
             engine={workload?.engine ?? 'custom'}
+            status={workload?.status}
           />
         }
         isLoading={isLoading}

@@ -746,7 +746,6 @@ function DocumentManager({
                 embeddings for all files
               </Button>
             </div>
-
             {existingFiles.length > 0 ? (
               <div className="grid gap-2">
                 {existingFiles.map((file: KnowledgeBaseFile, index: number) => {

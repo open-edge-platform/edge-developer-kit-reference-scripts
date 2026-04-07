@@ -3,7 +3,7 @@
 
 import path from 'path'
 
-const FRONTEND_PORT = 8080
+const FRONTEND_PORT = Number(process.env.PORT) || 8080
 const TEXT_GENERATION_PORT = 5000 //reserve 5001-5002 for multiserve service ports
 const EMBEDDING_PORT = 5004 //reserve 5003-5004 for multiserve service ports
 const TEXT_TO_SPEECH_PORT = 5010 //Start from 5010 for non multiserve ports

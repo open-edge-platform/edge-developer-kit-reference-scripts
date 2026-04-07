@@ -3,6 +3,7 @@
 
 # Save the original location
 $script:originalLocation = Get-Location
+$ProgressPreference = 'SilentlyContinue'
 $SCRIPT_DIR = $PSScriptRoot
 $PROJECT_ROOT = Split-Path (Split-Path $SCRIPT_DIR -Parent) -Parent
 $FRONTEND_DIR = Join-Path $PROJECT_ROOT "frontend"

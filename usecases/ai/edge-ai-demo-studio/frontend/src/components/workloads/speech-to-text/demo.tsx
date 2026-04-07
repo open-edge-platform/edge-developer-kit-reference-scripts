@@ -234,6 +234,7 @@ export default function SpeechToTextDemo({ disabled }: SpeechToTextDemoProps) {
                   onChange={handleFileSelect}
                   disabled={disabled || isProcessing}
                   className="hidden"
+                  data-testid="stt-file-input"
                 />
                 <Button
                   variant="outline"
@@ -324,6 +325,7 @@ export default function SpeechToTextDemo({ disabled }: SpeechToTextDemoProps) {
           onClick={handleProcess}
           disabled={disabled || isProcessing || (!selectedFile && !audioBlob)}
           className="w-full"
+          data-testid="stt-process-button"
         >
           {isProcessing ? (
             <>
@@ -353,7 +355,7 @@ export default function SpeechToTextDemo({ disabled }: SpeechToTextDemoProps) {
               </Label>
             </div>
             <div className="rounded-lg border bg-slate-50 p-4">
-              <p className="text-slate-700">
+              <p className="text-slate-700" data-testid="stt-result-text">
                 {mode === 'transcribe'
                   ? transcriptionResult
                   : translationResult}

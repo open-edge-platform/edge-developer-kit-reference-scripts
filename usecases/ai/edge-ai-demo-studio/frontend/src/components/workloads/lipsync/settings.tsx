@@ -162,7 +162,10 @@ export function SettingsModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[600px]">
+      <DialogContent
+        className="sm:max-w-[600px]"
+        data-testid="lipsync-settings-dialog"
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-xl font-semibold">
             <Brain className="h-5 w-5" />
@@ -217,6 +220,7 @@ export function SettingsModal({
             onClick={handleSave}
             disabled={isLoading || !!validationError}
             className="bg-blue-600 text-white"
+            data-testid="settings-save-button"
           >
             {isLoading ? (
               <Loader2 className="h-4 w-4 animate-spin" />

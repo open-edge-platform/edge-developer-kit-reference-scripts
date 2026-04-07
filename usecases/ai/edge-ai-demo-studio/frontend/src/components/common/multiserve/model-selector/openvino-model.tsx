@@ -189,7 +189,7 @@ export function OpenVINOModel({
           Model Name
         </Label>
         <Popover open={open} onOpenChange={setOpen}>
-          <PopoverTrigger asChild>
+          <PopoverTrigger asChild data-testid="openvino-model-trigger">
             <Button
               variant="outline"
               role="combobox"
@@ -206,6 +206,7 @@ export function OpenVINOModel({
                 placeholder="Search or enter model..."
                 value={inputValue}
                 onValueChange={setInputValue}
+                data-testid="openvino-model-input"
               />
               <CommandList>
                 <CommandEmpty>
@@ -347,6 +348,7 @@ export function OpenVINOModel({
                 value={weightFormat}
                 onChange={(e) => handleWeightFormatChange(e.target.value)}
                 className="mt-2"
+                data-testid="weight-format-input"
               />
               {weightFormat && !KNOWN_QUANTIZATIONS.includes(weightFormat) ? (
                 <p className="mt-1 text-sm text-red-500">

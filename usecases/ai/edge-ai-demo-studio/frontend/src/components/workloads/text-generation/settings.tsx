@@ -309,7 +309,10 @@ export function SettingsModal({
   return (
     <>
       <Dialog open={isOpen} onOpenChange={handleDialogChange}>
-        <DialogContent className="flex max-h-[90vh] flex-col sm:max-w-[600px]">
+        <DialogContent
+          className="flex max-h-[90vh] flex-col sm:max-w-[600px]"
+          data-testid="text-gen-settings-dialog"
+        >
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-xl font-semibold">
               <FileSearch className="h-5 w-5" />
@@ -396,7 +399,7 @@ export function SettingsModal({
               {isLoading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                'Save'
+                'Save Settings'
               )}
             </Button>
           </div>

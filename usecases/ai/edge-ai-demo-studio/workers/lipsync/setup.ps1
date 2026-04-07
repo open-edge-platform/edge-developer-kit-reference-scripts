@@ -5,6 +5,8 @@ param(
     [string]$ErrorActionPreference = "Stop"
 )
 
+$ProgressPreference = 'SilentlyContinue'
+
 $SCRIPT_DIR = $PSScriptRoot
 $PARENT_THIRDPARTY_DIR = "$SCRIPT_DIR\..\thirdparty"
 $PARENT_UV_PATH = "$PARENT_THIRDPARTY_DIR\uv\uv.exe"

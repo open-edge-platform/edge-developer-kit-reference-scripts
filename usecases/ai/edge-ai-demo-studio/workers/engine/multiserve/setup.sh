@@ -20,7 +20,7 @@ LLAMA_RELEASE_URL="https://github.com/ggml-org/llama.cpp/releases/download/b7406
 LLAMA_DOWNLOAD_FILE="llama-ubuntu.zip"
 LLAMA_EXTRACT_DIR="engine/llama.cpp-vulkan"
 
-XPU_SMI_RELEASE_URL="https://github.com/intel/xpumanager/releases/download/V1.3.4/xpu-smi_1.3.4_20251105.132841.7410e65e.u24.04_amd64.deb"
+XPU_SMI_RELEASE_URL="https://github.com/intel/xpumanager/releases/download/v1.3.5/xpu-smi_1.3.5_20251216.170635.605ff78d.u24.04_amd64.deb"
 XPU_SMI_DOWNLOAD_FILE="xpu-smi.deb"
 XPU_SMI_INSTALL_DIR="engine/xpu-smi"
 
@@ -32,6 +32,7 @@ OVMS_VERSION="v2025.4.1"
 OVMS_RELEASE_URL="https://github.com/openvinotoolkit/model_server/releases/download/${OVMS_VERSION}/ovms_ubuntu24_python_on.tar.gz"
 OVMS_DOWNLOAD_FILE="ovms.tar.gz"
 OVMS_EXTRACT_DIR="engine"
+
 OPTIMUM_EXPORT_MODEL_DIR="${OVMS_EXTRACT_DIR}/optimum_export_model"
 OPTIMUM_EXPORT_MODEL_URL="https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/tags/${OVMS_VERSION}/demos/common/export_models"
 OPTIMUM_EXPORT_MODEL_SCRIPT="export_model.py"
@@ -199,6 +200,12 @@ install_llamacpp() {
 # Install XPU-SMI (Intel GPU monitoring tool)
 install_xpu_smi() {
     print_step "3. XPU-SMI Installation"
+
+    # Check if we have a global installation
+    if command_exists xpu-smi; then
+        print_success "XPU-SMI is already installed globally. Skipping installation."
+        return 0
+    fi
     
     # Check if we have a local installation
     local xpu_smi_bin="$XPU_SMI_INSTALL_DIR/bin/xpu-smi"
@@ -310,6 +317,15 @@ install_ovms() {
 
         print_success "OVMS extraction complete."
     fi
+
+    # Install Jinja2/MarkupSafe directly into OVMS's own lib/python directory.
+    local OVMS_LIB_PYTHON_DIR="$OVMS_EXTRACT_DIR/ovms/lib/python"
+    echo "Installing Jinja2 and MarkupSafe into OVMS lib/python: $OVMS_LIB_PYTHON_DIR"
+    if ! "$UV_EXE" pip install --target "$OVMS_LIB_PYTHON_DIR" "Jinja2==3.1.6" "MarkupSafe==3.0.2"; then
+        print_error "Failed to install Jinja2/MarkupSafe into OVMS lib/python."
+        return 1
+    fi
+    print_success "Jinja2 and MarkupSafe installed into OVMS lib/python."
 }
 
 setup_export_model() {

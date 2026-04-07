@@ -31,7 +31,7 @@ export function EngineSelector({
         Inference Engine
       </Label>
       <Select value={value} onValueChange={onChange}>
-        <SelectTrigger className="w-full">
+        <SelectTrigger className="w-full" data-testid="engine-selector-trigger">
           <SelectValue placeholder="Choose an engine" />
         </SelectTrigger>
         <SelectContent>

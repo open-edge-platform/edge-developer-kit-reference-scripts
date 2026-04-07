@@ -4,7 +4,7 @@
 import { MULTISERVE_ENGINES } from '@/lib/engine/multiserve'
 import { Workload } from '@/payload-types'
 import { LogResponse } from '@/types/log'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, UseQueryResult } from '@tanstack/react-query'
 
 /**
  * Validates log name parameter (alphanumeric, dash, underscore only)
@@ -237,5 +237,35 @@ export const useLogs = (
     queryFn: () => fetchLogs(name, engine, type, since, offset),
     refetchInterval: 10000,
     enabled,
+  })
+}
+
+/**
+ * Fetches archived (previous run) logs for a process from logs/old/<name>.log.
+ * Single fetch — no polling — since the archive only changes on new process start.
+ */
+export const useOldLogs = (
+  name: string,
+  enabled?: boolean,
+): UseQueryResult<LogResponse, Error> => {
+  validateLogName(name)
+
+  return useQuery<LogResponse>({
+    queryKey: ['logs-old', name],
+    queryFn: async () => {
+      const url = new URL('/api/logs', window.location.origin)
+      url.searchParams.set('name', name)
+      url.searchParams.set('source', 'old')
+      const response = await fetch(url)
+      if (!response.ok) {
+        if (response.status === 404) {
+          return { logs: [], offset: 0, timestamp: null }
+        }
+        throw new Error('Failed to fetch previous logs')
+      }
+      return (await response.json()) as LogResponse
+    },
+    enabled,
+    staleTime: Infinity,
   })
 }

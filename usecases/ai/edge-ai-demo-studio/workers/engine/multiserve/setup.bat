@@ -33,7 +33,7 @@ set "GGUF_PARSER_RELEASE_URL=https://github.com/gpustack/gguf-parser-go/releases
 set "GGUF_PARSER_DOWNLOAD_FILE=gguf-parser-windows-amd64.exe"
 set "GGUF_PARSER_EXTRACT_DIR=engine"
 
-set "XPU_SMI_RELEASE_URL=https://github.com/intel/xpumanager/releases/download/V1.3.5/xpu-smi-1.3.5-20251216.170318.605ff78d_win.zip"
+set "XPU_SMI_RELEASE_URL=https://github.com/intel/xpumanager/releases/download/v1.3.5/xpu-smi-1.3.5-20251216.170318.605ff78d_win.zip"
 set "XPU_SMI_DOWNLOAD_FILE=xpu-win.zip"
 set "XPU_SMI_EXTRACT_DIR=engine\xpu-smi"
 

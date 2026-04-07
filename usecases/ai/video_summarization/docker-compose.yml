@@ -18,6 +18,8 @@ services:
        - FAKE_VLM=0
       privileged: true
       restart: always
+      group_add:
+       - "${VIDEO_GROUP_ID:-44}"
       devices:
        - /dev/dri
       volumes:

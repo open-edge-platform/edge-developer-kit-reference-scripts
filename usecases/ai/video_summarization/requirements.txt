@@ -23,9 +23,9 @@ torch
 torchaudio
 requests
 dateparser
-openvino==2025.2.0
-openvino-tokenizers==2025.2.0
-openvino-genai==2025.2.0
+openvino==2026.0.0
+openvino-tokenizers==2026.0.0
+openvino-genai==2026.0.0
 opencv-python
 numpy==1.26.4
 optimum-intel@git+https://github.com/huggingface/optimum-intel.git

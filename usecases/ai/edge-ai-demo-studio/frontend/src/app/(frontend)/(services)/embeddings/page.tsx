@@ -164,6 +164,7 @@ export default function EmbeddingPage() {
           <Logs
             type={workload?.type || EMBEDDING_TYPE}
             engine={workload?.engine ?? 'custom'}
+            status={workload?.status}
           />
         }
         isLoading={isLoading}

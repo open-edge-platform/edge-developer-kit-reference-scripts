@@ -200,6 +200,7 @@ export default function TextToSpeechDemo({
               <Textarea
                 disabled={disabled || tts.isPending}
                 id="tts-text"
+                data-testid="tts-text-input"
                 placeholder="Type something to hear it spoken aloud..."
                 value={text}
                 onChange={(e) => setText(e.target.value)}
@@ -211,6 +212,7 @@ export default function TextToSpeechDemo({
               onClick={handleSynthesize}
               disabled={disabled || tts.isPending}
               className="w-full"
+              data-testid="tts-synthesize-button"
             >
               {tts.isPending ? (
                 <>
@@ -234,6 +236,7 @@ export default function TextToSpeechDemo({
                 </div>
                 <audio
                   id="tts-audio"
+                  data-testid="tts-audio-output"
                   ref={audioRef}
                   controls
                   src={audioUrl}

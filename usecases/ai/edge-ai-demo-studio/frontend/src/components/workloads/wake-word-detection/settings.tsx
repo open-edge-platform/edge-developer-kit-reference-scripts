@@ -287,7 +287,10 @@ export function SettingsModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[600px]">
+      <DialogContent
+        className="sm:max-w-[600px]"
+        data-testid="wwd-settings-dialog"
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-xl font-semibold">
             <FileSearch className="h-5 w-5" />
@@ -334,6 +337,7 @@ export function SettingsModal({
                   variant="default"
                   maxCount={3}
                   disabled={detectionStatus?.detection_active}
+                  data-testid="wwd-model-select"
                 />
               </div>
             </div>
@@ -462,13 +466,14 @@ export function SettingsModal({
               (tabValue === 'models' && detectionStatus?.detection_active)
             }
             className="bg-blue-600 text-white"
+            data-testid="settings-save-button"
           >
             {isLoading ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : tabValue === 'upload' ? (
               'Upload'
             ) : (
-              'Save'
+              'Save Settings'
             )}
           </Button>
         </div>

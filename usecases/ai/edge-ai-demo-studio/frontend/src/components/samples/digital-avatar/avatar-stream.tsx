@@ -11,7 +11,18 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { useGetRTCOffer } from '@/hooks/use-lipsync'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  useGetRTCOffer,
+  useSkinListQuery,
+  useSkinSelect,
+} from '@/hooks/use-lipsync'
 import { logger } from '@/utils/logger'
 import { Loader2, Monitor, Play, Video } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -39,6 +50,10 @@ export function AvatarStream({
   // Use refs to avoid useEffect dependency issues
   const onSessionIdChangeRef = useRef(onSessionIdChange)
   const setConnectionStatusRef = useRef(setConnectionStatus)
+
+  const [selectedSkinId, setSelectedSkinId] = useState<string | null>(null)
+  const skinListQuery = useSkinListQuery()
+  const skinSelect = useSkinSelect()
 
   // Update refs when props change
   useEffect(() => {
@@ -218,6 +233,21 @@ export function AvatarStream({
     disconnectAvatar()
   }
 
+  const handleOnApplySkin = async () => {
+    if (!selectedSkinId) return
+    try {
+      await skinSelect.mutateAsync({
+        avatarId: selectedSkinId,
+      })
+      connectionStatus = 'disconnected'
+      connectAvatar()
+      toast.success(`Applied avatar: ${selectedSkinId}`)
+    } catch {
+      toast.error(`Apply avatar failed`)
+    }
+  }
+
+  const isConnected = connectionStatus === 'connected'
   return (
     <Card className="flex h-full max-h-full flex-col">
       <CardHeader className="flex-shrink-0">
@@ -238,7 +268,11 @@ export function AvatarStream({
                   <div className="h-2 w-2 animate-pulse rounded-full bg-green-500"></div>
                   Connected
                 </div>
-                <Button variant="destructive" onClick={handleOnDisconnect}>
+                <Button
+                  variant="destructive"
+                  onClick={handleOnDisconnect}
+                  data-testid="avatar-disconnect-button"
+                >
                   Disconnect
                 </Button>
               </>
@@ -248,6 +282,7 @@ export function AvatarStream({
                 onClick={handleOnConnect}
                 className="bg-blue-600 hover:bg-blue-700"
                 disabled={disabled}
+                data-testid="avatar-connect-button"
               >
                 <Play className="mr-2 h-4 w-4" />
                 Connect Avatar
@@ -270,11 +305,49 @@ export function AvatarStream({
             )}
           </div>
         </div>
+        <div className="mt-2 space-y-2">
+          <div className="flex items-center gap-2">
+            <Select
+              value={selectedSkinId ?? undefined}
+              onValueChange={setSelectedSkinId}
+              disabled={
+                skinListQuery.isLoading || skinSelect.isPending || !isConnected
+              }
+            >
+              <SelectTrigger id="skin-select">
+                <SelectValue
+                  placeholder={
+                    skinListQuery.isLoading ? 'Loading skins…' : 'Select a skin'
+                  }
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {(
+                  skinListQuery.data as {
+                    skin_id: string
+                    skin_name?: string
+                  }[]
+                )?.map((s) => (
+                  <SelectItem key={s.skin_id} value={s.skin_id}>
+                    {s.skin_name ? `${s.skin_name} (${s.skin_id})` : s.skin_id}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              onClick={handleOnApplySkin}
+              disabled={!selectedSkinId || skinSelect.isPending || !isConnected}
+            >
+              {skinSelect.isPending ? 'Applying…' : 'Switch Avatar'}
+            </Button>
+          </div>
+        </div>
       </CardHeader>
       <CardContent className="flex-1 overflow-hidden p-4">
         <div className="relative h-full min-h-0 w-full overflow-hidden rounded-lg border-2 border-dashed border-slate-200 bg-gradient-to-br from-slate-50 to-slate-100 dark:border-slate-700 dark:from-slate-900 dark:to-slate-800">
           <video
             ref={videoRef}
+            data-testid="avatar-video"
             className={`absolute inset-0 h-full w-full object-contain ${
               connectionStatus === 'connected' ? 'block' : 'hidden'
             }`}

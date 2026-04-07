@@ -10,6 +10,7 @@ param(
     [switch]$ContinueOnError,
     [switch]$AutoYes
 )
+$ProgressPreference = 'SilentlyContinue'
 
 # Helper: Cleanup processes
 function Cleanup {

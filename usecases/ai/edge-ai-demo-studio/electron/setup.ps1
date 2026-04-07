@@ -7,6 +7,7 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 
 # Exit on error
 $ErrorActionPreference = "Stop"
+$ProgressPreference = 'SilentlyContinue'
 
 # Get the directory of this script
 $SCRIPT_DIR = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -43,15 +44,18 @@ function Setup-NodeEnv {
 # Main installation
 function Main {
     Push-Location $SCRIPT_DIR
-    
-    Write-Host "Setting up Electron Builder environment..."
-    Setup-NodeEnv
-    
-    Write-Host "Installing npm dependencies..."
-    npm install
-    
-    Write-Host "Electron Builder setup complete!" -ForegroundColor Green
-    Pop-Location
+    try {
+        Write-Host "Setting up Electron Builder environment..."
+        Setup-NodeEnv
+        
+        Write-Host "Installing npm dependencies..."
+        npm install
+        
+        Write-Host "Electron Builder setup complete!" -ForegroundColor Green
+    }
+    finally {
+        Pop-Location
+    }
 }
 
 Main

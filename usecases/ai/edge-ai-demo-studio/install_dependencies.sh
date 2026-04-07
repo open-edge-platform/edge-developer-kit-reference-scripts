@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-XPU_SMI_RELEASE_URL="https://github.com/intel/xpumanager/releases/download/v1.3.4/xpu-smi_1.3.4_20251105.132841.7410e65e.u24.04_amd64.deb"
+XPU_SMI_RELEASE_URL="https://github.com/intel/xpumanager/releases/download/V1.3.6/xpu-smi_1.3.6_20260206.143628.1004f6cb.u24.04_amd64.deb"
 XPU_SMI_DOWNLOAD_FILE="xpu-smi.deb"
 
 # Parse command-line arguments
@@ -23,26 +23,46 @@ while getopts "y" opt; do
   esac
 done
 
+# Handle root execution (Docker/CI)
+if [ "$EUID" -eq 0 ]; then
+    if ! command -v sudo >/dev/null 2>&1; then
+        sudo() { "$@"; }
+    fi
+fi
+
 if [ -z "${SUDO_USER:-}" ]; then
-  echo "Error: SUDO_USER is not set. Please run this script with sudo from a non-root user account."
-  exit 1
+  if [ "$EUID" -eq 0 ]; then
+    echo "Warning: SUDO_USER is not set, but running as root (likely Docker/CI). Proceeding..."
+  else
+    echo "Error: SUDO_USER is not set. Please run this script with sudo from a non-root user account."
+    exit 1
+  fi
 fi
 
 command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
-download_file() {
+download_deb_file() {
     local url="$1"
     local output="$2"
     local description="${3:-file}"
     
     echo "Downloading $description..."
-    if ! curl -L --progress-bar "$url" -o "$output"; then
-        print_error "Failed to download $description from $url"
-        return 1
-    fi
-    print_success "Downloaded $description"
+  # Fail on HTTP errors, follow redirects and be silent about progress
+  if ! curl -fSL -o "$output" "$url"; then
+    echo "❌ ERROR: Failed to download $description from $url"
+    return 1
+  fi
+
+  # Basic validation: ensure the file looks like a .deb (dpkg-deb can read it)
+  if ! dpkg-deb -I "$output" >/dev/null 2>&1; then
+    echo "❌ ERROR: Downloaded $description does not appear to be a valid .deb: $output"
+    rm -f "$output"
+    return 1
+  fi
+
+  echo "✅ Downloaded and validated $description"
     return 0
 }
 
@@ -195,7 +215,7 @@ install_drivers() {
       echo "⚠️  Driver installation skipped."
       echo ""
       echo "You can manually install drivers later by running:"
-      echo "sudo bash -c \"\$(wget -qLO - https://raw.githubusercontent.com/intel/edge-developer-kit-reference-scripts/refs/heads/main/main_installer.sh)\""
+      echo "sudo bash -c \"\$(wget -qLO - https://raw.githubusercontent.com/open-edge-platform/edge-developer-kit-reference-scripts/refs/heads/main/main_installer.sh)\""
       echo ""
       return 0
     fi
@@ -207,7 +227,7 @@ install_drivers() {
   echo "📥 Downloading driver installer script..."
   
   local driver_script="/tmp/main_installer.sh"
-  local driver_script_url="https://raw.githubusercontent.com/intel/edge-developer-kit-reference-scripts/refs/heads/main/main_installer.sh"
+  local driver_script_url="https://raw.githubusercontent.com/open-edge-platform/edge-developer-kit-reference-scripts/refs/heads/main/main_installer.sh"
   
   if ! wget -q --show-progress -O "$driver_script" "$driver_script_url"; then
     echo "❌ ERROR: Failed to download driver installer script"
@@ -256,7 +276,7 @@ install_xpu_smi() {
     fi
     
     # Download the .deb package
-    if ! download_file "$XPU_SMI_RELEASE_URL" "$XPU_SMI_DOWNLOAD_FILE" "XPU-SMI package"; then
+    if ! download_deb_file "$XPU_SMI_RELEASE_URL" "$XPU_SMI_DOWNLOAD_FILE" "XPU-SMI package"; then
         return 1
     fi
     

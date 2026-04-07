@@ -145,6 +145,7 @@ export default function TextGenerationPage() {
           <Logs
             type={workload?.type || TEXT_GENERATION_TYPE}
             engine={workload?.engine ?? TEXT_GENERATION_WORKLOAD.engine}
+            status={workload?.status}
           />
         }
         isLoading={isLoading}
