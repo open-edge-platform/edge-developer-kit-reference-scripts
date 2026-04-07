@@ -112,6 +112,7 @@ export default function LipsyncPage() {
             variant="secondary"
             size="icon"
             className="size-8"
+            data-testid="workload-settings-button"
             onClick={onOpen}
           >
             <Settings />
@@ -129,6 +130,7 @@ export default function LipsyncPage() {
           <Logs
             type={workload?.type || LIPSYNC_TYPE}
             engine={workload?.engine ?? 'custom'}
+            status={workload?.status}
           />
         }
         isLoading={isLoading}

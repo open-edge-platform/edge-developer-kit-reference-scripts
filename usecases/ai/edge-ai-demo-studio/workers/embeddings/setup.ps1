@@ -5,6 +5,8 @@ param(
     [string]$ErrorActionPreference = "Stop"
 )
 
+$ProgressPreference = 'SilentlyContinue'
+
 $SCRIPT_DIR = $PSScriptRoot
 $VENV_DIR = Join-Path $SCRIPT_DIR ".venv"
 $ParentThirdPartyDir = Join-Path (Split-Path $PWD -Parent) "thirdparty"

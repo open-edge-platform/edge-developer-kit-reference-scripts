@@ -535,7 +535,10 @@ export function EmbeddingSettingsModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleDialogChange}>
-      <DialogContent className="flex max-h-[90vh] flex-col sm:max-w-[700px]">
+      <DialogContent
+        data-testid="embedding-settings-dialog"
+        className="flex max-h-[90vh] flex-col sm:max-w-[700px]"
+      >
         <DialogHeader>
           <DialogTitle className="text-xl">
             Embedding Service Settings

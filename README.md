@@ -41,6 +41,7 @@ sudo bash -c "$(wget -qLO - https://raw.githubusercontent.com/open-edge-platform
 
 | Product Collection | Code Name | Support | Validated Hardware |
 |--------------|--------------|-------------------|--------------------|
+| Intel® Arc™ Pro B-Series Graphics | Products formerly Battlemage | ✅ Supported | [Intel® Arc™ Pro B70 Creator 32GB](https://www.asrock.com/Graphics-Card/Intel/Intel%20Arc%20Pro%20B70%20Creator%2032GB/index.asp) |
 | Intel® Arc™ Pro B-Series Graphics | Products formerly Battlemage | ✅ Supported | [Intel® Arc™ Pro B60 Creator 24GB](https://www.asrock.com/Graphics-Card/Intel/Intel%20Arc%20Pro%20B60%20Creator%2024GB/) |
 | Intel® Arc™ B-Series Graphics | Products formerly Battlemage | ✅ Supported  |[Intel® Arc™ B580 Challenger 12GB](https://www.asrock.com/Graphics-Card/Intel/Intel%20Arc%20B580%20Challenger%2012GB%20OC/) |
 | Intel® Arc™ A-Series Graphics | Products formerly Alchemist | ✅ Supported  | [Intel® Arc™ A770 Challenger 16GB](https://www.asrock.com/Graphics-Card/Intel/Intel%20Arc%20A770%20Challenger%2016GB%20OC/index.us.asp)|
@@ -57,6 +58,8 @@ The following table lists the validated hardware combinations using Developer Ki
 
 | CPU | GPU Configuration | Support |
 |--------------|-------------------|---------|
+| **Arrow Lake (ARL)** | Arc B70 (dGPU) | ✅ Supported |
+| **Arrow Lake (ARL)** | 2 x Arc B70 (dGPU) | ✅ Supported |
 | **Arrow Lake (ARL)** | Arc B60 (dGPU) | ✅ Supported |
 | **Arrow Lake (ARL)** | Arc B580 (dGPU) | ✅ Supported |
 | **Arrow Lake (ARL)** | Arc A770 (dGPU) | ✅ Supported |

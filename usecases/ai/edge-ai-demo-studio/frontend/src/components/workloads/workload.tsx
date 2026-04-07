@@ -179,8 +179,8 @@ export default function Workload({
               <div className="flex items-center gap-2">
                 <div className={`h-2 w-2 rounded-full ${status.color}`} />
                 <span
-                  data-testid="workload-status"
                   className="text-sm text-slate-600"
+                  data-testid="workload-status"
                 >
                   {status.status}
                 </span>

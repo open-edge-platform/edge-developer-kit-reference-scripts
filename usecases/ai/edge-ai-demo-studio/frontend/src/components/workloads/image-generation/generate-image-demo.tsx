@@ -59,6 +59,7 @@ export function GenerateImageDemo({
             </Label>
             <Textarea
               id="prompt"
+              data-testid="imggen-prompt"
               placeholder="Three astronauts on the moon, cold color palette, muted colors, detailed, 8k"
               value={generationForm.formData.prompt}
               onChange={(e) =>
@@ -78,6 +79,7 @@ export function GenerateImageDemo({
             }
             className="w-full"
             size="lg"
+            data-testid="imggen-generate-button"
           >
             {imageGenerationIsPending ? (
               <>

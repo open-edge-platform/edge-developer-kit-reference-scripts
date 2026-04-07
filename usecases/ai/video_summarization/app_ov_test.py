@@ -37,7 +37,6 @@ import pandas as pd
 from vlm.vlm_api import infer_video_frames, last_request_telemetry
 from my_vlm_prompt import VLM_USER_PROMPT, VLM_SYSTEM_PROMPT
 
-from langchain.prompts import PromptTemplate
 from concurrent.futures import ThreadPoolExecutor
 from time import sleep
 from util import json_extract_value, compute_time_differences, encode_frame_PIL, get_fps, encode_vframes_to_file, VLMRecord
@@ -47,7 +46,7 @@ from retrieval.api import ingest_chunk, ingest_chunk_sync, search_in_db
 #from streamlit_scrollable_textbox import st_scrollable_textbox
 
 #from sample_utils.download import download_file
-from langchain.llms.base import LLM
+from langchain_core.language_models.llms import LLM
 from PIL import Image
 #from sample_utils.turn import get_ice_servers
 

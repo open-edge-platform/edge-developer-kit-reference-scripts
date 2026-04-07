@@ -243,6 +243,7 @@ export default function WebhookSubscribers({
               disabled={disabled}
               variant="outline"
               className="gap-2"
+              data-testid="wwd-add-subscriber-button"
             >
               <Plus className="h-4 w-4" />
               Add Local Subscriber

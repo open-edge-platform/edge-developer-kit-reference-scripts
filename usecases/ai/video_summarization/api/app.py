@@ -42,8 +42,13 @@ isfake = int(isfake)
   
 print(f"XPU device: {xpu}, isfake: {isfake}")
 
-#SAVED_MODEL_PATH = "./MiniCPM-V-2_6-ov/"
-SAVED_MODEL_PATH = "./MiniCPM_INT8/"
+# Resolve model path from this file location, not process CWD.
+APP_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+SAVED_MODEL_PATH = os.environ.get(
+  "VLM_MODEL_PATH",
+  os.path.join(APP_ROOT, "MiniCPM_INT8"),
+)
+print(f"VLM model path: {SAVED_MODEL_PATH}, exists: {os.path.exists(SAVED_MODEL_PATH)}")
 
 #vlm latencies of last request
 vlm_latencies = []

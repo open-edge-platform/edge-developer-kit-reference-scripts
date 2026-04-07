@@ -159,6 +159,7 @@ export function LlamaCppModel({
               variant="outline"
               role="combobox"
               aria-expanded={open}
+              data-testid="llamacpp-model-trigger"
               className={`mt-2 w-full justify-between ${!isValidGguf() && modelName ? 'border-red-500' : ''}`}
             >
               {modelName ? modelName : 'Select or enter model name...'}
@@ -171,6 +172,7 @@ export function LlamaCppModel({
                 placeholder="Search or enter model..."
                 value={inputValue}
                 onValueChange={setInputValue}
+                data-testid="llamacpp-model-input"
               />
               <CommandList>
                 <CommandEmpty>

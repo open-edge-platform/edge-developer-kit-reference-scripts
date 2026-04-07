@@ -34,7 +34,7 @@ if not exist "%SERVER_JS%" (
 )
 
 REM Change to the frontend directory
-cd /d "%FRONTEND_DIR%" || (
+pushd "%FRONTEND_DIR%" || (
     echo Error: Failed to change to frontend directory
     exit /b 1
 )
@@ -46,3 +46,5 @@ echo Server script: %SERVER_JS%
 
 REM Start the server using the specified node executable
 "%NODE_EXECUTABLE%" server.js
+
+popd

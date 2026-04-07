@@ -8,7 +8,7 @@ from typing import List, NamedTuple, Union, Any, Mapping, Optional
 from pydantic import Field
 
 #from langchain.prompts import PromptTemplate
-from langchain.llms.base import LLM
+from langchain_core.language_models.llms import LLM
 import os
 import queue
 import time

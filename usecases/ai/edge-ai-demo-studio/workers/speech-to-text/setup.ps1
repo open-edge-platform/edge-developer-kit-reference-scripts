@@ -5,6 +5,8 @@ param(
     [string]$ErrorActionPreference = "Stop"
 )
 
+$ProgressPreference = 'SilentlyContinue'
+
 $SCRIPT_DIR = $PSScriptRoot
 $WORKER_DIR = Split-Path $SCRIPT_DIR -Parent
 $WORKER_THIRDPARTY_DIR = Join-Path $WORKER_DIR "thirdparty"
@@ -66,6 +68,7 @@ function New-VirtualEnvironment {
 }
 
 # Main execution
+Push-Location $PSScriptRoot
 try {
     Write-Host "Starting Speech-to-Text Setup..." -ForegroundColor Green
     Test-FFmpegAvailable
@@ -76,4 +79,6 @@ try {
 } catch {
     Write-Host "Setup failed: $($_.Exception.Message)" -ForegroundColor Red
     exit 1
+} finally {
+    Pop-Location
 }

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 $ErrorActionPreference = "Stop"
+$ProgressPreference = 'SilentlyContinue'
 
 $TTS_SCRIPT_DIR = $PSScriptRoot
 $TTS_VENV_DIR = Join-Path $TTS_SCRIPT_DIR ".venv"
@@ -187,11 +188,15 @@ function Clone-KokoroRepo {
 # Main execution
 function Main {
     Write-Host "Starting setup for Kokoro FastAPI with Intel GPU support ..." -ForegroundColor Green
-    Set-Location $TTS_SCRIPT_DIR
-    Test-UvInstalled
-    New-VirtualEnvironment
-    Clone-KokoroRepo
-    Write-Host "Setup completed successfully!" -ForegroundColor Green
+    Push-Location $TTS_SCRIPT_DIR
+    try {
+        Test-UvInstalled
+        New-VirtualEnvironment
+        Clone-KokoroRepo
+        Write-Host "Setup completed successfully!" -ForegroundColor Green
+    } finally {
+        Pop-Location
+    }
 }
 
 try {

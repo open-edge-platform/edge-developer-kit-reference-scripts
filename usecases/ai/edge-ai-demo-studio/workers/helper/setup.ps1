@@ -8,13 +8,11 @@ param(
 $ProgressPreference = 'SilentlyContinue'
 
 $SCRIPT_DIR = $PSScriptRoot
-$VENV_DIR = Join-Path $SCRIPT_DIR ".venv"
-$ParentThirdPartyDir = Join-Path (Split-Path $PWD -Parent) "thirdparty"
-$UVPath = Join-Path $ParentThirdPartyDir "uv\uv.exe"
-$script:uvCommand = $UVPath
+$WORKER_DIR = Split-Path $SCRIPT_DIR -Parent
+$WORKER_THIRDPARTY_DIR = Join-Path $WORKER_DIR "thirdparty"
 
-$ROOT_THIRDPARTY_DIR = "$SCRIPT_DIR\..\..\thirdparty"
-$PARENT_GIT_PATH = "$ROOT_THIRDPARTY_DIR\git\cmd"
+$UVPath = Join-Path $WORKER_THIRDPARTY_DIR "uv\uv.exe"
+$script:uvCommand = $UVPath
 
 # Function to check if uv is installed
 function Test-UvInstalled {
@@ -25,22 +23,13 @@ function Test-UvInstalled {
         Write-Host "Found uv in parent thirdparty folder." -ForegroundColor Green
         return $true
     } else {
-        Write-Host "uv not found in expected location: $parentUvPath" -ForegroundColor Red
+        Write-Host "uv not found in expected location: $UVPath" -ForegroundColor Red
         Write-Host "Please ensure the workers setup has been run first." -ForegroundColor Red
         throw "UV not found"
     }
 }
 
 function New-VirtualEnvironment {
-    if (Test-Path $VENV_DIR) {
-        Write-Host "Virtual environment already exists at $VENV_DIR." -ForegroundColor Green
-    } else {
-        Write-Host "Creating Python 3.11 virtual environment with uv ..." -ForegroundColor Yellow
-        & $script:uvCommand venv --python 3.11 --seed
-        if ($LASTEXITCODE -ne 0) {
-            throw "Failed to create virtual environment. uv venv exited with code $LASTEXITCODE"
-        }
-    }
     & $script:uvCommand sync
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to sync dependencies. uv sync exited with code $LASTEXITCODE"
@@ -52,9 +41,9 @@ function New-VirtualEnvironment {
 }
 
 # Main execution
+Push-Location $PSScriptRoot
 try {
-    Write-Host "Starting Wake Word Detection Setup..." -ForegroundColor Green
-    Push-Location -Path $PSScriptRoot
+    Write-Host "Starting Helper Setup..." -ForegroundColor Green
     Test-UvInstalled
     New-VirtualEnvironment
     Write-Host "Setup completed successfully!" -ForegroundColor Green
@@ -62,7 +51,6 @@ try {
 } catch {
     Write-Host "Setup failed: $($_.Exception.Message)" -ForegroundColor Red
     exit 1
-}
-finally{
+} finally {
     Pop-Location
 }

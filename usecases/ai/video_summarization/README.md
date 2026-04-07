@@ -9,7 +9,6 @@ This is a demo application that uses power of AI (Large Video Language model) fo
 - Ubuntu 24.04 LTS
 - Docker (https://docs.docker.com/engine/install/ubuntu/)
 - Miniforge Conda (https://conda-forge.org/download/)
-- Intel Openvino 2025.2.0 (https://docs.openvino.ai/2025/get-started/install-openvino.html)
 - Python 3.10+
 - tmux
 - Target Hardware:
@@ -25,7 +24,7 @@ This is a demo application that uses power of AI (Large Video Language model) fo
 
 ```
 sudo apt update
-sudo apt install tmux
+sudo apt install tmux ffmpeg
 ```
 
 3. Pull the code
@@ -44,7 +43,7 @@ cd $HOME/work/video_summarization
 conda create -n openvino-env python=3.11
 conda activate openvino-env
 conda update --all
-conda install -c conda-forge openvino=2025.2.0
+conda install -c conda-forge openvino=2026.0.0
 pip install -r requirements.txt
 ```
 
@@ -60,7 +59,7 @@ cd $HOME/work
 optimum-cli export openvino -m openbmb/MiniCPM-V-2_6 --trust-remote-code --weight-format int8 MiniCPM_INT8
 ```
 
-
+> NOTE: If it prompt for access issue to the model, follow the link in the terminal and request access. Then run this to set your huggingface token `export HF_TOKEN=<token>`
 
 ## Starting Demo App
 
@@ -77,74 +76,6 @@ This demo app is comprising of the following modules/components:
 - Simple-RTSP-server (port 8554)
 
 - VDMS Vector DB (port 55555)
-
-  
-
-There are 2 methods to run the demo, manual or via Docker. It is recommended to follow docker way of starting the Demo App for simplicity.
-
-
-
-## Manually Starting Service
-
-1. Activate conda environment and change directory to the project folder
-
-   ```
-   conda activate openvino-env
-   cd $HOME/work/video_summarization
-   ```
-
-2. Start API server
-
-   ``` 
-   uvicorn api.app:app --port 8000 
-   uvicorn api.retriever_api:app --port 8001
-   ```
-
-3. Start Intel VDMS vector DB
-
-   ```
-   docker run --rm -d --name vdms-rag -p 55555:55555 intellabs/vdms:latest
-   ```
-
-4. Start Live Summarizer:
-
-``` streamlit
-streamlit run app_ov_test.py --server.port 8888 --server.address 127.0.0.1
-```
-
-5. Start Video RAG UI:
-
-```
-streamlit run app_rag.py --server.port 9999 --server.address 127.0.0.1
-```
-
-6. Create chunks folder
-
-```
-mkdir ./chunks
-```
-
-7. Start virtual camera stream. You may use the utility script below to do that.
-
-```
-./start_virtual_rtsp_cam0.sh /path/to/video.mp4   #replace /path/to/video.mp4 with the absolute path to your own video file
-```
-
-> Note: The utility script only create one video stream, please copy and edit the script so more stream can be created. Make sure the video is posted to the URL as shown in the table below:
->
-> | Camera Name | URL                         |
-> | ----------- | --------------------------- |
-> | CAM0        | http://localhost:8554/live  |
-> | CAM1        | http://localhost:8554/live1 |
-> | CAM2        | http://localhost:8554/live2 |
-
-> Utility Script:
->
-> - clear_database.sh - use this script to clear the VDMS vector store
->
-> - start_virtual_rtsp_cam0.sh - use this script to create a virtual camera stream. Expected input video format. Resolution: 1920x1080, Framerate: 15fps.
->
-
 
 
 ## Start using docker
@@ -164,58 +95,63 @@ mkdir ./chunks
 
 2. create chunks folder (folder to hold the video chunks file), and change permission of the chunks folder.
 
-```
-mkdir -p ../chunks
-chmod 777 ../chunks
-```
+   ```
+   mkdir -p ../chunks
+   chmod 777 ../chunks
+   ```
 
 3. Launch linux terminal from desktop and cd to project directory:
 
-```
-cd $HOME/work/video_summarization
-```
+   ```
+   cd $HOME/work/video_summarization
+   ```
 
 4. Run the command below:
 
-```
-docker compose build
-docker compose up -d
-```
+   ```
+   docker compose build
+   docker compose up -d
+   ```
 
 5. Start virtual camera stream. You may use the utility script below to do that.
 
-```
-./start_virtual_rtsp_cam0.sh /path/to/video.mp4   #replace /path/to/video.mp4 with the absolute path to your own video file
-```
+   ```
+   ./start_virtual_rtsp_cam0.sh /path/to/video.mp4   #replace /path/to/video.mp4 with the absolute path to your own video file
+   ```
 
-> Note: The utility script only create one video stream, please copy and edit the script so more stream can be created. Make sure the video is posted to the URL as shown in the table below:
->
-> | Camera Name | URL                         |
-> | ----------- | --------------------------- |
-> | CAM0        | http://localhost:8554/live  |
-> | CAM1        | http://localhost:8554/live1 |
-> | CAM2        | http://localhost:8554/live2 |
+   > Note: The utility script only create one video stream, please copy and edit the script so more stream can be created. Make sure the video is posted to the URL as shown in the table below:
+   >
+   > | Camera Name | URL                         |
+   > | ----------- | --------------------------- |
+   > | CAM0        | rtsp://localhost:8554/live  |
+   > | CAM1        | rtsp://localhost:8554/live1 |
+   > | CAM2        | rtsp://localhost:8554/live2 |
 
-> Utility Script:
->
-> - start_virtual_rtsp_cam0.sh - use this script to create a virtual camera stream
 
-6. To stop the demo:
+   > - clear_database.sh - use this script to clear the VDMS vector store
+   >
+   > - start_virtual_rtsp_cam0.sh - use this script to create a virtual camera stream. Expected input video format. Resolution: 1920x1080, Framerate: 15fps.
 
-```
-docker compose down
-```
+6. Access to web browser http://127.0.0.1:8888 to view summarize UI
 
-7. Other useful command
+7. Access to web brower http://127.0.0.1:9999 to view retriever UI
 
-```
-tmux ls   # use this command to check if virtual camera stream is running
-docker compose ls   # use this command to check if all services of the demo is running
-docker compose top # use this command to check the container name
-docker compose logs [container_name]  # use this command to retrieve the runtime logs of a specific container
-```
+8. To stop the demo:
 
-8. The docker-compose.yml uses environment variables to pass additional configuration parameters to the containers. Change this from 
+   ```
+   docker compose down
+   ```
+
+9. Other useful command
+
+   ```
+   tmux ls   # use this command to check if virtual camera stream is running
+   docker compose ls   # use this command to check if all services of the demo is running
+   docker compose top # use this command to check the container name
+   docker compose logs [container_name]  # use this command to retrieve the runtime logs of a specific container
+   ```
+
+10. The docker-compose.yml uses environment variables to pass additional configuration parameters to the containers. Change this from 
 
 | Environment Variables                                 | Containers                                                   | Default Value | Sample Value                 |
 | ----------------------------------------------------- | ------------------------------------------------------------ | ------------- | ---------------------------- |
@@ -228,10 +164,14 @@ docker compose logs [container_name]  # use this command to retrieve the runtime
 > 2. You may also use this command to identify all AI accelerator supported in your HW. ```python -c "import openvino as ov; print(ov.Core().available_devices)"```
 
 ## Performance
+Pre-requisites
+```
+sudo apt install cargo pkg-config libudev-dev
+```
 
 1. Install qmassa. Follow instruction in https://github.com/ulissesf/qmassa.
 
-1. Run qmassa in command line to view the GPU utilization.
+2. Run qmassa in command line to view the GPU utilization.
 
    ``` 
    sudo $HOME/.cargo/bin/qmassa

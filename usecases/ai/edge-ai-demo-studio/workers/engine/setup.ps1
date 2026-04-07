@@ -10,6 +10,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"  # Exit on any error
+$ProgressPreference = 'SilentlyContinue'
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 Write-Host "Running setup for engine workers from: $ScriptDir" -ForegroundColor Green
@@ -65,6 +66,7 @@ function Invoke-ChildSetup {
 }
 
 # Main execution with comprehensive error handling
+Push-Location $ScriptDir
 try {
     # Find all 1-level child directories and run their setup scripts
     $ChildDirectories = Get-ChildItem -Path $ScriptDir -Directory -ErrorAction Stop
@@ -130,4 +132,6 @@ try {
         Write-Host "Stack trace: $($_.ScriptStackTrace)" -ForegroundColor Red
     }
     exit 1
+} finally {
+    Pop-Location
 }

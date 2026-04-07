@@ -32,6 +32,10 @@ const waitForHealthCheck = async (
         if (data.health === 'OK') {
           logger.log('Multiserve health check passed')
           return true
+        } else {
+          logger.log(
+            `Health check attempt ${i + 1}/${maxRetries} returned unhealthy status, retrying...`,
+          )
         }
       }
     } catch {

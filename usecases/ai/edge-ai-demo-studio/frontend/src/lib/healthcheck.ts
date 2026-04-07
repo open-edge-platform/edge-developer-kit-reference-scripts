@@ -660,11 +660,10 @@ const processHealthChecks = async (payload: BasePayload): Promise<void> => {
         try {
           // Sanitize inputs
           const sanitizedType = sanitizeString(type)
-          const sanitizedId = sanitizeString(id)
           const sanitizedEngine = sanitizeString(engine)
 
-          if (!sanitizedType || !sanitizedId) {
-            logger.log(`Invalid workload type or ID for workload ${id}`)
+          if (!sanitizedType || !sanitizedEngine) {
+            logger.log(`Invalid workload type or engine for workload `)
             return
           }
 

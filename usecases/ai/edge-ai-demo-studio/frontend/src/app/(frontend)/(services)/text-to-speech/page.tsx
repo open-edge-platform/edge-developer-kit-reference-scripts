@@ -102,6 +102,7 @@ export default function TextToSpeechPage() {
             size="icon"
             className="size-8"
             onClick={onOpen}
+            data-testid="workload-settings-button"
           >
             <Settings />
           </Button>
@@ -117,6 +118,7 @@ export default function TextToSpeechPage() {
           <Logs
             type={workload?.type || TEXT_TO_SPEECH_TYPE}
             engine={workload?.engine ?? 'custom'}
+            status={workload?.status}
           />
         }
         isLoading={isLoading}

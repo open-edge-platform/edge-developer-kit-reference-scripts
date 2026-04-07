@@ -5,6 +5,8 @@ param(
     [string]$ErrorActionPreference = "Stop"
 )
 
+$ProgressPreference = 'SilentlyContinue'
+
 $SCRIPT_DIR = $PSScriptRoot
 $VENV_DIR = Join-Path $SCRIPT_DIR ".venv"
 $ParentThirdPartyDir = Join-Path (Split-Path $SCRIPT_DIR -Parent) "thirdparty"
@@ -16,6 +18,59 @@ $ROOT_THIRDPARTY_DIR = Join-Path (Split-Path (Split-Path $SCRIPT_DIR -Parent) -P
 Write-Host "Parent thirdparty directory: $ParentThirdPartyDir" -ForegroundColor Yellow
 Write-Host "Root thirdparty directory: $ROOT_THIRDPARTY_DIR" -ForegroundColor Yellow
 $PARENT_GIT_PATH = Join-Path $ROOT_THIRDPARTY_DIR "git\cmd"
+
+$OvmsVersion = "v2025.4.1"
+$OptimumExportModelDir = Join-Path $SCRIPT_DIR "thirdparty"
+$OptimumExportModelUrl = "https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/tags/$OvmsVersion/demos/common/export_models"
+$OptimumExportModelScript = "export_model.py"
+$OptimumExportModelRequirements = "requirements.txt"
+
+function Invoke-FileDownload {
+    param(
+        [string]$Url,
+        [string]$Output,
+        [string]$Description = "file"
+    )
+    Write-Host "Downloading $Description..." -ForegroundColor Yellow
+    try {
+        Invoke-WebRequest -Uri $Url -OutFile $Output -UseBasicParsing
+        Write-Host "Downloaded $Description" -ForegroundColor Green
+    } catch {
+        Write-Host "Failed to download $Description from $Url" -ForegroundColor Red
+        throw
+    }
+}
+
+function Install-ExportModel {
+    Write-Host "Setting up Optimum Export Model" -ForegroundColor Yellow
+
+    if (Test-Path $OptimumExportModelDir) {
+        Write-Host "Optimum Export Model directory already exists. Skipping setup." -ForegroundColor Green
+        return
+    }
+
+    Write-Host "Creating directory: $OptimumExportModelDir" -ForegroundColor Yellow
+    New-Item -ItemType Directory -Path $OptimumExportModelDir -Force | Out-Null
+
+    # Download export_model.py
+    Invoke-FileDownload "$OptimumExportModelUrl/$OptimumExportModelScript" (Join-Path $OptimumExportModelDir $OptimumExportModelScript) "Optimum Export Model script"
+
+    # Download requirements.txt
+    Invoke-FileDownload "$OptimumExportModelUrl/$OptimumExportModelRequirements" (Join-Path $OptimumExportModelDir $OptimumExportModelRequirements) "Optimum Export Model requirements"
+
+    # Install OVMS Optimum requirements
+    & $script:uvCommand pip install "onnx!=1.21.0rc1" --pre --index-strategy unsafe-best-match -r (Join-Path $OptimumExportModelDir $OptimumExportModelRequirements)
+    if ($LASTEXITCODE -ne 0) {
+        throw "Pip install of OVMS Optimum requirements failed."
+    }
+
+    & $script:uvCommand pip install datasets
+    if ($LASTEXITCODE -ne 0) {
+        throw "Pip install of datasets failed."
+    }
+
+    Write-Host "OVMS Optimum requirements installed successfully in virtual environment." -ForegroundColor Green
+}
 
 function Add-GitToPath {
     Write-Host $PARENT_GIT_PATH
@@ -71,7 +126,7 @@ function Install-PythonDependencies {
     
     if (Test-Path "requirements.txt") {
         Write-Host "Installing requirements.txt dependencies..." -ForegroundColor Yellow
-        & $script:uvCommand pip install -r requirements.txt --refresh --pre --verbose --index-strategy unsafe-best-match
+        & $script:uvCommand pip install -r requirements.txt "onnx!=1.21.0rc1" --refresh --pre --verbose --index-strategy unsafe-best-match
         if ($LASTEXITCODE -ne 0) {
             throw "Failed to install Python dependencies. uv pip install exited with code $LASTEXITCODE"
         }
@@ -82,15 +137,19 @@ function Install-PythonDependencies {
 }
 
 # Main execution
+Push-Location $PSScriptRoot
 try {
     Write-Host "Starting Image Generation Setup..." -ForegroundColor Green
     Test-UvInstalled
     Test-OVMSInstalled
     Add-GitToPath
     Install-PythonDependencies
+    Install-ExportModel
     Write-Host "Setup completed successfully!" -ForegroundColor Green
     exit 0
 } catch {
     Write-Host "Setup failed: $($_.Exception.Message)" -ForegroundColor Red
     exit 1
+} finally {
+    Pop-Location
 }

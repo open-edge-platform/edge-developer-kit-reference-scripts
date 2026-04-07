@@ -11,6 +11,7 @@ param(
     [switch]$ContinueOnError  # Continue setup for remaining workers even if one fails
 )
 
+$ProgressPreference = 'SilentlyContinue'
 # Set UTF-8 encoding for console output
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -334,6 +335,7 @@ function Invoke-WorkerSetup {
 }
 
 # Main script
+Push-Location $SCRIPT_DIR
 Write-ColorOutput "=== Workers Setup ===" "Cyan"
 
 # Setup logging
@@ -504,4 +506,6 @@ try {
     }
     
     exit 1
+} finally {
+    Pop-Location
 }

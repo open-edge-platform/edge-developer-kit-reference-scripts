@@ -1,0 +1,26 @@
+# Exclude version control metadata and common unwanted folders from the build context
+.git
+.github
+.gitignore
+.vscode
+
+**/node_modules
+**/thirdparty
+**/.next
+**/.venv
+**/__pycache__
+**/.env
+
+workers/engine/multiserve/engine
+workers/lipsync/models
+
+frontend/playwright-report
+frontend/test-results
+frontend/db.sqlite
+
+out
+logs
+models
+tests
+thirdparty
+playwright-report

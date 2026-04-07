@@ -80,8 +80,8 @@ RUN set -eux && \
     python3 -m pip install --upgrade pip && \
     #
     # Install Intel PyTorch extension for LLM inference
-    python3 -m pip install --pre --upgrade openvino==2025.2.0 openvino-genai==2025.2.0 openvino-tokenizers==2025.2.0 && \    
-    python3 -m pip install transformers==4.46.0 ffmpeg-python opencv-python langchain_community langchain langchain-vdms numpy==1.26.4 Pillow && \
+    python3 -m pip install --pre --upgrade openvino==2026.0.0 openvino-genai==2026.0.0 openvino-tokenizers==2026.0.0 && \    
+    python3 -m pip install transformers==4.46.0 ffmpeg-python==0.2.0 opencv-python langchain-community langchain langchain-vdms numpy==1.26.4 Pillow && \
     python3 -m pip install streamlit==1.37.0 streamlit_webrtc uvicorn==0.34.3 decord fastapi ftfy einops httpx requests tzlocal torch torchvision torchaudio dateparser
 
 RUN set -eux && \

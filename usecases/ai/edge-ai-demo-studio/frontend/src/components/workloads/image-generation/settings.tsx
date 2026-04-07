@@ -108,7 +108,10 @@ export function SettingsModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[600px]">
+      <DialogContent
+        className="sm:max-w-[600px]"
+        data-testid="imggen-settings-dialog"
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-xl font-semibold">
             <FileSearch className="h-5 w-5" />
@@ -123,8 +126,12 @@ export function SettingsModal({
           className="w-full"
         >
           <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="predefined">Verified Models</TabsTrigger>
-            <TabsTrigger value="custom">Custom Model</TabsTrigger>
+            <TabsTrigger value="predefined" data-testid="verified-model-tab">
+              Verified Models
+            </TabsTrigger>
+            <TabsTrigger value="custom" data-testid="custom-model-tab">
+              Custom Model
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="predefined" className="space-y-4">
@@ -134,7 +141,10 @@ export function SettingsModal({
                 Select Model
               </Label>
               <Select value={tempModelName} onValueChange={handleModelSelect}>
-                <SelectTrigger className="mt-2 w-full">
+                <SelectTrigger
+                  className="mt-2 w-full"
+                  data-testid="imggen-model-trigger"
+                >
                   <SelectValue placeholder="Choose a model" />
                 </SelectTrigger>
                 <SelectContent>
@@ -168,6 +178,7 @@ export function SettingsModal({
                   value={tempModelName}
                   onChange={(e) => setTempModelName(e.target.value)}
                   className="mt-2"
+                  data-testid="custom-model-input"
                 />
                 <p className="mt-1 text-sm text-gray-500">
                   Enter the Hugging Face Model name for your model
@@ -207,6 +218,7 @@ export function SettingsModal({
             onClick={handleSave}
             disabled={isLoading}
             className="bg-blue-600 text-white"
+            data-testid="settings-save-button"
           >
             {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
           </Button>

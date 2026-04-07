@@ -252,6 +252,7 @@ export default function DetectionControl({
                   disabled || stopDetection.isPending || totalSubscribers === 0
                 }
                 className="flex items-center gap-2"
+                data-testid="wwd-stop-button"
               >
                 {stopDetection.isPending ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -274,6 +275,7 @@ export default function DetectionControl({
                     audioDevicesData.devices.length === 0)
                 }
                 className="flex items-center gap-2"
+                data-testid="wwd-start-button"
               >
                 {startDetection.isPending ? (
                   <Loader2 className="h-4 w-4 animate-spin" />

@@ -1,11 +1,13 @@
 # Copyright (C) 2025 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
+import json
 import yaml
 import argparse
 import socket
 import sys
 import subprocess  # nosec -- used as a catch exception type only
+import av
 from contextlib import asynccontextmanager
 
 from huggingface_hub import snapshot_download
@@ -19,7 +21,16 @@ from aiortc import (
 )
 from aiortc.rtcrtpsender import RTCRtpSender
 
-from fastapi import FastAPI, Request, WebSocket, UploadFile, File, HTTPException, Form
+from fastapi import (
+    FastAPI,
+    Request,
+    WebSocket,
+    UploadFile,
+    File,
+    HTTPException,
+    Form,
+    BackgroundTasks,
+)
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -31,9 +42,12 @@ import uvicorn
 
 from modules.base.logger import getLogger
 from modules.webrtc_avatar import WebRTCAvatar
+from modules.lipsync.wav2lip.wav2lip_avatar_generator import generate_wav2lip_avatar
 
 from pathlib import Path
 import psutil
+import asyncio
+from fastapi.responses import StreamingResponse
 
 # import aiortc.codecs.vpx
 # aiortc.codecs.vpx.MIN_BITRATE = 15000000
@@ -44,6 +58,9 @@ import psutil
 # aiortc.codecs.h264.MIN_BITRATE = 15000000
 # aiortc.codecs.h264.DEFAULT_BITRATE = 100000000
 # aiortc.codecs.h264.MAX_BITRATE = 1500000000
+
+avatar_dir = Path("./data/avatars")
+tasks = {}
 
 
 class Chat(BaseModel):
@@ -202,24 +219,26 @@ def create_app(args):
                     getLogger(__name__).info(
                         "Avatar not found or invalid. Generating default avatar..."
                     )
-                    generator_script = Path(
-                        "modules/lipsync/wav2lip/wav2lip_avatar_generator.py"
-                    )
+                    skin_id = uuid4().hex[:8]
                     video_path = Path("data/samples/sample_video_ai.mp4")
-
-                    if generator_script.exists() and video_path.exists():
-                        cmd = [
-                            sys.executable,
-                            str(generator_script),
-                            "--video_path",
-                            str(video_path),
-                        ]
-                        # Run synchronously to ensure avatar is ready before serving requests
-                        subprocess.run(cmd, check=True)
+                    if video_path.exists():
+                        generate_wav2lip_avatar(
+                            video_path=str(video_path),
+                            frame_count=128,
+                            device="xpu",
+                            img_size=256,
+                            batch_size=1,
+                            avatar_id=skin_id,
+                            no_smooth=False,
+                            pads=(0, 0, 0, 0),
+                            base_avatar_dir=avatar_dir,
+                            skin_name=None,
+                            wav2lip_config_path=conf_path,
+                        )
                         getLogger(__name__).info("Avatar generation completed.")
                     else:
                         getLogger(__name__).error(
-                            f"Cannot generate avatar. Missing script or video: {generator_script}, {video_path}"
+                            f"Cannot generate avatar. Missing video: {video_path}"
                         )
         except Exception as e:
             getLogger(__name__).error(f"Error in lifespan startup: {e}")
@@ -249,6 +268,51 @@ def create_app(args):
     getLogger(__name__).info(f"CORS configured for origins: {allowed_origins}")
 
     return app
+
+
+def validate_video(video_path: str) -> str:
+    try:
+        with av.open(video_path) as container:
+            vstreams = [s for s in container.streams if s.type == "video"]
+            if not vstreams:
+                raise ValueError("No video stream detected")
+
+            v0 = vstreams[0]
+            codec_name = (v0.codec_context.name or "").strip()
+            if not codec_name:
+                raise ValueError("Video codec not identifiable")
+            return codec_name
+    except Exception as e:
+        raise ValueError(f"Invalid or unsupported video: {e}") from e
+
+
+def run_avatar_generation(taskId, video_path, cfg_path, skin_name=None):
+    tasks[taskId] = "running"
+
+    try:
+        avatar_id = generate_wav2lip_avatar(
+            video_path=str(video_path),
+            frame_count=128,
+            device="xpu",
+            img_size=256,
+            batch_size=1,
+            avatar_id=taskId,
+            no_smooth=False,
+            pads=(0, 0, 0, 0),
+            base_avatar_dir=avatar_dir,
+            skin_name=skin_name,
+            wav2lip_config_path=cfg_path,
+        )
+
+        tasks[taskId] = {
+            "status": "finished",
+            "avatar_id": avatar_id,
+            "skin_name": skin_name,
+        }
+
+    except Exception as e:
+        getLogger(__name__).error(f"Avatar generation failed: {e}")
+        tasks[taskId] = {"status": "error", "detail": str(e)}
 
 
 def setup_routes(
@@ -370,6 +434,152 @@ def setup_routes(
             raise HTTPException(
                 status_code=500, detail=f"Error processing audio: {str(e)}"
             )
+
+    @app.post("/v1/avatar")
+    async def upload_avatar(
+        background: BackgroundTasks,
+        video: UploadFile = File(...),
+        session_id: str = Form(...),
+        skin_name: str = Form(None),
+    ):
+        if not session_id or session_id not in avatars:
+            raise HTTPException(status_code=400, detail="Invalid or missing session_id")
+        if not video or not video.filename:
+            raise HTTPException(status_code=400, detail="Missing video file")
+
+        skin_id = uuid4().hex[:8]
+        samples_dir = Path("./data/samples").resolve() / skin_id
+        samples_dir.mkdir(parents=True, exist_ok=True)
+        video_path = samples_dir / video.filename
+
+        with open(video_path, "wb") as f:
+            f.write(await video.read())
+
+        cfg_path = Path("config.wav2lip.yaml").resolve().as_posix()
+
+        try:
+            validate_video(str(video_path))
+        except Exception as e:
+            getLogger(__name__).error(f"Fail to process video: {e}")
+            raise HTTPException(status_code=400, detail="Invalid or unsupported video")
+
+        tasks[skin_id] = {
+            "status": "finished",
+            "avatar_id": skin_id,
+            "skin_name": skin_name,
+        }
+        background.add_task(
+            run_avatar_generation,
+            taskId=skin_id,
+            video_path=str(video_path),
+            cfg_path=cfg_path,
+            skin_name=skin_name,
+        )
+        return JSONResponse({"taskId": skin_id})
+
+    @app.get("/v1/tasks/{taskId}")
+    async def task_status(taskId: str):
+        return tasks.get(taskId, {"status": "not_found"})
+
+    @app.get("/v1/avatar")
+    async def list_avatar_skins():
+        items = []
+        for d in avatar_dir.iterdir():
+            if not d.is_dir():
+                continue
+            skin = {"skin_id": d.name}
+            cfg = d / "config.json"
+            if cfg.exists():
+                try:
+                    meta = json.loads(cfg.read_text(encoding="utf-8"))
+                    if meta.get("skin_name"):
+                        skin["skin_name"] = meta["skin_name"]
+                except Exception:
+                    pass
+            items.append(skin)
+        return {"items": items}
+
+    @app.patch("/v1/avatar/default")
+    async def set_default_skin(req: Request):
+        try:
+            body = await req.json()
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid JSON body")
+
+        if not isinstance(body, dict):
+            raise HTTPException(status_code=400, detail="Body must be a JSON object")
+
+        avatar_id = body.get("avatarId")
+        avatar_path = avatar_dir / avatar_id
+        avatar_path = str(avatar_path)
+
+        if not avatar_path and avatar_id:
+            try:
+                # Ensure avatar_dir is a Path
+                base = avatar_dir if isinstance(avatar_dir, Path) else Path(avatar_dir)
+                avatar_path = str((base / avatar_id).resolve())
+            except Exception as e:
+                getLogger(__name__).error(
+                    f"Failed to resolve avatar path from avatar_id: {e}"
+                )
+                raise HTTPException(
+                    status_code=400,
+                    detail="Could not resolve avatar_path from avatar_id",
+                )
+
+        if not avatar_path or not isinstance(avatar_path, str):
+            raise HTTPException(
+                status_code=400, detail="avatar_id or avatar_path is required"
+            )
+
+        target_dir = Path(avatar_path)
+        if not (target_dir.exists() and target_dir.is_dir()):
+            raise HTTPException(
+                status_code=400, detail=f"Avatar folder does not exist: {avatar_path}"
+            )
+
+        cfg_path = args.config if isinstance(args.config, Path) else Path(args.config)
+        if not cfg_path.parent.exists():
+            cfg_path.parent.mkdir(parents=True, exist_ok=True)
+
+        try:
+            if cfg_path.exists():
+                with cfg_path.open("r", encoding="utf-8") as f:
+                    data = yaml.safe_load(f) or {}
+            else:
+                data = None
+        except Exception as e:
+            getLogger(__name__).error(f"Failed to read YAML: {e}")
+            raise HTTPException(status_code=500, detail="Failed to read YAML config")
+
+        if not isinstance(data, dict):
+            data = {}
+
+        wav2lip_node = data.get("wav2lip")
+        if not isinstance(wav2lip_node, dict):
+            wav2lip_node = {}
+            data["wav2lip"] = wav2lip_node
+
+        wav2lip_node["avatar_path"] = avatar_path
+
+        try:
+            with cfg_path.open("w", encoding="utf-8") as f:
+                yaml.safe_dump(
+                    data,
+                    f,
+                    allow_unicode=True,
+                    sort_keys=False,
+                    default_flow_style=False,
+                )
+            getLogger(__name__).info(f"Updated wav2lip.avatar_path -> {avatar_path}")
+            return {
+                "status": "success",
+                "avatar_path": avatar_path,
+                "avatar_id": avatar_id,
+            }
+        except Exception as e:
+            getLogger(__name__).error(f"Failed to write YAML: {e}")
+            raise HTTPException(status_code=500, detail="Failed to save default skin")
 
     @app.post("/v1/lipsync/offer", include_in_schema=False)
     async def offer(request: Request):

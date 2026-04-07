@@ -112,12 +112,19 @@ const VerifiedModelsElement = ({
       <div className="space-y-2">
         <Label>Select Model</Label>
         <Select value={selectedModel} onValueChange={onModelSelect}>
-          <SelectTrigger className="w-full">
+          <SelectTrigger
+            className="w-full"
+            data-testid="model-selector-trigger"
+          >
             <SelectValue placeholder="Choose a model" />
           </SelectTrigger>
           <SelectContent>
             {verifiedModels.map((m) => (
-              <SelectItem key={m.id} value={m.id}>
+              <SelectItem
+                key={m.id}
+                value={m.id}
+                data-testid={`model-option-${m.id}`}
+              >
                 <div className="flex flex-col">
                   <span className="font-medium">{m.id}</span>
                 </div>
@@ -294,7 +301,10 @@ export function WorkloadModelConfiguration({
 
   if (title) {
     return (
-      <div className="space-y-4 rounded-lg border bg-slate-50/50 p-4">
+      <div
+        className="space-y-4 rounded-lg border bg-slate-50/50 p-4"
+        data-testid={`workload-model-configuration-${title}`}
+      >
         <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
         {content}
       </div>

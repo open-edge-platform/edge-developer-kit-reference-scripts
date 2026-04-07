@@ -297,10 +297,7 @@ export function MetricsDropdown() {
                           }}
                           itemStyle={{ color: '#6366f1' }}
                           labelStyle={{ display: 'none' }}
-                          formatter={(value: number | undefined) => [
-                            `${value ?? 0}%`,
-                            'CPU',
-                          ]}
+                          formatter={(value) => [`${value ?? 0}%`, 'CPU']}
                         />
                         <Line
                           type="monotone"
@@ -355,10 +352,7 @@ export function MetricsDropdown() {
                           }}
                           itemStyle={{ color: '#10b981' }}
                           labelStyle={{ display: 'none' }}
-                          formatter={(value: number | undefined) => [
-                            `${value ?? 0} GB`,
-                            'Memory',
-                          ]}
+                          formatter={(value) => [`${value ?? 0} GB`, 'Memory']}
                         />
                         <Line
                           type="monotone"
@@ -446,7 +440,7 @@ export function MetricsDropdown() {
                                     }}
                                     itemStyle={{ color: chartColor }}
                                     labelStyle={{ display: 'none' }}
-                                    formatter={(value: number | undefined) => [
+                                    formatter={(value) => [
                                       `${value ?? 0}%`,
                                       'Compute',
                                     ]}
@@ -503,7 +497,7 @@ export function MetricsDropdown() {
                                     }}
                                     itemStyle={{ color: chartColor }}
                                     labelStyle={{ display: 'none' }}
-                                    formatter={(value: number | undefined) => [
+                                    formatter={(value) => [
                                       `${value ?? 0} GB`,
                                       'Memory',
                                     ]}

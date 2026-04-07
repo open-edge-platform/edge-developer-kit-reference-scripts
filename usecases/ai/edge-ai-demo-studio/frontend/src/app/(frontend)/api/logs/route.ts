@@ -11,6 +11,22 @@ import { logger } from '@/utils/logger'
 const MAX_READ_SIZE = 64_000 // 64KB
 const DEFAULT_TAIL_LINES = 500
 
+// Validate log name to prevent path traversal and disallowed chars
+function isValidLogName(name: string | null): name is string {
+  if (!name) return false
+  if (name.length === 0 || name.length > 255) return false
+  if (name.startsWith('.')) return false
+  if (name.includes('..')) return false
+  const re = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
+  return re.test(name)
+}
+
+// Only allow explicit source values (currently only 'old' is supported)
+function isValidSource(source: string | null): boolean {
+  if (!source) return true // unspecified means current
+  return source === 'old'
+}
+
 // Helper function to parse JSON log lines safely
 function parseLogLines(lines: string[]): LogEntry[] {
   const parsed: LogEntry[] = []
@@ -46,8 +62,29 @@ async function getLastLines(
   fileSize: number,
   lineCount: number,
 ): Promise<LogEntry[]> {
-  const content = await readFileContent(logFile, fileSize)
-  const allLines = content.split('\n').filter(Boolean)
+  // Read from the end of the file in bounded chunks to avoid loading
+  // extremely large archive files into memory.
+  const MAX_TAIL_READ = 4_194_304 // 4MB maximum tail read
+
+  let readSize = Math.min(MAX_READ_SIZE, fileSize)
+  let offset = Math.max(0, fileSize - readSize)
+
+  let content = await readFileContent(logFile, readSize, offset)
+  let allLines = content.split('\n').filter(Boolean)
+
+  // Expand read window exponentially until we have enough lines or reach cap/start
+  while (
+    allLines.length < lineCount &&
+    offset > 0 &&
+    readSize < MAX_TAIL_READ
+  ) {
+    const nextReadSize = Math.min(readSize * 2, MAX_TAIL_READ, fileSize)
+    offset = Math.max(0, fileSize - nextReadSize)
+    content = await readFileContent(logFile, nextReadSize, offset)
+    allLines = content.split('\n').filter(Boolean)
+    readSize = nextReadSize
+  }
+
   const lastLines = allLines.slice(-lineCount)
   return parseLogLines(lastLines)
 }
@@ -96,7 +133,30 @@ export async function GET(
     )
   }
 
-  const logFile = path.join(LOG_FILE_PATH, `${name}.log`)
+  // Strict allowlist validation for `name` to prevent path traversal
+  if (!isValidLogName(name)) {
+    return NextResponse.json(
+      {
+        error:
+          'Invalid log name. Allowed characters: letters, digits, dot, underscore, hyphen; must not start with dot or contain ".."',
+      },
+      { status: 400 },
+    )
+  }
+
+  const source = url.searchParams.get('source')
+  // Validate source against explicit allowlist
+  if (!isValidSource(source)) {
+    return NextResponse.json(
+      { error: 'Invalid source parameter' },
+      { status: 400 },
+    )
+  }
+
+  const logFile =
+    source === 'old'
+      ? path.join(LOG_FILE_PATH, 'old', `${name}.log`)
+      : path.join(LOG_FILE_PATH, `${name}.log`)
   const since = url.searchParams.get('since')
   const offsetParam = url.searchParams.get('offset')
 

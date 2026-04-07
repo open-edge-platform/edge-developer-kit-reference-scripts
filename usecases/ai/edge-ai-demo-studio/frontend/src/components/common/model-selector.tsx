@@ -57,7 +57,11 @@ export function ModelSelector({
   return (
     <Tabs value={tabValue} onValueChange={onTabChange} className="w-full">
       <TabsList className="grid w-full grid-cols-2">
-        <TabsTrigger value="predefined" className="relative">
+        <TabsTrigger
+          value="predefined"
+          className="relative"
+          data-testid="verified-model-tab"
+        >
           Verified Models
           {savedModelType === 'verified' && (
             <span className="ml-1 flex h-2 w-2">
@@ -66,7 +70,11 @@ export function ModelSelector({
             </span>
           )}
         </TabsTrigger>
-        <TabsTrigger value="custom" className="relative">
+        <TabsTrigger
+          value="custom"
+          className="relative"
+          data-testid="custom-model-tab"
+        >
           Custom Model
           {savedModelType === 'custom' && (
             <span className="ml-1 flex h-2 w-2">

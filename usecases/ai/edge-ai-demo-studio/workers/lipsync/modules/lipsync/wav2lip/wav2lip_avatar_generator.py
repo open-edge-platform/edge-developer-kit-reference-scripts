@@ -1,12 +1,17 @@
 # Copyright (C) 2025 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
+from http.client import HTTPException
+import json
+from logging import getLogger
+import shutil
 import numpy as np
 import argparse
 import cv2
 import os
 import pickle  # nosec B403 -- reading the pickle file created by another script only
 import yaml
+from typing import Tuple
 
 from uuid import uuid4
 from glob import glob
@@ -19,7 +24,10 @@ script_path = Path(__file__).parent.resolve()
 sys.path.append(f"{script_path}/..")
 sys.path.append(f"{script_path}/wav2lip256")
 
-from wav2lip256.face_detection import FaceAlignment, LandmarksType
+from modules.lipsync.wav2lip.wav2lip256.face_detection import (
+    FaceAlignment,
+    LandmarksType,
+)
 
 IMG_COMPRESSION_LEVEL = 5
 
@@ -41,7 +49,7 @@ def extractImagesFromVideo(video_path, save_path, frame_count=128):
     return save_path
 
 
-def performFaceAlignment(full_images_path, batch_size, device, pads):
+def performFaceAlignment(full_images_path, batch_size, device, pads, smooth):
     sanitized_full_images_path = Path(full_images_path).resolve()
     full_images_list = sorted(
         glob(os.path.join(sanitized_full_images_path, "*.[jpJP][pnPN]*[gG]"))
@@ -82,7 +90,7 @@ def performFaceAlignment(full_images_path, batch_size, device, pads):
 
     boxes = np.array(results)
 
-    if not args.no_smooth:
+    if smooth:
         boxes = get_smoothened_boxes(boxes, T=5)
 
     results = [
@@ -125,52 +133,71 @@ def get_smoothened_boxes(boxes, T):
     return boxes
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Inference code to lip-sync videos in the wild using Wav2Lip models"
-    )
-    parser.add_argument("--video_path", default="", type=str)
-    parser.add_argument("--frame_count", default=128, type=int)
-    parser.add_argument("--device", default="xpu", type=str)
-    parser.add_argument("--img_size", default=256, type=int)
-    parser.add_argument("--batch_size", default=1, type=int)
-    parser.add_argument("--avatar_id", default=None, type=str)
-    parser.add_argument("--no_smooth", action="store_true")
-    parser.add_argument(
-        "--pads",
-        nargs="+",
-        type=int,
-        default=[0, 0, 0, 0],
-        help="Padding (top, bottom, left, right). Please adjust to include chin at least",
-    )
+def generate_wav2lip_avatar(
+    *,
+    video_path: str,
+    frame_count: int = 128,
+    device: str = "xpu",
+    img_size: int = 256,
+    batch_size: int = 1,
+    avatar_id: str | None = None,
+    no_smooth: bool = False,
+    pads: Tuple[int, int, int, int] = (0, 0, 0, 0),
+    base_avatar_dir: str | Path = "./data/avatars",
+    skin_name: str | None,
+    wav2lip_config_path: str | Path = "config.wav2lip.yaml",
+) -> str:
 
-    args = parser.parse_args()
-
-    if args.avatar_id == None:
-        args.avatar_id = f"wav2lip_avatar_{args.img_size}"
+    # Derive avatar_id following original naming convention
+    if avatar_id is None:
+        avatar_id = f"wav2lip_avatar_{img_size}"
     else:
-        args.avatar_id = f"wav2lip_avatar{args.avatar_id}_{args.img_size}"
+        avatar_id = f"wav2lip_avatar{avatar_id}_{img_size}"
 
-    avatar_path = f"./data/avatars/{args.avatar_id}"
-    full_image_path = f"{avatar_path}/full_images"
-    face_image_path = f"{avatar_path}/face_images"
-    coords_path = f"{avatar_path}/coords.pkl"
+    base_avatar_dir = Path(base_avatar_dir)
+    avatar_path = base_avatar_dir / avatar_id
+    full_image_path = avatar_path / "full_images"
+    face_image_path = avatar_path / "face_images"
+    coords_path = avatar_path / "coords.pkl"
 
-    Path(avatar_path).mkdir(parents=True, exist_ok=True)
-    Path(full_image_path).mkdir(parents=True, exist_ok=True)
-    Path(face_image_path).mkdir(parents=True, exist_ok=True)
+    # Ensure directories
+    avatar_path.mkdir(parents=True, exist_ok=True)
+    full_image_path.mkdir(parents=True, exist_ok=True)
+    face_image_path.mkdir(parents=True, exist_ok=True)
 
-    print(f"Extracting Images from Video")
-    extractImagesFromVideo(args.video_path, full_image_path, args.frame_count)
+    print("Extracting Images from Video")
+    extractImagesFromVideo(video_path, full_image_path, frame_count)
+
     aligned_faces = performFaceAlignment(
-        full_image_path, args.batch_size, args.device, args.pads
+        full_image_path, batch_size, device, pads, smooth=(not no_smooth)
     )
-    generateCoordinates(aligned_faces, face_image_path, coords_path, args.img_size)
+    generateCoordinates(aligned_faces, face_image_path, coords_path, img_size)
 
-    with open("config.wav2lip.yaml") as rfile:
-        configs = yaml.safe_load(rfile)
-    configs["wav2lip"]["avatar_path"] = f"./data/avatars/{args.avatar_id}"
-    with open("config.wav2lip.yaml", "w") as wfile:
+    wav2lip_config_path = Path(wav2lip_config_path).resolve()
+    if wav2lip_config_path.exists():
+        with open(wav2lip_config_path, "r") as rfile:
+            configs = yaml.safe_load(rfile) or {}
+    else:
+        configs = {}
+
+    if "wav2lip" not in configs:
+        configs["wav2lip"] = {}
+
+    configs["wav2lip"]["avatar_path"] = str(avatar_path)
+
+    with open(wav2lip_config_path, "w") as wfile:
         yaml.dump(configs, wfile, default_flow_style=False, sort_keys=False)
 
-    print(f"Avatar with Id: {args.avatar_id} is generated successfully")
+    try:
+        meta = {
+            "skin_id": avatar_id,
+            "skin_name": skin_name,
+        }
+        (base_avatar_dir / avatar_id / "config.json").write_text(
+            json.dumps(meta, ensure_ascii=False), encoding="utf-8"
+        )
+    except Exception as e:
+        getLogger(__name__).error(f"Could not write skin metadata: {e}")
+
+    print(f"Avatar with Id: {avatar_id} is generated successfully")
+    return avatar_id
