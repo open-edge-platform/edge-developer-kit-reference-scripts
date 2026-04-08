@@ -8,7 +8,7 @@ opencv_python
 Pillow
 streamlit==1.37.0
 streamlit_webrtc==0.62.4
-transformers==4.53.0
+transformers==5.0.0rc3
 ultralytics==8.3.75
 uvicorn
 decord
