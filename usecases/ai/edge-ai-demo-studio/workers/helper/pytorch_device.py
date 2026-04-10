@@ -1,6 +1,7 @@
-# Copyright (C) 2025 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
+import sys
 import torch
 import openvino as ov
 import json
@@ -21,7 +22,7 @@ def query_device():
             device_name = torch.xpu.get_device_name(i)
             devices.append({"id": device_id, "name": device_name})
     else:
-        print("No GPUs detected, only CPU is available.")
+        print("No GPUs detected, only CPU is available.", file=sys.stderr)
 
     return devices
 

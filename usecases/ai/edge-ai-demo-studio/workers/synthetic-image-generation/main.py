@@ -2,6 +2,7 @@ import os
 import enum
 import secrets
 import logging
+import argparse
 import uvicorn
 import shutil
 import tempfile
@@ -23,63 +24,70 @@ from utils.model import ImageGen, ImageGenPrompt, ImageSegmentation
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-DEFAULT_PORT = 5010
+DEFAULT_PORT = 5015
 APP_WORKFLOW = None
+
 
 def remove_temp_dir(path: str):
     if os.path.exists(path):
         shutil.rmtree(os.path.dirname(path))
+
 
 class GenerationType(enum.Enum):
     SYNTHETIC = "SYNTHETIC"
     MISSING_COMPONENT = "MISSING_COMPONENT"
     CUSTOM = "CUSTOM"
 
+
 class Workflow:
-    def __init__(self, image_size = 1024):
+    def __init__(self, image_size=1024):
         self.image_size = image_size
         self.image_gen_model = None
 
     def init_image_generation_workflow(self):
         try:
-            self.image_gen_model = ImageGen(
-                mode="local",
-                enable_cpu_offload=False
-            )
+            self.image_gen_model = ImageGen(mode="local", enable_cpu_offload=False)
         except Exception as e:
-            raise RuntimeError(
-                "Image generation workflow initialization failed."
-            )
+            raise RuntimeError("Image generation workflow initialization failed.")
 
     def preprocess_image(self, image: Image.Image):
         preprocessed_image = self.image_gen_model.pad_image_to_square(image)
-        preprocessed_image = self.image_gen_model.resize_image(preprocessed_image, target_size=self.image_size)
+        preprocessed_image = self.image_gen_model.resize_image(
+            preprocessed_image, target_size=self.image_size
+        )
         return preprocessed_image
-    
 
-    def generate_image(self, image: Image.Image, prompt: str, generation_type: str = "SYNTHETIC", num_generations: int = 1, project_name: str = "default", save_dir: str = "./outputs"):
+    def generate_image(
+        self,
+        image: Image.Image,
+        prompt: str,
+        generation_type: str = "SYNTHETIC",
+        num_generations: int = 1,
+        project_name: str = "default",
+        save_dir: str = "./outputs",
+    ):
         if self.image_gen_model is None:
             raise RuntimeError("Image generation model is not initialized.")
-        
+
         # New structure: outputs/project_name/generation_type/
         target_dir = os.path.join(save_dir, project_name, generation_type)
         os.makedirs(target_dir, exist_ok=True)
 
         seed = secrets.randbelow(1000001)
         generated_image = self.image_gen_model.inference(
-            image=image, 
+            image=image,
             prompt=prompt,
             height=self.image_size,
             width=self.image_size,
-            seed=seed
+            seed=seed,
         )
         # New filename: datetime-seed.png
         filename = f"{datetime.now().strftime('%Y%m%d%H%M%S')}-{seed}.png"
         generated_image.save(os.path.join(target_dir, filename))
-        
+
         # Return relative path for frontend usage
         return f"{project_name}/{generation_type}/{filename}"
-    
+
 
 def create_app() -> FastAPI:
     app = FastAPI(
@@ -106,13 +114,13 @@ def create_app() -> FastAPI:
     async def healthcheck():
         """Health check endpoint."""
         return JSONResponse({"status": "ok"})
-    
+
     @app.get("/image-gen/history")
     def get_generation_history():
         output_dir = "outputs"
         if not os.path.exists(output_dir):
             return {"images": []}
-        
+
         images = []
         for root, dirs, files in os.walk(output_dir):
             for filename in files:
@@ -122,7 +130,7 @@ def create_app() -> FastAPI:
                         images.append(filename)
                     else:
                         images.append(os.path.join(rel_dir, filename))
-                
+
         return {"images": sorted(images, reverse=True)}
 
     @app.delete("/image-gen/delete/{file_path:path}")
@@ -130,7 +138,7 @@ def create_app() -> FastAPI:
         # Verify path is within outputs directory to prevent traversal
         safe_path = os.path.abspath(os.path.join("outputs", file_path))
         outputs_abs = os.path.abspath("outputs")
-        
+
         if not safe_path.startswith(outputs_abs):
             return {"error": "Invalid file path."}
 
@@ -143,13 +151,13 @@ def create_app() -> FastAPI:
 
     @app.post("/image-gen/generate")
     def upload_image_and_generate(
-            file: Annotated[bytes, File()], 
-            generation_type: Annotated[GenerationType, Form()],
-            objective: Annotated[str, Form()] = "",
-            custom_prompt: Annotated[str, Form()] = "",
-            custom_type: Annotated[str, Form()] = "",
-            project_name: Annotated[str, Form()] = "default",
-        ):
+        file: Annotated[bytes, File()],
+        generation_type: Annotated[GenerationType, Form()],
+        objective: Annotated[str, Form()] = "",
+        custom_prompt: Annotated[str, Form()] = "",
+        custom_type: Annotated[str, Form()] = "",
+        project_name: Annotated[str, Form()] = "default",
+    ):
 
         if generation_type == GenerationType.SYNTHETIC:
             prompt = ImageGenPrompt.SYNTHETIC_PROMPT
@@ -159,7 +167,7 @@ def create_app() -> FastAPI:
             prompt = custom_prompt
         else:
             return {"error": "Invalid generation type."}
-        
+
         # read the image bytes and load to PIL image
         image = Image.open(BytesIO(file)).convert("RGB")
         preprocessed_image = APP_WORKFLOW.preprocess_image(image)
@@ -171,17 +179,19 @@ def create_app() -> FastAPI:
             )
             masked_image_list = image_seg.get_mask_results(
                 ori_image=preprocessed_image,
-                results=results, 
-                min_area=1000, 
-                max_area=10000, 
-                save_results=False
+                results=results,
+                min_area=1000,
+                max_area=10000,
+                save_results=False,
             )
             if len(masked_image_list) > 0:
                 preprocessed_image = secrets.choice(masked_image_list)
             else:
                 # raise HTTPException if no valid masks found
-                return {"error": "No valid segmentation masks found for missing component generation."}
-        
+                return {
+                    "error": "No valid segmentation masks found for missing component generation."
+                }
+
         gen_type_str = generation_type.value
         if generation_type == GenerationType.CUSTOM and custom_type:
             gen_type_str = f"{generation_type.value}_{custom_type}"
@@ -190,7 +200,7 @@ def create_app() -> FastAPI:
             image=preprocessed_image,
             prompt=prompt,
             generation_type=gen_type_str,
-            project_name=project_name
+            project_name=project_name,
         )
 
         return {"message": "Image generated successfully.", "image": image}
@@ -200,7 +210,7 @@ def create_app() -> FastAPI:
         output_dir = "outputs"
         if not os.path.exists(output_dir):
             return {"projects": []}
-        
+
         projects = []
         for item in os.listdir(output_dir):
             if os.path.isdir(os.path.join(output_dir, item)):
@@ -210,24 +220,26 @@ def create_app() -> FastAPI:
     @app.post("/projects/create")
     def create_project(project_name: Annotated[str, Form()]):
         # Basic validation
-        safe_name = "".join([c for c in project_name if c.isalnum() or c in (' ', '-', '_')]).strip()
+        safe_name = "".join(
+            [c for c in project_name if c.isalnum() or c in (" ", "-", "_")]
+        ).strip()
         if not safe_name:
             return {"error": "Invalid project name"}
-            
+
         project_path = os.path.join("outputs", safe_name)
         if os.path.exists(project_path):
             return {"message": "Project already exists", "project_name": safe_name}
-            
+
         os.makedirs(project_path, exist_ok=True)
         return {"message": "Project created successfully", "project_name": safe_name}
 
     @app.delete("/projects/delete/{project_name}")
     def delete_project(project_name: str):
         # Safety check
-        safe_name = os.path.basename(project_name) 
+        safe_name = os.path.basename(project_name)
         project_path = os.path.abspath(os.path.join("outputs", safe_name))
         outputs_abs = os.path.abspath("outputs")
-        
+
         if not project_path.startswith(outputs_abs):
             return {"error": "Invalid project path"}
 
@@ -240,50 +252,65 @@ def create_app() -> FastAPI:
     @app.get("/projects/export/{project_name}")
     def export_project(project_name: str):
         # Safety check
-        safe_name = os.path.basename(project_name) 
+        safe_name = os.path.basename(project_name)
         project_path = os.path.abspath(os.path.join("outputs", safe_name))
         outputs_abs = os.path.abspath("outputs")
-        
+
         if not project_path.startswith(outputs_abs):
             return {"error": "Invalid project path"}
 
         if not os.path.exists(project_path) or not os.path.isdir(project_path):
             return {"error": "Project not found"}
-        
+
         # Create a temporary directory
         temp_dir = tempfile.mkdtemp()
         archive_base = os.path.join(temp_dir, safe_name)
-        
+
         # Create zip file
-        shutil.make_archive(archive_base, 'zip', root_dir=project_path)
+        shutil.make_archive(archive_base, "zip", root_dir=project_path)
         zip_path = archive_base + ".zip"
         return FileResponse(
-            path=zip_path, 
-            filename=f"{safe_name}.zip", 
-            media_type='application/zip', 
-            background=BackgroundTask(remove_temp_dir, path=zip_path)
+            path=zip_path,
+            filename=f"{safe_name}.zip",
+            media_type="application/zip",
+            background=BackgroundTask(remove_temp_dir, path=zip_path),
         )
-    
+
     return app
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Synthetic Image Generation FastAPI Server"
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=DEFAULT_PORT,
+        help="Port for the FastAPI server to listen on",
+    )
+    return parser.parse_args()
+
 
 def main():
     global APP_WORKFLOW
+    args = parse_args()
     logger.info("Starting up synthetic image generation service ...")
     os.makedirs("outputs", exist_ok=True)
     APP_WORKFLOW = Workflow()
     APP_WORKFLOW.init_image_generation_workflow()
-    
+
     app = create_app()
-    
+
     multiprocessing.freeze_support()
     uvicorn.run(
         app,
         host=os.environ.get("SERVER_HOST", "127.0.0.1"),
-        port=int(os.environ.get("SYNTHETIC_IMAGE_GENERATION_PORT", 5015)),
-        log_level="info"
+        port=int(os.environ.get("SYNTHETIC_IMAGE_GENERATION_PORT", args.port)),
+        log_level="info",
     )
     return 0
 
+
 if __name__ == "__main__":
     exit(main())
-    

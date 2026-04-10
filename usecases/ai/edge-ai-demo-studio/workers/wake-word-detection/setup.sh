@@ -1,47 +1,30 @@
 #!/bin/bash
-# Copyright (C) 2025 Intel Corporation
-# SPDX-License-Identifier: Apache-2.0 
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VENV_DIR="$SCRIPT_DIR/.venv"
+WORKERS_DIR="$(dirname "$SCRIPT_DIR")"
+WORKERS_THIRDPARTY_DIR="$WORKERS_DIR/thirdparty"
 
-PARENT_THIRDPARTY_DIR="$SCRIPT_DIR/../thirdparty"
-PARENT_UV_PATH="$PARENT_THIRDPARTY_DIR/uv/uv"
-UV_CMD="$PARENT_UV_PATH"
+UV_PATH="$WORKERS_THIRDPARTY_DIR/uv/uv"
 
-# Function to check if uv is installed in parent thirdparty directory
-check_uv_installed() {
-    echo -e "Checking if uv is installed in parent thirdparty directory..."
-    if [ -x "$PARENT_UV_PATH" ]; then
-        echo -e "Found uv in parent thirdparty folder."
-    else
-        echo -e "uv not found in expected location: $PARENT_UV_PATH"
-        echo -e "Please ensure the workers setup has been run first."
-        exit 1
+check_uv() {
+    if [ -x "$UV_PATH" ]; then
+        echo "Found uv."
+        return 0
     fi
-}
-
-create_venv() {
-    if [[ -d "$VENV_DIR" ]]; then
-        echo "Virtual environment already exists at $VENV_DIR."
-    else
-        echo "Creating Python 3.11 virtual environment with uv ..."
-        "$UV_CMD" venv --seed --python 3.11 "$VENV_DIR"
-    fi
-    # shellcheck disable=SC1091
-    source "$VENV_DIR/bin/activate"
-    "$UV_CMD" sync
-    "$UV_CMD" run python -m ensurepip
+    echo "ERROR: uv not found at $UV_PATH"
+    echo "Please run the workers setup script first."
+    exit 1
 }
 
 main() {
-    echo -e "Starting Wake Word Detection Setup..."
+    echo "Starting Wake Word Detection setup..."
     cd "$SCRIPT_DIR"
-    check_uv_installed
-    create_venv
-    echo "Setup completed successfully!"
+    check_uv
+    echo "Wake Word Detection setup completed successfully!"
 }
 
 main

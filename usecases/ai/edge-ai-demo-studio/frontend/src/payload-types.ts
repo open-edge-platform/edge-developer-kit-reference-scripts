@@ -68,7 +68,7 @@ export interface Config {
   blocks: {};
   collections: {
     users: User;
-    workloads: Workload;
+    services: Service;
     'mcp-servers': McpServer;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
@@ -78,7 +78,7 @@ export interface Config {
   collectionsJoins: {};
   collectionsSelect: {
     users: UsersSelect<false> | UsersSelect<true>;
-    workloads: WorkloadsSelect<false> | WorkloadsSelect<true>;
+    services: ServicesSelect<false> | ServicesSelect<true>;
     'mcp-servers': McpServersSelect<false> | McpServersSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
@@ -89,9 +89,16 @@ export interface Config {
     defaultIDType: number;
   };
   fallbackLocale: null;
-  globals: {};
-  globalsSelect: {};
+  globals: {
+    'app-settings': AppSetting;
+  };
+  globalsSelect: {
+    'app-settings': AppSettingsSelect<false> | AppSettingsSelect<true>;
+  };
   locale: null;
+  widgets: {
+    collections: CollectionsWidget;
+  };
   user: User;
   jobs: {
     tasks: unknown;
@@ -143,20 +150,25 @@ export interface User {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "workloads".
+ * via the `definition` "services".
  */
-export interface Workload {
+export interface Service {
   id: number;
   name: string;
   type:
-    | 'wake-word-detection'
-    | 'speech-to-text'
     | 'embeddings'
+    | 'image-generation'
+    | 'lipsync'
+    | 'mcp'
+    | 'ppt-translator'
+    | 'rerank'
+    | 'robotics-ai'
+    | 'speech-to-text'
+    | 'synthetic-image-generation'
     | 'text-generation'
     | 'text-to-speech'
-    | 'lipsync'
-    | 'image-generation'
-    | 'synthetic-image-generation';
+    | 'vectordb'
+    | 'wake-word-detection';
   models: {
     default: {
       name: string;
@@ -164,6 +176,8 @@ export interface Workload {
       quant?: string;
       device: string;
       params?: string;
+      backend?: string;
+      type?: string;
     };
     /**
      * This interface was referenced by `undefined`'s JSON-Schema definition
@@ -180,7 +194,15 @@ export interface Workload {
   port: number;
   metadata?: {
     /**
-     * Turn Server IP for Lipsync
+     * Client-side ICE server URL (default: STUN)
+     */
+    clientIceServerUrl?: string;
+    /**
+     * Server-side ICE server URL (default: TURN)
+     */
+    serverIceServerUrl?: string;
+    /**
+     * Deprecated: Use clientIceServerUrl / serverIceServerUrl instead
      */
     turnServerIp?: string;
     /**
@@ -201,7 +223,7 @@ export interface Workload {
      */
     url: string;
     /**
-     * Map of Workload field paths to JSONata expressions for validation against the response
+     * Map of Service field paths to JSONata expressions for validation against the response
      */
     responseMapper?: {
       [k: string]: string;
@@ -209,7 +231,7 @@ export interface Workload {
     [k: string]: unknown;
   };
   isHealthy?: boolean | null;
-  engine: 'llamacpp' | 'openvino' | 'custom';
+  engine: 'worker' | 'multiserve';
   updatedAt: string;
   createdAt: string;
 }
@@ -255,8 +277,8 @@ export interface PayloadLockedDocument {
         value: number | User;
       } | null)
     | ({
-        relationTo: 'workloads';
-        value: number | Workload;
+        relationTo: 'services';
+        value: number | Service;
       } | null)
     | ({
         relationTo: 'mcp-servers';
@@ -328,9 +350,9 @@ export interface UsersSelect<T extends boolean = true> {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "workloads_select".
+ * via the `definition` "services_select".
  */
-export interface WorkloadsSelect<T extends boolean = true> {
+export interface ServicesSelect<T extends boolean = true> {
   name?: T;
   type?: T;
   models?: T;
@@ -395,6 +417,40 @@ export interface PayloadMigrationsSelect<T extends boolean = true> {
   batch?: T;
   updatedAt?: T;
   createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "app-settings".
+ */
+export interface AppSetting {
+  id: number;
+  hfToken?: string | null;
+  startupTimeout?: number | null;
+  theme?: ('light' | 'dark' | 'system') | null;
+  updatedAt?: string | null;
+  createdAt?: string | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "app-settings_select".
+ */
+export interface AppSettingsSelect<T extends boolean = true> {
+  hfToken?: T;
+  startupTimeout?: T;
+  theme?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  globalType?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "collections_widget".
+ */
+export interface CollectionsWidget {
+  data?: {
+    [k: string]: unknown;
+  };
+  width: 'full';
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema

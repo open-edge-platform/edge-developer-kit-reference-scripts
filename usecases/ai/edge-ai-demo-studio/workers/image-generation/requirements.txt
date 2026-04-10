@@ -1,5 +1,7 @@
 fastapi>=0.120.1
 uvicorn[standard]>=0.24.0
 python-multipart>=0.0.6
-modelscope>=1.33.0
 openai>=2.15.0
+requests>=2.33.0
+modelscope
+huggingface-hub

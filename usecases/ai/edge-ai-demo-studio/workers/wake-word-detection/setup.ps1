@@ -1,68 +1,33 @@
-# Copyright (C) 2025 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
-param(
-    [string]$ErrorActionPreference = "Stop"
-)
+$ErrorActionPreference = "Stop"
 
-$ProgressPreference = 'SilentlyContinue'
+$ScriptDir = $PSScriptRoot
+$WorkersDir = Split-Path $ScriptDir -Parent
+$WorkersThirdPartyDir = Join-Path $WorkersDir "thirdparty"
 
-$SCRIPT_DIR = $PSScriptRoot
-$VENV_DIR = Join-Path $SCRIPT_DIR ".venv"
-$ParentThirdPartyDir = Join-Path (Split-Path $PWD -Parent) "thirdparty"
-$UVPath = Join-Path $ParentThirdPartyDir "uv\uv.exe"
-$script:uvCommand = $UVPath
+$UVPath = Join-Path $WorkersThirdPartyDir "uv\uv.exe"
 
-$ROOT_THIRDPARTY_DIR = "$SCRIPT_DIR\..\..\thirdparty"
-$PARENT_GIT_PATH = "$ROOT_THIRDPARTY_DIR\git\cmd"
-
-# Function to check if uv is installed
-function Test-UvInstalled {
-    Write-Host "Checking if uv is installed..." -ForegroundColor Yellow
-    
-    # Use uv from parent thirdparty folder
+function Test-UV {
     if (Test-Path $UVPath) {
-        Write-Host "Found uv in parent thirdparty folder." -ForegroundColor Green
-        return $true
-    } else {
-        Write-Host "uv not found in expected location: $parentUvPath" -ForegroundColor Red
-        Write-Host "Please ensure the workers setup has been run first." -ForegroundColor Red
-        throw "UV not found"
+        Write-Host "Found uv."
+        return
     }
-}
-
-function New-VirtualEnvironment {
-    if (Test-Path $VENV_DIR) {
-        Write-Host "Virtual environment already exists at $VENV_DIR." -ForegroundColor Green
-    } else {
-        Write-Host "Creating Python 3.11 virtual environment with uv ..." -ForegroundColor Yellow
-        & $script:uvCommand venv --python 3.11 --seed
-        if ($LASTEXITCODE -ne 0) {
-            throw "Failed to create virtual environment. uv venv exited with code $LASTEXITCODE"
-        }
-    }
-    & $script:uvCommand sync
-    if ($LASTEXITCODE -ne 0) {
-        throw "Failed to sync dependencies. uv sync exited with code $LASTEXITCODE"
-    }
-    & $script:uvCommand run python -m ensurepip
-    if ($LASTEXITCODE -ne 0) {
-        throw "Failed to ensure pip. uv run exited with code $LASTEXITCODE"
-    }
-}
-
-# Main execution
-try {
-    Write-Host "Starting Wake Word Detection Setup..." -ForegroundColor Green
-    Push-Location -Path $PSScriptRoot
-    Test-UvInstalled
-    New-VirtualEnvironment
-    Write-Host "Setup completed successfully!" -ForegroundColor Green
-    exit 0
-} catch {
-    Write-Host "Setup failed: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "ERROR: uv not found at $UVPath" -ForegroundColor Red
+    Write-Host "Please run the workers setup script first." -ForegroundColor Red
     exit 1
 }
-finally{
+
+Push-Location $ScriptDir
+try {
+    Write-Host "Starting Wake Word Detection setup..." -ForegroundColor Cyan
+    Test-UV
+    Write-Host "Wake Word Detection setup completed successfully!" -ForegroundColor Green
+    exit 0
+} catch {
+    Write-Host "Wake Word Detection setup failed: $($_.Exception.Message)" -ForegroundColor Red
+    exit 1
+} finally {
     Pop-Location
 }

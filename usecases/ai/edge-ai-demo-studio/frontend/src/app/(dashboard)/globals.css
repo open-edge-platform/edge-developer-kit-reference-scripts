@@ -1,0 +1,589 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@source "../node_modules/streamdown/dist/*.js";
+@source "../node_modules/@streamdown/code/dist/*.js";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --font-sans: var(--font-inter);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-geist-mono);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+  --color-primary-light: var(--primary-light);
+  --color-primary-dark: var(--primary-dark);
+  --color-secondary-light: var(--secondary-light);
+  --color-intel-teal: #00aeef;
+  --color-warning: var(--warning);
+  --color-success: var(--success);
+  --color-info: var(--info);
+  --color-status-online: #22c55e;
+  --color-status-offline: #94a3b8;
+  --color-status-error: #ef4444;
+}
+
+/* ─── Light Theme (default) — Intel ViPPET-inspired ────────────── */
+:root {
+  --radius: 0.5rem;
+  --background: #ffffff;
+  --foreground: #1a1a1a;
+  --card: #ffffff;
+  --card-foreground: #1a1a1a;
+  --popover: #ffffff;
+  --popover-foreground: #1a1a1a;
+  --primary: #0068b5;
+  --primary-foreground: #ffffff;
+  --primary-light: #0071c5;
+  --primary-dark: #004a86;
+  --secondary: #00c7fd;
+  --secondary-foreground: #003344;
+  --secondary-light: #33d4ff;
+  --muted: #f5f5f5;
+  --muted-foreground: #6b7280;
+  --accent: #e8f0fe;
+  --accent-foreground: #0054ae;
+  --destructive: #d93025;
+  --warning: #d97706;
+  --success: #16a34a;
+  --info: #0284c7;
+  --border: #dcdfe3;
+  --input: #dcdfe3;
+  --ring: #0068b5;
+  --chart-1: #0068b5;
+  --chart-2: #00aeef;
+  --chart-3: #22c55e;
+  --chart-4: #f59e0b;
+  --chart-5: #8b5cf6;
+  --sidebar: #002952;
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #ffffff;
+  --sidebar-primary-foreground: #002952;
+  --sidebar-accent: #003d7a;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #003d7a;
+  --sidebar-ring: #0068b5;
+
+  /* Glass card custom props for light mode */
+  --glass-bg: #ffffff;
+  --glass-border: #dcdfe3;
+  --glass-hover-border: #0068b5;
+  --glass-hover-shadow: rgba(0, 104, 181, 0.12);
+  --grid-line: rgba(0, 0, 0, 0.04);
+  --scrollbar-thumb: rgba(0, 0, 0, 0.15);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.25);
+}
+
+/* ─── Dark Theme — Intel corporate dark ────────────────────────── */
+.dark {
+  --radius: 0.5rem;
+  --background: #0c1527;
+  --foreground: #e5e7eb;
+  --card: #111d33;
+  --card-foreground: #e5e7eb;
+  --popover: #111d33;
+  --popover-foreground: #e5e7eb;
+  --primary: #4a9ee5;
+  --primary-foreground: #ffffff;
+  --primary-light: #6db5f0;
+  --primary-dark: #3578b8;
+  --secondary: #00c7fd;
+  --secondary-foreground: #003344;
+  --secondary-light: #33d4ff;
+  --muted: #1a2740;
+  --muted-foreground: #8892a4;
+  --accent: #1a3458;
+  --accent-foreground: #6dbdfa;
+  --destructive: #ef4444;
+  --warning: #fbbf24;
+  --success: #4ade80;
+  --info: #38bdf8;
+  --border: #243350;
+  --input: #243350;
+  --ring: #4a9ee5;
+  --chart-1: #4a9ee5;
+  --chart-2: #00c7fd;
+  --chart-3: #22c55e;
+  --chart-4: #f59e0b;
+  --chart-5: #8b5cf6;
+  --sidebar: #091020;
+  --sidebar-foreground: #c8d6e5;
+  --sidebar-primary: #4a9ee5;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #162a48;
+  --sidebar-accent-foreground: #6dbdfa;
+  --sidebar-border: #1d2d48;
+  --sidebar-ring: #4a9ee5;
+
+  /* Glass card custom props for dark mode */
+  --glass-bg: #111d33;
+  --glass-border: #243350;
+  --glass-hover-border: #4a9ee5;
+  --glass-hover-shadow: rgba(74, 158, 229, 0.12);
+  --grid-line: rgba(255, 255, 255, 0.03);
+  --scrollbar-thumb: rgba(255, 255, 255, 0.12);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.22);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Card — solid, clean, corporate look (no glassmorphism blur) */
+.glass-card {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.glass-card:hover {
+  border-color: var(--glass-hover-border);
+  box-shadow: 0 4px 16px var(--glass-hover-shadow);
+}
+
+/* Status pulse animation (legacy — kept for non-indicator uses) */
+@keyframes pulse-status {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.status-pulse {
+  animation: pulse-status 2s ease-in-out infinite;
+}
+
+/* Gradient glow behind hero elements */
+.intel-glow {
+  background: radial-gradient(
+    ellipse 50% 50% at 50% 50%,
+    rgba(0, 104, 181, 0.12) 0%,
+    transparent 70%
+  );
+}
+
+/* Grid background pattern — theme-aware */
+.grid-bg {
+  background-image:
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+/* Scrollbar styling — theme-aware */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+/* ─── 11. Sidebar nav active indicator — smooth slide ──────────── */
+.gradient-border {
+  position: relative;
+}
+
+.gradient-border::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 3px;
+  height: 0;
+  border-radius: 0 3px 3px 0;
+  background: var(--sidebar-accent-foreground);
+  opacity: 0;
+  transition:
+    height 0.25s cubic-bezier(0.33, 1, 0.68, 1),
+    top 0.25s cubic-bezier(0.33, 1, 0.68, 1),
+    opacity 0.2s ease;
+}
+
+.gradient-border.active::before {
+  top: 8px;
+  height: calc(100% - 16px);
+  opacity: 1;
+}
+
+/* ─── 12. Shimmer / wave skeleton ──────────────────────────────── */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--muted) 25%,
+    var(--accent) 50%,
+    var(--muted) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+/* Wave skeleton — replaces basic pulse with a sweeping highlight */
+@keyframes skeletonWave {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.skeleton-wave {
+  position: relative;
+  overflow: hidden;
+  background: var(--muted);
+}
+
+.skeleton-wave::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--accent) 50%,
+    transparent 100%
+  );
+  animation: skeletonWave 1.6s ease-in-out infinite;
+}
+
+/* Animated gradient text for hero elements */
+@keyframes gradient-shift {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+.animated-gradient-text {
+  background-size: 200% auto;
+  animation: gradient-shift 4s ease-in-out infinite;
+}
+
+/* Enhanced card hover with lift effect */
+.card-lift {
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.card-lift:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 6px 20px -4px var(--glass-hover-shadow),
+    0 0 0 1px var(--glass-hover-border);
+}
+
+/* Sidebar brand gradient stripe */
+.sidebar-brand-stripe {
+  background: linear-gradient(
+    180deg,
+    var(--color-primary) 0%,
+    var(--color-secondary) 50%,
+    var(--color-intel-teal) 100%
+  );
+}
+
+/* ─── 10. Focus ring with smooth appearance ───────────────────── */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  transition:
+    outline-offset 0.15s ease,
+    outline-color 0.15s ease;
+}
+
+:not(:focus-visible) {
+  outline-color: transparent;
+}
+
+/* ─── 1. Staggered section fade-in ─────────────────────────────── */
+.section-fade {
+  animation: sectionFadeIn 0.4s ease-out both;
+  animation-delay: calc(var(--stagger, 0) * 80ms);
+}
+
+@keyframes sectionFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ─── 2. Page content entrance ─────────────────────────────────── */
+.page-enter {
+  animation: pageEnter 0.35s ease-out both;
+}
+
+@keyframes pageEnter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ─── 3. Card stagger animation ────────────────────────────────── */
+.card-stagger {
+  animation: cardFadeIn 0.35s ease-out both;
+  animation-delay: calc(var(--card-index, 0) * 60ms);
+}
+
+@keyframes cardFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ─── 5. Metric value pop-in ───────────────────────────────────── */
+.metric-pop {
+  animation: metricPop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  animation-delay: calc(var(--card-index, 0) * 60ms + 100ms);
+}
+
+@keyframes metricPop {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* ─── 6. Status indicator glow ring ────────────────────────────── */
+@keyframes statusRingPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 currentColor;
+    opacity: 1;
+  }
+  50% {
+    box-shadow: 0 0 0 3px currentColor;
+    opacity: 0.4;
+  }
+}
+
+.status-glow {
+  animation: statusRingPulse 2s ease-in-out infinite;
+}
+
+/* ─── Reduced-motion & accessibility ──────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+    transition-duration: 0.01ms;
+    scroll-behavior: auto;
+  }
+}
+
+/* Card-lift disabled on touch devices (hover unreliable) */
+@media (hover: none) {
+  .card-lift:hover {
+    transform: none;
+    box-shadow: none;
+  }
+}
+
+button:not(:disabled),
+[role="button"]:not(:disabled) {
+  cursor: pointer;
+}
+
+/* ─── 7. Button hover / active states ──────────────────────────── */
+button[data-slot="button"]:not(:disabled) {
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.12s ease,
+    box-shadow 0.15s ease;
+}
+
+button[data-slot="button"]:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+
+button[data-slot="button"]:not(:disabled):active {
+  transform: translateY(0.5px) scale(0.98);
+  transition-duration: 0.06s;
+}
+
+button[data-slot="button"][data-variant="default"]:not(:disabled):hover {
+  box-shadow: 0 2px 8px -2px var(--color-primary);
+}
+
+/* ─── 8. Service card accent line — width animation on hover ───── */
+.accent-line-animate {
+  transition: width 0.3s cubic-bezier(0.33, 1, 0.68, 1);
+  width: 40%;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.group:hover .accent-line-animate {
+  width: 100%;
+  left: 0;
+  transform: translateX(0);
+}
+
+/* ─── 9. Theme toggle — smooth background swap ────────────────── */
+.theme-btn {
+  transition:
+    background-color 0.25s ease,
+    border-color 0.25s ease,
+    color 0.25s ease,
+    box-shadow 0.25s ease;
+}
+
+/* ─── 4. Sidebar collapse — label & icon transitions ──────────── */
+.sidebar-label {
+  transition:
+    opacity 0.2s ease,
+    width 0.2s ease,
+    margin 0.2s ease;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.sidebar-label-hidden {
+  opacity: 0;
+  width: 0;
+  margin: 0;
+}
+
+/* ─── View-all link arrow hover ────────────────────────────────── */
+.view-all-link {
+  transition: color 0.2s ease;
+}
+
+.view-all-link:hover .view-all-arrow {
+  transform: translateX(3px);
+}
+
+.view-all-arrow {
+  display: inline-block;
+  transition: transform 0.2s ease;
+}
+
+/* ─── Badge entrance animation ─────────────────────────────────── */
+.badge-pop {
+  animation: badgePop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes badgePop {
+  from {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* ─── Empty state fade-in ──────────────────────────────────────── */
+.empty-state-fade {
+  animation: emptyFade 0.5s ease-out both;
+  animation-delay: 0.1s;
+}
+
+@keyframes emptyFade {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

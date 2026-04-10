@@ -1,4 +1,4 @@
-# Copyright (C) 2024 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 import requests
@@ -7,12 +7,16 @@ import time
 import os
 import threading
 import platform
+import shutil
+import signal
 
 os.environ["no_proxy"] = "localhost,127.0.0.1"
 os.environ["NO_PROXY"] = "localhost,127.0.0.1"
 
 import json
 import re
+import os
+import sys
 
 from pathlib import Path
 from typing import Optional, Dict, Any, Tuple
@@ -24,12 +28,13 @@ from modules.utils import (
     get_xpu_version,
     JSONLogger,
     stream_reader,
+    check_exe_output
 )
 from .gguf_downloader import GGUFDownloader
 import os
 
 FORCE_LLAMACPP_BACKEND = os.getenv("FORCE_LLAMACPP_BACKEND", "vulkan")
-LAYERS_OFFLOAD_PERCENT = os.getenv("LAYERS_OFFLOAD_PERCENT", 0.90)
+LAYERS_OFFLOAD_PERCENT = os.getenv("LAYERS_OFFLOAD_PERCENT", 1.0)
 
 
 class LlamaCPPManager:
@@ -48,6 +53,8 @@ class LlamaCPPManager:
         "multimodal": 9093,
     }
 
+    config_file = None
+
     def __init__(
         self,
         downloader: GGUFDownloader,
@@ -56,10 +63,7 @@ class LlamaCPPManager:
         server_port: int = 9000,
         backend: str = "vulkan",
     ):
-        # self._kill_existing_servers()
-
         is_vulkan_exists = False
-
         for backend in ["vulkan", "sycl"]:
             if is_vulkan_exists:
                 break
@@ -67,10 +71,11 @@ class LlamaCPPManager:
             executable = (
                 f".\\engine\\llama.cpp-{backend}\\llama-server.exe"
                 if self.IS_WINDOWS
-                else f"./engine/llama.cpp-{backend}/build/bin/llama-server"
+                else f"./engine/llama.cpp-{backend}/llama-server"
             )
             if Path(get_resource_path(executable)).exists():
                 self.SERVER_EXECUTABLE = executable
+                self.CUSTOM_SERVER_EXECUTABLE = executable
                 self.BACKEND = backend
                 is_vulkan_exists = backend == "vulkan"
 
@@ -78,10 +83,44 @@ class LlamaCPPManager:
             executable = (
                 f".\\engine\\llama.cpp-{FORCE_LLAMACPP_BACKEND}\\llama-server.exe"
                 if self.IS_WINDOWS
-                else f"./engine/llama.cpp-{FORCE_LLAMACPP_BACKEND}/build/bin/llama-server"
+                else f"./engine/llama.cpp-{FORCE_LLAMACPP_BACKEND}/llama-server"
             )
             if Path(get_resource_path(executable)).exists():
                 self.BACKEND = FORCE_LLAMACPP_BACKEND
+
+        llama_cpp_exe_name = "llama-server.exe" if self.IS_WINDOWS else "llama-server"
+        llama_cpp_resolved_path = shutil.which(llama_cpp_exe_name)
+        llama_cpp_custom_exe = (
+            Path(llama_cpp_resolved_path) if llama_cpp_resolved_path else None
+        )
+
+        if not llama_cpp_custom_exe:
+            default_dir = (
+                Path("C:\\llama.cpp") if self.IS_WINDOWS else Path("/opt/llama.cpp")
+            )
+            fallback_path = default_dir / llama_cpp_exe_name
+            if fallback_path.exists():
+                llama_cpp_custom_exe = fallback_path
+
+        if llama_cpp_custom_exe:
+            self.CUSTOM_SERVER_EXECUTABLE = llama_cpp_custom_exe
+            self.BACKEND = self.get_llama_server_backend_type()
+
+            # Phison Custom Config 
+            found, _ = check_exe_output([llama_cpp_custom_exe, "--version"], "aiDAPTIV")
+            if found:
+                self.config_file = Path(os.path.dirname(llama_cpp_custom_exe)) / "aidaptiv.json"
+                if not self.config_file.exists():
+                    if getattr(sys, 'frozen', False):
+                        current_dir = os.path.dirname(sys.executable)
+                    else:
+                        current_dir = os.path.dirname(os.path.abspath(__file__))
+
+                    self.config_file = Path(current_dir) / "aidaptiv.json"
+                    if not self.config_file.exists():
+                        self.config_file = None
+        
+        print(f"Config File: {str(self.config_file)}")
 
         self.downloader = downloader
         self.models_base_dir = models_base_dir
@@ -159,7 +198,7 @@ class LlamaCPPManager:
                 if response.status_code == 200:
                     return response.json()
 
-                time.sleep(0.1)
+                time.sleep(0.3)
             except requests.exceptions.RequestException:
                 time.sleep(initial_delay)
             except Exception:
@@ -215,7 +254,7 @@ class LlamaCPPManager:
         return result
 
     def _construct_llama_server_cmd(
-        self, model_path, mmproj_path, device, task, n_ctx, user_extra_args
+        self, model_path, mmproj_path, device, task, n_ctx, user_extra_args, skip_oom
     ):
         gguf_metadata = self.get_gguf_metadata(model_path)
         logical_bz = 2048
@@ -242,29 +281,29 @@ class LlamaCPPManager:
 
         logical_bz = min(2048, logical_bz)
         physical_bz = min(2048, physical_bz)
+        largest_bz = max(logical_bz, physical_bz)
 
         port = self.SERVER_PORTS[task]
         server_url = f"http://127.0.0.1:{port}"
 
         if task == "embeddings":
+            server_executable = get_resource_path(self.SERVER_EXECUTABLE)
             extra_args = [
                 "--embedding",
                 "--no-webui",
-                "-b",
-                str(logical_bz),
                 "-ub",
-                str(physical_bz),
+                str(largest_bz),
             ]
         elif task == "rerank":
+            server_executable = get_resource_path(self.SERVER_EXECUTABLE)
             extra_args = [
                 "--reranking",
                 "--no-webui",
-                "-b",
-                str(logical_bz),
                 "-ub",
-                str(physical_bz),
+                str(largest_bz),
             ]
         elif task == "multimodal":
+            server_executable = get_resource_path(self.CUSTOM_SERVER_EXECUTABLE)
             extra_args = [
                 "--mmproj",
                 mmproj_path,
@@ -272,14 +311,22 @@ class LlamaCPPManager:
                 "--reasoning_format",
                 "deepseek",
             ]
+            if self.config_file != None:
+                extra_args.extend(["--config-file", str(self.config_file)])
         else:
+            server_executable = get_resource_path(self.CUSTOM_SERVER_EXECUTABLE)
             extra_args = ["--jinja", "--reasoning_format", "deepseek"]
+
+            if self.config_file != None:
+                extra_args.extend(["--config-file", str(self.config_file)])
 
         chat_template_file = Path(model_path).parent / "chat_template.jinja"
         if chat_template_file.exists():
             extra_args.extend(["--chat-template-file", str(chat_template_file)])
 
-        suggested_ctx_size, oom = optimize_context_size(model_path, model_context_size)
+        suggested_ctx_size, oom = optimize_context_size(
+            model_path, model_context_size, bypass_oom=skip_oom
+        )
         if oom:
             raise RuntimeError(f"Failed to start server for {task}: Out of Memory")
 
@@ -303,7 +350,7 @@ class LlamaCPPManager:
             extra_args = self._overwrite_args(extra_args, user_extra_args)
 
         server_args = [
-            get_resource_path(self.SERVER_EXECUTABLE),
+            server_executable,
             "--model",
             model_path,
             "--port",
@@ -311,7 +358,7 @@ class LlamaCPPManager:
             *extra_args,
         ]
 
-        return server_args, server_url, logical_bz, physical_bz, ngl, context_size
+        return server_args, server_url, largest_bz, largest_bz, ngl, context_size
 
     def get_llama_server_version(self):
         try:
@@ -330,6 +377,24 @@ class LlamaCPPManager:
 
         except FileNotFoundError:
             return "not found"
+
+    def get_llama_server_backend_type(self) -> str:
+        try:
+            llama_cpp_dir = Path(self.SERVER_EXECUTABLE).parent
+
+            for backend in ["vulkan", "sycl"]:
+                backend_file_type = (
+                    Path(llama_cpp_dir) / f"ggml-{backend}.dll"
+                    if self.IS_WINDOWS
+                    else Path(llama_cpp_dir) / f"libggml-{backend}.so"
+                )
+                if backend_file_type.exists():
+                    return backend
+
+            return "unknown"
+
+        except:
+            return "unknown"
 
     def get_dependencies_versions(self) -> Dict:
         return {
@@ -415,11 +480,12 @@ class LlamaCPPManager:
         device = kwargs.get("device", "CPU")
         n_ctx = kwargs.get("n_ctx", -1)
         extra_args = kwargs.get("extra_args", [])
-        timeout = kwargs.get("timeout", 30)
+        timeout = kwargs.get("timeout", 600)
+        skip_oom = kwargs.get("skip_oom", True)
 
         server_args, server_url, logical_bz, physical_bz, ngl, context_size = (
             self._construct_llama_server_cmd(
-                model_path, mmproj_path, device, task, n_ctx, extra_args
+                model_path, mmproj_path, device, task, n_ctx, extra_args, skip_oom
             )
         )
 
@@ -435,7 +501,7 @@ class LlamaCPPManager:
             }
 
             if self.IS_WINDOWS:
-                popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+                popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
 
             process = subprocess.Popen(server_args, **popen_kwargs)
 
@@ -498,9 +564,14 @@ class LlamaCPPManager:
                 return (current_hf_repo_with_tag, current_hf_repo_with_tag)
 
             process = current_server_info["process"]
-            process.terminate()
+
+            if self.IS_WINDOWS:
+                process.send_signal(signal.CTRL_BREAK_EVENT)
+            else:
+                process.terminate()
+
             try:
-                process.wait(timeout=5)
+                process.wait(timeout=300)
             except subprocess.TimeoutExpired:
                 process.kill()
 
@@ -546,9 +617,14 @@ class LlamaCPPManager:
             if t in self.running_servers:
                 server_info = self.running_servers[t]
                 process = server_info["process"]
-                process.terminate()
+
+                if self.IS_WINDOWS:
+                    process.send_signal(signal.CTRL_BREAK_EVENT)
+                else:
+                    process.terminate()
+
                 try:
-                    process.wait(timeout=5)
+                    process.wait(timeout=300)
                 except subprocess.TimeoutExpired:
                     process.kill()
 
@@ -579,7 +655,8 @@ class LlamaCPPManager:
         device = kwargs.get("device", "CPU")
         n_ctx = kwargs.get("n_ctx", -1)
         extra_args = kwargs.get("extra_args", [])
-        timeout = kwargs.get("timeout", 120)
+        timeout = kwargs.get("timeout", 600)
+        skip_oom = kwargs.get("skip_oom", True)
 
         if model_path != None:
             if not Path(model_path).exists():
@@ -591,7 +668,7 @@ class LlamaCPPManager:
 
         server_args, server_url, logical_bz, physical_bz, ngl, context_size = (
             self._construct_llama_server_cmd(
-                model_path, mmproj_path, device, task, n_ctx, extra_args
+                model_path, mmproj_path, device, task, n_ctx, extra_args, skip_oom
             )
         )
         print(" ".join(server_args))
@@ -606,7 +683,7 @@ class LlamaCPPManager:
             }
 
             if self.IS_WINDOWS:
-                popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+                popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
 
             process = subprocess.Popen(server_args, **popen_kwargs)
 
@@ -674,9 +751,14 @@ class LlamaCPPManager:
             if t in self.running_servers:
                 server_info = self.running_servers[t]
                 process = server_info["process"]
-                process.terminate()
+
+                if self.IS_WINDOWS:
+                    process.send_signal(signal.CTRL_BREAK_EVENT)
+                else:
+                    process.terminate()
+
                 try:
-                    process.wait(timeout=5)
+                    process.wait(timeout=300)
                 except subprocess.TimeoutExpired:
                     process.kill()
 

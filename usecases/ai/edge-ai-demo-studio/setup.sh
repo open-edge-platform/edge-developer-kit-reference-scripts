@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright (C) 2025 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 set -euo pipefail
@@ -20,9 +20,9 @@ TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 
 # Function to cleanup old logs
 cleanup_old_logs() {
-  if [ -d "$LOG_DIR" ]; then
+  if [ -n "$LOG_DIR" ] && [ -d "$LOG_DIR" ]; then
     echo "Cleaning up old setup logs..."
-    rm -f "$LOG_DIR"/*_*.log
+    find "$LOG_DIR" -maxdepth 1 -type f -name '*_*.log' -delete
     echo "Old logs removed."
   fi
 }
@@ -54,6 +54,7 @@ setup_services() {
     Name=""
     Path=""
     Skip="false"
+    local oldIFS="$IFS"
     IFS=';'
     for pair in $svc; do
       key=${pair%%=*}
@@ -64,7 +65,7 @@ setup_services() {
         Skip) Skip="$val" ;;
       esac
     done
-    unset IFS
+    IFS="$oldIFS"
 
     if [ "$Skip" = "true" ]; then
       echo "Skipping setup for $Name"
@@ -216,6 +217,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [ "${Verbose:-false}" = "true" ]; then
+  # Note: set -x will echo all commands to stderr which may include environment variables.
+  # Ensure no secrets are passed as arguments or exported before enabling.
   set -x
 fi
 

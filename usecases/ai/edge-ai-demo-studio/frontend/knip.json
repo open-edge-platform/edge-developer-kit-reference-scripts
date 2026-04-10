@@ -8,6 +8,8 @@
     "-lintignore"
   ],
   "ignore": [
-    "src/components/ui/**"
+    "src/components/ui/**",
+    "src/components/ai-elements/**",
+    "src/payload/migrations/**"
   ]
 }

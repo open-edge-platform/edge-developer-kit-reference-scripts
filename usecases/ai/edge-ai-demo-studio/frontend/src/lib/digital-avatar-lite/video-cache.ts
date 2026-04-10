@@ -1,14 +1,11 @@
-// Copyright (C) 2025 Intel Corporation
+// Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-/**
- * Video cache manager for preloading and managing video frames
- */
+import { logger } from '@/lib/logger'
 
-import type { VideoCache } from './types'
 import { VIDEO_PATHS } from './config'
 import { detectVideoFPS, loadFrames } from './ffmpeg'
-import { logger } from '@/utils/logger'
+import type { VideoCache } from './types'
 
 interface LoadingState {
   idleMain: boolean
@@ -37,58 +34,34 @@ export class VideoCacheManager {
     waving: false,
   }
 
-  /**
-   * Get the idle main video cache
-   */
   getIdleMain(): VideoCache | null {
     return this.cache.idleMain
   }
 
-  /**
-   * Get an idle alternate video by index
-   */
   getIdleAlternate(index: number): VideoCache | null {
     return this.cache.idleAlternates[index] || null
   }
 
-  /**
-   * Get a talking video by index
-   */
   getTalking(index: number): VideoCache | null {
     return this.cache.talking[index] || null
   }
 
-  /**
-   * Get a waving video by index
-   */
   getWaving(index: number): VideoCache | null {
     return this.cache.waving[index] || null
   }
 
-  /**
-   * Get the count of idle alternate videos
-   */
   getIdleAlternateCount(): number {
     return this.cache.idleAlternates.length
   }
 
-  /**
-   * Get the count of talking videos
-   */
   getTalkingCount(): number {
     return this.cache.talking.length
   }
 
-  /**
-   * Get the count of waving videos
-   */
   getWavingCount(): number {
     return this.cache.waving.length
   }
 
-  /**
-   * Check if required videos are loaded
-   */
   isReady(): boolean {
     return (
       this.cache.idleMain !== null &&
@@ -97,9 +70,6 @@ export class VideoCacheManager {
     )
   }
 
-  /**
-   * Ensure all videos are preloaded into cache
-   */
   async ensureVideosLoaded(): Promise<void> {
     await Promise.all([
       this.loadIdleMain(),

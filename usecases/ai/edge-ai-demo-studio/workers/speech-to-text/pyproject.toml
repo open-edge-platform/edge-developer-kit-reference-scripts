@@ -17,4 +17,5 @@ dependencies = [
     "torch==2.8.0",
     "uvicorn==0.32.1",
     "protobuf==6.33.5",
+    "pillow>=12.1.1",
 ]

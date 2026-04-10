@@ -1,4 +1,4 @@
-# Copyright (C) 2025 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 import json
@@ -71,13 +71,10 @@ def get_last_lines(log_file: str, file_size: int, line_count: int) -> List[LogEn
 
 
 def determine_log_file_name(name: str, backend: str) -> str:
-    if name == "text_generation":
-        if backend == "llamacpp":
-            return "text_generation_server.log"
-        else:
-            return "ovms_server.log"
-    else:
+    if backend == "llamacpp":
         return f"{name}_server.log"
+    else:
+        return "ovms_server.log"
 
 
 def get_filtered_logs(

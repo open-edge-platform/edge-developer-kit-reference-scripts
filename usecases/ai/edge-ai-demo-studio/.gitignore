@@ -12,16 +12,7 @@ __pycache__
 # Thirdparty
 /thirdparty/
 /workers/thirdparty
-/workers/embeddings/thirdparty
-/workers/text-generation/thirdparty
 /workers/text-to-speech/kokoro/thirdparty
-/workers/lipsync/modules/lipsync/wav2lip/wav2lip256
-/workers/lipsync/data/avatars
-/workers/lipsync/models
-/workers/lipsync/build
-
-/workers/embeddings/data
-/workers/wake-word-detection/data
 
 /models
 
@@ -42,3 +33,5 @@ tmp
 !/out/setup.sh
 !/out/start_web.bat
 !/out/setup.bat
+
+/.installed

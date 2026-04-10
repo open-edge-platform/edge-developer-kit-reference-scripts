@@ -1,4 +1,4 @@
-# Copyright (C) 2024 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 import subprocess  # nosec - disable B404:import-subprocess check
@@ -125,17 +125,21 @@ class OVMSManager:
                         if status_data.get("model_version_status"):
                             version_status = status_data["model_version_status"][0]
                             state = version_status["state"]
+                            status = version_status.get("status", "unknown")
 
                             if state == "AVAILABLE":
                                 return True
                             elif state == "UNAVAILABLE" or state == "END":
                                 return False
+                            elif status["error_code"] == "FAILED_PRECONDITION":
+                                return False
 
             except requests.exceptions.ConnectionError:
                 pass
             except Exception as e:
-                print(f"Error checking model availability for {model_name}: {e}")
-                pass
+                print(
+                    f"Warning: Error checking model availability for {model_name}: {e}"
+                )
 
             time.sleep(poll_interval)
 
@@ -201,7 +205,7 @@ class OVMSManager:
                 config_command, check=True, capture_output=True, text=True, env=self.env
             )
         except Exception as e:
-            print(f"Error removing model {model_name} from config: {e}")
+            # print(f"Warning: Error removing model {model_name} from config: {e}")
             pass
 
         return True
@@ -292,11 +296,15 @@ class OVMSManager:
             print("Server process is not currently running.")
 
     def start_model(
-        self, model_name: str, device: str = "", extra_params: Dict[str, str] = None
+        self,
+        model_name: str,
+        device: str = "",
+        task: str = "",
+        extra_params: Dict[str, str] = None,
     ) -> bool:
         if device:
             self.downloader.update_model_device(
-                model_name, device=device, extra_params=extra_params
+                model_name, device=device, task=task, extra_params=extra_params
             )
             self._remove_model_from_config(model_name)
 
@@ -348,7 +356,11 @@ class OVMSManager:
 
         if device:
             self.downloader.update_model_device(
-                model_name, device, extra_params=extra_params
+                model_name,
+                device,
+                task,
+                source_model_path=model_path,
+                extra_params=extra_params,
             )
             self._remove_model_from_config(model_name)
 

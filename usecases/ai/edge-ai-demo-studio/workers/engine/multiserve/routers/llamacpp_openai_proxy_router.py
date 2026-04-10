@@ -1,4 +1,4 @@
-# Copyright (C) 2024 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 import sys
@@ -6,7 +6,8 @@ import os
 import httpx
 import json
 import asyncio
-import tiktoken
+
+# import tiktoken
 import math
 import io
 import base64
@@ -14,36 +15,15 @@ import pandas as pd
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse, JSONResponse
-from typing import AsyncGenerator, List, Optional, Union, Any
-from pydantic import BaseModel, ConfigDict, Field
+from typing import AsyncGenerator, List, Union, Any
+from pydantic import BaseModel
 from PIL import Image
 
 sys.path.append(os.path.dirname(__file__))
 
 from modules.llamacpp.cli import LlamaManagerCLI
+from modules.model_schema import TokenizeRequest
 from .utils import model_name_parser
-
-
-class TokenizeRequest(BaseModel):
-    repo_id: str
-    content: str
-    add_special: Optional[bool] = Field(False, example=False)
-    parse_special: Optional[bool] = Field(True, example=True)
-    with_pieces: Optional[bool] = Field(False, example=False)
-    return_len_only: Optional[bool] = Field(True, example=True)
-
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "repo_id": "llamacpp:Qwen/Qwen3-8B-GGUF:Q4_K_M",
-                "content": "this is a test message",
-                "add_special": False,
-                "parse_special": True,
-                "with_pieces": False,
-                "return_len_only": True,
-            }
-        }
-    )
 
 
 class ModelItem(BaseModel):
@@ -52,7 +32,7 @@ class ModelItem(BaseModel):
     owned_by: str
 
 
-encoding = tiktoken.get_encoding("cl100k_base")
+# encoding = tiktoken.get_encoding("cl100k_base")
 
 
 def get_server_url(manager: LlamaManagerCLI, task: str) -> str:
@@ -205,13 +185,9 @@ def create_llamacpp_openai_proxy_router(llmcpp_manager: LlamaManagerCLI) -> APIR
         final_strings = []
 
         for s in strings:
-            token_len = len(encoding.encode(s))
-            if token_len > max_tokens_per_string:
-                tokens = await tokenize(server_url, s)
-                truncated_tokens = tokens[:max_tokens_per_string]
-                final_strings.append(await detokenize(server_url, truncated_tokens))
-            else:
-                final_strings.append(s)
+            tokens = await tokenize(server_url, s)
+            truncated_tokens = tokens[:max_tokens_per_string]
+            final_strings.append(await detokenize(server_url, truncated_tokens))
 
         return final_strings
 
@@ -224,6 +200,7 @@ def create_llamacpp_openai_proxy_router(llmcpp_manager: LlamaManagerCLI) -> APIR
 
         query_tokenized_token = await tokenize(server_url, query)
         query_len = len(query_tokenized_token)
+        query_len = max(max(query_len, 4), query_len)
 
         tokenized_tokens = []
         if isinstance(input, list):
@@ -233,7 +210,7 @@ def create_llamacpp_openai_proxy_router(llmcpp_manager: LlamaManagerCLI) -> APIR
 
         elif isinstance(input, str):
             tokenized_tokens = await truncate_to_fixed_len(
-                server_url, [input], batch_size
+                server_url, [input], batch_size - query_len
             )
 
         return tokenized_tokens

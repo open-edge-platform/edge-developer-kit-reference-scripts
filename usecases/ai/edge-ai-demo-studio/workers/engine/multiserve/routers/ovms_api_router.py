@@ -1,4 +1,4 @@
-# Copyright (C) 2024 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 import sys
@@ -20,7 +20,7 @@ from typing import Optional, List, Dict
 from pathlib import Path
 
 from modules.ovms.cli import OVMSManagerCLI
-from modules.ovms.ov_downloader import ModelSource
+from modules.utils import ModelSource
 from .utils import (
     model_name_parser,
     check_model_exists,
@@ -265,17 +265,25 @@ def create_ovms_api_router(ovms_manager: OVMSManagerCLI) -> APIRouter:
             _, repo_id = model_name_parser(request.repo_id)
 
             if request.model_path is None or request.model_path == "":
-                ovms_manager.start_model(
-                    repo_id, request.device, extra_params=request.extra_params
+                result = ovms_manager.start_model(
+                    repo_id,
+                    request.device,
+                    task=request.task,
+                    extra_params=request.extra_params,
                 )
             else:
-                ovms_manager.start_local_model(
+                result = ovms_manager.start_local_model(
                     repo_id,
                     request.task,
                     request.context_size,
                     request.device,
                     request.model_path,
                     extra_params=request.extra_params,
+                )
+
+            if not result:
+                raise HTTPException(
+                    status_code=500, detail=f"Failed to start model {request.repo_id}."
                 )
 
             return "OK"

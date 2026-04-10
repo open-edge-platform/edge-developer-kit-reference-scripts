@@ -19,9 +19,9 @@ export default defineConfig({
   /* Run tests in files in parallel */
   fullyParallel: true,
   /* Fail the build on CI if you accidentally left test.only in the source code. */
-  forbidOnly: false,
+  forbidOnly: !!process.env.CI,
   /* Retry on CI only */
-  retries: 0,
+  retries: process.env.CI ? 1 : 0,
   /* Opt out of parallel tests on CI. */
   workers: 1,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
@@ -31,8 +31,8 @@ export default defineConfig({
     /* Base URL to use in actions like `await page.goto('')`. */
     baseURL: `http://localhost:${PORT}`,
 
-    /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
-    trace: 'on-first-retry',
+    /* Collect trace when a test fails. See https://playwright.dev/docs/trace-viewer */
+    trace: 'retain-on-failure',
     screenshot: 'on',
     video: 'on',
   },
@@ -41,6 +41,20 @@ export default defineConfig({
     {
       name: 'Google Chrome',
       use: { ...devices['Desktop Chrome'], channel: 'chrome' },
+    },
+    {
+      name: 'embedding-service',
+      testMatch: /tests\/services\/embedding\/.*\.spec\.ts/,
+    },
+    {
+      name: 'vectordb-service',
+      testMatch: /tests\/services\/vectordb\/.*\.spec\.ts/,
+      // This project will NOT start until 'embedding-service' finishes
+      dependencies: ['embedding-service'],
+    },
+    {
+      name: 'other-tests',
+      testIgnore: [/tests\/services\/embedding/, /tests\/services\/vectordb/],
     },
   ],
 

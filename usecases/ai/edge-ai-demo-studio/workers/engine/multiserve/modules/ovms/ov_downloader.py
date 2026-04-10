@@ -1,4 +1,4 @@
-# Copyright (C) 2024 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 import subprocess  # nosec - disable B404:import-subprocess check
@@ -9,18 +9,12 @@ import stat
 import re
 import shutil
 import requests
+import glob
+import json
 from pathlib import Path
 from collections import defaultdict
 from typing import Generator, Dict, List, Tuple, DefaultDict
-import glob
-from enum import Enum
-
-from modules.utils import get_resource_path
-
-
-class ModelSource(Enum):
-    HUGGINGFACE = "huggingface"
-    MODELSCOPE = "modelscope"
+from modules.utils import get_resource_path, ModelSource
 
 
 class OVDownloader:
@@ -30,9 +24,7 @@ class OVDownloader:
         if IS_WINDOWS
         else os.path.join(".", "engine", "ovms", "bin", "ovms")
     )
-    OPTIMUM_CLI_PATH = os.path.join(".", "engine", "optimum_export_model")
-    OPTIMUM_CLI_VENV_PATH = os.path.join(OPTIMUM_CLI_PATH, ".venv")
-    OPTIMUM_CLI_SCRIPT = os.path.join(OPTIMUM_CLI_PATH, "export_model.py")
+    OPTIMUM_VENV_PATH = os.path.join(".", "engine", "ovms", "lib", "optimum_venv")
 
     UV_EXECUTABLE = os.environ.get("UV_EXE", "uv")
 
@@ -43,6 +35,7 @@ class OVDownloader:
         "text_generation": "text_generation",
         "embeddings": "embeddings",
         "rerank": "rerank",
+        "multimodal": "text_generation",
     }
 
     def __init__(
@@ -84,25 +77,21 @@ class OVDownloader:
                     f"{path_separator.join(new_path_entries)};{ovms_parent_path};{current_path}"
                 )
             else:
-                optimum_cli_venv_site_packages = glob.glob(
+                optimum_site_packages = glob.glob(
                     os.path.join(
-                        self.OPTIMUM_CLI_VENV_PATH, "lib", "python*", "site-packages"
-                    )
-                    if not self.IS_WINDOWS
-                    else os.path.join(
-                        self.OPTIMUM_CLI_VENV_PATH, "Lib", "site-packages"
+                        self.OPTIMUM_VENV_PATH, "lib", "python*", "site-packages"
                     )
                 )[0]
-                optimum_cli_venv_executables = os.path.join(
-                    self.OPTIMUM_CLI_VENV_PATH, "Scripts" if self.IS_WINDOWS else "bin"
+                optimum_venv_executables = os.path.join(
+                    self.OPTIMUM_VENV_PATH, "bin"
                 )
                 ovms_root_path = os.path.dirname(ovms_parent_path)
                 self.env["LD_LIBRARY_PATH"] = os.path.join(ovms_root_path, "lib")
                 self.env["PATH"] = (
-                    f"{optimum_cli_venv_executables}:{os.path.join(ovms_root_path, 'bin')}:{current_path}"
+                    f"{optimum_venv_executables}:{os.path.join(ovms_root_path, 'bin')}:{current_path}"
                 )
                 self.env["PYTHONPATH"] = (
-                    f"{optimum_cli_venv_site_packages}:{os.path.join(ovms_root_path, 'lib', 'python')}"
+                    f"{optimum_site_packages}:{os.path.join(ovms_root_path, 'lib', 'python')}"
                 )
         except Exception as e:
             import traceback
@@ -127,105 +116,20 @@ class OVDownloader:
         else:
             raise exc_info[1]
 
-    def _download_from_modelscope(self, source_model: str, model_repository_path: str):
-        command = [
-            self.UV_EXECUTABLE,
-            "run",
-            "--python",
-            os.path.join(
-                self.OPTIMUM_CLI_VENV_PATH,
-                "bin/python" if not self.IS_WINDOWS else "Scripts/python.exe",
-            ),
-            "modelscope",
-            "download",
-            "--local_dir",
-            model_repository_path,
-            "--model",
-            source_model,
-        ]
-
+    def _get_base_path_by_name(self, config_path: str, model_name: str):
         try:
-            process = subprocess.Popen(
-                command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
-                universal_newlines=True,
-                env=self.env,
-            )
-            self._current_process = process
+            with open(config_path, "r") as rfile:
+                config_json = json.loads(rfile.read())
 
-            for line in process.stdout:
-                stripped_line = line.strip()
-                print(stripped_line)
-                yield stripped_line + "\n"
+            config_list = config_json.get("model_config_list", [])
+            for item in config_list:
+                inner_config = item.get("config", {})
+                if inner_config.get("name") == model_name:
+                    return inner_config.get("base_path")
 
-            process.wait()
-
-            if process.returncode != 0:
-                raise subprocess.CalledProcessError(process.returncode, process.args)
-
-            yield f"Model {source_model} download complete. \n"
-            return True
-
-        except subprocess.CalledProcessError as e:
-            if self._current_process and self._current_process.returncode in (
-                -signal.SIGTERM,
-                -signal.SIGINT,
-            ):
-                print(e)
-                yield "Download manually canceled. \n"
-                return False
-            else:
-                yield f"OVDownloader failed with exit code {e.returncode} \n"
-                return False
-        except FileNotFoundError:
-            yield "Please ensure UV is installed \n"
-            return False
+            return ""
         except Exception as e:
-            yield f"An unexpected error occurred: {e} \n"
-            return False
-        finally:
-            self._current_process = None
-
-    def _list_verified_models(self) -> Dict[str, str]:
-        verified_models = []
-
-        for repo_id_with_tag, detail in self.verified_models.items():
-            verified_models.append(
-                (repo_id_with_tag, detail["task"], detail["quant"], detail["source"])
-            )
-
-        return verified_models
-
-    def _list_downloaded_models(self) -> List[Tuple[str, str, List[str]]]:
-        consolidated_models: DefaultDict[Tuple[str, str], List[str]] = defaultdict(list)
-
-        base_dir = Path(self.models_base_dir)
-        if not base_dir.exists():
-            return []
-
-        for ov_file in base_dir.rglob("*model.xml"):
-            task = ov_file.parent.parent.parent.name
-            org = ov_file.parent.parent.name
-            model_name = ov_file.parent.name
-
-            repo_id = f"{org}/{model_name}"
-            quant_value = self.extract_quant_from_foldername(model_name)
-
-            if quant_value:
-                key = (repo_id, task)
-                if quant_value not in consolidated_models[key]:
-                    consolidated_models[key].append(quant_value)
-            else:
-                key = (repo_id, task)
-                consolidated_models[key].append("")
-        final_list = []
-        for (repo_id, task), quants in consolidated_models.items():
-            final_list.append((repo_id, task, sorted(quants)))
-
-        return final_list
+            print(f"{e}")
 
     @staticmethod
     def read_verified_models(file_path: str) -> Dict[str, str]:
@@ -254,7 +158,9 @@ class OVDownloader:
     def get_model_dir(self):
         return self.models_base_dir
 
-    def get_model_info_for_repo(self, source_model: str) -> Dict:
+    def get_model_info_for_repo(
+        self, source_model: str, source_model_path: str = ""
+    ) -> Dict:
         possible_tasks = ["text_generation", "embeddings", "rerank", "multimodal"]
 
         model_info = {}
@@ -284,6 +190,22 @@ class OVDownloader:
                     target_device_value = match.group(1)
             except Exception as e:
                 print(f"{e}")
+        else:
+            config_path = Path(self.models_base_dir) / "config.json"
+            model_path = self._get_base_path_by_name(config_path, source_model)
+            model_path = source_model_path if model_path == "" else model_path
+            if model_path != "":
+                graphpbtxt = Path(model_path) / "graph.pbtxt"
+                try:
+                    with open(str(graphpbtxt), "r") as rfile:
+                        graphpb = rfile.read()
+                    pattern = re.compile(r'device: "(.*?)"')
+                    match = pattern.search(graphpb)
+                    if match:
+                        target_device_value = match.group(1)
+                except Exception as e:
+                    print(f"{e}")
+                    model_path = ""
 
         if model_path != "" or model_info:
             return {
@@ -293,22 +215,35 @@ class OVDownloader:
                 "device": target_device_value,
                 "tool_parser": model_info.get("tool_parser", ""),
                 "chat_template": model_info.get("chat_template"),
+                "parameters": model_info.get("parameters", {}),
             }
 
         return {}
 
     def update_model_device(
-        self, source_model: str, device: str, extra_params: str = None
+        self,
+        source_model: str,
+        device: str,
+        task: str,
+        source_model_path: str = "",
+        extra_params: str = None,
     ):
-        model_info = self.get_model_info_for_repo(source_model=source_model)
+        model_info = self.get_model_info_for_repo(
+            source_model=source_model, source_model_path=source_model_path
+        )
 
-        task = model_info["task"]
-        task_cli_name = self.TASK_MAP.get(task.lower())
-
+        model_task = model_info.get("task", "")
+        model_task = task if model_task == "" else model_task
+        task_cli_name = self.TASK_MAP.get(model_task.lower())
         if not task_cli_name:
-            raise ValueError("not a valid model")
+            raise ValueError("not a valid task")
 
-        model_repository_path = os.path.join(self.models_base_dir, task_cli_name)
+        if source_model_path != "":
+            model_repository_path = str(
+                Path(source_model_path).parent.parent.absolute()
+            )
+        else:
+            model_repository_path = os.path.join(self.models_base_dir, task)
 
         command = [
             self.OVMS_EXECUTABLE,
@@ -322,6 +257,10 @@ class OVDownloader:
             "--target_device",
             device,
         ]
+
+        if model_info.get("parameters", {}).get("pipeline_type", "") != "":
+            pipeline_type = model_info["parameters"]["pipeline_type"]
+            command.extend(["--pipeline_type", pipeline_type])
 
         if extra_params:
             command.extend(extra_params.split())
@@ -381,7 +320,7 @@ class OVDownloader:
             yield f"{source_model} not a supported model"
             return
 
-        model_repository_path = os.path.join(self.models_base_dir, task_cli_name)
+        model_repository_path = os.path.join(self.models_base_dir, task)
         command = [
             self.OVMS_EXECUTABLE,
             "--pull",
@@ -392,6 +331,10 @@ class OVDownloader:
             "--task",
             task_cli_name,
         ]
+
+        if model_info.get("parameters", {}).get("pipeline_type", "") != "":
+            pipeline_type = model_info["parameters"]["pipeline_type"]
+            command.extend(["--pipeline_type", pipeline_type])
 
         try:
             process = subprocess.Popen(
@@ -456,22 +399,26 @@ class OVDownloader:
             yield f"Invalid task '{task}'. Must be one of: text_generation, embeddings, rerank, multimodal.\n"
             return
 
+        task_cli_name = self.TASK_MAP.get(task.lower())
+
+        if not task_cli_name:
+            raise ValueError("not a valid task")
+
         model_repository_path = os.path.join(self.models_base_dir, task)
+        
+        command_env = self.env.copy()
 
         if source == ModelSource.MODELSCOPE:
-            success = yield from self._download_from_modelscope(
-                source_model, model_repository_path
-            )
-            if not success:
-                return
-            command = [self.UV_EXECUTABLE, "run", self.OPTIMUM_CLI_SCRIPT, task]
-        else:
-            command = [
-                self.OVMS_EXECUTABLE,
-                "--pull",
-                "--task",
-                task,
-            ]
+            command_env["HF_ENDPOINT"] = "https://www.modelscope.cn/models"
+
+        command = [
+            self.OVMS_EXECUTABLE,
+            "--pull",
+            "--task",
+            task_cli_name,
+            '--log_level',
+            'DEBUG'
+        ]
 
         command.extend(
             [
@@ -496,7 +443,7 @@ class OVDownloader:
                 text=True,
                 bufsize=1,
                 universal_newlines=True,
-                env=self.env,
+                env=command_env,
             )
             self._current_process = process
             self._current_model = source_model
@@ -549,15 +496,14 @@ class OVDownloader:
 
     def delete_downloaded_model(self, source_model: str) -> bool:
         model_info = self.get_model_info_for_repo(source_model=source_model)
-        print(model_info)
 
         task = model_info["task"]
         task_cli_name = self.TASK_MAP.get(task.lower())
 
         if not task_cli_name:
-            raise ValueError("not a valid model")
+            raise ValueError("not a valid task")
 
-        model_repository_path = os.path.join(self.models_base_dir, task_cli_name)
+        model_repository_path = os.path.join(self.models_base_dir, task)
         model_dir = os.path.join(model_repository_path, source_model)
 
         if os.path.exists(model_dir):
@@ -574,9 +520,47 @@ class OVDownloader:
             print(f"Model directory not found: {model_dir}")
             return False
 
+    def list_verified_models(self) -> Dict[str, str]:
+        verified_models = []
+
+        for repo_id_with_tag, detail in self.verified_models.items():
+            verified_models.append(
+                (repo_id_with_tag, detail["task"], detail["quant"], detail["source"])
+            )
+
+        return verified_models
+
+    def list_downloaded_models(self) -> List[Tuple[str, str, List[str]]]:
+        consolidated_models: DefaultDict[Tuple[str, str], List[str]] = defaultdict(list)
+
+        base_dir = Path(self.models_base_dir)
+        if not base_dir.exists():
+            return []
+
+        for ov_file in base_dir.rglob("*model.xml"):
+            task = ov_file.parent.parent.parent.name
+            org = ov_file.parent.parent.name
+            model_name = ov_file.parent.name
+
+            repo_id = f"{org}/{model_name}"
+            quant_value = self.extract_quant_from_foldername(model_name)
+
+            if quant_value:
+                key = (repo_id, task)
+                if quant_value not in consolidated_models[key]:
+                    consolidated_models[key].append(quant_value)
+            else:
+                key = (repo_id, task)
+                consolidated_models[key].append("")
+        final_list = []
+        for (repo_id, task), quants in consolidated_models.items():
+            final_list.append((repo_id, task, sorted(quants)))
+
+        return final_list
+
     def list_models(self):
-        verified_models = self._list_verified_models()
-        downloaded_models = self._list_downloaded_models()
+        verified_models = self.list_verified_models()
+        downloaded_models = self.list_downloaded_models()
 
         verified_map = {}
         for repo_id, task_type, quantizations, sources in verified_models:

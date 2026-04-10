@@ -1,4 +1,4 @@
-# Copyright (C) 2024 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 import sys
@@ -12,8 +12,28 @@ from datetime import datetime
 from typing import List
 from pathlib import Path
 import string
+from enum import Enum
+
+
+class ModelSource(Enum):
+    HUGGINGFACE = "huggingface"
+    MODELSCOPE = "modelscope"
 
 MAX_PATH_LENGTH = 4096
+
+
+def extract_json_from_output(output: str):
+    if not output:
+        raise json.JSONDecodeError("Empty output", output or "", 0)
+    for start_char, end_char in [("{", "}"), ("[", "]")]:
+        start = output.find(start_char)
+        if start == -1:
+            continue
+        end = output.rfind(end_char)
+        if end == -1 or end < start:
+            continue
+        return json.loads(output[start : end + 1])
+    raise json.JSONDecodeError("No JSON object or array found in output", output, 0)
 
 
 class JSONLogger:
@@ -136,6 +156,7 @@ def optimize_context_size(
         262144,
         524288,
     ],
+    bypass_oom: bool = False,
 ):
     if not os.path.exists(model_path):
         raise FileNotFoundError(f"Model file not found: {model_path}")
@@ -167,7 +188,8 @@ def optimize_context_size(
     try:
         devices = get_gpu_mapping()
         if not devices or devices[0].get("xpu_id") is None:
-            raise RuntimeError("No valid XPU device found for memory usage check.")
+            return 4096, False
+            # raise RuntimeError("No valid XPU device found for memory usage check.")
 
         xpu_id = str(devices[0]["xpu_id"])
         if not xpu_id:
@@ -186,14 +208,13 @@ def optimize_context_size(
             text=True,
             check=True,
         )
-        discovery_data = json.loads(res.stdout)
+        discovery_data = extract_json_from_output(res.stdout)
 
         val = find_key(discovery_data, "memory_free_size_byte")
         if val is None:
             raise RuntimeError(
                 "xpu-smi discovery did not return 'memory_free_size_byte'"  # max_mem_alloc_size_byte does not work for ARL/MTL
             )
-        # total_bytes = int(val)
         free_bytes = int(val)
 
     except subprocess.CalledProcessError as e:
@@ -211,7 +232,7 @@ def optimize_context_size(
             text=True,
             check=True,
         )
-        stats_data = json.loads(res.stdout)
+        stats_data = extract_json_from_output(res.stdout)
         device_level = (
             stats_data.get("device_level", [])
             if isinstance(stats_data, dict)
@@ -242,7 +263,6 @@ def optimize_context_size(
     if available_bytes < 0:
         available_bytes = 0
 
-    # print(f"Total VRAM:      {total_bytes / (1024**3):.2f} GiB")
     print(f"Available Limit: {available_bytes / (1024**3):.2f} GiB")
     print(f"Currently Used:  {used_bytes / (1024**3):.2f} GiB")
     print("-" * 65)
@@ -282,7 +302,12 @@ def optimize_context_size(
                 best_context = ctx
                 oom = False
             else:
-                status = "FAIL (OOM)"
+                if bypass_oom:
+                    status = "SKIP OOM CHECK"
+                    oom = False
+                else:
+                    status = "FAIL (OOM)"
+                    oom = True
 
             print(f"{ctx:<10} | {req_gib:<15.2f} | {status}")
 
@@ -376,7 +401,7 @@ def validate_and_sanitize_dir(cache_dir: str) -> str:
     if len(cache_dir) > MAX_PATH_LENGTH:
         raise ValueError("Model cache directory path is too long (>4096 characters)")
 
-    valid_chars = string.ascii_letters + string.digits + "/-._~ " + os.sep
+    valid_chars = string.ascii_letters + string.digits + "/-._~" + os.sep
     if os.name == "nt":
         valid_chars += ":"
     if not all(c in valid_chars for c in cache_dir):
@@ -469,14 +494,14 @@ def get_xpu_smi_map():
 
     if not out or "device_list" not in out:
         if sys.platform == "win32":
-            local_path = r".\engine\xpu-smi\xpu-smi.exe"
+            local_path = get_resource_path(r".\engine\xpu-smi\xpu-smi.exe")
             if os.path.exists(local_path):
                 out = _get_command_output([local_path, "discovery", "-j"])
 
     mapping = {}
     if out:
         try:
-            data = json.loads(out)
+            data = extract_json_from_output(out)
             if "device_list" in data:
                 for dev in data["device_list"]:
                     # map "0xe20b" -> 1
@@ -528,3 +553,15 @@ def get_gpu_mapping():
         )
 
     return output_list
+
+def check_exe_output(args, keyword):
+    try:
+        result = subprocess.run(args, capture_output=True, text=True, check=True)
+        output = result.stdout + result.stderr
+        
+        if keyword in output:
+            return True, output.strip()
+        return False, output.strip()
+    
+    except subprocess.CalledProcessError as e:
+        return False, f"Error running exe: {e}"

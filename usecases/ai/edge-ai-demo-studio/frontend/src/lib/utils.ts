@@ -1,19 +1,38 @@
-// Copyright (C) 2025 Intel Corporation
+// Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-import { clsx, type ClassValue } from 'clsx'
-import { randomBytes } from 'crypto'
+import { type ClassValue, clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
+import type { Device } from '@/types/common'
+import { ALL_DEVICE_TYPES } from './constants'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+export function getDeviceFamily(deviceId: string): Device {
+  const base = deviceId.split(/[.:]/)[0].toLowerCase()
+  if (ALL_DEVICE_TYPES.includes(base as Device)) {
+    return base as Device
+  }
+  return 'cpu'
+}
+
+export function isDeviceInFamilies(
+  deviceId: string,
+  families: Device[],
+): boolean {
+  return families.includes(getDeviceFamily(deviceId))
+}
+
 /**
- * Generate a cryptographically secure random number in the range [0, 1)
+ * Extract the first meaningful sentence from a tool description,
+ * stripping Args/parameter documentation that follows double newlines.
  */
-export function secureRandom(): number {
-  const bytes = randomBytes(4)
-  const value = bytes.readUInt32BE(0)
-  return value / 0x100000000
+export function getFirstSentence(text: string): string {
+  // Cut at the first double-newline (often precedes "Args:" blocks)
+  const beforeArgs = text.split(/\n\n/)[0].trim()
+  // If still long, take the first sentence (ends with . or : followed by space/end)
+  const sentenceMatch = beforeArgs.match(/^(.+?[.!?])(?:\s|$)/)
+  return sentenceMatch ? sentenceMatch[1] : beforeArgs
 }

@@ -1,4 +1,4 @@
-# Copyright (C) 2025 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 """Configuration module for wake word detection service."""
@@ -43,6 +43,7 @@ class DetectionState:
     selected_device_id: int = -1
     default_device_id: int = -1
     vad_threshold: float = 0.2
+    detection_threshold: float = 0.5
 
     def reset(self):
         """Reset detection state."""

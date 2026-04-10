@@ -1,10 +1,10 @@
 #!/bin/bash
-# Copyright (C) 2025 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0 
 
 set -euo pipefail
 
-XPU_SMI_RELEASE_URL="https://github.com/intel/xpumanager/releases/download/V1.3.6/xpu-smi_1.3.6_20260206.143628.1004f6cb.u24.04_amd64.deb"
+XPU_SMI_RELEASE_URL="https://github.com/intel/xpumanager/releases/download/v1.3.6/xpu-smi_1.3.6_20260206.143628.1004f6cb.u24.04_amd64.deb"
 XPU_SMI_DOWNLOAD_FILE="xpu-smi.deb"
 
 # Parse command-line arguments
@@ -257,12 +257,20 @@ install_drivers() {
     echo ""
     echo "❌ ERROR: Driver installation failed"
     echo "Please check the error messages above and try again"
-    cd "$original_dir" || true
+    rm -f "$driver_script"
+    cd "$original_dir" || {
+      echo "❌ ERROR: Failed to return to original directory: $original_dir"
+      return 1
+    }
     return 1
   fi
   
-  # Return to original directory
-  cd "$original_dir" || return 1
+  # Cleanup and return to original directory
+  rm -f "$driver_script"
+  cd "$original_dir" || {
+    echo "❌ ERROR: Failed to return to original directory: $original_dir"
+    return 1
+  }
 }
 
 
@@ -281,17 +289,33 @@ install_xpu_smi() {
     fi
     
     # Check if we can install system-wide (requires sudo)
-    if command_exists dpkg && [[ $EUID -eq 0 || $(sudo -n true 2>/dev/null; echo $?) -eq 0 ]]; then
+    if command_exists dpkg && [[ $EUID -eq 0 ]]; then
         echo "Installing XPU-SMI system-wide..."
         if sudo apt install -y "./$XPU_SMI_DOWNLOAD_FILE"; then
             rm -f "$XPU_SMI_DOWNLOAD_FILE"
             echo "XPU-SMI installed system-wide."
             return 0
         else
-            echo "System-wide installation failed, trying local installation..."
+            echo "❌ ERROR: System-wide XPU-SMI installation failed."
+            echo "Please install manually: sudo apt install ./$XPU_SMI_DOWNLOAD_FILE"
+            rm -f "$XPU_SMI_DOWNLOAD_FILE"
+            return 1
+        fi
+    elif command_exists dpkg && sudo -n true 2>/dev/null; then
+        echo "Installing XPU-SMI system-wide..."
+        if sudo apt install -y "./$XPU_SMI_DOWNLOAD_FILE"; then
+            rm -f "$XPU_SMI_DOWNLOAD_FILE"
+            echo "XPU-SMI installed system-wide."
+            return 0
+        else
+            echo "❌ ERROR: System-wide XPU-SMI installation failed."
+            echo "Please install manually: sudo apt install ./$XPU_SMI_DOWNLOAD_FILE"
+            rm -f "$XPU_SMI_DOWNLOAD_FILE"
+            return 1
         fi
     else
         echo "Cannot install system-wide (no sudo access or not on Debian/Ubuntu)"
+        rm -f "$XPU_SMI_DOWNLOAD_FILE"
         return 1
     fi
     

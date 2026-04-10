@@ -1,4 +1,4 @@
-# Copyright (C) 2025 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 import asyncio
@@ -20,7 +20,7 @@ from modules.texttospeech.openaicompatible_tts import OpenAICompatibleTTSModule
 
 
 class WebRTCAvatar(WebRTCStreamer):
-    def __init__(self, avatar_id, configs, tts_port, device, ws_manager=None):
+    def __init__(self, avatar_id, configs, device, ws_manager=None):
         super().__init__()
 
         self.configs = configs
@@ -45,7 +45,7 @@ class WebRTCAvatar(WebRTCStreamer):
             audio_queue=self.avatar.audio_input_queue,
             batch_size=self.avatar.batch_size,
             configs=self.configs,
-            url=f"http://localhost:{tts_port}/v1",
+            url="",
         )
 
     def __del__(self):
@@ -94,7 +94,9 @@ class WebRTCAvatar(WebRTCStreamer):
         self.tts.stop()
         self.avatar.stop()
 
-    def echo(self, text, voice, model, speed):
+    def echo(self, text, voice, model, speed, tts_url=None):
+        if tts_url:
+            self.tts.server_url = tts_url
         self._notify_status("processing_started")
         self.is_processing = True
         self.tts.speak(text, {"voice": voice, "model": model, "speed": speed})

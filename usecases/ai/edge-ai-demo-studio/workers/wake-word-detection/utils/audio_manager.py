@@ -1,4 +1,4 @@
-# Copyright (C) 2025 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 """Audio management module for wake word detection."""
@@ -6,6 +6,7 @@
 import asyncio
 import logging
 import os
+import queue
 import subprocess  # nosec -- used for arecord parsing
 from typing import Optional
 
@@ -23,9 +24,10 @@ class AudioManager:
 
     def __init__(self, audio_config: AudioConfig):
         self.config = audio_config
-        self.audio_queue: asyncio.Queue = asyncio.Queue()
+        self._thread_queue: queue.Queue = queue.Queue()
         self.audio_stream: Optional[sd.InputStream] = None
         self.resample_ratio: float = 1.0
+        self.current_rms: float = 0.0
 
     def audio_callback(self, indata, frames, time_info, status):
         """Callback function for audio stream."""
@@ -35,6 +37,9 @@ class AudioManager:
         # Extract mono audio
         audio_float = indata[:, 0]
 
+        # Track RMS level (0.0-1.0)
+        self.current_rms = float(np.sqrt(np.mean(audio_float**2)))
+
         # Resample if needed
         if self.resample_ratio != 1.0:
             target_samples = int(len(audio_float) * self.resample_ratio)
@@ -43,11 +48,23 @@ class AudioManager:
         # Convert float32 to int16 for openWakeWord
         audio_array = (audio_float * 32767).astype(np.int16)
 
-        # Put in queue for processing
+        # Put in queue for processing (thread-safe stdlib queue)
         try:
-            self.audio_queue.put_nowait(audio_array.copy())
-        except asyncio.QueueFull:
+            self._thread_queue.put_nowait(audio_array.copy())
+        except queue.Full:
             logger.warning("Audio queue full, dropping frame")
+
+    async def get_audio(self, timeout: float = 0.1):
+        """Get the next audio chunk from the thread-safe queue.
+
+        Bridges the PortAudio callback thread to the asyncio consumer
+        by polling the stdlib queue in a non-blocking loop.
+        """
+        loop = asyncio.get_event_loop()
+        return await asyncio.wait_for(
+            loop.run_in_executor(None, self._thread_queue.get, True, timeout),
+            timeout=timeout + 0.05,
+        )
 
     async def start_stream(self, device_id: int = -1):
         """Start audio stream from the system microphone.
@@ -77,8 +94,10 @@ class AudioManager:
                     f"Will resample from {native_sample_rate}Hz to {self.config.SAMPLE_RATE}Hz (ratio: {self.resample_ratio:.3f})"
                 )
 
-            # Check if the specified device is sysdefault and convert to None for sounddevice
-            if device_info.get("name", "").lower() == "sysdefault":
+            # When using the default device (-1/None), sounddevice may resolve
+            # "sysdefault" differently than the user expects. Only fall back to
+            # None (PortAudio default) when no explicit device was requested.
+            if device_id == -1 and device_info.get("name", "").lower() == "sysdefault":
                 device_to_use = None
 
             # Open microphone stream with sounddevice using native sample rate
@@ -114,10 +133,10 @@ class AudioManager:
 
     def clear_queue(self):
         """Clear the audio queue."""
-        while not self.audio_queue.empty():
+        while not self._thread_queue.empty():
             try:
-                self.audio_queue.get_nowait()
-            except asyncio.QueueEmpty:
+                self._thread_queue.get_nowait()
+            except queue.Empty:
                 break
 
     @staticmethod
@@ -232,9 +251,11 @@ class AudioManager:
             List of available audio devices with their properties
         """
         try:
-            # Force re-initialization of sounddevice to refresh device list
-            sd._terminate()
-            sd._initialize()
+            # Re-initialize sounddevice to refresh device list, but only when
+            # no audio stream is active — _terminate() would destroy it.
+            if self.audio_stream is None:
+                sd._terminate()
+                sd._initialize()
 
             devices = sd.query_devices()
             available_devices = []

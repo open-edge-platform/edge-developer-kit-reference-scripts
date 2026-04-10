@@ -1,4 +1,4 @@
-﻿# Copyright (C) 2025 Intel Corporation
+﻿# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 param(
@@ -10,7 +10,6 @@ param(
     [switch]$ContinueOnError,
     [switch]$AutoYes
 )
-$ProgressPreference = 'SilentlyContinue'
 
 # Helper: Cleanup processes
 function Cleanup {
@@ -234,7 +233,7 @@ function Invoke-ServiceSetup {
         $scriptArgs = @(
             "-NoProfile",
             "-ExecutionPolicy", "Bypass",
-            "-File", "`"$setupScript`""
+            "-File", $setupScript
         )
         
         # Always add -Verbose to child scripts for detailed logs
@@ -244,6 +243,8 @@ function Invoke-ServiceSetup {
         # Add skip parameters for workers setup
         if ($ServiceName -eq "Workers") {
             if ($ContinueOnError) { $scriptArgs += "-ContinueOnError" }
+            # Ensure the child workers/setup.ps1 runs its internal worker discovery
+            $scriptArgs += "-SetupWorkers"
         }
         
         # Create service-specific log file

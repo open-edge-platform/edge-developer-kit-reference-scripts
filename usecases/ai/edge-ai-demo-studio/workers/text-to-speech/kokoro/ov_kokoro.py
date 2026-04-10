@@ -1,4 +1,4 @@
-# Copyright (C) 2025 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 import torch
@@ -7,7 +7,7 @@ import json
 import openvino as ov
 
 from pathlib import Path
-from huggingface_hub import snapshot_download
+from huggingface_hub import hf_hub_download
 from modelscope.hub.file_download import model_file_download as ms_hub_download
 
 from kokoro import KPipeline, KModel
@@ -63,7 +63,7 @@ class OVKModel(KModel):
                 local_dir=model_dir,
             )
         else:
-            res = snapshot_download(
+            res = hf_hub_download(
                 repo_id=repo_id,
                 filename=filename,
                 local_dir=model_dir,

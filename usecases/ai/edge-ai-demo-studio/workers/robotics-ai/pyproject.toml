@@ -1,0 +1,29 @@
+[project]
+name = "robotics-ai"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "clip",
+    "fastapi[all]>=0.135.3",
+    "fastmcp>=2.12.4",
+    "feetech-servo-sdk>=1.0.0",
+    "lerobot>=0.5.1",
+    "openai>=2.31.0",
+    "openvino>=2026.1.0",
+    "placo>=0.9.16",
+    "pyrealsense2>=2.57.7.10387",
+    "sse-starlette>=3.3.4",
+    "supervision>=0.27.0.post2",
+    "torch==2.9.1",
+    "torchaudio==2.9.1",
+    "torchvision==0.24.1",
+    "ultralytics>=8.4.36",
+]
+
+[tool.uv.sources]
+clip = { git = "https://github.com/openai/CLIP.git" }
+
+[[tool.uv.index]]
+url = "https://download.pytorch.org/whl/xpu"

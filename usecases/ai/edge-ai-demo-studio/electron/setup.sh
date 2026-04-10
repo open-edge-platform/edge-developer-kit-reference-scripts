@@ -1,15 +1,16 @@
 #!/bin/bash
-# Copyright (C) 2025 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 # Exit on error
-set -e
+set -euo pipefail
 
 # Get the directory of this script
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Node.js path from thirdparty
 NODE_PATH="$SCRIPT_DIR/../thirdparty/node/bin"
+OLD_PATH="$PATH"
 
 # Function to set up Node.js environment
 setup_node_env() {
@@ -19,7 +20,6 @@ setup_node_env() {
         exit 1
     fi
     
-    OLD_PATH="$PATH"
     export PATH="$NODE_PATH:$PATH"
     
     # Check for node and npm
@@ -54,8 +54,6 @@ main() {
     npm install
     
     echo "Electron Builder setup complete!"
-    
-    reset_env
 }
 
 # Trap to ensure environment is reset on exit

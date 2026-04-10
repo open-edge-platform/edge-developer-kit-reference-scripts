@@ -1,4 +1,4 @@
-# Copyright (C) 2024 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 import sys
@@ -8,31 +8,14 @@ import json
 import asyncio
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse, JSONResponse
-from typing import AsyncGenerator, List, Optional
-from pydantic import BaseModel, ConfigDict, Field
+from typing import AsyncGenerator, List
+from pydantic import BaseModel
 
 sys.path.append(os.path.dirname(__file__))
 
 from modules.ovms.cli import OVMSManagerCLI
+from modules.model_schema import TokenizeRequest
 from .utils import model_name_parser
-
-
-class TokenizeRequest(BaseModel):
-    repo_id: str
-    content: str
-    add_special: Optional[bool] = Field(False, example=True)
-    return_len_only: Optional[bool] = Field(True, example=True)
-
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "repo_id": "openvino:OpenVINO/Qwen3-8B-int4-ov",
-                "content": "this is a test message",
-                "add_special": True,
-                "return_len_only": True,
-            }
-        }
-    )
 
 
 class ModelItem(BaseModel):

@@ -1,21 +1,27 @@
-// Copyright (C) 2025 Intel Corporation
+// Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
 // ===================================
 // DEPENDENCIES AND IMPORTS
 // ===================================
-const { app, BrowserWindow, Menu } = require("electron");
+const { app, BrowserWindow, Menu, dialog } = require("electron");
 const path = require("path");
 const os = require("os");
 const { spawn } = require("child_process");
 const { fileURLToPath } = require("url");
 const fs = require("fs");
+const treeKill = require("tree-kill");
+const readline = require("readline");
 
 // ===================================
 // GLOBAL VARIABLES
 // ===================================
 const childProcesses = []; // Array to track spawned processes
 const isWindows = os.platform() === "win32";
+let cleanupPromise = null; // Track cleanup to avoid duplicate cleanup runs
+
+/** Grace period (ms) between SIGTERM and SIGKILL when stopping a process tree. */
+const SIGTERM_GRACE_MS = 5000;
 
 // ===================================
 // UTILITY FUNCTIONS
@@ -117,8 +123,8 @@ async function createSplashScreen() {
   const preloadPath = path.join(__dirname, "preload.js");
 
   const splash = new BrowserWindow({
-    width: 400,
-    height: 300,
+    width: 600,
+    height: 400,
     webPreferences: {
       preload: preloadPath,
       contextIsolation: true,
@@ -151,6 +157,17 @@ function updateSplashProgress(splash, status, progress) {
  */
 function finalizeSplash(splash, exitCode = 0) {
   splash.webContents.send("pip-done", exitCode);
+}
+
+/**
+ * Sends a single raw log line to the splash screen log area.
+ * @param {BrowserWindow} splash - The splash window instance
+ * @param {string} line - The log line to display
+ */
+function sendSplashLog(splash, line) {
+  if (splash && !splash.isDestroyed()) {
+    splash.webContents.send("pip-log", line);
+  }
 }
 
 // ===================================
@@ -200,20 +217,21 @@ function getWorkerDirectories() {
  * @param {string[]} workerDirs - Array of worker directories
  * @returns {Array<{status: string, progress: number}>} Progress steps
  */
-function createProgressSteps(workerDirs) {
+function createProgressSteps(workerDirs, startProgress = 0) {
   const initialSetupSteps = [
     {
       status: "Setting up thirdparty dependencies...",
-      progress: 0,
+      progress: startProgress,
     },
   ];
 
   // Offset progress so first worker is above 0 and each step is visually distinct
   const totalSteps = workerDirs.length + 1; // +1 for initial setup
+  const totalRange = 80 - startProgress;
   return initialSetupSteps.concat(
     workerDirs.map((workerDir, index) => ({
       status: `Setting up ${path.basename(workerDir)}...`,
-      progress: Math.round(((index + 1) / totalSteps) * 80),
+      progress: Math.round(startProgress + ((index + 1) / totalSteps) * totalRange),
     }))
   );
 }
@@ -224,7 +242,7 @@ function createProgressSteps(workerDirs) {
  * @param {string} cwd - Working directory for the script
  * @returns {Promise<void>} Resolves when script completes successfully
  */
-function runSetupScript(scriptPath, cwd) {
+function runSetupScript(scriptPath, cwd, onLog) {
   const logDirPath = ensureLogsDirectory();
   const sanitizedScriptPath = fileURLToPath(new URL(`file://${scriptPath}`));
 
@@ -246,9 +264,11 @@ function runSetupScript(scriptPath, cwd) {
     });
     childProcesses.push(setupProcess);
 
-    // Handle process output
-    setupProcess.stdout.on("data", (data) => logStream.write(data));
-    setupProcess.stderr.on("data", (data) => logStream.write(data));
+    // Handle process output — split by line for live log streaming
+    const rlOut = readline.createInterface({ input: setupProcess.stdout, crlfDelay: Infinity });
+    const rlErr = readline.createInterface({ input: setupProcess.stderr, crlfDelay: Infinity });
+    rlOut.on("line", (line) => { logStream.write(line + "\n"); if (onLog) onLog(line); });
+    rlErr.on("line", (line) => { logStream.write(line + "\n"); if (onLog) onLog(line); });
 
     // Handle process completion
     setupProcess.on("close", (code) => {
@@ -272,6 +292,31 @@ function runSetupScript(scriptPath, cwd) {
   });
 }
 
+/**
+ * Returns the path to the setup-complete marker file.
+ * Stored under app.getPath('userData') so it is always user-writable,
+ * regardless of where the app is installed.
+ * @returns {string}
+ */
+function getSetupMarkerPath() {
+  return path.join(app.getPath("userData"), ".setup-complete");
+}
+
+/**
+ * Returns true if the full worker setup has already been completed.
+ * @returns {boolean}
+ */
+function isSetupComplete() {
+  return fs.existsSync(getSetupMarkerPath());
+}
+
+/**
+ * Writes the setup-complete marker so future launches skip the setup flow.
+ */
+function markSetupComplete() {
+  fs.writeFileSync(getSetupMarkerPath(), "installed\n", { encoding: "utf8" });
+}
+
 function getThirdpartyPath() {
   return getEnvironmentPath(
     path.join(__dirname, "../", "thirdparty"),
@@ -287,11 +332,11 @@ function getNodePath() {
   );
 }
 
-async function setupThirdparty() {
+async function setupThirdparty(onLog) {
   const thirdpartyPath = getThirdpartyPath();
   const scriptName = isWindows ? "setup_thirdparty.ps1" : "setup_thirdparty.sh";
   const scriptPath = getEnvironmentPath(
-    path.join(__dirname, "..", "scripts", scriptName),
+    path.join(__dirname, "..", "scripts",  isWindows?"win":"bash", scriptName),
     path.join(process.resourcesPath, "scripts", scriptName)
   );
 
@@ -307,12 +352,10 @@ async function setupThirdparty() {
 
   return new Promise((resolve, reject) => {
     const proc = spawn(command, args, { cwd: path.dirname(scriptPath) });
-    proc.stdout.on("data", (data) => {
-      process.stdout.write(data);
-    });
-    proc.stderr.on("data", (data) => {
-      process.stderr.write(data);
-    });
+    const rlOut = readline.createInterface({ input: proc.stdout, crlfDelay: Infinity });
+    const rlErr = readline.createInterface({ input: proc.stderr, crlfDelay: Infinity });
+    rlOut.on("line", (line) => { process.stdout.write(line + "\n"); if (onLog) onLog(line); });
+    rlErr.on("line", (line) => { process.stderr.write(line + "\n"); if (onLog) onLog(line); });
     proc.on("close", (code) => {
       if (code === 0) {
         resolve();
@@ -330,15 +373,20 @@ async function setupThirdparty() {
  * Sets up all workers with progress tracking
  * @returns {Promise<BrowserWindow>} The splash screen instance
  */
-async function setupWorkers() {
+async function setupWorkers(splash, startProgress = 0) {
+  const onLog = (line) => sendSplashLog(splash, line);
   const workerDirs = getWorkerDirectories();
 
-  const steps = createProgressSteps(workerDirs);
-  const splash = await createSplashScreen();
-
+  const steps = createProgressSteps(workerDirs, startProgress);
   let progress = 0;
 
-  const response = await setupThirdparty();
+  updateSplashProgress(
+    splash,
+    steps[progress].status,
+    steps[progress].progress
+  );
+
+  await setupThirdparty(onLog);
   updateSplashProgress(
     splash,
     steps[progress].status,
@@ -359,18 +407,83 @@ async function setupWorkers() {
         steps[progress].progress
       );
 
-      try {
-        await runSetupScript(setupScript, workerDir);
-      } catch (error) {
-        console.error(`Failed to run setup script for ${workerDir}:`, error);
-      }
+      await runSetupScript(setupScript, workerDir, onLog);
 
       progress++;
     }
   }
 
   updateSplashProgress(splash, "Finalizing installation...", 90);
-  return splash;
+}
+
+/**
+ * Run install_dependencies.sh with root privileges on Unix platforms only.
+ * Uses sudo-prompt to show a native GUI password popup.
+ * @param {BrowserWindow} splash - The splash window for progress updates.
+ * @returns {Promise<boolean>} True if the installer ran and succeeded.
+ */
+async function runInstaller(splash) {
+  if (isWindows) return false;
+
+  const projectRoot = getEnvironmentPath(path.join(__dirname, ".."), process.resourcesPath);
+  const installerPath = path.join(projectRoot, "scripts", "install_dependencies.sh");
+  const installMarker = path.join(app.getPath("userData"), ".installed");
+
+  updateSplashProgress(splash, "Checking system dependencies...", 0);
+
+  if (!fs.existsSync(installerPath)) {
+    console.log(`Installer not found at ${installerPath}, skipping.`);
+    return false;
+  }
+
+  if (fs.existsSync(installMarker)) {
+    console.log("Installer already run (marker present), skipping.");
+    return false;
+  }
+
+  const confirm = await dialog.showMessageBox(splash, {
+    type: "question",
+    buttons: ["Install", "Cancel"],
+    defaultId: 0,
+    cancelId: 1,
+    title: "Install system dependencies",
+    message: "This application needs to install system dependencies.",
+    detail: "You will be prompted for your administrator password.",
+  });
+
+  if (confirm.response !== 0) {
+    console.log("User canceled installer.");
+    return false;
+  }
+
+  updateSplashProgress(splash, "Installing system dependencies...", 5);
+
+  try {
+    const sudoPrompt = require("@vscode/sudo-prompt");
+    const escapedPath = installerPath.replace(/"/g, '\\"');
+    await new Promise((resolve, reject) => {
+      sudoPrompt.exec(`/bin/bash "${escapedPath}" -y`, { name: "Edge AI Demo Studio" }, (err, stdout, stderr) => {
+        if (stdout) process.stdout.write(stdout);
+        if (stderr) process.stderr.write(stderr);
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+
+    fs.writeFileSync(installMarker, "installed\n", { encoding: "utf8" });
+    updateSplashProgress(splash, "System dependencies installed.", 15);
+    return true;
+  } catch (err) {
+    console.error("Installer failed:", err);
+    await dialog.showMessageBox(splash, {
+      type: "error",
+      buttons: ["OK"],
+      title: "Installer failed",
+      message: "Failed to install system dependencies.",
+      detail: err.message || String(err),
+    });
+    return false;
+  }
 }
 
 // ===================================
@@ -390,7 +503,7 @@ function getFrontendPath() {
 
 /**
  * Starts the Next.js server
- * @returns {void}
+ * @returns {Promise<never>} A rejection-only promise that rejects if the server exits before being declared ready
  */
 function startNextServer() {
   const frontendPath = getFrontendPath();
@@ -416,16 +529,31 @@ function startNextServer() {
   serverProcess.stdout.on("data", (data) => logStream.write(data));
   serverProcess.stderr.on("data", (data) => logStream.write(data));
 
-  // Handle server errors
-  serverProcess.on("error", (err) => {
-    console.error("Failed to start Next.js server:", err);
-  });
-
-  // Handle server exit
+  // Handle server exit (for logging)
   serverProcess.on("exit", (code, signal) => {
     logStream.end();
     console.log(`Next.js server exited with code ${code}, signal ${signal}`);
     removeChildProcess(serverProcess);
+  });
+
+  // Return a rejection-only promise that fires if the server exits before being declared ready.
+  // A separate .catch(() => {}) attached by the caller suppresses unhandled rejections once the
+  // server is confirmed healthy.
+  return new Promise((_, reject) => {
+    serverProcess.once("error", (err) => {
+      reject(new Error(`Failed to start Next.js server: ${err.message}`));
+    });
+    serverProcess.once("exit", (code, signal) => {
+      if (code !== 0) {
+        reject(
+          new Error(
+            signal
+              ? `Next.js server was terminated by signal ${signal}`
+              : `Next.js server exited with code ${code}`
+          )
+        );
+      }
+    });
   });
 }
 
@@ -437,7 +565,7 @@ function startNextServer() {
  * Creates the main application window
  * @returns {BrowserWindow} The main window instance
  */
-function createMainWindow() {
+function createMainWindow(url) {
   const mainWindow = new BrowserWindow({
     width: 1920,
     height: 1080,
@@ -447,7 +575,7 @@ function createMainWindow() {
   });
 
   // mainWindow.webContents.openDevTools();
-  mainWindow.loadURL("http://localhost:8080/text-generation");
+  mainWindow.loadURL(url);
 
   return mainWindow;
 }
@@ -457,32 +585,96 @@ function createMainWindow() {
 // ===================================
 
 /**
- * Cleans up all child processes gracefully
- * @returns {void}
+ * Kill a single child process tree using tree-kill, escalating to SIGKILL
+ * after SIGTERM_GRACE_MS if the process has not exited.
+ * @param {ChildProcess} child - The process to kill
+ * @returns {Promise<void>} Resolves once the process has exited or SIGKILL was sent
+ */
+function killChildProcessTree(child) {
+  return new Promise((resolve) => {
+    if (!child || !child.pid || child.killed) {
+      resolve();
+      return;
+    }
+
+    let resolved = false;
+    const done = () => {
+      if (!resolved) {
+        resolved = true;
+        resolve();
+      }
+    };
+
+    // Resolve early if the process exits on its own after SIGTERM
+    child.once("exit", done);
+
+    treeKill(child.pid, "SIGTERM", (err) => {
+      if (err) {
+        console.error(`Failed to SIGTERM process tree ${child.pid}:`, err);
+        done();
+      }
+    });
+
+    // Escalate to SIGKILL after the grace period if still alive
+    setTimeout(() => {
+      if (resolved) return;
+      treeKill(child.pid, "SIGKILL", (killErr) => {
+        if (killErr) {
+          console.error(`Failed to SIGKILL process tree ${child.pid}:`, killErr);
+        }
+        done();
+      });
+    }, SIGTERM_GRACE_MS);
+  });
+}
+
+/**
+ * Cleans up all tracked child processes gracefully.
+ * Idempotent — concurrent or repeated calls return the same promise.
+ * @returns {Promise<void>}
  */
 function cleanupChildProcesses() {
+  if (cleanupPromise) return cleanupPromise;
+
   console.log("Cleaning up child processes...");
-
-  childProcesses.forEach((child) => {
-    if (child && child.pid && !child.killed) {
-      try {
+  cleanupPromise = Promise.all(
+    childProcesses
+      .filter((child) => child && child.pid && !child.killed)
+      .map((child) => {
         console.log(`Terminating process ${child.pid}`);
+        return killChildProcessTree(child);
+      })
+  );
 
-        // First try SIGTERM for graceful shutdown
-        child.kill("SIGTERM");
+  return cleanupPromise;
+}
 
-        // Force kill after 5 seconds if still running
-        setTimeout(() => {
-          if (child && child.pid && !child.killed) {
-            console.log(`Force killing process ${child.pid}`);
-            child.kill("SIGKILL");
-          }
-        }, 5000);
-      } catch (error) {
-        console.error(`Error killing process ${child.pid}:`, error);
-      }
-    }
+// ===================================
+// ERROR HANDLING
+// ===================================
+
+/**
+ * Shows an error dialog directing the user to the logs folder, then quits the app.
+ * @param {BrowserWindow|null} splash - The splash window (may be null if creation failed)
+ * @param {Error} err - The error that caused the failure
+ */
+async function showErrorAndQuit(splash, err) {
+  const logDirPath = ensureLogsDirectory();
+
+  if (splash && !splash.isDestroyed()) {
+    finalizeSplash(splash, 1);
+  }
+
+  await dialog.showMessageBox({
+    type: "error",
+    buttons: ["Close"],
+    title: "Setup Failed",
+    message: "Setup encountered an error and cannot continue.",
+    detail: `${err.message || String(err)}\n\nPlease check the logs folder for more details:\n${logDirPath}`,
   });
+
+  await cleanupChildProcesses();
+  app.quit();
 }
 
 // ===================================
@@ -490,31 +682,34 @@ function cleanupChildProcesses() {
 // ===================================
 
 // Process event handlers
-process.on("exit", cleanupChildProcesses);
+//
+// NOTE: 'exit' is synchronous — async cleanup cannot run there.
+// Signal handlers route through app.quit() so that Electron's will-quit
+// event (below) handles the async teardown in one place.
 process.on("SIGINT", () => {
   console.log("SIGINT received. Cleaning up child processes...");
-  cleanupChildProcesses();
-  process.exit();
+  app.quit();
 });
 process.on("SIGTERM", () => {
   console.log("SIGTERM received. Cleaning up child processes...");
-  cleanupChildProcesses();
-  process.exit();
+  app.quit();
 });
 process.on("uncaughtException", (error) => {
   console.error("Uncaught exception:", error);
-  cleanupChildProcesses();
-  process.exit(1);
+  cleanupChildProcesses().then(() => process.exit(1));
 });
 
 // Electron app event handlers
-app.on("before-quit", () => {
-  console.log("App is quitting. Cleaning up processes...");
-  cleanupChildProcesses();
+//
+// will-quit fires after all windows are closed, just before the process exits.
+// event.preventDefault() holds the quit until async cleanup is done.
+app.on("will-quit", (event) => {
+  if (cleanupPromise) return; // cleanup already in progress or complete
+  event.preventDefault();
+  cleanupChildProcesses().then(() => app.quit());
 });
 
 app.on("window-all-closed", () => {
-  cleanupChildProcesses();
   if (process.platform !== "darwin") {
     app.quit();
   }
@@ -524,19 +719,44 @@ app.on("window-all-closed", () => {
 app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
 
+  const url = "http://localhost:8080";
+
+  // If setup has already been completed, skip the splash screen and go straight
+  // to starting the server and opening the main window.
+  if (isSetupComplete()) {
+    console.log("Setup already complete — skipping splash and setup.");
+    try {
+      const serverFailure = startNextServer();
+      serverFailure.catch(() => {});
+      await Promise.race([waitForServer(url), serverFailure]);
+      createMainWindow(url);
+    } catch (err) {
+      console.error("Failed to start application:", err);
+      await showErrorAndQuit(null, err);
+    }
+    return;
+  }
+
+  // First run — show the splash screen and run the full setup flow.
+  let splash = null;
   try {
-    // Setup workers and show splash screen
-    const splash = await setupWorkers();
+    splash = await createSplashScreen();
 
-    // Start the Next.js server
-    startNextServer();
+    const installerRan = await runInstaller(splash);
 
-    // Wait for server to be ready
+    await setupWorkers(splash, installerRan ? 15 : 0);
+
+    // Persist the marker so future launches skip setup entirely.
+    markSetupComplete();
+
+    const serverFailure = startNextServer();
+    serverFailure.catch(() => {});
+
     finalizeSplash(splash, 0);
-    await waitForServer("http://localhost:8080/text-generation");
+    await Promise.race([waitForServer(url), serverFailure]);
 
     // Create and show main window
-    const mainWindow = createMainWindow();
+    const mainWindow = createMainWindow(url);
 
     // Close splash after main window loads
     mainWindow.webContents.once("did-finish-load", () => {
@@ -544,6 +764,6 @@ app.whenReady().then(async () => {
     });
   } catch (err) {
     console.error("Failed to start application:", err);
-    // Could send error status to splash here if needed
+    await showErrorAndQuit(splash, err);
   }
 });

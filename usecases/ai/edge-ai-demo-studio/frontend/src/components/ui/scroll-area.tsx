@@ -1,10 +1,10 @@
-// Copyright (C) 2025 Intel Corporation
+// Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
 'use client'
 
-import * as React from 'react'
-import * as ScrollAreaPrimitive from '@radix-ui/react-scroll-area'
+import { ScrollArea as ScrollAreaPrimitive } from 'radix-ui'
+import type * as React from 'react'
 
 import { cn } from '@/lib/utils'
 

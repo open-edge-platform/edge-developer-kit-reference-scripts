@@ -1,28 +1,27 @@
-# Copyright (C) 2025 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
-param(
-    [string]$ErrorActionPreference = "Stop"
-)
+$ErrorActionPreference = "Stop"
 
 # Set UTF-8 encoding for console output
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
-$ProgressPreference = 'SilentlyContinue'
 
 # Global variables to track PATH changes
 $script:originalPath = $null
 $script:nodePathAdded = $false
 
-function Add-FrontendEnv() {
+function Add-FrontendEnv {
     # Ensure .env is created based on .env.example in frontend
     $envPath = Join-Path $PSScriptRoot ".env"
     $envExamplePath = Join-Path $PSScriptRoot ".env.example"
     if (-not (Test-Path $envPath)) {
         if (Test-Path $envExamplePath) {
             Copy-Item $envExamplePath $envPath
-            # Generate a random 32-byte hex string for PAYLOAD_SECRET
-            $payloadSecret = [System.BitConverter]::ToString((1..32 | ForEach-Object { Get-Random -Minimum 0 -Maximum 256 })) -replace '-', ''
+            # Generate a random 32-byte hex string for PAYLOAD_SECRET using cryptographic RNG
+            $bytes = New-Object byte[] 32
+            [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+            $payloadSecret = [System.BitConverter]::ToString($bytes) -replace '-', ''
             Add-Content $envPath "PAYLOAD_SECRET=$payloadSecret"
             Write-Host ".env created and PAYLOAD_SECRET added." -ForegroundColor Green
         } else {
@@ -53,8 +52,7 @@ function Remove-NodeFromPath {
 }
 
 function Get-NodePaths {
-    # Get the root directory (parent of frontend)
-    $rootDir = Split-Path $PWD -Parent
+    $rootDir = Split-Path $PSScriptRoot -Parent
     $nodeDir = Join-Path $rootDir "thirdparty\node"
     $nodeExecutable = Join-Path $nodeDir "node.exe"
     
@@ -121,7 +119,6 @@ function Build-Frontend {
 }
 
 # Main execution
-Push-Location $PSScriptRoot
 try {
     Write-Host "Starting setup..." -ForegroundColor Green
     Add-FrontendEnv
@@ -137,5 +134,4 @@ try {
 } finally {
     # Always restore the original PATH
     Remove-NodeFromPath
-    Pop-Location
 }

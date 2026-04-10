@@ -1,4 +1,4 @@
-# Copyright (C) 2025 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 import json
@@ -8,6 +8,7 @@ import socket
 import sys
 import subprocess  # nosec -- used as a catch exception type only
 import av
+import re
 from contextlib import asynccontextmanager
 
 from huggingface_hub import snapshot_download
@@ -67,9 +68,10 @@ class Chat(BaseModel):
     chat_type: str
     session_id: str
     text: str
-    voice: Optional[str]
-    model: Optional[str]
-    speed: Optional[str]
+    voice: Optional[str] = None
+    model: Optional[str] = None
+    speed: Optional[str] = None
+    tts_url: Optional[str] = None
 
 
 class ChatOption(BaseModel):
@@ -148,10 +150,10 @@ def parse_arguments():
         "--config", type=str, default="config.wav2lip.yaml", help="Lipsync Config File"
     )
     parser.add_argument(
-        "--turn_server",
+        "--ice_server",
         type=str,
-        default="localhost:5901",
-        help="WebRTC Turn Server (eg: localhost:5901)",
+        default="",
+        help="WebRTC ICE Server URL (eg: turn:localhost:5901 or stun:stun.l.google.com:19302). If no scheme prefix, defaults to turn:.",
     )
     parser.add_argument(
         "--port",
@@ -164,12 +166,6 @@ def parse_arguments():
         type=str,
         default="cpu",
         help="Inference Device (default: CPU)",
-    )
-    parser.add_argument(
-        "--tts_port",
-        type=str,
-        default="5002",
-        help="TTS server port (default: 5002)",
     )
     parser.add_argument(
         "--source",
@@ -219,21 +215,20 @@ def create_app(args):
                     getLogger(__name__).info(
                         "Avatar not found or invalid. Generating default avatar..."
                     )
-                    skin_id = uuid4().hex[:8]
                     video_path = Path("data/samples/sample_video_ai.mp4")
                     if video_path.exists():
                         generate_wav2lip_avatar(
                             video_path=str(video_path),
                             frame_count=128,
-                            device="xpu",
+                            device=args.device,
                             img_size=256,
                             batch_size=1,
-                            avatar_id=skin_id,
                             no_smooth=False,
                             pads=(0, 0, 0, 0),
                             base_avatar_dir=avatar_dir,
                             skin_name=None,
                             wav2lip_config_path=conf_path,
+                            avatar_id="sample",
                         )
                         getLogger(__name__).info("Avatar generation completed.")
                     else:
@@ -286,14 +281,14 @@ def validate_video(video_path: str) -> str:
         raise ValueError(f"Invalid or unsupported video: {e}") from e
 
 
-def run_avatar_generation(taskId, video_path, cfg_path, skin_name=None):
+def run_avatar_generation(taskId, video_path, cfg_path, skin_name=None, device="cpu"):
     tasks[taskId] = "running"
 
     try:
         avatar_id = generate_wav2lip_avatar(
             video_path=str(video_path),
             frame_count=128,
-            device="xpu",
+            device=device,
             img_size=256,
             batch_size=1,
             avatar_id=taskId,
@@ -341,7 +336,9 @@ def setup_routes(
             return JSONResponse({"status": "invalid session id"})
 
         if chat.chat_type == "echo":
-            avatars[session_id].echo(chat.text, chat.voice, chat.model, chat.speed)
+            avatars[session_id].echo(
+                chat.text, chat.voice, chat.model, chat.speed, chat.tts_url
+            )
 
         elif chat.chat_type == "clear":
             avatars[session_id].llm_clear_history()
@@ -474,6 +471,7 @@ def setup_routes(
             video_path=str(video_path),
             cfg_path=cfg_path,
             skin_name=skin_name,
+            device=args.device,
         )
         return JSONResponse({"taskId": skin_id})
 
@@ -602,13 +600,27 @@ def setup_routes(
         session_id = str(session_id)
         getLogger(__name__).info(f"Running with Session Id: {session_id}")
 
-        turn_server = args.turn_server
+        ice_server_url = args.ice_server
 
-        if params.get("turn", False) == True:
-            getLogger(__name__).info(f"Using TURN Server: {turn_server}")
+        if ice_server_url:
+            if not re.match(r"^(stuns?|turns?):", ice_server_url, re.IGNORECASE):
+                ice_server_url = f"turn:{ice_server_url}"
+
+            getLogger(__name__).info(f"Using ICE Server: {ice_server_url}")
+
+            is_turn = re.match(r"^turns?:", ice_server_url, re.IGNORECASE)
             ice_server = RTCIceServer(
-                urls=f"turn:{turn_server}", username="dummy", credential="dummy"
+                urls=ice_server_url,
+                **(
+                    {
+                        "username": "dummy",
+                        "credential": "dummy",
+                    }
+                    if is_turn
+                    else {}
+                ),
             )
+
             pc = RTCPeerConnection(
                 configuration=RTCConfiguration(iceServers=[ice_server])
             )
@@ -673,7 +685,6 @@ def setup_routes(
             session_id,
             configs=configs,
             device=args.device,
-            tts_port=args.tts_port,
             ws_manager=manager,
         )
         audio, video = avatar_streamer.get_av_tracks()
@@ -693,6 +704,25 @@ def setup_routes(
         await pc.setRemoteDescription(offer)
         answer = await pc.createAnswer()
         await pc.setLocalDescription(answer)
+
+        # Wait for the server's ICE gathering to complete before returning the
+        # answer. aiortc gathers candidates (including TURN relay) asynchronously
+        # after setLocalDescription, so without this wait the answer SDP may be
+        # missing relay candidates and ICE connectivity checks will fail.
+        if pc.iceGatheringState != "complete":
+            _gathered = asyncio.Event()
+
+            @pc.on("icegatheringstatechange")
+            async def _on_gather_complete():
+                if pc.iceGatheringState == "complete":
+                    _gathered.set()
+
+            try:
+                await asyncio.wait_for(_gathered.wait(), timeout=10.0)
+            except asyncio.TimeoutError:
+                getLogger(__name__).warning(
+                    f"ICE gathering timed out for session {session_id}"
+                )
 
         return JSONResponse(
             {

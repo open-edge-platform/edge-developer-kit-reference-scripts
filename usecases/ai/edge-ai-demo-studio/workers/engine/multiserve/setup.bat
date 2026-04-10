@@ -21,27 +21,30 @@ if defined UV_PATH (
 :uv_found
 set "VENV_ACTIVATE_SCRIPT=.venv\Scripts\activate.bat"
 
-set "LLAMA_VULKAN_RELEASE_URL=https://github.com/ggerganov/llama.cpp/releases/download/b7492/llama-b7492-bin-win-vulkan-x64.zip"
+set "LLAMA_VERSION=b7992"
+set "LLAMA_VULKAN_RELEASE_URL=https://github.com/ggerganov/llama.cpp/releases/download/%LLAMA_VERSION%/llama-%LLAMA_VERSION%-bin-win-vulkan-x64.zip"
 set "LLAMA_VULKAN_DOWNLOAD_FILE=llama-vulkan.zip"
 set "LLAMA_VULKAN_EXTRACT_DIR=engine\llama.cpp-vulkan"
 
-set "LLAMA_SYCL_RELEASE_URL=https://github.com/ggerganov/llama.cpp/releases/download/b7492/llama-b7492-bin-win-sycl-x64.zip"
+set "LLAMA_SYCL_RELEASE_URL=https://github.com/ggerganov/llama.cpp/releases/download/%LLAMA_VERSION%/llama-%LLAMA_VERSION%-bin-win-sycl-x64.zip"
 set "LLAMA_SYCL_DOWNLOAD_FILE=llama-sycl.zip"
 set "LLAMA_SYCL_EXTRACT_DIR=engine\llama.cpp-sycl"
 
-set "GGUF_PARSER_RELEASE_URL=https://github.com/gpustack/gguf-parser-go/releases/download/v0.22.1/gguf-parser-windows-amd64.exe"
+set "GGUF_PARSER_RELEASE_URL=https://github.com/gpustack/gguf-parser-go/releases/download/v0.24.0/gguf-parser-windows-amd64.exe"
 set "GGUF_PARSER_DOWNLOAD_FILE=gguf-parser-windows-amd64.exe"
 set "GGUF_PARSER_EXTRACT_DIR=engine"
 
-set "XPU_SMI_RELEASE_URL=https://github.com/intel/xpumanager/releases/download/v1.3.5/xpu-smi-1.3.5-20251216.170318.605ff78d_win.zip"
+set "XPU_SMI_RELEASE_URL=https://github.com/intel/xpumanager/releases/download/v1.3.6/xpu-smi-1.3.6-20260206.143316.1004f6cb_win.zip"
 set "XPU_SMI_DOWNLOAD_FILE=xpu-win.zip"
 set "XPU_SMI_EXTRACT_DIR=engine\xpu-smi"
 
-set "OVMS_RELEASE_VERSION=v2025.4.1"
+set "OVMS_RELEASE_VERSION=v2026.0"
 set "OVMS_RELEASE_URL=https://github.com/openvinotoolkit/model_server/releases/download/%OVMS_RELEASE_VERSION%/ovms_windows_python_on.zip"
 set "OVMS_DOWNLOAD_FILE=ovms.zip"
 set "OVMS_EXTRACT_DIR=engine"
-set "OPTIMUM_EXPORT_MODEL_DIR=%OVMS_EXTRACT_DIR%/optimum_export_model"
+
+set "UV_HTTP_TIMEOUT=180"
+
 set "OPTIMUM_EXPORT_MODEL_URL=https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/tags/%OVMS_RELEASE_VERSION%/demos/common/export_models"
 set "OPTIMUM_EXPORT_MODEL_SCRIPT=export_model.py"
 set "OPTIMUM_EXPORT_MODEL_REQUIREMENTS_URL=requirements.txt"
@@ -59,7 +62,7 @@ if not exist "%UV_EXE%" (
     if not exist "%UV_EXE%" (
         echo.
         echo **FATAL ERROR:** uv installation failed! File not found at: %UV_EXE%
-        goto :eof
+        exit /b 1
     )
     echo uv installed successfully.
 ) else (
@@ -79,21 +82,21 @@ md "%LLAMA_VULKAN_EXTRACT_DIR%" 2>nul
 
 echo Downloading %LLAMA_VULKAN_DOWNLOAD_FILE%...
 powershell -NoProfile -Command ^
-    "Invoke-WebRequest -Uri '%LLAMA_VULKAN_RELEASE_URL%' -OutFile '%LLAMA_VULKAN_DOWNLOAD_FILE%'"
+    "$ProgressPreference = 'SilentlyContinue'; Invoke-WebRequest -Uri '%LLAMA_VULKAN_RELEASE_URL%' -OutFile '%LLAMA_VULKAN_DOWNLOAD_FILE%'"
 if errorlevel 1 (
     echo.
     echo **ERROR:** Download failed. Aborting.
-    goto :eof
+    exit /b 1
 )
 echo Download complete.
 
-echo Extracting to %LLAMA_VULKANEXTRACT_DIR%...
+echo Extracting to %LLAMA_VULKAN_EXTRACT_DIR%...
 powershell -NoProfile -Command ^
-    "Expand-Archive -Path '%LLAMA_VULKAN_DOWNLOAD_FILE%' -DestinationPath '%LLAMA_VULKAN_EXTRACT_DIR%' -Force"
+    "$ProgressPreference = 'SilentlyContinue'; Expand-Archive -Path '%LLAMA_VULKAN_DOWNLOAD_FILE%' -DestinationPath '%LLAMA_VULKAN_EXTRACT_DIR%' -Force"
 if errorlevel 1 (
     echo.
     echo **ERROR:** Extraction failed. Aborting script.
-    goto :eof
+    exit /b 1
 )
 echo Extraction complete.
 del "%LLAMA_VULKAN_DOWNLOAD_FILE%"
@@ -113,21 +116,21 @@ md "%LLAMA_SYCL_EXTRACT_DIR%" 2>nul
 
 echo Downloading %LLAMA_SYCL_DOWNLOAD_FILE%...
 powershell -NoProfile -Command ^
-    "Invoke-WebRequest -Uri '%LLAMA_SYCL_RELEASE_URL%' -OutFile '%LLAMA_SYCL_DOWNLOAD_FILE%'"
+    "$ProgressPreference = 'SilentlyContinue'; Invoke-WebRequest -Uri '%LLAMA_SYCL_RELEASE_URL%' -OutFile '%LLAMA_SYCL_DOWNLOAD_FILE%'"
 if errorlevel 1 (
     echo.
     echo **ERROR:** Download failed. Aborting.
-    goto :eof
+    exit /b 1
 )
 echo Download complete.
 
 echo Extracting to %LLAMA_SYCL_EXTRACT_DIR%...
 powershell -NoProfile -Command ^
-    "Expand-Archive -Path '%LLAMA_SYCL_DOWNLOAD_FILE%' -DestinationPath '%LLAMA_SYCL_EXTRACT_DIR%' -Force"
+    "$ProgressPreference = 'SilentlyContinue'; Expand-Archive -Path '%LLAMA_SYCL_DOWNLOAD_FILE%' -DestinationPath '%LLAMA_SYCL_EXTRACT_DIR%' -Force"
 if errorlevel 1 (
     echo.
     echo **ERROR:** Extraction failed. Aborting script.
-    goto :eof
+    exit /b 1
 )
 echo Extraction complete.
 del "%LLAMA_SYCL_DOWNLOAD_FILE%"
@@ -147,106 +150,62 @@ md "%OVMS_EXTRACT_DIR%" 2>nul
 
 echo Downloading %OVMS_DOWNLOAD_FILE%...
 powershell -NoProfile -Command ^
-    "Invoke-WebRequest -Uri '%OVMS_RELEASE_URL%' -OutFile '%OVMS_DOWNLOAD_FILE%'"
+    "$ProgressPreference = 'SilentlyContinue'; Invoke-WebRequest -Uri '%OVMS_RELEASE_URL%' -OutFile '%OVMS_DOWNLOAD_FILE%'"
 if errorlevel 1 (
     echo.
     echo **ERROR:** Download failed. Aborting.
-    goto :eof
+    exit /b 1
 )
 echo Download complete.
 
 echo Extracting to %OVMS_EXTRACT_DIR%...
 powershell -NoProfile -Command ^
-    "Expand-Archive -Path '%OVMS_DOWNLOAD_FILE%' -DestinationPath '%OVMS_EXTRACT_DIR%' -Force"
+    "$ProgressPreference = 'SilentlyContinue'; Expand-Archive -Path '%OVMS_DOWNLOAD_FILE%' -DestinationPath '%OVMS_EXTRACT_DIR%' -Force"
 if errorlevel 1 (
     echo.
     echo **ERROR:** Extraction failed. Aborting script.
-    goto :eof
+    exit /b 1
 )
 echo Extraction complete.
 del "%OVMS_DOWNLOAD_FILE%"
 
-echo Settingup optimum cli for OVMS...
-call %OVMS_EXTRACT_DIR%\ovms\setupvars.bat
+echo Preparing OVMS Python package installation...
+if defined PYTHONHOME (
+    set "_PRE_OVMS_PYTHONHOME=%PYTHONHOME%"
+)
+if defined PYTHONPATH (
+    set "_PRE_OVMS_PYTHONPATH=%PYTHONPATH%"
+)
+set "PYTHONHOME="
+set "PYTHONPATH="
 
 echo Installing OVMS Python requirements using bundled Python...
-"%OVMS_EXTRACT_DIR%\ovms\python\python" -m pip install -r %OPTIMUM_EXPORT_MODEL_URL%/%OPTIMUM_EXPORT_MODEL_REQUIREMENTS_URL%
+setlocal DisableDelayedExpansion
+"%OVMS_EXTRACT_DIR%\ovms\python\python" -m pip install -r %OPTIMUM_EXPORT_MODEL_URL%/%OPTIMUM_EXPORT_MODEL_REQUIREMENTS_URL% "onnx!=1.21.0rc1" --pre
+endlocal
 if errorlevel 1 (
     echo.
     echo **ERROR:** OVMS Python requirements installation failed. Aborting.
-    goto :eof
+    exit /b 1
+)
+
+"%OVMS_EXTRACT_DIR%\ovms\python\python" -m pip install datasets "pyarrow<21.0.0"
+if errorlevel 1 (
+    echo.
+    echo **ERROR:** OVMS Python datasets installation failed. Aborting.
+    exit /b 1
+)
+
+if defined _PRE_OVMS_PYTHONHOME (
+    set "PYTHONHOME=%_PRE_OVMS_PYTHONHOME%"
+    set "_PRE_OVMS_PYTHONHOME="
+)
+if defined _PRE_OVMS_PYTHONPATH (
+    set "PYTHONPATH=%_PRE_OVMS_PYTHONPATH%"
+    set "_PRE_OVMS_PYTHONPATH="
 )
 
 :SKIP_OVMS_DOWNLOAD
-echo.
-
-:: --- 3.1 Download and Setup Optimum CLI---
-echo ## 3.1 OVMS Download and Extraction
-if exist "%OPTIMUM_EXPORT_MODEL_DIR%" (
-    echo **SUCCESS:** %OPTIMUM_EXPORT_MODEL_DIR% already exists. Skipping download and extraction.
-    goto :SKIP_OPTIMUM_EXPORT_MODEL_SETUP
-)
-
-set OPTIMUM_VENV_DIR="%OPTIMUM_EXPORT_MODEL_DIR%/.venv"
-if exist "%OPTIMUM_VENV_DIR%" (
-    echo **SUCCESS:** %OPTIMUM_VENV_DIR% already exists. Skipping download and extraction.
-    goto :SKIP_OPTIMUM_EXPORT_MODEL_SETUP
-)
-
-echo Creating directory: %OPTIMUM_EXPORT_MODEL_DIR%
-md "%OPTIMUM_EXPORT_MODEL_DIR%" 2>nul
-
-echo Downloading Required Optimum CLI files...
-powershell -NoProfile -Command ^
-    "Invoke-WebRequest -Uri '%OPTIMUM_EXPORT_MODEL_URL%/%OPTIMUM_EXPORT_MODEL_SCRIPT%' -OutFile '%OPTIMUM_EXPORT_MODEL_DIR%/%OPTIMUM_EXPORT_MODEL_SCRIPT%'"
-if errorlevel 1 (
-    echo.
-    echo **ERROR:** Download failed. Aborting.
-    goto :eof
-)
-powershell -NoProfile -Command ^
-    "Invoke-WebRequest -Uri '%OPTIMUM_EXPORT_MODEL_URL%/%OPTIMUM_EXPORT_MODEL_REQUIREMENTS_URL%' -OutFile '%OPTIMUM_EXPORT_MODEL_DIR%/%OPTIMUM_EXPORT_MODEL_REQUIREMENTS_URL%'"
-if errorlevel 1 (
-    echo.
-    echo **ERROR:** Download failed. Aborting.
-    goto :eof
-)
-
-echo Creating virtual environment in: %OPTIMUM_VENV_DIR%
-"%UV_EXE%" venv "%OPTIMUM_VENV_DIR%"
-if errorlevel 1 (
-    echo.
-    echo **ERROR:** Virtual environment creation failed. Aborting.
-    goto :eof
-)
-echo Virtual environment created successfully.
-
-call "%OPTIMUM_VENV_DIR%/Scripts/activate.bat"
-if errorlevel 1 (
-    echo.
-    echo **ERROR:** Virtual environment activation failed. Aborting.
-    goto :eof
-)
-
-echo Installing OVMS Optimum requirements into virtual environment...
-"%UV_EXE%" pip install --pre --index-strategy unsafe-best-match -r "%OPTIMUM_EXPORT_MODEL_DIR%/%OPTIMUM_EXPORT_MODEL_REQUIREMENTS_URL%"
-if errorlevel 1 (
-    echo.
-    echo **ERROR:** Package installation failed. Aborting.
-    goto :eof
-)
-
-"%UV_EXE%" pip install datasets modelscope
-if errorlevel 1 (
-    echo.
-    echo **ERROR:** Package installation failed. Aborting.
-    goto :eof
-)
-call deactivate
-echo Package installation completed successfully.
-
-:SKIP_OPTIMUM_EXPORT_MODEL_SETUP
-
 :: --- 4. Download and Extract GGUF Parser ---
 echo ## 4. GGUF Parser Download
 if exist "%GGUF_PARSER_EXTRACT_DIR%\%GGUF_PARSER_DOWNLOAD_FILE%" (
@@ -256,11 +215,11 @@ if exist "%GGUF_PARSER_EXTRACT_DIR%\%GGUF_PARSER_DOWNLOAD_FILE%" (
 
 echo Downloading %GGUF_PARSER_DOWNLOAD_FILE%...
 powershell -NoProfile -Command ^
-    "Invoke-WebRequest -Uri '%GGUF_PARSER_RELEASE_URL%' -OutFile '%GGUF_PARSER_EXTRACT_DIR%\%GGUF_PARSER_DOWNLOAD_FILE%'"
+    "$ProgressPreference = 'SilentlyContinue'; Invoke-WebRequest -Uri '%GGUF_PARSER_RELEASE_URL%' -OutFile '%GGUF_PARSER_EXTRACT_DIR%\%GGUF_PARSER_DOWNLOAD_FILE%'"
 if errorlevel 1 (
     echo.
     echo **ERROR:** Download failed. Aborting.
-    goto :eof
+    exit /b 1
 )
 echo Download complete.
 
@@ -279,21 +238,21 @@ md "%XPU_SMI_EXTRACT_DIR%" 2>nul
 
 echo Downloading %XPU_SMI_DOWNLOAD_FILE%...
 powershell -NoProfile -Command ^
-    "Invoke-WebRequest -Uri '%XPU_SMI_RELEASE_URL%' -OutFile '%XPU_SMI_DOWNLOAD_FILE%'"
+    "$ProgressPreference = 'SilentlyContinue'; Invoke-WebRequest -Uri '%XPU_SMI_RELEASE_URL%' -OutFile '%XPU_SMI_DOWNLOAD_FILE%'"
 if errorlevel 1 (
     echo.
     echo **ERROR:** Download failed. Aborting.
-    goto :eof
+    exit /b 1
 )
 echo Download complete.
 
 echo Extracting to %XPU_SMI_EXTRACT_DIR%...
 powershell -NoProfile -Command ^
-    "Expand-Archive -Path '%XPU_SMI_DOWNLOAD_FILE%' -DestinationPath '%XPU_SMI_EXTRACT_DIR%' -Force"
+    "$ProgressPreference = 'SilentlyContinue'; Expand-Archive -Path '%XPU_SMI_DOWNLOAD_FILE%' -DestinationPath '%XPU_SMI_EXTRACT_DIR%' -Force"
 if errorlevel 1 (
     echo.
     echo **ERROR:** Extraction failed. Aborting script.
-    goto :eof
+    exit /b 1
 )
 echo Extraction complete.
 del "%XPU_SMI_DOWNLOAD_FILE%"
@@ -303,13 +262,29 @@ echo.
 
 :: --- 3. Perform uv sync ---
 echo ## 3. uv Sync
+if exist ".venv\pyvenv.cfg" (
+    findstr /i /c:"engine\\ovms\\python" ".venv\pyvenv.cfg" >nul 2>nul
+    if not errorlevel 1 (
+        echo Found an incompatible virtual environment created from OVMS bundled Python.
+        echo Removing .venv so uv can recreate it with a compatible interpreter...
+        rmdir /s /q ".venv"
+    )
+)
+
+set "PYTHONHOME="
+set "PYTHONPATH="
 echo Running uv sync in the current project folder...
 "%UV_EXE%" sync
 
 if errorlevel 1 (
+    echo First uv sync attempt failed. Retrying once with UV_HTTP_TIMEOUT=%UV_HTTP_TIMEOUT%s...
+    "%UV_EXE%" sync
+)
+
+if errorlevel 1 (
     echo.
     echo **ERROR:** uv sync failed. Check your project configuration.
-    goto :eof
+    exit /b 1
 )
 echo uv sync completed successfully!
 echo.

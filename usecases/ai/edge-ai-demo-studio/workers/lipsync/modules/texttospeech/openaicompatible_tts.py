@@ -1,4 +1,4 @@
-# Copyright (C) 2025 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 import requests
@@ -71,9 +71,9 @@ class OpenAICompatibleTTSModule(TTSModule):
         while not signal_event.is_set():
             try:
                 message, metadata = self.message_queue.get(block=True, timeout=1)
-                voice = metadata.get("voice", "af_heart")
-                model = metadata.get("model", "kokoro")
-                speed = metadata.get("speed", "1.0")
+                voice = metadata.get("voice") or "af_heart"
+                model = metadata.get("model") or "kokoro"
+                speed = metadata.get("speed") or "1.0"
                 metadata["message"] = message
                 self.stream_tts(
                     self.openai_compatible_tts(message, voice, model, speed), metadata

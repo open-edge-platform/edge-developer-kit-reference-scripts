@@ -1,4 +1,4 @@
-# Copyright (C) 2024 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 import yaml
@@ -10,6 +10,7 @@ sys.path.append(os.path.dirname(__file__))
 
 from .llama_cpp_manager import LlamaCPPManager
 from .gguf_downloader import GGUFDownloader
+from modules.utils import ModelSource
 
 
 class LlamaManagerCLI:
@@ -203,15 +204,16 @@ class LlamaManagerCLI:
                     file=sys.stderr,
                 )
 
-    def download_model(self, hf_repo_with_tag: str) -> Generator[str, None, None]:
+    def download_model(self, hf_repo_with_tag: str, source: ModelSource = ModelSource.HUGGINGFACE) -> Generator[str, None, None]:
         progress_generator = self.downloader.download_model(
-            hf_repo_with_tag=hf_repo_with_tag
+            hf_repo_with_tag=hf_repo_with_tag,
+            source=source
         )
         for message in progress_generator:
             yield message
 
     def download_unverified_model(
-        self, hf_repo_with_tag: str, task: str
+        self, hf_repo_with_tag: str, task: str, source: ModelSource = ModelSource.HUGGINGFACE,
     ) -> Generator[str, None, None]:
         if not self.downloader:
             raise RuntimeError(
@@ -219,7 +221,7 @@ class LlamaManagerCLI:
             )
 
         progress_generator = self.downloader.download_unverified_model(
-            hf_repo_with_tag=hf_repo_with_tag, task=task
+            hf_repo_with_tag=hf_repo_with_tag, task=task, source=source
         )
         for message in progress_generator:
             yield message
@@ -386,6 +388,7 @@ class LlamaManagerCLI:
                     "task": task,
                     "repo_id": params.get("repo_id"),
                     "pid": pid,
+                    "quant": params.get("quant"),
                     "device": "GPU" if params.get("ngl", 0) > 0 else "CPU",
                     "url": self.get_server_url(task),
                 }
