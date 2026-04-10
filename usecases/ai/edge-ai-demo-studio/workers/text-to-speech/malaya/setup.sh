@@ -1,45 +1,30 @@
 #!/bin/bash
-# Copyright (C) 2025 Intel Corporation
-# SPDX-License-Identifier: Apache-2.0 
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
 
 set -euo pipefail
 
-TTS_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TTS_VENV_DIR="$TTS_SCRIPT_DIR/.venv"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+WORKERS_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+WORKERS_THIRDPARTY_DIR="$WORKERS_DIR/thirdparty"
 
-check_uv_installed() {
-    echo -e "Checking if uv is installed in workers thirdparty directory..."
-    PARENT_UV_PATH="$(dirname "$(dirname "$PWD")")/thirdparty/uv/uv"
-    if [ -x "$PARENT_UV_PATH" ]; then
-        echo -e "Found uv in workers thirdparty folder."
-        UV_CMD="$PARENT_UV_PATH"
-    else
-        echo -e "uv not found in expected location: $PARENT_UV_PATH"
-        echo -e "Please ensure the workers setup has been run first."
-        exit 1
-    fi
-}
+UV_PATH="$WORKERS_THIRDPARTY_DIR/uv/uv"
 
-create_venv() {
-    if [[ -d "$TTS_VENV_DIR" ]]; then
-        echo "Virtual environment already exists at $TTS_VENV_DIR."
-    else
-        echo "Creating Python 3.11 virtual environment with uv ..."
-        "$UV_CMD" venv --seed --python 3.11 "$TTS_VENV_DIR"
+check_uv() {
+    if [ -x "$UV_PATH" ]; then
+        echo "Found uv."
+        return 0
     fi
-    # shellcheck disable=SC1091
-    source "$TTS_VENV_DIR/bin/activate"
-    "$UV_CMD" sync
-    "$UV_CMD" run python -m ensurepip
-    
+    echo "ERROR: uv not found at $UV_PATH"
+    echo "Please run the workers setup script first."
+    exit 1
 }
 
 main() {
-    echo "Starting setup for Malaya with Intel GPU support ..."
-    cd "$TTS_SCRIPT_DIR"
-    check_uv_installed
-    create_venv
-    echo "Setup completed successfully!"
+    echo "Starting Malaya setup..."
+    cd "$SCRIPT_DIR"
+    check_uv
+    echo "Malaya setup completed successfully!"
 }
 
 main

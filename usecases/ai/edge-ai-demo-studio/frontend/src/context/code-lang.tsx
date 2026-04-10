@@ -1,21 +1,21 @@
-// Copyright (C) 2025 Intel Corporation
+// Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
 'use client'
 import { createContext, useContext, useState } from 'react'
-import { BundledLanguage } from 'shiki/bundle/web'
+import type { BundledLanguage } from 'shiki/bundle/web'
 
 const CodeLangContext = createContext<{
   language: BundledLanguage
   setLanguage: (lang: BundledLanguage) => void
-}>({ language: 'js', setLanguage: () => {} })
+}>({ language: 'python', setLanguage: () => {} })
 
 export const CodeLangProvider = ({
   children,
 }: {
   children: React.ReactNode
 }) => {
-  const [language, setLanguage] = useState<BundledLanguage>('js')
+  const [language, setLanguage] = useState<BundledLanguage>('python')
   return (
     <CodeLangContext.Provider value={{ language, setLanguage }}>
       {children}

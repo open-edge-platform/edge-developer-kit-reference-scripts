@@ -1,42 +1,37 @@
 #!/bin/bash
-# Copyright (C) 2025 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 set -euo pipefail
 
-# Variables
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WORKER_DIR="$(dirname "$SCRIPT_DIR")"
-WORKER_THIRDPARTY_DIR="$WORKER_DIR/thirdparty"
+WORKERS_DIR="$(dirname "$SCRIPT_DIR")"
+WORKERS_THIRDPARTY_DIR="$WORKERS_DIR/thirdparty"
 
-UV_CMD="$WORKER_THIRDPARTY_DIR/uv/uv"
+UV_PATH="$WORKERS_THIRDPARTY_DIR/uv/uv"
 
-# Function to check if uv is installed
-check_uv_installed() {
-    echo "Checking if uv is installed..."
-    
-    if [ -x "$UV_CMD" ]; then
-        echo "Found uv in parent thirdparty folder."
+check_uv() {
+    if [ -x "$UV_PATH" ]; then
+        echo "Found uv."
         return 0
-    else
-        echo "uv not found in expected location: $UV_CMD"
-        echo "Please ensure the workers setup has been run first."
-        exit 1
     fi
+    echo "ERROR: uv not found at $UV_PATH"
+    echo "Please run the workers setup script first."
+    exit 1
 }
 
-# Function to install Python dependencies
-install_python_dependencies() {
-    echo "Installing Python dependencies with uv (this may take a few minutes)..."
-    echo "Note: If this seems stuck, it might be resolving PyTorch dependencies..."
-    
-    "$UV_CMD" sync
-    echo "Python dependencies installed successfully."
+install_helper_dependencies() {
+    echo "Installing Helper dependencies..."
+    $UV_PATH sync
+    echo "No additional dependencies to install for Helper at this time."
 }
 
-# Main execution
-echo "Starting Helper Setup..."
-cd "$SCRIPT_DIR"
-check_uv_installed
-install_python_dependencies
-echo "Setup completed successfully!"
+main() {
+    echo "Starting Helper setup..."
+    cd "$SCRIPT_DIR"
+    check_uv
+    install_helper_dependencies
+    echo "Helper setup completed successfully!"
+}
+
+main

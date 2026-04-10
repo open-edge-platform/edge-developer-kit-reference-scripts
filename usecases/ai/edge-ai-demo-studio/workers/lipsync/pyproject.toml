@@ -23,7 +23,7 @@ dependencies = [
     "openvino==2025.2.0",
     "python-multipart>=0.0.22",
     "pytorch-triton-xpu==3.4.0",
-    "requests==2.32.5",
+    "requests>=2.32.5",
     "resampy==0.4.3",
     "rich==14.0.0",
     "torch>=2.8.0",

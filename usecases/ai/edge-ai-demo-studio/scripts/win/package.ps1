@@ -1,8 +1,7 @@
-# Copyright (C) 2025 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 # Exit immediately if a command fails
 $ErrorActionPreference = "Stop"
-$ProgressPreference = 'SilentlyContinue'
 
 # Define variables
 $SCRIPT_DIR = $PSScriptRoot
@@ -11,8 +10,8 @@ $TEMP_DIR = "$PROJECT_ROOT/build"
 $WORKER_DIR = "$PROJECT_ROOT/workers"
 $FRONTEND_DIR = "$PROJECT_ROOT/frontend"
 $ELECTRON_DIR = "$PROJECT_ROOT/electron"
-$SCRIPT_DIR = Split-Path -Parent $MyInvocation.MyCommand.Path
 $NODE_PATH = Join-Path $PROJECT_ROOT "thirdparty/node"
+$PROJECT_NAME = "EdgeAIDemoStudio"
 
 function Add-NodeToPath {
     Write-Host "Setting up Node.js environment..." -ForegroundColor Green
@@ -50,6 +49,98 @@ function Remove-NodeFromPath {
     }
 }
 
+# Parse .gitignore files (root + under a source dir) and return two arrays suitable for robocopy:
+#   DirPatterns  - safe directory exclusions for /XD
+#   FilePatterns - safe file exclusions for /XF
+# Patterns that robocopy cannot handle (character classes, wildcard-in-path) are skipped.
+function Get-GitignoreExcludes {
+    param(
+        [Parameter(Mandatory=$true)] [string] $SrcDir
+    )
+
+    $dirExcludes  = [System.Collections.Generic.List[string]]::new()
+    $fileExcludes = [System.Collections.Generic.List[string]]::new()
+
+    # Classifies one gitignore line and appends it to the appropriate list.
+    # Runs in the caller's child scope; modifies $dirExcludes / $fileExcludes via .Add() on the
+    # shared List objects (reference semantics - no scope issue).
+    $processLine = {
+        param([string]$RawLine, [string]$Prefix, [string]$BaseDir)
+
+        $line = $RawLine.Trim()
+        if ([string]::IsNullOrWhiteSpace($line) -or $line.StartsWith('#') -or $line.StartsWith('!')) { return }
+        $line = ($line -replace '^[./]+', '') -replace '/$', ''
+        $line = $line -replace '/', '\'
+        if ($Prefix -ne '') { $line = "$Prefix\$line" }
+        if ([string]::IsNullOrWhiteSpace($line)) { return }
+
+        # Skip patterns with character classes like [oc] - not supported by robocopy.
+        if ($line -match '\[') { return }
+
+        $parts = $line -split '\\'
+        $leaf  = $parts[-1]
+
+        # Normalise trailing wildcards: ".venv\*" -> exclude dir ".venv"
+        if ($leaf -eq '*') {
+            $parts = @($parts[0..($parts.Length - 2)])
+            if ($parts.Count -eq 0) { return }
+            $line = $parts -join '\'
+            $leaf = $parts[-1]
+        }
+
+        # Decide: file pattern vs directory/plain-name pattern.
+        # File patterns: leaf looks like "*.ext" or "name.ext"
+        # Hidden-dir names like ".venv", ".cache" are NOT file patterns (start with dot, no second dot).
+        $isFilePat = $leaf -match '^\*\.' -or ($leaf -match '\.' -and $leaf -notmatch '^\.[-\w]+$')
+
+        if ($isFilePat) {
+            if ($parts.Count -eq 1) {
+                # Simple wildcard extension, e.g. *.log - safe for /XF.
+                # Also add to /XD so that directories named e.g. "*.egg-info" are covered.
+                $fileExcludes.Add($line)
+                $dirExcludes.Add($line)
+            } else {
+                # Path-specific file; resolve to absolute path for /XF.
+                $absPath = Join-Path $BaseDir $line
+                if (Test-Path $absPath -PathType Leaf) { $fileExcludes.Add($absPath) }
+            }
+        } else {
+            if ($parts.Count -eq 1) {
+                # Simple name like __pycache__ or .venv - matches any dir with that name in the tree.
+                $dirExcludes.Add($line)
+            } else {
+                # Multi-level path - convert to absolute path for precise /XD matching.
+                $absPath = Join-Path $BaseDir $line
+                $dirExcludes.Add($absPath)
+            }
+        }
+    }
+
+    # Root .gitignore
+    $rootIgnore = Join-Path $PROJECT_ROOT ".gitignore"
+    if (Test-Path $rootIgnore) {
+        Get-Content $rootIgnore | ForEach-Object { & $processLine $_ '' $PROJECT_ROOT }
+    }
+
+    # Per-directory .gitignore files under SrcDir
+    if (Test-Path $SrcDir) {
+        Get-ChildItem -Path $SrcDir -Filter .gitignore -Recurse -File | ForEach-Object {
+            $ig    = $_.FullName
+            $igDir = Split-Path $ig -Parent
+            $prefix = if ($igDir -eq $SrcDir) { '' } else { $igDir.Substring($SrcDir.Length + 1).Replace('/', '\') }
+            Get-Content $ig | ForEach-Object { & $processLine $_ $prefix $SrcDir }
+        }
+    }
+
+    # Hard-coded defaults - simple dir names, safe for /XD
+    '.venv', 'thirdparty', '__pycache__', 'models', 'avatars' | ForEach-Object { $dirExcludes.Add($_) }
+
+    return @{
+        DirPatterns  = $dirExcludes.ToArray()
+        FilePatterns = $fileExcludes.ToArray()
+    }
+}
+
 function Add-TempDir {
     # Create a temporary directory for worker files
     try {
@@ -67,6 +158,22 @@ function Add-TempDir {
     }
 }
 
+function Remove-TempDir {
+    # Clean up the temporary directory
+    try {
+        if (Test-Path $TEMP_DIR) {
+            Write-Host "Cleaning up temporary directory..." -ForegroundColor Green
+            Remove-Item -Recurse -Force $TEMP_DIR -ErrorAction Stop
+            Write-Host "Temporary directory removed." -ForegroundColor Green
+        } else {
+            Write-Host "Temporary directory not found. No cleanup needed." -ForegroundColor Yellow
+        }
+    } catch {
+        Write-Host "Error removing temporary directory: $_" -ForegroundColor Red
+        throw
+    }
+}
+
 function Add-WorkerFiles {
     # Copy worker files to the temporary directory
     Write-Host "Copying worker files to temporary directory..." -ForegroundColor Green
@@ -75,7 +182,24 @@ function Add-WorkerFiles {
             throw "Worker directory not found at $WORKER_DIR"
         }
         New-Item -ItemType Directory -Path "$TEMP_DIR/workers" -ErrorAction Stop | Out-Null
-        $robocopyResult = robocopy $WORKER_DIR "$TEMP_DIR/workers" /E /XD ".venv" "thirdparty" "__pycache__" "models" "avatars"
+
+        # Build excludes from .gitignore (root + per-worker), split into dir vs file patterns
+        $excludes = Get-GitignoreExcludes -SrcDir $WORKER_DIR
+        $robocopyArgs = [System.Collections.Generic.List[string]]::new()
+        $robocopyArgs.Add($WORKER_DIR)
+        $robocopyArgs.Add("$TEMP_DIR/workers")
+        $robocopyArgs.Add('/E')
+        if ($excludes.DirPatterns.Count -gt 0) {
+            $robocopyArgs.Add('/XD')
+            $excludes.DirPatterns | ForEach-Object { $robocopyArgs.Add($_) }
+        }
+        if ($excludes.FilePatterns.Count -gt 0) {
+            $robocopyArgs.Add('/XF')
+            $excludes.FilePatterns | ForEach-Object { $robocopyArgs.Add($_) }
+        }
+
+        Write-Host "Running robocopy (dir excludes: $($excludes.DirPatterns.Count), file excludes: $($excludes.FilePatterns.Count))..." -ForegroundColor Cyan
+        $robocopyResult = & robocopy @robocopyArgs
         # Robocopy exit codes: 0-7 are success, 8+ are errors
         if ($LASTEXITCODE -lt 8) {
             Write-Host "Worker files copied successfully." -ForegroundColor Green
@@ -93,7 +217,7 @@ function Add-ScriptFiles {
     
     try {
         # Get the scripts root directory (parent of win folder)
-        $SCRIPTS_ROOT = Split-Path $SCRIPT_DIR -Parent
+        $SCRIPTS_ROOT = $SCRIPT_DIR
         
         if (-not (Test-Path $SCRIPTS_ROOT)) {
             throw "Scripts root directory not found at $SCRIPTS_ROOT"
@@ -223,7 +347,7 @@ function Start-ElectronPackage {
         Write-Host "Electron dependencies installed successfully." -ForegroundColor Green
         
         Write-Host "Building Electron package..." -ForegroundColor Cyan
-        npm run build:dir
+        npm run build:win
         if ($LASTEXITCODE -ne 0) {
             throw "Electron build failed with exit code $LASTEXITCODE"
         }
@@ -250,70 +374,40 @@ function Invoke-FinalizePackage {
         exit 1
     }
     
-    # Create the new EdgeAIDemoStudio package structure
-    Write-Host "Creating EdgeAIDemoStudio package structure..." -ForegroundColor Green
+    # Create the new package structure using project name
+    Write-Host "Creating $PROJECT_NAME package structure..." -ForegroundColor Green
     $outDir = Join-Path $PROJECT_ROOT "out"
     Push-Location $outDir
     
     try {
-        # Remove existing EdgeAIDemoStudio directory if it exists
-        if (Test-Path "EdgeAIDemoStudio") {
-            Remove-Item -Recurse -Force "EdgeAIDemoStudio"
-            Write-Host "Removed existing EdgeAIDemoStudio directory" -ForegroundColor Green
+        # Remove existing project directory if it exists
+        if (Test-Path $PROJECT_NAME) {
+            Remove-Item -Recurse -Force $PROJECT_NAME
+            Write-Host "Removed existing $PROJECT_NAME directory" -ForegroundColor Green
         }
-        
-        # Create EdgeAIDemoStudio directory
-        New-Item -ItemType Directory -Path "EdgeAIDemoStudio" | Out-Null
-        
-        # Copy files to EdgeAIDemoStudio root
-        $rootFiles = @("README.md", "start_web.bat", "setup.bat")
-        foreach ($rootFile in $rootFiles) {
-            $sourcePath = Join-Path $outDir $rootFile
-            if (Test-Path $sourcePath) {
-                Copy-Item $sourcePath "EdgeAIDemoStudio/" -Force
-                Write-Host "$rootFile copied to EdgeAIDemoStudio root successfully." -ForegroundColor Green
+
+        # Move the win-unpacked folder to the project name. If move fails,
+        # fall back to copying the contents into a newly created project folder.
+        if (Test-Path $OUT_FOLDER) {
+            try {
+                Move-Item -LiteralPath $OUT_FOLDER -Destination (Join-Path $outDir $PROJECT_NAME) -Force
+                Write-Host "Renamed win-unpacked to $PROJECT_NAME." -ForegroundColor Green
+            } catch {
+                Write-Host "Warning: failed to rename win-unpacked - falling back to copying contents: $_" -ForegroundColor Yellow
+                New-Item -ItemType Directory -Path $PROJECT_NAME | Out-Null
+                Copy-Item -Recurse (Join-Path $OUT_FOLDER '*') $PROJECT_NAME -Force
+                Write-Host "win-unpacked contents copied into $PROJECT_NAME." -ForegroundColor Green
             }
+        } else {
+            Write-Host "Error: Output folder not found at $OUT_FOLDER" -ForegroundColor Red
+            exit 1
         }
-        
-        # Copy the entire win-unpacked directory into EdgeAIDemoStudio
-        if (Test-Path "win-unpacked") {
-            Copy-Item -Recurse "win-unpacked" "EdgeAIDemoStudio/" -Force
-            Write-Host "win-unpacked directory copied successfully." -ForegroundColor Green
-        }
-        
-        # Create a batch file launcher that launches the application correctly
-        Push-Location "EdgeAIDemoStudio"
-        $launcherContent = @'
-@echo off
-setlocal
-
-rem Get the directory where this script is located
-set "SCRIPT_DIR=%~dp0"
-
-rem Define the path to the executable
-set "EXECUTABLE=%SCRIPT_DIR%win-unpacked\EdgeAIDemoStudio.exe"
-
-rem Check if the executable exists
-if not exist "%EXECUTABLE%" (
-    echo Error: EdgeAIDemoStudio executable not found at %EXECUTABLE%
-    pause
-    exit /b 1
-)
-
-rem Launch the application
-echo Starting EdgeAIDemoStudio...
-start "" "%EXECUTABLE%" %*
-'@
-        
-        $launcherContent | Out-File -FilePath "EdgeAIDemoStudio.bat" -Encoding ASCII
-        Write-Host "EdgeAIDemoStudio.bat launcher script created successfully." -ForegroundColor Green
-        Pop-Location
         
         # Create zip file with the new structure
-        Write-Host "Creating EdgeAIDemoStudio.zip..." -ForegroundColor Green
-        if (Test-Path "EdgeAIDemoStudio.zip") {
-            Remove-Item "EdgeAIDemoStudio.zip" -Force
-            Write-Host "Removed existing EdgeAIDemoStudio.zip" -ForegroundColor Green
+        Write-Host "Creating $PROJECT_NAME.zip..." -ForegroundColor Green
+        if (Test-Path "$PROJECT_NAME.zip") {
+            Remove-Item "$PROJECT_NAME.zip" -Force
+            Write-Host "Removed existing $PROJECT_NAME.zip" -ForegroundColor Green
         }
 
         # Normalize file timestamps to a DOS/ZIP-compatible range to avoid
@@ -341,11 +435,11 @@ start "" "%EXECUTABLE%" %*
             }
         }
 
-        Normalize-Timestamps -RootPath "EdgeAIDemoStudio"
+        Normalize-Timestamps -RootPath $PROJECT_NAME
 
         # Use PowerShell's Compress-Archive cmdlet
-        Compress-Archive -Path "EdgeAIDemoStudio" -DestinationPath "EdgeAIDemoStudio.zip" -Force
-        Write-Host "EdgeAIDemoStudio.zip created successfully." -ForegroundColor Green
+        Compress-Archive -Path $PROJECT_NAME -DestinationPath "$PROJECT_NAME.zip" -Force
+        Write-Host "$PROJECT_NAME.zip created successfully." -ForegroundColor Green
         
     } catch {
         Write-Host "Error during package finalization: $_" -ForegroundColor Red
@@ -354,7 +448,6 @@ start "" "%EXECUTABLE%" %*
         Pop-Location
     }
 }
-
 
 try {
     Push-Location $SCRIPT_DIR
@@ -378,12 +471,13 @@ try {
     # Final message
     $outPath = Join-Path $SCRIPT_DIR "../out"
     Write-Host "Packaging completed successfully. Files are available in $outPath" -ForegroundColor Green
-    Write-Host "Zip file created: $outPath\EdgeAIDemoStudio.zip" -ForegroundColor Green
+    Write-Host "Zip file created: $outPath\$PROJECT_NAME.zip" -ForegroundColor Green
 } catch {
     Write-Host "An error occurred: $_" -ForegroundColor Red
     exit 1
 } finally {
     # Clean up Node.js PATH if it was modified
+    Remove-TempDir
     Remove-NodeFromPath
     Pop-Location
 }

@@ -1,134 +1,112 @@
 #!/bin/bash
-# Copyright (C) 2025 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VENV_DIR="$SCRIPT_DIR/.venv"
-PARENT_THIRDPARTY_DIR="$SCRIPT_DIR/../thirdparty"
-PARENT_UV_PATH="$PARENT_THIRDPARTY_DIR/uv/uv"
-PARENT_OVMS_PATH="$PARENT_THIRDPARTY_DIR/ovms/bin/ovms"
-UV_CMD="$PARENT_UV_PATH"
+WORKERS_DIR="$(dirname "$SCRIPT_DIR")"
+WORKERS_THIRDPARTY_DIR="$WORKERS_DIR/thirdparty"
+
+UV_PATH="$WORKERS_THIRDPARTY_DIR/uv/uv"
+OVMS_PATH="$WORKERS_THIRDPARTY_DIR/ovms/bin/ovms"
+OVMS_DIR="$WORKERS_THIRDPARTY_DIR/ovms"
 
 OVMS_VERSION="v2025.4.1"
-OPTIMUM_EXPORT_MODEL_DIR="thirdparty"
+OPTIMUM_VENV_DIR="thirdparty/.venv"
 OPTIMUM_EXPORT_MODEL_URL="https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/tags/${OVMS_VERSION}/demos/common/export_models"
+OPTIMUM_EXPORT_MODEL_REQUIREMENTS="requirements.txt"
 OPTIMUM_EXPORT_MODEL_SCRIPT="export_model.py"
-OPTIMUM_EXPORT_MODEL_REQUIREMENTS_URL="requirements.txt"
 
-# Function to check if uv is installed in parent thirdparty directory
-check_uv_installed() {
-    echo -e "Checking if uv is installed in parent thirdparty directory..."
-    if [ -x "$PARENT_UV_PATH" ]; then
-        echo -e "Found uv in parent thirdparty folder."
-    else
-        echo -e "uv not found in expected location: $PARENT_UV_PATH"
-        echo -e "Please ensure the workers setup has been run first."
-        exit 1
+check_uv() {
+    if [ -x "$UV_PATH" ]; then
+        echo "Found uv."
+        return 0
     fi
+    echo "ERROR: uv not found at $UV_PATH"
+    echo "Please run the workers setup script first."
+    exit 1
 }
 
-check_ovms_installed() {
-    echo "Checking if OVMS is installed in parent thirdparty directory..."
-    if [ -x "$PARENT_OVMS_PATH" ]; then
-        echo -e "Found OVMS in parent thirdparty folder."
-    else
-        echo -e "OVMS not found in expected location: $PARENT_OVMS_PATH"
-        echo -e "Please ensure the workers setup has been run first."
-        exit 1
+check_ovms() {
+    if [ -x "$OVMS_PATH" ]; then
+        echo "Found OVMS."
+        return 0
     fi
+    echo "ERROR: OVMS not found at $OVMS_PATH"
+    echo "Please run the workers setup script first."
+    exit 1
 }
 
 download_file() {
     local url="$1"
     local output="$2"
     local description="${3:-file}"
-    
+
     echo "Downloading $description..."
     if ! curl -L --progress-bar "$url" -o "$output"; then
         echo "Failed to download $description from $url"
         return 1
     fi
-    echo "Downloaded $description"
+    echo "Downloaded $description."
     return 0
 }
 
+setup_ovms_jinja() {
+    echo "Installing Jinja2 and MarkupSafe into OVMS lib/python..."
+    local OVMS_LIB_PYTHON_DIR="$OVMS_DIR/lib/python"
+    if ! "$UV_PATH" pip install --target "$OVMS_LIB_PYTHON_DIR" "Jinja2==3.1.6" "MarkupSafe==3.0.2"; then
+        echo "Failed to install Jinja2/MarkupSafe into OVMS lib/python."
+        return 1
+    fi
+    echo "Jinja2/MarkupSafe installed into OVMS lib/python."
+    return 0
+}
 
-setup_export_model() {
-    echo "Setting up Optimum Export Model"
-    
-    if [[ -f "$OPTIMUM_EXPORT_MODEL_DIR" ]]; then
-        echo "Optimum Export Model script already exists. Skipping setup."
+setup_optimum_venv() {
+    echo "Setting up Optimum venv for ovms --pull..."
+
+    if [[ -d "$OPTIMUM_VENV_DIR" ]]; then
+        echo "Optimum venv already exists at $OPTIMUM_VENV_DIR. Skipping."
         return 0
     fi
-    
-    echo "Creating directory: $OPTIMUM_EXPORT_MODEL_DIR"
-    mkdir -p "$OPTIMUM_EXPORT_MODEL_DIR"
-    
-    # Download export_model.py
-    if ! download_file "$OPTIMUM_EXPORT_MODEL_URL/$OPTIMUM_EXPORT_MODEL_SCRIPT" "$OPTIMUM_EXPORT_MODEL_DIR/$OPTIMUM_EXPORT_MODEL_SCRIPT" "Optimum Export Model script"; then
-        return 1
-    fi
-    
-    # Download requirements.txt
-    if ! download_file "$OPTIMUM_EXPORT_MODEL_URL/$OPTIMUM_EXPORT_MODEL_REQUIREMENTS_URL" "$OPTIMUM_EXPORT_MODEL_DIR/$OPTIMUM_EXPORT_MODEL_REQUIREMENTS_URL" "Optimum Export Model requirements"; then
-        return 1
-    fi
-    
-    # shellcheck disable=SC1091
-    if ! $UV_CMD pip install --pre --index-strategy unsafe-best-match -r "$OPTIMUM_EXPORT_MODEL_DIR/$OPTIMUM_EXPORT_MODEL_REQUIREMENTS_URL"; then
-        echo "Pip install of OVMS Optimum requirements failed."
+
+    mkdir -p "thirdparty"
+
+    echo "Creating Optimum venv at $OPTIMUM_VENV_DIR..."
+    "$UV_PATH" venv "$OPTIMUM_VENV_DIR" --clear
+
+    echo "Downloading Optimum export model requirements..."
+    if ! download_file "$OPTIMUM_EXPORT_MODEL_URL/$OPTIMUM_EXPORT_MODEL_REQUIREMENTS" \
+        "thirdparty/$OPTIMUM_EXPORT_MODEL_REQUIREMENTS" "Optimum Export Model requirements"; then
         return 1
     fi
 
-    if ! $UV_CMD pip install datasets; then
-        echo "Pip install of datasets failed."
+    echo "Downloading Optimum export model script..."
+    if ! download_file "$OPTIMUM_EXPORT_MODEL_URL/$OPTIMUM_EXPORT_MODEL_SCRIPT" \
+        "thirdparty/$OPTIMUM_EXPORT_MODEL_SCRIPT" "Optimum Export Model script"; then
         return 1
     fi
 
-    echo "OVMS Optimum requirements installed successfully in virtual environment."
+    echo "Installing Optimum export model dependencies into venv..."
+    "$UV_PATH" pip install --python "$OPTIMUM_VENV_DIR" \
+        --prerelease allow --index-strategy unsafe-best-match \
+        -r "thirdparty/$OPTIMUM_EXPORT_MODEL_REQUIREMENTS"
+
+    "$UV_PATH" pip install --python "$OPTIMUM_VENV_DIR" modelscope datasets Jinja2==3.1.6 MarkupSafe==3.0.2
+
+    echo "Optimum venv setup completed."
     return 0
 }
 
-
-# Function to install Python dependencies
-install_python_dependencies() {
-    if [[ -d "$VENV_DIR" ]]; then
-        echo "Virtual environment already exists at $VENV_DIR."
-    else
-        echo "Creating Python 3.11 virtual environment with uv ..."
-        "$UV_CMD" venv --seed --python 3.11 "$VENV_DIR"
-    fi
-
-    echo -e "Installing Python dependencies with uv (this may take a few minutes)..."
-    echo -e "Note: If this seems stuck, it might be resolving PyTorch dependencies..."
-
-    if [ -f "requirements.txt" ]; then
-        echo -e "Installing requirements.txt dependencies..."
-        if "$UV_CMD" pip install -r requirements.txt; then
-            echo -e "Python dependencies installed successfully."
-        else
-            echo -e "Failed to install Python dependencies."
-            exit 1
-        fi
-    else
-        echo -e "requirements.txt not found, skipping requirements installation."
-    fi
-}
-
-
-# No third-party dependency download in this worker script (handled by parent setup)
-
-# Main execution
 main() {
-    echo -e "Starting Image Generation Setup..."
+    echo "Starting Image Generation setup..."
     cd "$SCRIPT_DIR"
-    check_ovms_installed
-    check_uv_installed
-    install_python_dependencies
-    setup_export_model
-    echo -e "Setup completed successfully!"
+    check_uv
+    check_ovms
+    setup_ovms_jinja
+    setup_optimum_venv
+    echo "Image Generation setup completed successfully!"
 }
 
 main

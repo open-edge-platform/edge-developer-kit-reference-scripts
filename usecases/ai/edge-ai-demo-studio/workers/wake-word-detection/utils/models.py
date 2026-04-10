@@ -1,4 +1,4 @@
-# Copyright (C) 2025 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 """Data models for wake word detection service."""
@@ -51,3 +51,4 @@ class DetectionStartRequest(BaseModel):
     """Request model for starting detection."""
 
     device_id: int = -1  # Audio input device ID / -1 for 'sysdefault'
+    threshold: float = 0.5  # Detection score threshold (0.0–1.0)

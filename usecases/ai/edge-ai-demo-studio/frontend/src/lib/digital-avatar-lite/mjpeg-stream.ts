@@ -1,15 +1,12 @@
-// Copyright (C) 2025 Intel Corporation
+// Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-/**
- * MJPEG stream handler for video frame streaming
- */
+import { logger } from '@/lib/logger'
 
+import { DEFAULT_FPS } from './config'
 import type { VideoCache, VideoState } from './types'
 import type { VideoCacheManager } from './video-cache'
 import type { StreamStateManager } from './stream-state'
-import { DEFAULT_FPS } from './config'
-import { logger } from '@/utils/logger'
 
 interface StreamOptions {
   requestedFPS: number | null
@@ -24,9 +21,6 @@ export class MJPEGStreamHandler {
     private readonly stateManager: StreamStateManager,
   ) {}
 
-  /**
-   * Create a ReadableStream that generates MJPEG frames
-   */
   createStream(options: StreamOptions): ReadableStream<Uint8Array> {
     return new ReadableStream<Uint8Array>({
       start: async (controller) => {
@@ -45,7 +39,7 @@ export class MJPEGStreamHandler {
     let closed = false
     let currentVideo = this.stateManager.getActiveVideo()
     let currentFrameIndex = 0
-    let direction = 1 // 1 for forward, -1 for backward
+    let direction = 1
 
     try {
       while (!closed) {
@@ -60,11 +54,9 @@ export class MJPEGStreamHandler {
         const frameDelay = 1000 / fps
         const frames = cache.frames
 
-        // Check if we're at a boundary and handle state transitions
         const isAtBoundary = this.isAtBoundary(currentFrameIndex, frames.length)
 
         if (isAtBoundary) {
-          // Handle pending video switch
           if (this.handlePendingVideoSwitch(currentVideo)) {
             currentVideo = this.stateManager.getActiveVideo()
             currentFrameIndex = 0
@@ -72,7 +64,6 @@ export class MJPEGStreamHandler {
             continue
           }
 
-          // Handle idle variant switching
           if (
             this.handleIdleVariantSwitch(
               currentVideo,
@@ -86,7 +77,6 @@ export class MJPEGStreamHandler {
           }
         }
 
-        // Get and send current frame
         const frame = frames[currentFrameIndex]
         if (!frame) {
           logger.error(`Frame at index ${currentFrameIndex} is undefined/null`)
@@ -96,7 +86,6 @@ export class MJPEGStreamHandler {
 
         this.sendFrame(controller, frame)
 
-        // Move to next frame (ping-pong loop)
         const moveResult = this.moveToNextFrame(
           currentFrameIndex,
           direction,
@@ -106,7 +95,6 @@ export class MJPEGStreamHandler {
         currentFrameIndex = moveResult.index
         direction = moveResult.direction
 
-        // Control frame rate
         await this.delay(frameDelay)
       }
     } catch (error) {
@@ -124,12 +112,11 @@ export class MJPEGStreamHandler {
       const variant = this.stateManager.getCurrentIdleVariant()
       if (variant === 'main') {
         return this.cacheManager.getIdleMain()
-      } else {
-        return (
-          this.cacheManager.getIdleAlternate(variant) ||
-          this.cacheManager.getIdleMain()
-        )
       }
+      return (
+        this.cacheManager.getIdleAlternate(variant) ||
+        this.cacheManager.getIdleMain()
+      )
     } else if (activeVideo === 'talking') {
       const variant = this.stateManager.getCurrentTalkingVariant()
       return (
@@ -148,13 +135,6 @@ export class MJPEGStreamHandler {
     return null
   }
 
-  /**
-   * Check if the current frame is at a boundary position.
-   * In the ping-pong loop pattern, frames play forward (0 -> n-1) then backward (n-1 -> 0).
-   * We check indices 0, 1, n-1, and n-2 because these are the natural reversal points
-   * where direction changes occur, making them ideal for state transitions without
-   * introducing visual discontinuities in the looping animation.
-   */
   private isAtBoundary(frameIndex: number, frameCount: number): boolean {
     return (
       frameIndex === 0 ||
@@ -168,7 +148,6 @@ export class MJPEGStreamHandler {
     const pendingVideo = this.stateManager.getPendingVideo()
     if (pendingVideo && pendingVideo !== currentVideo) {
       if (this.stateManager.executePendingSwitch()) {
-        // Select appropriate variant
         if (pendingVideo === 'talking') {
           this.stateManager.selectRandomTalkingVariant(
             this.cacheManager.getTalkingCount(),
@@ -189,7 +168,6 @@ export class MJPEGStreamHandler {
     direction: number,
     currentFrameIndex: number,
   ): boolean {
-    // Check if we should switch to idle alternate
     if (
       currentVideo === 'idle' &&
       this.stateManager.shouldSwitchToIdleAlternate()
@@ -200,7 +178,6 @@ export class MJPEGStreamHandler {
       }
     }
 
-    // Check if we just finished an idle alternate
     if (
       this.stateManager.isOnIdleAlternate() &&
       direction === -1 &&
@@ -235,11 +212,9 @@ export class MJPEGStreamHandler {
     let newIndex = currentIndex + direction
     let newDirection = direction
 
-    // Reverse direction at boundaries for seamless loop
     if (newIndex >= frameCount) {
       newIndex = frameCount - 2
       newDirection = -1
-      // Increment idle loop count when completing a forward pass
       if (currentVideo === 'idle') {
         this.stateManager.incrementIdleLoopCount()
       }
@@ -284,9 +259,6 @@ export class MJPEGStreamHandler {
     return new Promise((resolve) => setTimeout(() => resolve(), ms))
   }
 
-  /**
-   * Get the boundary string for multipart response
-   */
   getBoundary(): string {
     return this.boundary
   }

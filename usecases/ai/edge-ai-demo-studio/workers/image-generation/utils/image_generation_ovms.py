@@ -1,23 +1,19 @@
-# Copyright (C) 2025 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 import os
-import re
 import argparse
+import glob
 import subprocess  # nosec -- used to spawn ovms in a secured environment
 import sys
 import time
 import threading
-from huggingface_hub import snapshot_download
-from modelscope import snapshot_download as ms_snapshot_download
 from utils.util import (
     validate_and_sanitize_cache_dir,
     create_cache_directory,
-    validate_and_sanitize_model_id,
 )
 import requests
 import urllib.parse
-import subprocess  # nosec -- used as a catch exception type only
 
 # Global variable to track the OVMS subprocess for cleanup
 ovms_process = None
@@ -70,49 +66,111 @@ def cleanup_ovms_process():
         cleanup_in_progress.release()
 
 
-def download_model(model_id: str, model_dir: str, source: str = "huggingface") -> str:
+def _get_ovms_paths():
     """
-    Download the model from Hugging Face Hub if it is not already present.
+    Get OVMS and optimum venv paths for the image-generation worker.
+    OVMS binary: workers/thirdparty/ovms
+    Optimum venv: workers/image-generation/thirdparty/.venv
     """
-    try:
-        print(f"Downloading model: {model_id}...")
-        if source == "modelscope":
-            path = ms_snapshot_download(repo_id=model_id, local_dir=model_dir)
-        else:
-            path = snapshot_download(repo_id=model_id, local_dir=model_dir)
-        return os.path.join(path, model_id)
-    except Exception as e:
-        print(f"Error downloading {model_id}: {e}")
-        raise RuntimeError(f"Failed to download model {model_id}")
-
-
-def export_model(model_path: str, model_dir: str, params: str = None):
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    python_source = (
-        os.path.join(".venv", "bin", "python3")
-        if os.name != "nt"
-        else os.path.join(".venv", "Scripts", "python.exe")
-    )
-    command = [
-        os.path.join(script_dir, python_source),
-        "thirdparty/export_model.py",
-        "image_generation",
-        "--source_model",
-        model_path,
-        "--model_repository_path",
-        model_dir,
-    ]
-    if params:
-        command.extend(params.split())
-    command.extend(
-        [
-            "--extra_quantization_params",
-            "--library diffusers",
-        ]
-    )
+    image_gen_dir = os.path.dirname(script_dir)
+    workers_dir = os.path.dirname(image_gen_dir)
+    ovms_dir = os.path.join(workers_dir, "thirdparty", "ovms")
+    optimum_venv_path = os.path.join(image_gen_dir, "thirdparty", ".venv")
+    return ovms_dir, optimum_venv_path
 
-    print("-" * 50)
-    print(command)
+
+def _get_uv_executable():
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    image_gen_dir = os.path.dirname(script_dir)
+    workers_dir = os.path.dirname(image_gen_dir)
+    uv_dir = os.path.join(workers_dir, "thirdparty", "uv")
+    uv_executable = os.path.join(uv_dir, "uv.exe" if os.name == "nt" else "uv")
+    return uv_executable if os.path.exists(uv_executable) else "uv"
+
+
+def _setup_pull_environment():
+    """
+    Set up environment for ovms --pull operations.
+    Reference: ov_downloader.py in multiserve engine.
+    Uses os.environ.copy() with OVMS + optimum venv paths added.
+    """
+    ovms_dir, optimum_venv_path = _get_ovms_paths()
+    env = os.environ.copy()
+
+    if os.name == "nt":  # Windows
+        python_home_dir = os.path.join(ovms_dir, "python")
+        optimum_venv_scripts = os.path.join(optimum_venv_path, "Scripts")
+        env["OVMS_DIR"] = ovms_dir
+        env["PYTHONHOME"] = python_home_dir
+        current_path = env.get("PATH", "")
+        env["PATH"] = (
+            f"{optimum_venv_scripts};{ovms_dir};{python_home_dir};{current_path}"
+        )
+        ovms_executable = os.path.join(ovms_dir, "ovms.exe")
+    else:  # Linux
+        optimum_venv_bin = os.path.join(optimum_venv_path, "bin")
+        optimum_site_packages_list = glob.glob(
+            os.path.join(optimum_venv_path, "lib", "python*", "site-packages")
+        )
+        env["LD_LIBRARY_PATH"] = os.path.join(ovms_dir, "lib")
+        current_path = env.get("PATH", "")
+        env["PATH"] = (
+            f"{optimum_venv_bin}:{os.path.join(ovms_dir, 'bin')}:{current_path}"
+        )
+        ovms_python_lib = os.path.join(ovms_dir, "lib", "python")
+        if optimum_site_packages_list:
+            env["PYTHONPATH"] = f"{optimum_site_packages_list[0]}:{ovms_python_lib}"
+        else:
+            env["PYTHONPATH"] = ovms_python_lib
+        ovms_executable = os.path.join(ovms_dir, "bin", "ovms")
+
+    if not os.path.exists(ovms_executable):
+        raise RuntimeError(f"OVMS executable not found at {ovms_executable}")
+
+    return ovms_executable, env
+
+def pull_model(
+    model_id: str,
+    model_repository_path: str,
+    device: str = "CPU",
+    source: str = "huggingface",
+):
+    """
+    Use ovms --pull to download and convert a model.
+    For ModelScope sources, downloads via modelscope first, then runs ovms --pull.
+    Reference: ov_downloader.py download_model() / download_unverified_model() in multiserve engine.
+    """
+    # If source is modelscope, download first via modelscope CLI
+    ovms_executable, env = _setup_pull_environment()
+    
+    command_env = env.copy()
+    if source == "modelscope":
+        command_env["HF_ENDPOINT"] = "https://www.modelscope.cn/models"
+
+    # Normalize device for pull
+    pull_device = device
+    if "." in pull_device:
+        pull_device = pull_device.split(".")[0]
+
+    command = [
+        ovms_executable,
+        "--pull",
+        "--model_repository_path",
+        model_repository_path,
+        "--source_model",
+        model_id,
+        "--task",
+        "image_generation",
+        "--target_device",
+        pull_device,
+    ]
+
+    # Add NPU-specific parameters
+    if "NPU" in pull_device.upper():
+        command.extend(["--resolution", "512x512"])
+
+    print(f"Running ovms --pull: {' '.join(command)}")
 
     process = subprocess.Popen(
         command,
@@ -121,41 +179,27 @@ def export_model(model_path: str, model_dir: str, params: str = None):
         text=True,
         bufsize=1,
         universal_newlines=True,
-        env=os.environ.copy(),
+        env=command_env,
     )
     for line in process.stdout:
-        print(line, end="")
+        stripped_line = line.strip()
+        if stripped_line:
+            print(stripped_line)
     process.wait()
+
     if process.returncode != 0:
-        raise RuntimeError(f"Model export failed with exit code {process.returncode}")
+        raise RuntimeError(f"ovms --pull failed with exit code {process.returncode}")
 
-
-def prepare_model_env(
-    model_path: str, model_dir: str, device: str = "CPU", precision: str = "int4"
-):
-    print(f"Preparing model environment for {model_path} ...")
-    if not os.path.exists(model_path):
-        os.makedirs(model_path, exist_ok=True)
-
-    try:
-        task_parameters = ""
-        if "." in device:
-            device = device.split(".")[0]
-        if device == "NPU":
-            device = "NPU NPU NPU"
-            task_parameters += " --resolution 512x512"
-        task_parameters += f" --target_device {device}"
-        export_model(model_path, model_dir, task_parameters)
-        print(f"Model exported successfully to {model_path}")
-    except Exception as e:
-        print(f"An unexpected error occurred: {e}")
-        raise RuntimeError(f"Failed to prepare model environment for {model_path}")
+    print(f"Model {model_id} pulled successfully to {model_repository_path}")
 
 
 def setup_ovms_environment():
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    image_gen_dir = os.path.dirname(script_dir)
-    ovms_dir = os.path.join(os.path.dirname(image_gen_dir), "thirdparty", "ovms")
+    """
+    Set up environment for OVMS serving.
+    OVMS binary: workers/thirdparty/ovms
+    Optimum venv: workers/image-generation/thirdparty/.venv
+    """
+    ovms_dir, optimum_venv_path = _get_ovms_paths()
     env = {}
     env["HF_TOKEN"] = os.environ.get("HF_TOKEN", "")
     env["HF_ENDPOINT"] = os.environ.get("HF_ENDPOINT", "")
@@ -175,9 +219,12 @@ def setup_ovms_environment():
 
         os.environ["PYTHONHOME"] = python_home_dir
 
-        # Update PATH to include OVMS_DIR and PYTHONHOME
+        # Update PATH to include OVMS_DIR, PYTHONHOME, and optimum venv
+        optimum_venv_scripts = os.path.join(optimum_venv_path, "Scripts")
         current_path = os.environ.get("PATH", "")
-        os.environ["PATH"] = f"{ovms_dir};{python_home_dir};{current_path}"
+        os.environ["PATH"] = (
+            f"{optimum_venv_scripts};{ovms_dir};{python_home_dir};{current_path}"
+        )
 
         # Check if ovms.exe exists in the OVMS_DIR
         ovms_executable = os.path.join(ovms_dir, "ovms.exe")
@@ -190,9 +237,17 @@ def setup_ovms_environment():
             raise RuntimeError(f"OVMS executable not found at {ovms_executable}")
         return ovms_executable, None
     else:  # Linux/Unix
+        optimum_venv_bin = os.path.join(optimum_venv_path, "bin")
+        optimum_site_packages_list = glob.glob(
+            os.path.join(optimum_venv_path, "lib", "python*", "site-packages")
+        )
         env["LD_LIBRARY_PATH"] = os.path.join(ovms_dir, "lib")
-        env["PATH"] = f"{os.path.join(ovms_dir, 'bin')}"
-        env["PYTHONPATH"] = os.path.join(ovms_dir, "lib", "python")
+        env["PATH"] = f"{optimum_venv_bin}:{os.path.join(ovms_dir, 'bin')}"
+        ovms_python_lib = os.path.join(ovms_dir, "lib", "python")
+        if optimum_site_packages_list:
+            env["PYTHONPATH"] = f"{optimum_site_packages_list[0]}:{ovms_python_lib}"
+        else:
+            env["PYTHONPATH"] = ovms_python_lib
 
         # Check if http/HTTP and https/HTTPS proxies are set in the environment
         for proxy_var in ["http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY"]:
@@ -396,53 +451,29 @@ def setup_ovms_server(
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
 
-    # Set cache directories inside project root
-    app_cache_dir = os.path.join(project_root, "models", "huggingface")
+    # Set cache directory for model repository
     model_cache_dir = os.path.join(project_root, "models", "ovms")
 
-    # Validate and sanitize the cache directories
-    app_cache_dir = validate_and_sanitize_cache_dir(app_cache_dir)
+    # Validate and sanitize the cache directory
     model_cache_dir = validate_and_sanitize_cache_dir(model_cache_dir)
 
-    # Create the directories if they don't exist
-    create_cache_directory(app_cache_dir)
+    # Create the directory if it doesn't exist
     create_cache_directory(model_cache_dir)
 
-    model_dir = model_cache_dir
-
-    model_provider = model_id.split("/")[0] if "/" in model_id else "local"
-    model_name = model_id.split("/")[-1]
-
+    # Use ovms --pull to download and convert the model
     try:
-        validated_model_id = validate_and_sanitize_model_id(model_id)
-        path = download_model(
-            validated_model_id,
-            os.path.join(
-                app_cache_dir if not model_provider == "OpenVINO" else model_cache_dir,
-                validated_model_id,
-            ),
-            source,
+        pull_model(
+            model_id=model_id,
+            model_repository_path=model_cache_dir,
+            device=device,
+            source=source,
         )
     except Exception as e:
-        print(f"Error downloading model {validated_model_id}: {e}")
-        raise RuntimeError(f"Failed to download model {validated_model_id}")
+        print(f"Error pulling model {model_id}: {e}")
+        raise RuntimeError(f"Failed to pull model {model_id}: {e}")
 
-    # Convert model
-    if not model_provider == "OpenVINO":
-        try:
-            prepare_model_env(
-                model_path=path,
-                device=device,
-                model_dir=model_dir,
-                precision=precision,
-            )
-            model_dir = os.path.join(model_dir, model_provider, model_name)
-        except Exception as e:
-            print(f"Error preparing model environment: {e}")
-            raise RuntimeError(f"Failed to prepare model environment: {e}")
-
-    print(f"Model {model_id} is ready in {model_dir}")
-    return model_dir
+    print(f"Model {model_id} is ready in {model_cache_dir}")
+    return model_cache_dir
 
 
 def start_ovms_background(

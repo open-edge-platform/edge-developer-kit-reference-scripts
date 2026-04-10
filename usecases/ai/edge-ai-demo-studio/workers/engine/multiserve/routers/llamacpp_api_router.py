@@ -1,4 +1,4 @@
-# Copyright (C) 2024 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 import sys
@@ -58,7 +58,7 @@ class ModelWithTaskStartRequest(BaseModel):
         None, example="./models/GGUF/text_generation/ggml-org/Qwen3-8B-GGUF/mmproj.gguf"
     )
     extra_args: Optional[List[str]] = Field(None, example=["-fa", "1", "-ngl", "33"])
-    timeout: Optional[int] = Field(120, example=120)
+    timeout: Optional[int] = Field(600, example=600)
 
     @field_validator("task")
     @classmethod
@@ -101,11 +101,27 @@ class ModelWithTaskStopRequest(BaseModel):
 
 class DownloadModelRequest(BaseModel):
     repo_id: str = Field(..., example="Qwen/Qwen3-1.7B-GGUF")
+    source: Optional[str] = Field(
+        "huggingface",
+        example="huggingface",
+        description="Source for model download: 'huggingface' or 'modelscope'",
+    )
+
+    @field_validator("source")
+    @classmethod
+    def validate_source(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        allowed = {"huggingface", "modelscope"}
+        if v not in allowed:
+            raise ValueError(f"source must be one of: {', '.join(sorted(allowed))}")
+        return v
 
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
                 "repo_id": "Qwen/Qwen3-1.7B-GGUF:Q8_0",
+                "source": "huggingface",
             }
         }
     )
@@ -114,11 +130,27 @@ class DownloadModelRequest(BaseModel):
 class UnverifiedModelRequest(BaseModel):
     repo_id: str = Field(..., example="Qwen/Qwen3-1.7B-GGUF")
     task: str = Field(..., example="text_generation")
+    source: Optional[str] = Field(
+        "huggingface",
+        example="huggingface",
+        description="Source for model download: 'huggingface' or 'modelscope'",
+    )
+
+    @field_validator("source")
+    @classmethod
+    def validate_source(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        allowed = {"huggingface", "modelscope"}
+        if v not in allowed:
+            raise ValueError(f"source must be one of: {', '.join(sorted(allowed))}")
+        return v
 
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
                 "repo_id": "Qwen/Qwen3-8B-GGUF:Q4_K_M",
+                "source": "huggingface",
                 "task": "text_generation",
             }
         }
@@ -248,20 +280,20 @@ class ChunkCleanupRequest(BaseModel):
         return cls(repo_id=repo_id, task=task, filename=filename)
 
 
-def create_llamacpp_api_router(llama_manager: LlamaManagerCLI) -> APIRouter:
+def create_llamacpp_api_router(llmcpp_manager: LlamaManagerCLI) -> APIRouter:
     router = APIRouter(prefix="/v1")
 
     @router.get("/health", response_model=StatusResponse, tags=["Server Control"])
     def get_server_health():
         return {
             "health": (
-                "OK" if llama_manager.get_is_server_ready() == True else "NOT READY"
+                "OK" if llmcpp_manager.get_is_server_ready() == True else "NOT READY"
             )
         }
 
     @router.get("/status", tags=["Server Control"])
     def get_server_status():
-        return {"status": llama_manager.get_server_status()}
+        return {"status": llmcpp_manager.get_server_status()}
 
     @router.post("/start", tags=["Server Control"])
     def start_model_server(request: ModelWithTaskStartRequest):
@@ -273,12 +305,17 @@ def create_llamacpp_api_router(llama_manager: LlamaManagerCLI) -> APIRouter:
         try:
             _, repo_id = model_name_parser(request.repo_id)
             if request.model_path == None:
-                if llama_manager.start_or_swap_model(
+                if llmcpp_manager.start_or_swap_model(
                     repo_id, request.device, request.timeout
                 ):
                     return {"context_size": request.context_size}
+                else:
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Failed to start model {request.repo_id}.",
+                    )
             else:
-                recommended_ctx = llama_manager.start_local_model(
+                recommended_ctx = llmcpp_manager.start_local_model(
                     repo_id,
                     request.task,
                     request.context_size,
@@ -288,7 +325,9 @@ def create_llamacpp_api_router(llama_manager: LlamaManagerCLI) -> APIRouter:
                     request.extra_args,
                     request.timeout,
                 )
-                return {"context_size": recommended_ctx}
+                if recommended_ctx != request.context_size:
+                    return recommended_ctx
+                return "OK"
 
         except RuntimeError as e:
             raise HTTPException(status_code=500, detail=f"{e}")
@@ -300,10 +339,10 @@ def create_llamacpp_api_router(llama_manager: LlamaManagerCLI) -> APIRouter:
         _, repo_id = model_name_parser(request.repo_id)
 
         if request.task == None:
-            if llama_manager.stop_model(request.repo_id):
+            if llmcpp_manager.stop_model(request.repo_id):
                 return "OK"
 
-        if llama_manager.stop_local_model(repo_id, request.task):
+        if llmcpp_manager.stop_local_model(repo_id, request.task):
             return "OK"
 
         raise HTTPException(
@@ -312,30 +351,31 @@ def create_llamacpp_api_router(llama_manager: LlamaManagerCLI) -> APIRouter:
 
     @router.get("/model", tags=["Model Management"])
     def list_models():
-        return llama_manager.list_models()
+        return llmcpp_manager.list_models()
 
     @router.post("/model/download", tags=["Model Management"])
     def download_model(request: DownloadModelRequest):
         return StreamingResponse(
-            llama_manager.download_model(request.repo_id), media_type="text/plain"
+            llmcpp_manager.download_model(request.repo_id, source=request.source),
+            media_type="text/plain",
         )
 
     @router.post("/model/download/unverified", tags=["Model Management"])
     def download_unverified_model(request: UnverifiedModelRequest):
         return StreamingResponse(
-            llama_manager.download_unverified_model(
-                hf_repo_with_tag=request.repo_id, task=request.task
+            llmcpp_manager.download_unverified_model(
+                hf_repo_with_tag=request.repo_id, task=request.task, source=request.source
             ),
             media_type="text/plain",
         )
 
     @router.patch("/model/download/cancel", tags=["Model Management"])
     def cancel_download_model(request: ModelRequest):
-        return llama_manager.download_model_cancel()
+        return llmcpp_manager.download_model_cancel()
 
     @router.delete("/model/delete", tags=["Model Management"])
     def delete_model(request: ModelRequest):
-        if llama_manager.delete_model(request.repo_id):
+        if llmcpp_manager.delete_model(request.repo_id):
             return "OK"
 
         raise HTTPException(status_code=500, detail=f"Internal Server Error")
@@ -363,7 +403,7 @@ def create_llamacpp_api_router(llama_manager: LlamaManagerCLI) -> APIRouter:
         model_name, quant = model_request.repo_id.split(":")
 
         model_storage_path = (
-            Path(llama_manager.get_model_dir()) / model_request.task / model_name
+            Path(llmcpp_manager.get_model_dir()) / model_request.task / model_name
         )
         model_path = model_storage_path / file.filename
 
@@ -381,7 +421,7 @@ def create_llamacpp_api_router(llama_manager: LlamaManagerCLI) -> APIRouter:
         with file_path.open("wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
-        llama_manager.downloader.add_user_upload_model(
+        llmcpp_manager.downloader.add_user_upload_model(
             model_request.repo_id, file.filename
         )
 
@@ -416,7 +456,7 @@ def create_llamacpp_api_router(llama_manager: LlamaManagerCLI) -> APIRouter:
         model_name, quant = chunk_request.repo_id.split(":")
         task = chunk_request.task
 
-        manager_dir = Path(llama_manager.get_model_dir())
+        manager_dir = Path(llmcpp_manager.get_model_dir())
         model_storage_path = manager_dir / task / model_name
 
         check_model_exists(model_storage_path, chunk_request.force_override)
@@ -441,7 +481,7 @@ def create_llamacpp_api_router(llama_manager: LlamaManagerCLI) -> APIRouter:
             assemble_chunks(chunks_dir, chunk_request.total_chunks, final_file_path)
 
             internal_path_str = str(model_storage_path)
-            llama_manager.downloader.add_user_upload_model(chunk_request.repo_id)
+            llmcpp_manager.downloader.add_user_upload_model(chunk_request.repo_id)
 
         return {
             "message": (
@@ -461,7 +501,7 @@ def create_llamacpp_api_router(llama_manager: LlamaManagerCLI) -> APIRouter:
     def delete_upload_chunks(
         cleanup_request: ChunkCleanupRequest = Depends(ChunkCleanupRequest.as_form),
     ):
-        manager_dir = Path(llama_manager.get_model_dir())
+        manager_dir = Path(llmcpp_manager.get_model_dir())
         chunks_dir = (
             manager_dir
             / cleanup_request.task

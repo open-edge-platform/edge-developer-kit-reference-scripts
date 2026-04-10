@@ -2,7 +2,11 @@
     "name": "edge-ai-demo-studio",
     "version": "1.0.0",
     "main": "main.js",
-    "author": "Intel CASE CAT CENTRAL",
+    "author": {
+        "name": "Intel",
+        "email": "admin@intel.com"
+    },
+    "homepage": "https://github.com/open-edge-platform/edge-developer-kit-reference-scripts/tree/main",
     "scripts": {
         "start": "electron .",
         "build": "electron-builder",
@@ -13,16 +17,19 @@
     "license": "ISC",
     "description": "Edge AI Demo Studio - Electron Builder Version",
     "devDependencies": {
+        "@electron/fuses": "^2.0.0",
         "electron": ">=39.2.1",
-        "electron-builder": "^26.2.0",
-        "@electron/fuses": "^2.0.0"
+        "electron-builder": "^26.2.0"
     },
     "dependencies": {
-        "electron-squirrel-startup": "^1.0.1"
+        "@vscode/sudo-prompt": "^9.3.2",
+        "electron-squirrel-startup": "^1.0.1",
+        "tree-kill": "^1.2.2"
     },
     "build": {
+        "icon": "assets/logo.png",
         "appId": "com.intel.edge-ai-demo-studio",
-        "productName": "EdgeAIStudio",
+        "productName": "EdgeAIDemoStudio",
         "asar": true,
         "directories": {
             "output": "../out",
@@ -56,12 +63,21 @@
         "win": {
             "target": [
                 {
-                    "target": "squirrel",
+                    "target": "nsis",
                     "arch": [
                         "x64"
                     ]
                 }
             ]
+        },
+        "nsis": {
+            "oneClick": false,
+            "perMachine": false,
+            "allowToChangeInstallationDirectory": true,
+            "createDesktopShortcut": false,
+            "include": "installer.nsh",
+            "installerIcon": "assets/logo.ico",
+            "uninstallerIcon": "assets/logo.ico"
         },
         "files": [
             "**/*",

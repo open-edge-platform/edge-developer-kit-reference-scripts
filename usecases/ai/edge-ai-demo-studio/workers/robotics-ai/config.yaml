@@ -1,0 +1,28 @@
+camera:
+  fps: 30
+  height: 480
+  type: realsense
+  width: 848
+client:
+  api_key: '-'
+  base_url: http://127.0.0.1:8025/v3
+  model_id: OpenGVLab/InternVL3-2B
+fastsam:
+  device: NPU
+  image_size: 1024
+  img_path: ./data/coco_bike.jpg
+  name: FastSAM-x
+inference:
+  bbox:
+  - 198
+  - 70
+  - 662
+  - 416
+robot:
+  gripper_close: 40.0
+  gripper_open: 60.0
+  offset_x: 130
+  offset_y: -10
+  offset_z: 5
+  port: /dev/ttyACM0
+  type: SO-ARM101

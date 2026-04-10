@@ -1,4 +1,4 @@
-# Copyright (C) 2025 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 import time
@@ -12,9 +12,10 @@ from aiortc import MediaStreamTrack
 
 from .constants import CONSTANTS
 
-# Reference: 
+# Reference:
 # https://github.com/aiortc/aiortc/blob/main/src/aiortc/mediastreams.py
 # https://github.com/aiortc/aiortc/blob/main/src/aiortc/contrib/media.py
+
 
 class AudioTrack(MediaStreamTrack):
     start_time: float
@@ -35,7 +36,9 @@ class AudioTrack(MediaStreamTrack):
         if hasattr(self, "timestamp"):
             self.timestamp += int(CONSTANTS.AUDIO_PTIME * CONSTANTS.AUDIO_SAMPLE_RATE)
             self.frame_count += 1
-            wait = self.start_time + self.frame_count * CONSTANTS.AUDIO_PTIME - time.time()
+            wait = (
+                self.start_time + self.frame_count * CONSTANTS.AUDIO_PTIME - time.time()
+            )
             if wait > 0:
                 await asyncio.sleep(wait)
         else:
@@ -44,8 +47,9 @@ class AudioTrack(MediaStreamTrack):
 
         frame.pts = self.timestamp
         frame.time_base = CONSTANTS.AUDIO_TIME_BASE
-        
+
         return frame
+
 
 class VideoTrack(MediaStreamTrack):
     start_time: float
@@ -66,7 +70,9 @@ class VideoTrack(MediaStreamTrack):
         if hasattr(self, "timestamp"):
             self.timestamp += int(CONSTANTS.VIDEO_PTIME * CONSTANTS.VIDEO_CLOCK_RATE)
             self.frame_count += 1
-            wait = self.start_time + self.frame_count * CONSTANTS.VIDEO_PTIME - time.time()        
+            wait = (
+                self.start_time + self.frame_count * CONSTANTS.VIDEO_PTIME - time.time()
+            )
             if wait > 0:
                 await asyncio.sleep(wait)
         else:
@@ -75,18 +81,19 @@ class VideoTrack(MediaStreamTrack):
 
         frame.pts = self.timestamp
         frame.time_base = CONSTANTS.VIDEO_TIME_BASE
-        
+
         return frame
-    
+
     def sleep(self, batch_size) -> None:
         if self.queue.qsize() >= 1.5 * batch_size:
             time.sleep(0.04 * self.queue.qsize() * 0.8)
+
 
 class WebRTCStreamer:
     def __init__(self):
         self.thread: Optional[Thread] = None
         self.thread_quit: Optional[Event] = None
-        
+
         self.started: Set[MediaStreamTrack] = set()
 
         self.audio_track = AudioTrack()
@@ -105,6 +112,6 @@ class WebRTCStreamer:
 
     def start(self, track: Union[AudioTrack, VideoTrack]) -> None:
         self.started.add(track)
-    
+
     def stop(self, track: Union[AudioTrack, VideoTrack]) -> None:
         self.started.discard(track)

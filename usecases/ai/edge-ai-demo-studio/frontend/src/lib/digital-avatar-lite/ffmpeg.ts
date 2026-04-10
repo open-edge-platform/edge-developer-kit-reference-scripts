@@ -1,18 +1,13 @@
-// Copyright (C) 2025 Intel Corporation
+// Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-/**
- * FFmpeg utility functions for video processing
- */
-
 import { spawn } from 'child_process'
-import { DEFAULT_FPS, FFMPEG_PATH, FFPROBE_PATH } from './config'
 import path from 'path'
-import { logger } from '@/utils/logger'
 
-/**
- * Detect the FPS of a video file using ffprobe
- */
+import { logger } from '@/lib/logger'
+
+import { DEFAULT_FPS, FFMPEG_PATH, FFPROBE_PATH } from './config'
+
 export async function detectVideoFPS(videoPath: string): Promise<number> {
   return new Promise((resolve) => {
     const ffprobe = spawn(FFPROBE_PATH, [
@@ -29,7 +24,7 @@ export async function detectVideoFPS(videoPath: string): Promise<number> {
 
     let output = ''
 
-    ffprobe.stdout.on('data', (data) => {
+    ffprobe.stdout.on('data', (data: Buffer) => {
       output += data.toString()
     })
 
@@ -52,15 +47,10 @@ export async function detectVideoFPS(videoPath: string): Promise<number> {
   })
 }
 
-/**
- * Load all frames from video into memory as JPEG buffers
- * This approach provides smooth playback without disk I/O during streaming
- */
 export async function loadFrames(videoPath: string): Promise<Buffer[]> {
   return new Promise((resolve, reject) => {
     const frames: Buffer[] = []
 
-    // Use ffmpeg to extract frames as high-quality JPEG
     const ffmpeg = spawn(FFMPEG_PATH, [
       '-i',
       videoPath,
@@ -69,20 +59,21 @@ export async function loadFrames(videoPath: string): Promise<Buffer[]> {
       '-vcodec',
       'mjpeg',
       '-q:v',
-      '2', // High quality (1-31, lower = better quality)
+      '2',
       '-pix_fmt',
-      'yuvj420p', // Ensure proper color space
+      'yuvj420p',
       '-',
     ])
+
     let buffer = Buffer.alloc(0)
-    const JPEG_SOI = Buffer.from([0xff, 0xd8]) // Start of Image marker
-    const JPEG_EOI = Buffer.from([0xff, 0xd9]) // End of Image marker
+    const JPEG_SOI = Buffer.from([0xff, 0xd8])
+    const JPEG_EOI = Buffer.from([0xff, 0xd9])
 
     ffmpeg.stdout.on('data', (chunk: Buffer) => {
       buffer = Buffer.concat([buffer, chunk])
 
-      // Extract complete JPEG frames from buffer
       let startIdx = 0
+
       while (true) {
         const soiIdx = buffer.indexOf(JPEG_SOI, startIdx)
         if (soiIdx === -1) break
@@ -90,19 +81,16 @@ export async function loadFrames(videoPath: string): Promise<Buffer[]> {
         const eoiIdx = buffer.indexOf(JPEG_EOI, soiIdx + 2)
         if (eoiIdx === -1) break
 
-        // Extract complete frame
         const frame = buffer.slice(soiIdx, eoiIdx + 2)
         frames.push(frame)
 
         startIdx = eoiIdx + 2
       }
 
-      // Keep remaining incomplete data in buffer
       buffer = buffer.slice(startIdx)
     })
 
-    ffmpeg.stderr.on('data', (data) => {
-      // Log ffmpeg progress/errors if needed
+    ffmpeg.stderr.on('data', (data: Buffer) => {
       const message = data.toString()
       if (message.includes('error') || message.includes('Error')) {
         logger.error('ffmpeg error:', message)

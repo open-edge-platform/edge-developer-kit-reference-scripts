@@ -1,8 +1,8 @@
 #!/bin/bash
-# Copyright (C) 2025 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 # Exit immediately if a command exits with a non-zero status
-set -e
+set -euo pipefail
 
 # Define variables
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -12,7 +12,16 @@ WORKER_DIR="$PROJECT_DIR/workers"
 FRONTEND_DIR="$PROJECT_DIR/frontend"
 ELECTRON_DIR="$PROJECT_DIR/electron"
 
-NODE_PATH="$(cd "$PROJECT_DIR/thirdparty/node/bin" && pwd)"
+NODE_PATH="$PROJECT_DIR/thirdparty/node/bin"
+PROJECT_NAME="EdgeAIDemoStudio"
+
+# Ensure environment is cleaned up on exit or interruption
+cleanup_on_exit() {
+    if [ -n "${OLD_PATH:-}" ]; then
+        export PATH="$OLD_PATH"
+    fi
+}
+trap cleanup_on_exit EXIT INT TERM
 
 # Validate required system tools
 validate_system_requirements() {
@@ -88,6 +97,50 @@ reset_env() {
     export PATH="$OLD_PATH"
 }
 
+# Generate an rsync exclude file from .gitignore patterns.
+# Args: <src_dir> <output_exclude_file>
+generate_rsync_exclude_from_gitignore() {
+    local SRC_DIR="$1"
+    local OUT_FILE="$2"
+    : > "$OUT_FILE" || { echo "Error: Failed to create exclude file $OUT_FILE"; return 1; }
+
+    # Helper: append patterns from a gitignore file, optionally prefixing with a relative dir
+    _append_from_file() {
+        local FILE="$1"; local PREFIX="$2"
+        sed -n 's/^[[:space:]]*//; /^[#[:space:]]*$/d; p' "$FILE" | while IFS= read -r PAT; do
+            [ -z "$PAT" ] && continue
+            case "$PAT" in
+                !*) continue ;; # skip negation patterns
+            esac
+            PAT=${PAT#./}
+            PAT=${PAT#/}
+            if [ -n "$PREFIX" ]; then
+                echo "$PREFIX/$PAT" >> "$OUT_FILE"
+            else
+                echo "$PAT" >> "$OUT_FILE"
+            fi
+        done
+    }
+
+    # Root .gitignore (patterns are typically project-root-relative)
+    if [ -f "$PROJECT_DIR/.gitignore" ]; then
+        _append_from_file "$PROJECT_DIR/.gitignore" ""
+    fi
+
+    # Per-directory .gitignore files under the source dir
+    if [ -d "$SRC_DIR" ]; then
+        find "$SRC_DIR" -type f -name .gitignore -print0 | while IFS= read -r -d '' IG; do
+            IGDIR=$(dirname "$IG")
+            if [ "$IGDIR" = "$SRC_DIR" ]; then
+                PREFIX=""
+            else
+                PREFIX=${IGDIR#"$SRC_DIR"/}
+            fi
+            _append_from_file "$IG" "$PREFIX"
+        done
+    fi
+}
+
 copy_workers() {
   echo "Copying worker files to temporary directory..."
   
@@ -109,13 +162,20 @@ copy_workers() {
       echo "Check permissions and available disk space."
       exit 1
   }
-  
-  # Copy worker files with rsync
-  rsync -av --exclude='.venv' --exclude='thirdparty' --exclude='__pycache__' --exclude='models' --exclude='avatars' "$WORKER_DIR/" "$TEMP_DIR/workers" || { 
+
+  # Build an rsync exclude file from .gitignore for the workers tree
+  TMP_EXCLUDE="$TEMP_DIR/rsync_exclude_workers.txt"
+  generate_rsync_exclude_from_gitignore "$WORKER_DIR" "$TMP_EXCLUDE" || { echo "Error: Failed to generate rsync exclude list for workers"; exit 1; }
+
+  # Perform the copy using the generated exclude list
+  rsync -av --exclude-from="$TMP_EXCLUDE" "$WORKER_DIR/" "$TEMP_DIR/workers" || { 
       echo "Error: Failed to copy worker files from $WORKER_DIR to $TEMP_DIR/workers"
       echo "Check source directory permissions and available disk space."
       exit 1
   }
+
+  # Cleanup temporary exclude file
+  rm -f "$TMP_EXCLUDE" || true
   
   # Verify the copy was successful
   if [ ! -d "$TEMP_DIR/workers" ] || [ -z "$(ls -A "$TEMP_DIR/workers")" ]; then
@@ -128,17 +188,19 @@ copy_workers() {
 
 copy_scripts() {
   echo "Copying scripts to temporary directory..."
+  SCRIPTS_PATH="$PROJECT_DIR/scripts/bash"
+  DESTINATION_PATH="$TEMP_DIR/scripts"
   
   # Create scripts folder in temp directory
-  mkdir -p "$TEMP_DIR/scripts" || { 
-      echo "Error: Failed to create scripts folder at $TEMP_DIR/scripts"
+  mkdir -p "$DESTINATION_PATH" || { 
+      echo "Error: Failed to create scripts folder at $DESTINATION_PATH"
       echo "Check permissions and available disk space."
       exit 1
   }
   
-  # Preserve the original scripts/ directory structure when copying.
-  if [ -d "$PROJECT_DIR/scripts" ]; then
-      echo "Copying scripts from $PROJECT_DIR/scripts..."
+  # Preserve the original scripts/bash directory structure when copying.
+  if [ -d "$SCRIPTS_PATH" ]; then
+      echo "Copying scripts from $SCRIPTS_PATH..."
       
       # Copy only .sh files while preserving directory structure.
       rsync -av --prune-empty-dirs \
@@ -148,26 +210,26 @@ copy_scripts() {
         --exclude='thirdparty/' \
         --exclude='__pycache__/' \
         --exclude='*' \
-        "$PROJECT_DIR/scripts/" "$TEMP_DIR/scripts/" || { 
-            echo "Error: Failed to copy scripts directory from $PROJECT_DIR/scripts to $TEMP_DIR/scripts"
+        "$SCRIPTS_PATH/" "$DESTINATION_PATH/" || { 
+            echo "Error: Failed to copy scripts directory from $SCRIPTS_PATH to $DESTINATION_PATH"
             echo "Check source directory permissions and available disk space."
             exit 1
         }
       
       # Verify at least some files were copied
-      if [ ! -d "$TEMP_DIR/scripts" ] || [ -z "$(find "$TEMP_DIR/scripts" -name "*.sh" 2>/dev/null)" ]; then
+      if [ ! -d "$DESTINATION_PATH" ] || [ -z "$(find "$DESTINATION_PATH" -name "*.sh" 2>/dev/null)" ]; then
           echo "Warning: No .sh files found in copied scripts directory."
       fi
   else
-      echo "Scripts directory not found at $PROJECT_DIR/scripts. Attempting fallback..."
+      echo "Scripts directory not found at $SCRIPTS_PATH. Attempting fallback..."
       
       # Fallback: copy top-level shell scripts except this packager
       SCRIPT_COUNT=0
       for script in "$PROJECT_DIR"/*.sh; do
         if [ -f "$script" ]; then
           [ "$(basename "$script")" = "package.sh" ] && continue
-          cp "$script" "$TEMP_DIR/scripts" || { 
-              echo "Error: Failed to copy $script to $TEMP_DIR/scripts"
+          cp "$script" "$DESTINATION_PATH" || { 
+              echo "Error: Failed to copy $script to $DESTINATION_PATH"
               echo "Check file permissions and available disk space."
               exit 1
           }
@@ -183,16 +245,24 @@ copy_scripts() {
   fi
   
   # Copy root setup.sh to the build directory
-  echo "Copying root setup.sh."
-  if [ -f "$PROJECT_DIR/setup.sh" ]; then
-    cp "$PROJECT_DIR/setup.sh" "$TEMP_DIR/" || {
-      echo "Error: Failed to copy setup.sh from project root"
-      exit 1
-    }
-    echo "✓ Root setup.sh copied successfully."
-  else
-    echo "Warning: setup.sh not found in project root"
-  fi
+  SCRIPTS_TO_COPY=(
+    "$PROJECT_DIR/setup.sh"
+    "$PROJECT_DIR/install_dependencies.sh"
+  )
+
+  for script in "${SCRIPTS_TO_COPY[@]}"; do
+    if [ -f "$script" ]; then
+      cp "$script" "$DESTINATION_PATH/" || { 
+          echo "Error: Failed to copy $script to $DESTINATION_PATH"
+          echo "Check file permissions and available disk space."
+          exit 1
+      }
+      echo "✓ Copied $(basename "$script") successfully."
+    else
+      echo "Warning: $(basename "$script") not found at $script - skipping."
+    fi
+  done
+  
   
   echo "✓ Scripts copied successfully."
 }
@@ -218,85 +288,41 @@ finalize_package() {
     exit 1
   fi
   
-  # Create the new EdgeAIDemoStudio package structure
-  echo "Creating EdgeAIDemoStudio package structure..."
+    # Create the new project package structure
+    echo "Creating $PROJECT_NAME package structure..."
   
   cd "$PROJECT_DIR/out" || {
       echo "Error: Failed to change directory to $PROJECT_DIR/out"
       exit 1
   }
   
-  # Remove existing EdgeAIDemoStudio directory if it exists
-  if [ -d "EdgeAIDemoStudio" ]; then
-    rm -rf EdgeAIDemoStudio || {
-        echo "Error: Failed to remove existing EdgeAIDemoStudio directory"
-        echo "Check directory permissions."
-        exit 1
-    }
-    echo "Removed existing EdgeAIDemoStudio directory"
-  fi
+    # Remove existing project directory if it exists
+    if [ -d "$PROJECT_NAME" ]; then
+        rm -rf "$PROJECT_NAME" || {
+                echo "Error: Failed to remove existing $PROJECT_NAME directory"
+                echo "Check directory permissions."
+                exit 1
+        }
+        echo "Removed existing $PROJECT_NAME directory"
+    fi
   
-  # Create EdgeAIDemoStudio directory
-  mkdir -p EdgeAIDemoStudio || {
-      echo "Error: Failed to create EdgeAIDemoStudio directory"
-      echo "Check permissions and available disk space."
-      exit 1
-  }
-  
-  # Copy README.md to the root of EdgeAIDemoStudio
-  if [ -f "$PROJECT_DIR/out/README.md" ]; then
-    cp "$PROJECT_DIR/out/README.md" EdgeAIDemoStudio/ || { 
-        echo "Error: Failed to copy README.md to EdgeAIDemoStudio folder."
-        echo "Check file permissions and available disk space."
-        exit 1
+    # Create project directory
+    mkdir -p "$PROJECT_NAME" || {
+            echo "Error: Failed to create $PROJECT_NAME directory"
+            echo "Check permissions and available disk space."
+            exit 1
     }
-    echo "✓ README.md copied to EdgeAIDemoStudio root successfully."
+  
+    # Copy README.md to the root of the project package
+    if [ -f "$PROJECT_DIR/out/README.md" ]; then
+        cp "$PROJECT_DIR/out/README.md" "$PROJECT_NAME/" || { 
+                echo "Error: Failed to copy README.md to $PROJECT_NAME folder."
+                echo "Check file permissions and available disk space."
+                exit 1
+        }
+        echo "✓ README.md copied to $PROJECT_NAME root successfully."
   else
     echo "Warning: README.md not found at $PROJECT_DIR/out/README.md - skipping."
-  fi
-  
-  # Copy install_dependencies.sh to the root of EdgeAIDemoStudio
-  if [ -f "$PROJECT_DIR/install_dependencies.sh" ]; then
-    cp "$PROJECT_DIR/install_dependencies.sh" EdgeAIDemoStudio/ || { 
-        echo "Error: Failed to copy install_dependencies.sh to EdgeAIDemoStudio folder."
-        echo "Check file permissions and available disk space."
-        exit 1
-    }
-    echo "✓ install_dependencies.sh copied to EdgeAIDemoStudio root successfully."
-  else
-    echo "Warning: install_dependencies.sh not found at $PROJECT_DIR/install_dependencies.sh - skipping."
-  fi
-  
-  # Copy setup.sh and start_web.sh from out/ to EdgeAIDemoStudio
-  echo "Copying setup.sh and start_web.sh..."
-  if [ -f "$PROJECT_DIR/out/setup.sh" ]; then
-    cp "$PROJECT_DIR/out/setup.sh" EdgeAIDemoStudio/ || { 
-        echo "Error: Failed to copy setup.sh to EdgeAIDemoStudio folder."
-        echo "Check file permissions and available disk space."
-        exit 1
-    }
-    chmod +x EdgeAIDemoStudio/setup.sh || {
-        echo "Error: Failed to make setup.sh executable"
-        exit 1
-    }
-    echo "✓ setup.sh copied successfully."
-  else
-    echo "Warning: setup.sh not found at $PROJECT_DIR/out/setup.sh - skipping."
-  fi
-
-  if [ -f "$PROJECT_DIR/out/start_web.sh" ]; then
-    cp "$PROJECT_DIR/out/start_web.sh" EdgeAIDemoStudio/ || { 
-        echo "Error: Failed to copy start_web.sh to EdgeAIDemoStudio folder."
-        echo "Check file permissions and available disk space."
-        exit 1
-    }
-    chmod +x EdgeAIDemoStudio/start_web.sh || {
-        echo "Error: Failed to make start_web.sh executable"
-        exit 1
-    }
-    echo "✓ start_web.sh copied successfully."
-  else
-    echo "Warning: start_web.sh not found at $PROJECT_DIR/out/start_web.sh - skipping."
   fi
   
   # Copy the entire linux-unpacked directory into EdgeAIDemoStudio
@@ -306,59 +332,62 @@ finalize_package() {
       exit 1
   fi
   
-  cp -r linux-unpacked EdgeAIDemoStudio/ || { 
-      echo "Error: Failed to copy linux-unpacked to EdgeAIDemoStudio folder."
+  cp -r linux-unpacked "$PROJECT_NAME/" || { 
+      echo "Error: Failed to copy linux-unpacked to $PROJECT_NAME folder."
       echo "Check directory permissions and available disk space."
       exit 1
   }
   echo "✓ linux-unpacked directory copied successfully."
   
-  # Create a shell script launcher that launches the application correctly
-  cd EdgeAIDemoStudio || {
-      echo "Error: Failed to change directory to EdgeAIDemoStudio"
-      exit 1
-  }
+    # Create a shell script launcher that launches the application correctly
+    cd "$PROJECT_NAME" || {
+            echo "Error: Failed to change directory to $PROJECT_NAME"
+            exit 1
+    }
   
-  cat > EdgeAIDemoStudio << 'EOF'
+        cat > "$PROJECT_NAME" << 'EOF'
 #!/usr/bin/env bash
 
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# App name derived from launcher filename
+APP_NAME="$(basename "$0")"
 
 # Define the path to the executable
 EXECUTABLE="$SCRIPT_DIR/linux-unpacked/edge-ai-demo-studio"
 
 # Check if the executable exists
 if [ ! -f "$EXECUTABLE" ]; then
-    echo "Error: EdgeAIDemoStudio executable not found at $EXECUTABLE"
-    exit 1
+                echo "Error: $APP_NAME executable not found at $EXECUTABLE"
+                exit 1
 fi
 
 # Launch the application
-echo "Starting EdgeAIDemoStudio..."
+echo "Starting $APP_NAME..."
 exec "$EXECUTABLE" "$@"
 EOF
   
-  if [ ! -f "EdgeAIDemoStudio" ]; then
-      echo "Error: Failed to create EdgeAIDemoStudio launcher script"
+  if [ ! -f "$PROJECT_NAME" ]; then
+      echo "Error: Failed to create $PROJECT_NAME launcher script"
       exit 1
   fi
   
-  chmod +x EdgeAIDemoStudio || { 
+  chmod +x "$PROJECT_NAME" || { 
       echo "Error: Failed to make launcher script executable."
       echo "Check file permissions."
       exit 1
   }
   
-  echo "✓ EdgeAIDemoStudio launcher script created successfully."
+  echo "✓ $PROJECT_NAME launcher script created successfully."
   
   cd .. || {
       echo "Error: Failed to change directory back to out/"
       exit 1
   }
   
-  # Create zip file with the new structure
-  echo "Creating EdgeAIDemoStudio.zip..."
+    # Create zip file with the new structure
+    echo "Creating $PROJECT_NAME.zip..."
   
   # Check if zip is available
   if ! command -v zip >/dev/null 2>&1; then
@@ -367,41 +396,41 @@ EOF
       exit 1
   fi
   
-  if [ -f "EdgeAIDemoStudio.zip" ]; then
-    rm EdgeAIDemoStudio.zip || {
-        echo "Error: Failed to remove existing EdgeAIDemoStudio.zip"
-        echo "Check file permissions."
-        exit 1
+    if [ -f "$PROJECT_NAME.zip" ]; then
+        rm "$PROJECT_NAME.zip" || {
+                echo "Error: Failed to remove existing $PROJECT_NAME.zip"
+                echo "Check file permissions."
+                exit 1
+        }
+        echo "Removed existing $PROJECT_NAME.zip"
+    fi
+  
+    # Verify project directory exists before zipping
+    if [ ! -d "$PROJECT_NAME" ]; then
+            echo "Error: $PROJECT_NAME directory not found. Cannot create zip file."
+            exit 1
+    fi
+  
+    zip -r "$PROJECT_NAME.zip" "$PROJECT_NAME"/ || { 
+            echo "Error: Failed to create zip file."
+            echo "Check available disk space and permissions."
+            exit 1
     }
-    echo "Removed existing EdgeAIDemoStudio.zip"
-  fi
   
-  # Verify EdgeAIDemoStudio directory exists before zipping
-  if [ ! -d "EdgeAIDemoStudio" ]; then
-      echo "Error: EdgeAIDemoStudio directory not found. Cannot create zip file."
-      exit 1
-  fi
+    # Verify the zip file was created and has reasonable size
+    if [ ! -f "$PROJECT_NAME.zip" ]; then
+            echo "Error: $PROJECT_NAME.zip was not created successfully."
+            exit 1
+    fi
   
-  zip -r EdgeAIDemoStudio.zip EdgeAIDemoStudio/ || { 
-      echo "Error: Failed to create zip file."
-      echo "Check available disk space and permissions."
-      exit 1
-  }
-  
-  # Verify the zip file was created and has reasonable size
-  if [ ! -f "EdgeAIDemoStudio.zip" ]; then
-      echo "Error: EdgeAIDemoStudio.zip was not created successfully."
-      exit 1
-  fi
-  
-    ZIP_SIZE=$(stat -f%z "EdgeAIDemoStudio.zip" 2>/dev/null || stat -c%s "EdgeAIDemoStudio.zip" 2>/dev/null)
-    if [ -z "$ZIP_SIZE" ] || [ "$ZIP_SIZE" -lt 1024 ]; then
-      echo "Error: EdgeAIDemoStudio.zip appears to be empty or corrupted (size: $ZIP_SIZE bytes)."
-      exit 1
-  fi
+        ZIP_SIZE=$(stat -f%z "$PROJECT_NAME.zip" 2>/dev/null || stat -c%s "$PROJECT_NAME.zip" 2>/dev/null)
+        if [ -z "$ZIP_SIZE" ] || [ "$ZIP_SIZE" -lt 1024 ]; then
+            echo "Error: $PROJECT_NAME.zip appears to be empty or corrupted (size: $ZIP_SIZE bytes)."
+            exit 1
+    fi
 
-    HUMAN_SIZE=$(numfmt --to=iec-i --suffix=B "$ZIP_SIZE" 2>/dev/null || echo "$ZIP_SIZE bytes")
-    echo "✓ EdgeAIDemoStudio.zip created successfully (""$HUMAN_SIZE"")."
+        HUMAN_SIZE=$(numfmt --to=iec-i --suffix=B "$ZIP_SIZE" 2>/dev/null || echo "$ZIP_SIZE bytes")
+        echo "✓ $PROJECT_NAME.zip created successfully ($HUMAN_SIZE)."
   
   cd - >/dev/null || {
       echo "Error: Failed to return to previous directory"
@@ -558,16 +587,16 @@ run_electron_package() {
       exit 1
   fi
   
-  # Check if build:dir script exists in package.json
-  if ! grep -q '"build:dir"' package.json; then
-      echo "Error: build:dir script not found in package.json"
-      echo "Please ensure the Electron package.json has a build:dir script defined."
+  # Check if build script exists in package.json
+  if ! grep -q '"build"' package.json; then
+      echo "Error: build script not found in package.json"
+      echo "Please ensure the Electron package.json has a build script defined."
       exit 1
   fi
   
   # Run Electron packaging
-  echo "Running npm run build:dir..."
-  npm run build:dir || { 
+  echo "Running npm run build..."
+  npm run build || { 
       echo "Error: Electron packaging failed."
       echo "Check the npm output above for specific errors."
       exit 1
@@ -587,10 +616,48 @@ run_electron_package() {
   }
 }
 
+# Remove platform-specific native binaries that are included by Next.js standalone
+# tracing but are not needed on the target platform (standard glibc Linux).
+# This avoids packaging Alpine/musl and Windows binaries in Linux builds.
+prune_native_binaries() {
+  local RESOURCES_DIR="$PROJECT_DIR/out/linux-unpacked/resources/frontend/node_modules"
+
+  if [ ! -d "$RESOURCES_DIR" ]; then
+    echo "Warning: Resources directory not found at $RESOURCES_DIR — skipping binary pruning."
+    return 0
+  fi
+
+  echo "Pruning unused platform-specific native binaries..."
+
+  local DIRS_TO_REMOVE=(
+    # musl/Alpine Linux variants of sharp — not needed on glibc Linux
+    "$RESOURCES_DIR/@img/sharp-libvips-linuxmusl-x64"
+    "$RESOURCES_DIR/@img/sharp-linuxmusl-x64"
+    # musl/Alpine Linux variant of libsql — not needed on glibc Linux
+    "$RESOURCES_DIR/@libsql/linux-x64-musl"
+    # Windows variants of sharp — not needed on Linux
+    "$RESOURCES_DIR/@img/sharp-win32-x64"
+    "$RESOURCES_DIR/@img/sharp-libvips-win32-x64"
+  )
+
+  local TOTAL_SAVED=0
+  for DIR in "${DIRS_TO_REMOVE[@]}"; do
+    if [ -d "$DIR" ]; then
+      DIR_SIZE=$(du -sb "$DIR" 2>/dev/null | awk '{print $1}' || echo 0)
+      rm -rf "$DIR" || echo "Warning: Failed to remove $DIR"
+      TOTAL_SAVED=$((TOTAL_SAVED + DIR_SIZE))
+      echo "  Removed: $(basename "$(dirname "$DIR")")/$(basename "$DIR") ($(numfmt --to=iec-i --suffix=B "$DIR_SIZE" 2>/dev/null || echo "${DIR_SIZE} bytes"))"
+    fi
+  done
+
+  HUMAN_SAVED=$(numfmt --to=iec-i --suffix=B "$TOTAL_SAVED" 2>/dev/null || echo "${TOTAL_SAVED} bytes")
+  echo "✓ Binary pruning complete — freed approximately $HUMAN_SAVED."
+}
+
 main() {
-  echo "============================================"
-  echo "EdgeAIDemoStudio Packaging Script"
-  echo "============================================"
+    echo "============================================"
+    echo "$PROJECT_NAME Packaging Script"
+    echo "============================================"
   echo ""
   
   # Change to script directory
@@ -612,6 +679,13 @@ main() {
   # Validate system requirements first
   validate_system_requirements || exit 1
   echo ""
+
+  # Download and set up Node.js environment
+  echo "Setting up thirdparty dependencies..."
+  if ! bash "$SCRIPT_DIR/setup_thirdparty.sh"; then
+    echo "Error: Failed to set up thirdparty dependencies."
+    exit 1
+  fi
   
   # Execute packaging steps
   create_temp_dir || exit 1
@@ -620,7 +694,17 @@ main() {
   copy_scripts || exit 1
   setup_frontend_package || exit 1
   run_electron_package || exit 1
+  prune_native_binaries || exit 1
   finalize_package || exit 1
+
+#   # Clean up temporary build directory created during packaging
+#   if [ -d "$TEMP_DIR" ]; then
+#         echo "Cleaning up temporary build directory: $TEMP_DIR"
+#         rm -rf "$TEMP_DIR" || {
+#             echo "Warning: Failed to remove temporary directory $TEMP_DIR"
+#         }
+#     echo "✓ Temporary build directory removed."
+#   fi
   
   echo ""
   echo "============================================"
@@ -628,12 +712,12 @@ main() {
   echo "============================================"
   echo ""
   echo "Output location: $PROJECT_DIR/out"
-  echo "Zip file: $PROJECT_DIR/out/EdgeAIDemoStudio.zip"
+    echo "Zip file: $PROJECT_DIR/out/$PROJECT_NAME.zip"
   echo ""
   
   # Display zip file size if possible
-  if [ -f "$PROJECT_DIR/out/EdgeAIDemoStudio.zip" ]; then
-      ZIP_SIZE=$(stat -f%z "$PROJECT_DIR/out/EdgeAIDemoStudio.zip" 2>/dev/null || stat -c%s "$PROJECT_DIR/out/EdgeAIDemoStudio.zip" 2>/dev/null)
+  if [ -f "$PROJECT_DIR/out/$PROJECT_NAME.zip" ]; then
+      ZIP_SIZE=$(stat -f%z "$PROJECT_DIR/out/$PROJECT_NAME.zip" 2>/dev/null || stat -c%s "$PROJECT_DIR/out/$PROJECT_NAME.zip" 2>/dev/null)
       if [ -n "$ZIP_SIZE" ]; then
           HUMAN_SIZE=$(numfmt --to=iec-i --suffix=B "$ZIP_SIZE" 2>/dev/null || echo "$ZIP_SIZE bytes")
           echo "Package size: $HUMAN_SIZE"

@@ -1,4 +1,4 @@
-# Copyright (C) 2025 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 # Set UTF-8 encoding for console output
@@ -7,13 +7,15 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 
 # Exit on error
 $ErrorActionPreference = "Stop"
-$ProgressPreference = 'SilentlyContinue'
 
 # Get the directory of this script
 $SCRIPT_DIR = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 # Node.js path from thirdparty
 $NODE_PATH = Join-Path $SCRIPT_DIR "..\thirdparty\node"
+
+# Save original PATH for restoration
+$script:originalPath = $env:PATH
 
 # Function to set up Node.js environment
 function Setup-NodeEnv {
@@ -54,6 +56,10 @@ function Main {
         Write-Host "Electron Builder setup complete!" -ForegroundColor Green
     }
     finally {
+        # Restore original PATH
+        if ($script:originalPath) {
+            $env:PATH = $script:originalPath
+        }
         Pop-Location
     }
 }

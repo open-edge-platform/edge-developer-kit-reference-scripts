@@ -1,7 +1,7 @@
 session_id: ''
 avatar_type: wav2lip
 wav2lip:
-  avatar_path: data\avatars\wav2lip_avatar_256
+  avatar_path: data/avatars/wav2lip_avatar_sample_256
 tts_type: kokorotts
 kokorotts:
   languages:

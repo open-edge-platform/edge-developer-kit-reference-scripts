@@ -1,4 +1,4 @@
-# Copyright (C) 2025 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 import requests
@@ -63,7 +63,6 @@ class KokoroTTSModule(TTSModule):
             getLogger().info(e)
 
     def speak(self, message, metadata={}):
-        print(message, metadata)
         if len(message) > 0:
             self.message_queue.put((message, metadata))
 

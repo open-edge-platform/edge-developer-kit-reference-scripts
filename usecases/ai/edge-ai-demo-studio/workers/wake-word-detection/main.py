@@ -1,4 +1,4 @@
-# Copyright (C) 2025 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 """Wake Word Detection Service - Main application entry point."""
@@ -7,8 +7,10 @@ import argparse
 import asyncio
 import logging
 import os
+import queue
 import shutil
 from contextlib import asynccontextmanager
+from datetime import datetime
 from typing import Optional
 
 import uvicorn
@@ -38,6 +40,10 @@ audio_manager: Optional[AudioManager] = None
 model_manager: Optional[ModelManager] = None
 detection_state: Optional[DetectionState] = None
 processing_task: Optional[asyncio.Task] = None
+
+# In-memory detection event buffer (polled by the frontend demo UI)
+MAX_EVENTS = 200
+detection_events: list[dict] = []
 
 # Temporary storage for CLI args
 _initial_model_paths: list[str] = []
@@ -144,20 +150,27 @@ async def process_audio():
     try:
         while detection_state.active:
             try:
-                # Get audio from queue with asyncio
-                audio_chunk = await asyncio.wait_for(
-                    audio_manager.audio_queue.get(), timeout=0.1
-                )
+                # Get audio from the thread-safe queue via async bridge
+                audio_chunk = await audio_manager.get_audio(timeout=0.1)
 
                 # Get prediction
                 prediction = model_manager.predict(audio_chunk)
 
-                # Check for detections and notify subscribers
+                # Check for detections
                 for model_name, score in prediction.items():
                     score_float = float(score)
+
+                    # Store event in the local buffer (used by the demo UI)
+                    _store_detection_event(
+                        model_name,
+                        score_float,
+                        threshold=detection_state.detection_threshold,
+                    )
+
+                    # Notify external webhook subscribers
                     await WebhookManager.notify_subscribers(model_name, score_float)
 
-            except asyncio.TimeoutError:
+            except (asyncio.TimeoutError, queue.Empty):
                 # No audio available, continue
                 await asyncio.sleep(0.01)
             except Exception as e:
@@ -166,6 +179,22 @@ async def process_audio():
 
     finally:
         logger.info("Audio processing stopped")
+
+
+def _store_detection_event(model_name: str, score: float, threshold: float = 0.5):
+    """Store a detection event in the in-memory buffer if it exceeds the threshold."""
+    if score < threshold:
+        return
+    event = {
+        "event": "wake_word_detected",
+        "model": model_name,
+        "score": score,
+        "timestamp": datetime.now().isoformat(),
+        "message": f"Wake word '{model_name}' detected!",
+    }
+    detection_events.insert(0, event)
+    if len(detection_events) > MAX_EVENTS:
+        del detection_events[MAX_EVENTS:]
 
 
 @app.post("/v1/wake-word-detection/webhooks/subscribe")
@@ -286,6 +315,42 @@ async def list_subscribers(session: Session = Depends(get_session)):
     return {"subscribers": subscribers, "total": len(subscribers)}
 
 
+@app.get("/v1/wake-word-detection/audio-level")
+async def get_audio_level():
+    """Get the current audio input RMS level (0.0–1.0)."""
+    if not detection_state.active:
+        return {"level": 0.0, "active": False}
+    return {"level": audio_manager.current_rms, "active": True}
+
+
+@app.get("/v1/wake-word-detection/events")
+async def get_detection_events(since: str = ""):
+    """Get recent detection events from the in-memory buffer.
+
+    Args:
+        since: ISO timestamp; only events after this time are returned.
+    """
+    if since:
+        events = [e for e in detection_events if e["timestamp"] > since]
+    else:
+        events = list(detection_events)
+    return {"events": events}
+
+
+@app.delete("/v1/wake-word-detection/events")
+async def clear_detection_events():
+    """Clear the in-memory detection event buffer."""
+    detection_events.clear()
+    return {"ok": True}
+
+
+@app.post("/v1/wake-word-detection/events/test")
+async def generate_test_event():
+    """Generate a test detection event in the local event buffer."""
+    _store_detection_event("test", 0.999, threshold=0.0)
+    return {"ok": True, "message": "Test event created"}
+
+
 @app.get("/v1/wake-word-detection/audio-devices")
 async def list_audio_devices():
     """List available audio input devices (microphones)."""
@@ -322,17 +387,10 @@ async def start_detection(
     if detection_state.active:
         return {"message": "Detection already active", "status": "running"}
 
-    # Check if there are any subscribers
-    subscribers = session.exec(select(WebhookSubscriber)).all()
-    if not subscribers:
-        raise HTTPException(
-            status_code=400,
-            detail="No subscribers registered. Subscribe to webhooks first.",
-        )
-
     detection_state.active = True
     if request.device_id is not None:
         detection_state.selected_device_id = request.device_id
+    detection_state.detection_threshold = request.threshold
 
     # Start audio stream with selected device
     await audio_manager.start_stream(
@@ -350,6 +408,8 @@ async def start_detection(
         f"device {request.device_id}" if request.device_id != -1 else "default device"
     )
     logger.info(f"Wake word detection started with {device_info}")
+
+    subscribers = session.exec(select(WebhookSubscriber)).all()
 
     return {
         "message": "Wake word detection started",

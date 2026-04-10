@@ -1,16 +1,19 @@
-# Copyright (C) 2024 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
-import requests
 import json
 import os
+import requests
 import sys
 import hashlib
+import threading
 import yaml
 from pathlib import Path
 from collections import defaultdict
 from typing import Optional, Dict, Any, Generator, Tuple, List, DefaultDict
+from huggingface_hub import hf_hub_download, hf_hub_url, get_hf_file_metadata
 from .model_registry import ModelRegistry
+from modules.utils import ModelSource
 
 
 class GGUFDownloader:
@@ -66,63 +69,95 @@ class GGUFDownloader:
         return f"{self.base_url}v2/{hf_repo}/manifests/{tag}"
 
     def _download_and_stream_progress(
-        self, hf_repo: str, filename: str, local_path: str, tag: str = "main"
+        self, hf_repo: str, filename: str, local_path: str, tag: str = "main", source: ModelSource = ModelSource.HUGGINGFACE
     ) -> Generator[Dict[str, float], None, str]:
-        download_url = f"{self.download_endpoint}{hf_repo}/resolve/main/{filename}"
-        downloaded_size = 0
-        chunk_size = 1024 * 1024
+        local_dir = str(Path(local_path).parent)
+        Path(local_dir).mkdir(parents=True, exist_ok=True)
 
-        temp_local_path = local_path + ".temp"
+        exception_holder: List[Exception] = []
+        download_done = threading.Event()
+        total_bytes: List[int] = [0]
 
-        try:
-            with requests.get(
-                download_url, headers=self.headers, stream=True, timeout=30
-            ) as r:
-                r.raise_for_status()
+        token = (
+            self.headers.get("Authorization", "").replace("Bearer ", "").strip() or None
+        )
 
-                total_size = int(r.headers.get("content-length", 0))
+        if not source==ModelSource.MODELSCOPE:
+            try:
+                url = hf_hub_url(repo_id=hf_repo, filename=filename, revision=tag)
+                metadata = get_hf_file_metadata(url=url, token=token)
+                total_bytes[0] = metadata.size or 0
+            except Exception:
+                total_bytes[0] = 0
 
-                Path(temp_local_path).parent.mkdir(parents=True, exist_ok=True)
+        def _find_partial_size() -> int:
+            """Return best-effort bytes written so far."""
+            dest = Path(local_path)
+            if dest.exists():
+                return dest.stat().st_size
+            try:
+                largest = 0
+                for p in Path(local_dir).iterdir():
+                    if p.is_file():
+                        try:
+                            size = p.stat().st_size
+                            if size > largest:
+                                largest = size
+                        except OSError:
+                            pass
+                return largest
+            except OSError:
+                return 0
 
-                with open(temp_local_path, "wb") as f:
-                    for chunk in r.iter_content(chunk_size=chunk_size):
-                        if self.cancellation_flag:
-                            raise requests.exceptions.RequestException(
-                                "Download cancelled by user."
-                            )
+        def _download():
+            try:
+                if source == ModelSource.MODELSCOPE:
+                    print("modelscope download")
+                    from modelscope.hub.file_download import model_file_download
 
-                        if chunk:
-                            f.write(chunk)
-                            downloaded_size += len(chunk)
+                    model_file_download(
+                        model_id=hf_repo,
+                        file_path=filename,
+                        local_dir=local_dir,
+                    )
+                else:
+                    hf_hub_download(
+                        repo_id=hf_repo,
+                        filename=filename,
+                        token=token,
+                        local_dir=local_dir,
+                    )
+            except Exception as e:
+                exception_holder.append(e)
+            finally:
+                download_done.set()
 
-                            progress_gb = downloaded_size / (1024 * 1024 * 1024)
-                            total_gb = (
-                                total_size / (1024 * 1024 * 1024) if total_size else 0
-                            )
-                            progress_pct = (
-                                (downloaded_size / total_size) * 100
-                                if total_size
-                                else 0
-                            )
+        thread = threading.Thread(target=_download, daemon=True)
+        thread.start()
 
-                            yield {
-                                "downloaded_gb": progress_gb,
-                                "total_gb": total_gb,
-                                "progress_pct": progress_pct,
-                            }
+        while not download_done.wait(timeout=0.5):
+            if self.cancellation_flag:
+                self.cancellation_flag = False
+                thread.join(timeout=5)
+                raise RuntimeError("Download cancelled by user.")
 
-            os.rename(temp_local_path, local_path)
+            total = total_bytes[0]
+            downloaded = _find_partial_size()
+            yield {
+                "downloaded_gb": downloaded / (1024**3),
+                "total_gb": total / (1024**3),
+                "progress_pct": min((downloaded / total) * 100, 100.0) if total > 0 else 0.0,
+            }
 
-        except requests.exceptions.RequestException as e:
-            if os.path.exists(temp_local_path):
-                os.remove(temp_local_path)
+        thread.join()
+
+        if self.cancellation_flag:
             self.cancellation_flag = False
-            raise RuntimeError(f"Error during streaming download {e}")
-        except Exception as e:
-            if os.path.exists(temp_local_path):
-                os.remove(temp_local_path)
+            raise RuntimeError("Download cancelled by user.")
+
+        if exception_holder:
             self.cancellation_flag = False
-            raise RuntimeError(f"An unexpected error occurred during download {e}")
+            raise RuntimeError(f"Error during streaming download {exception_holder[0]}")
 
     def _calculate_sha256(self, file_path: str) -> str:
         sha256_hash = hashlib.sha256()
@@ -184,98 +219,6 @@ class GGUFDownloader:
                 )
 
         return files_to_download
-
-    def _list_verified_models(self) -> Dict[str, str]:
-        verified_models = []
-
-        for repo_id_with_tag, detail in self.verified_models.items():
-            verified_models.append(
-                (repo_id_with_tag, detail["task"], detail["quant"], detail["source"])
-            )
-
-        return verified_models
-
-    def _list_downloaded_models(self) -> List[Tuple[str, str, List[str]]]:
-        consolidated_models: DefaultDict[Tuple[str, str], List[str]] = defaultdict(list)
-
-        base_dir = Path(self.models_base_dir)
-        if not base_dir.exists():
-            return []
-
-        cached_manifests = self.list_all_cached_manifests()
-        FALLBACK_TAGS = {"latest", "unknown", "main", "master", ""}
-
-        for manifest in cached_manifests:
-            repo_id = manifest.get("hf_repo")
-            gguf_file = manifest.get("gguf_file")
-            mmproj_file = manifest.get("mmproj_file")
-
-            if not repo_id or not gguf_file or "mmproj" in gguf_file:
-                continue
-
-            tag_value = manifest.get("tag", "").strip()
-            quant_value = tag_value
-
-            if tag_value.lower() in FALLBACK_TAGS or not tag_value:
-                quant_value = self.extract_quant_from_filename(gguf_file)
-
-            if quant_value == "N/A":
-                quant_value = "Unknown Quant"
-
-            try:
-                org, model_name = repo_id.split("/", 1)
-                possible_tasks = [
-                    "text_generation",
-                    "embeddings",
-                    "rerank",
-                    "multimodal",
-                ]
-
-                for task in possible_tasks:
-                    repo_dir = base_dir / task / org / model_name
-
-                    if repo_dir.is_dir():
-                        expected_files = [gguf_file]
-                        if mmproj_file:
-                            expected_files.append(mmproj_file)
-
-                        all_files_present = True
-                        for filename in expected_files:
-                            if not (repo_dir / filename).exists():
-                                all_files_present = False
-                                break
-
-                        if all_files_present:
-                            key = (repo_id, task)
-                            if quant_value not in consolidated_models[key]:
-                                consolidated_models[key].append(quant_value)
-                            break
-
-            except Exception as e:
-                print(
-                    f"Warning: Skipping cached model {repo_id} due to file checking error: {e}",
-                    file=sys.stderr,
-                )
-                continue
-
-        possible_tasks = ["text_generation", "embeddings", "rerank", "multimodal"]
-        for task in possible_tasks:
-            task_dir = base_dir / task
-            for gguf_file in task_dir.rglob("*.gguf"):
-                if "mmproj" in str(gguf_file):
-                    continue
-
-                quant_value = self.extract_quant_from_filename(str(gguf_file))
-                repo_id = f"{gguf_file.parent.parent.name}/{gguf_file.parent.name}"
-                key = (repo_id, task)
-                if quant_value not in consolidated_models[key]:
-                    consolidated_models[key].append(quant_value)
-
-        final_list = []
-        for (repo_id, task), quants in consolidated_models.items():
-            final_list.append((repo_id, task, sorted(quants)))
-
-        return final_list
 
     @staticmethod
     def read_verified_models(file_path: str) -> Dict[str, str]:
@@ -424,7 +367,7 @@ class GGUFDownloader:
             f"Model {hf_repo_with_tag} not found locally or in the verified list."
         )
 
-    def download_model(self, hf_repo_with_tag: str) -> Generator[str, None, None]:
+    def download_model(self, hf_repo_with_tag: str, source: ModelSource = ModelSource.HUGGINGFACE) -> Generator[str, None, None]:
         try:
             task = self.get_model_info_for_repo(hf_repo_with_tag=hf_repo_with_tag)
             manifest = self.get_file_manifest(hf_repo_with_tag=hf_repo_with_tag)
@@ -449,6 +392,7 @@ class GGUFDownloader:
                     filename=filename,
                     local_path=local_path,
                     tag=manifest["tag"],
+                    source=source
                 )
 
                 for progress in progress_generator:
@@ -486,7 +430,7 @@ class GGUFDownloader:
             self.cancellation_flag = False
 
     def download_unverified_model(
-        self, hf_repo_with_tag: str, task: str
+        self, hf_repo_with_tag: str, task: str, source: ModelSource = ModelSource.HUGGINGFACE
     ) -> Generator[str, None, None]:
         if task not in ["text_generation", "embeddings", "rerank", "multimodal"]:
             yield f"Error: Invalid task '{task}'. Must be one of: text_generation, embeddings, rerank, multimodal.\n"
@@ -515,6 +459,7 @@ class GGUFDownloader:
                     filename=filename,
                     local_path=local_path,
                     tag=manifest["tag"],
+                    source=source
                 )
 
                 for progress in progress_generator:
@@ -640,9 +585,101 @@ class GGUFDownloader:
 
         return best_match if best_match else "N/A"
 
+    def list_verified_models(self) -> Dict[str, str]:
+        verified_models = []
+
+        for repo_id_with_tag, detail in self.verified_models.items():
+            verified_models.append(
+                (repo_id_with_tag, detail["task"], detail["quant"], detail["source"])
+            )
+
+        return verified_models
+
+    def list_downloaded_models(self) -> List[Tuple[str, str, List[str]]]:
+        consolidated_models: DefaultDict[Tuple[str, str], List[str]] = defaultdict(list)
+
+        base_dir = Path(self.models_base_dir)
+        if not base_dir.exists():
+            return []
+
+        cached_manifests = self.list_all_cached_manifests()
+        FALLBACK_TAGS = {"latest", "unknown", "main", "master", ""}
+
+        for manifest in cached_manifests:
+            repo_id = manifest.get("hf_repo")
+            gguf_file = manifest.get("gguf_file")
+            mmproj_file = manifest.get("mmproj_file")
+
+            if not repo_id or not gguf_file or "mmproj" in gguf_file:
+                continue
+
+            tag_value = manifest.get("tag", "").strip()
+            quant_value = tag_value
+
+            if tag_value.lower() in FALLBACK_TAGS or not tag_value:
+                quant_value = self.extract_quant_from_filename(gguf_file)
+
+            if quant_value == "N/A":
+                quant_value = "Unknown Quant"
+
+            try:
+                org, model_name = repo_id.split("/", 1)
+                possible_tasks = [
+                    "text_generation",
+                    "embeddings",
+                    "rerank",
+                    "multimodal",
+                ]
+
+                for task in possible_tasks:
+                    repo_dir = base_dir / task / org / model_name
+
+                    if repo_dir.is_dir():
+                        expected_files = [gguf_file]
+                        if mmproj_file:
+                            expected_files.append(mmproj_file)
+
+                        all_files_present = True
+                        for filename in expected_files:
+                            if not (repo_dir / filename).exists():
+                                all_files_present = False
+                                break
+
+                        if all_files_present:
+                            key = (repo_id, task)
+                            if quant_value not in consolidated_models[key]:
+                                consolidated_models[key].append(quant_value)
+                            break
+
+            except Exception as e:
+                print(
+                    f"Warning: Skipping cached model {repo_id} due to file checking error: {e}",
+                    file=sys.stderr,
+                )
+                continue
+
+        possible_tasks = ["text_generation", "embeddings", "rerank", "multimodal"]
+        for task in possible_tasks:
+            task_dir = base_dir / task
+            for gguf_file in task_dir.rglob("*.gguf"):
+                if "mmproj" in str(gguf_file):
+                    continue
+
+                quant_value = self.extract_quant_from_filename(str(gguf_file))
+                repo_id = f"{gguf_file.parent.parent.name}/{gguf_file.parent.name}"
+                key = (repo_id, task)
+                if quant_value not in consolidated_models[key]:
+                    consolidated_models[key].append(quant_value)
+
+        final_list = []
+        for (repo_id, task), quants in consolidated_models.items():
+            final_list.append((repo_id, task, sorted(quants)))
+
+        return final_list
+
     def list_models(self):
-        verified_models = self._list_verified_models()
-        downloaded_models = self._list_downloaded_models()
+        verified_models = self.list_verified_models()
+        downloaded_models = self.list_downloaded_models()
 
         verified_map = {}
         for repo_id, task_type, quantizations, sources in verified_models:

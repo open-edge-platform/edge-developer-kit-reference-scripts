@@ -1,4 +1,4 @@
-# Copyright (C) 2024 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 import sys
@@ -12,7 +12,7 @@ import logging
 
 from .ovms_manager import OVMSManager
 from .ov_downloader import OVDownloader
-from .ov_downloader import ModelSource
+from modules.utils import ModelSource
 
 
 class OVMSManagerCLI:
@@ -102,9 +102,15 @@ class OVMSManagerCLI:
         return []
 
     def start_model(
-        self, model_name: str, device: str, extra_params: Dict[str, str] = None
+        self,
+        model_name: str,
+        device: str,
+        task: str = "",
+        extra_params: Dict[str, str] = None,
     ) -> bool:
-        return self.ovms_manager.start_model(model_name, device, extra_params)
+        return self.ovms_manager.start_model(
+            model_name, device, task=task, extra_params=extra_params
+        )
 
     def stop_model(self, model_name: str) -> bool:
         return self.ovms_manager.stop_model(model_name)

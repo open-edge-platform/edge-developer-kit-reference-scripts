@@ -1,4 +1,4 @@
-// Copyright (C) 2025 Intel Corporation
+// Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
 import { FlatCompat } from "@eslint/eslintrc";
@@ -26,6 +26,9 @@ const eslintConfig = defineConfig([
     "src/app/(payload)/admin/**",
     "eslint.config.mjs",
     "playwright-report/**",
+    "test-results/**",
+    "package.json",
+    "package-lock.json",
   ]),
   ...compat.config({
     extends: ["plugin:prettier/recommended"],
@@ -46,6 +49,13 @@ const eslintConfig = defineConfig([
         },
         {
           usePrettierrc: false,
+        },
+      ],
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
         },
       ],
       "@typescript-eslint/naming-convention": [

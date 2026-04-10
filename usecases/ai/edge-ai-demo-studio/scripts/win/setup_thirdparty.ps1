@@ -1,8 +1,7 @@
 # Exit on error
-# Copyright (C) 2025 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 $ErrorActionPreference = 'Stop'
-$ProgressPreference = 'SilentlyContinue'
 
 # Set UTF-8 encoding for console output
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8

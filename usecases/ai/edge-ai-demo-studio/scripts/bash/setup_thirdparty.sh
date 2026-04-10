@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright (C) 2025 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 # Exit on error, unset variable, or failed pipe
 set -euo pipefail
@@ -15,6 +15,12 @@ FFMPEG_TAR_PATH="$THIRDPARTY_DIR/ffmpeg-release-amd64-static.tar.xz"
 FFMPEG_TAR_URL="https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
 FFMPEG_DIR="$THIRDPARTY_DIR/ffmpeg"
 FFMPEG_PATH="$FFMPEG_DIR/bin/ffmpeg"
+
+# Cleanup temporary files on exit or interruption
+cleanup_temp_files() {
+    rm -f "$NODE_ZIP_PATH" "$FFMPEG_TAR_PATH" 2>/dev/null
+}
+trap cleanup_temp_files EXIT INT TERM
 
 setup_thirdparty() {
   echo "Creating thirdparty directory at $THIRDPARTY_DIR..."

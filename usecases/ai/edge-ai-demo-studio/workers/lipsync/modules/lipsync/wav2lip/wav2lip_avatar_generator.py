@@ -1,4 +1,4 @@
-# Copyright (C) 2025 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 from http.client import HTTPException
@@ -152,7 +152,7 @@ def generate_wav2lip_avatar(
     if avatar_id is None:
         avatar_id = f"wav2lip_avatar_{img_size}"
     else:
-        avatar_id = f"wav2lip_avatar{avatar_id}_{img_size}"
+        avatar_id = f"wav2lip_avatar_{avatar_id}_{img_size}"
 
     base_avatar_dir = Path(base_avatar_dir)
     avatar_path = base_avatar_dir / avatar_id

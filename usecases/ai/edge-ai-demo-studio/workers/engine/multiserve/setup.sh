@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright (C) 2024 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 set -e
@@ -15,12 +15,13 @@ else
 fi
 VENV_ACTIVATE_SCRIPT=".venv/bin/activate"
 
-# LLAMA_RELEASE_URL="https://github.com/ggml-org/llama.cpp/releases/download/b7180/llama-b7180-bin-ubuntu-x64.zip"
-LLAMA_RELEASE_URL="https://github.com/ggml-org/llama.cpp/releases/download/b7406/llama-b7406-bin-ubuntu-vulkan-x64.zip"
-LLAMA_DOWNLOAD_FILE="llama-ubuntu.zip"
+LLAMA_VERSION=b7992
+# LLAMA_RELEASE_URL="https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_VERSION}/llama-b7180-bin-ubuntu-x64.zip"
+LLAMA_RELEASE_URL="https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_VERSION}/llama-${LLAMA_VERSION}-bin-ubuntu-vulkan-x64.tar.gz"
+LLAMA_DOWNLOAD_FILE="llama-ubuntu.tar.gz"
 LLAMA_EXTRACT_DIR="engine/llama.cpp-vulkan"
 
-XPU_SMI_RELEASE_URL="https://github.com/intel/xpumanager/releases/download/v1.3.5/xpu-smi_1.3.5_20251216.170635.605ff78d.u24.04_amd64.deb"
+XPU_SMI_RELEASE_URL="https://github.com/intel/xpumanager/releases/download/v1.3.6/xpu-smi_1.3.6_20260206.143628.1004f6cb.u24.04_amd64.deb"
 XPU_SMI_DOWNLOAD_FILE="xpu-smi.deb"
 XPU_SMI_INSTALL_DIR="engine/xpu-smi"
 
@@ -28,14 +29,12 @@ GGUF_PARSER_RELEASE_URL="https://github.com/gpustack/gguf-parser-go/releases/dow
 GGUF_PARSER_BINARY_NAME="gguf-parser"
 GGUF_PARSER_INSTALL_DIR="engine"
 
-OVMS_VERSION="v2025.4.1"
+OVMS_VERSION="v2026.0"
 OVMS_RELEASE_URL="https://github.com/openvinotoolkit/model_server/releases/download/${OVMS_VERSION}/ovms_ubuntu24_python_on.tar.gz"
 OVMS_DOWNLOAD_FILE="ovms.tar.gz"
 OVMS_EXTRACT_DIR="engine"
 
-OPTIMUM_EXPORT_MODEL_DIR="${OVMS_EXTRACT_DIR}/optimum_export_model"
 OPTIMUM_EXPORT_MODEL_URL="https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/tags/${OVMS_VERSION}/demos/common/export_models"
-OPTIMUM_EXPORT_MODEL_SCRIPT="export_model.py"
 OPTIMUM_EXPORT_MODEL_REQUIREMENTS_URL="requirements.txt"
 
 # --- Utility Functions ---
@@ -180,16 +179,29 @@ install_llamacpp() {
     
     echo "Creating directory: $LLAMA_EXTRACT_DIR"
     mkdir -p "$LLAMA_EXTRACT_DIR"
-    
     if ! download_file "$LLAMA_RELEASE_URL" "$LLAMA_DOWNLOAD_FILE" "Llama.cpp binaries"; then
         return 1
     fi
     
     echo "Extracting to $LLAMA_EXTRACT_DIR..."
-    if ! unzip -o "$LLAMA_DOWNLOAD_FILE" -d "$LLAMA_EXTRACT_DIR"; then
+    if ! tar -xzf "$LLAMA_DOWNLOAD_FILE" -C "$LLAMA_EXTRACT_DIR"; then
         print_error "Extraction failed."
         rm -f "$LLAMA_DOWNLOAD_FILE"
         return 1
+    fi
+
+    shopt -s dotglob
+    local entries=("$LLAMA_EXTRACT_DIR"/*)
+    shopt -u dotglob
+    if [[ ${#entries[@]} -eq 1 && -d "${entries[0]}" ]]; then
+        local inner_dir="${entries[0]}"
+        echo "Flattening nested directory: $(basename "$inner_dir")"
+        if ! mv "$inner_dir"/* "$LLAMA_EXTRACT_DIR"/; then
+            print_error "Failed to flatten extracted directory."
+            rm -f "$LLAMA_DOWNLOAD_FILE"
+            return 1
+        fi
+        rmdir "$inner_dir" || true
     fi
     
     rm -f "$LLAMA_DOWNLOAD_FILE"
@@ -318,66 +330,38 @@ install_ovms() {
         print_success "OVMS extraction complete."
     fi
 
-    # Install Jinja2/MarkupSafe directly into OVMS's own lib/python directory.
+    # Install Jinja2/MarkupSafe directly into OVMS's own bin directory.
     local OVMS_LIB_PYTHON_DIR="$OVMS_EXTRACT_DIR/ovms/lib/python"
     echo "Installing Jinja2 and MarkupSafe into OVMS lib/python: $OVMS_LIB_PYTHON_DIR"
     if ! "$UV_EXE" pip install --target "$OVMS_LIB_PYTHON_DIR" "Jinja2==3.1.6" "MarkupSafe==3.0.2"; then
         print_error "Failed to install Jinja2/MarkupSafe into OVMS lib/python."
         return 1
     fi
-    print_success "Jinja2 and MarkupSafe installed into OVMS lib/python."
-}
 
-setup_export_model() {
-    print_step "Setting up Optimum Export Model"
-    
-    if [[ -f "$OPTIMUM_EXPORT_MODEL_DIR" ]]; then
-        print_success "Optimum Export Model script already exists. Skipping setup."
-        return 0
-    fi
+    OPTIMUM_VENV_DIR="$OVMS_EXTRACT_DIR/ovms/lib/optimum_venv"
 
-    local OPTIMUM_VENV_DIR="$OPTIMUM_EXPORT_MODEL_DIR/.venv"
-    if [[ -d "$OPTIMUM_VENV_DIR" ]]; then
-        print_success "Optimum Export Model venv already exists. Skipping setup."
-        return 0
-    fi
-    
-    echo "Creating directory: $OPTIMUM_EXPORT_MODEL_DIR"
-    mkdir -p "$OPTIMUM_EXPORT_MODEL_DIR"
-    
-    # Download export_model.py
-    if ! download_file "$OPTIMUM_EXPORT_MODEL_URL/$OPTIMUM_EXPORT_MODEL_SCRIPT" "$OPTIMUM_EXPORT_MODEL_DIR/$OPTIMUM_EXPORT_MODEL_SCRIPT" "Optimum Export Model script"; then
-        return 1
-    fi
-    
-    # Download requirements.txt
-    if ! download_file "$OPTIMUM_EXPORT_MODEL_URL/$OPTIMUM_EXPORT_MODEL_REQUIREMENTS_URL" "$OPTIMUM_EXPORT_MODEL_DIR/$OPTIMUM_EXPORT_MODEL_REQUIREMENTS_URL" "Optimum Export Model requirements"; then
+    if ! mkdir -p "$OPTIMUM_VENV_DIR"; then
+        print_error "Failed to create directory for optimum in OVMS lib."
         return 1
     fi
 
-
-    if ! "$UV_EXE" venv "$OPTIMUM_VENV_DIR"; then
-        print_error "UV venv creation for OVMS failed."
-        return 1
-    fi
-    
-    # shellcheck disable=SC1091
-    source "$OPTIMUM_VENV_DIR/bin/activate"
-    if ! $UV_EXE pip install --pre --index-strategy unsafe-best-match -r "$OPTIMUM_EXPORT_MODEL_DIR/$OPTIMUM_EXPORT_MODEL_REQUIREMENTS_URL"; then
-        print_error "Pip install of OVMS Optimum requirements failed."
-        deactivate
+    echo "Creating Optimum virtualenv at $OPTIMUM_VENV_DIR"
+    if ! "$UV_EXE" venv "$OPTIMUM_VENV_DIR" --clear; then
+        print_error "Failed to create virtualenv for Optimum."
         return 1
     fi
 
-    if ! $UV_EXE pip install modelscope datasets; then
-        print_error "Pip install of modelscope and datasets failed."
-        deactivate
+    echo "Installing requirements into Optimum venv"
+    if ! "$UV_EXE" pip install --python "$OPTIMUM_VENV_DIR" --prerelease allow --index-strategy unsafe-best-match -r "$OPTIMUM_EXPORT_MODEL_URL/$OPTIMUM_EXPORT_MODEL_REQUIREMENTS_URL"; then
+        print_error "Failed to install Optimum requirements into venv at $OPTIMUM_VENV_DIR."
         return 1
     fi
-    deactivate
 
-    print_success "OVMS Optimum requirements installed successfully in virtual environment."
-    return 0
+    if ! "$UV_EXE" pip install --python "$OPTIMUM_VENV_DIR" datasets "pyarrow<21.0.0"; then
+        print_error "Failed to install into Optimum venv."
+        return 1
+    fi
+    print_success "OVMS setup complete with Optimum export model environment ready at $OVMS_OPTIMUM_LIB/venv"
 }
 
 # Sync Python environment with uv
@@ -497,7 +481,6 @@ main() {
     install_gguf_parser || exit 1
     install_ovms || exit 1
     sync_uv_environment || exit 1
-    setup_export_model || exit 1
     
     # Verify everything worked
     verify_installations || exit 1

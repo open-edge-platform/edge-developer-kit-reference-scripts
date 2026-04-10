@@ -1,5 +1,0 @@
-// Copyright (C) 2025 Intel Corporation
-// SPDX-License-Identifier: Apache-2.0
-
-export { ChatPanel } from './chat-panel'
-export { RagChatSettings } from './settings'

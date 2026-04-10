@@ -1,4 +1,4 @@
-# Copyright (C) 2025 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 import logging
@@ -296,6 +296,12 @@ def ensure_wav(in_path: str, out_wav: str) -> bool:
     Try pydub first, fall back to ffmpeg if needed.
     Returns True on success.
     """
+    # Avoid in-place conversion: if paths overlap, rename the input first
+    if os.path.abspath(in_path) == os.path.abspath(out_wav):
+        new_in = in_path + ".orig"
+        os.rename(in_path, new_in)
+        in_path = new_in
+
     try:
         audio = AudioSegment.from_file(in_path)
         audio = audio.set_frame_rate(16000).set_channels(1).set_sample_width(2)

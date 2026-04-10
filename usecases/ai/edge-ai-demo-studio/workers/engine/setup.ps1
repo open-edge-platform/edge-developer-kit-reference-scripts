@@ -1,136 +1,85 @@
-#!/usr/bin/env pwsh
-# Copyright (C) 2025 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
-# Setup script to run setup.ps1 in all 1-level child directories
-# This script will execute setup.ps1 files in subdirectories like kokoro/, malaya/, etc.
+$ErrorActionPreference = "Stop"
 
-param(
-    [switch]$Verbose
-)
+$ScriptDir = $PSScriptRoot
 
-$ErrorActionPreference = "Stop"  # Exit on any error
-$ProgressPreference = 'SilentlyContinue'
+$SuccessCount = 0
+$FailCount = 0
+$Results = @()
 
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
-Write-Host "Running setup for engine workers from: $ScriptDir" -ForegroundColor Green
+Push-Location $ScriptDir
+try {
+    Write-Host "Starting Engine setup..." -ForegroundColor Cyan
 
-# Track setup results
-$script:SetupResults = @()
-$script:SuccessCount = 0
-$script:FailCount = 0
+    $ChildDirs = Get-ChildItem -Path $ScriptDir -Directory
 
-# Function to run setup in a child directory
-function Invoke-ChildSetup {
-    param(
-        [string]$ChildDir
-    )
-    
-    $ChildName = Split-Path -Leaf $ChildDir
-    $SetupScript = Join-Path $ChildDir "setup.bat"
-    
-    if (Test-Path $SetupScript) {
-        Write-Host "========================================" -ForegroundColor Cyan
-        Write-Host "Running setup for: $ChildName" -ForegroundColor Yellow
-        Write-Host "========================================" -ForegroundColor Cyan
-        
-        # Change to the child directory and run setup
-        Push-Location $ChildDir
+    foreach ($ChildDir in $ChildDirs) {
+        $ChildName = $ChildDir.Name
+        $SetupScript = Join-Path $ChildDir.FullName "setup.bat"
+
+        if (-not (Test-Path $SetupScript)) {
+            Write-Host "Skipping $ChildName (no setup.bat found)" -ForegroundColor Yellow
+            continue
+        }
+
+        Write-Host "Running setup for $ChildName..." -ForegroundColor Yellow
+
+        # Prepare to temporarily add Git (thirdparty/git/cmd) to PATH for this child setup
+        $OriginalPath = $env:Path
+        $GitCmdDir = Join-Path $ScriptDir "..\..\thirdparty\git\cmd"
+        $GitCmdDir = [System.IO.Path]::GetFullPath($GitCmdDir)
+        $AddedGit = $false
+        if (Test-Path $GitCmdDir) {
+            $env:Path = "$GitCmdDir;$env:Path"
+            $AddedGit = $true
+        } else {
+            Write-Host "Git not found at $GitCmdDir - continuing without modifying PATH" -ForegroundColor Yellow
+        }
+
+        Push-Location $ChildDir.FullName
         try {
             & $SetupScript
             if ($LASTEXITCODE -ne 0) {
-                throw "Setup script failed for $ChildName with exit code $LASTEXITCODE"
+                throw "Exit code $LASTEXITCODE"
             }
-            Write-Host "✅ Setup completed for: $ChildName" -ForegroundColor Green
-            Write-Host ""
-            $script:SetupResults += @{ Name = $ChildName; Success = $true; Error = $null }
-            $script:SuccessCount++
-        }
-        catch {
-            Write-Host "❌ Setup failed for: $ChildName" -ForegroundColor Red
-            Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
-            Write-Host ""
-            $script:SetupResults += @{ Name = $ChildName; Success = $false; Error = $_.Exception.Message }
-            $script:FailCount++
-            throw
-        }
-        finally {
-            # Return to the original directory
+            Write-Host "$ChildName setup completed." -ForegroundColor Green
+            $SuccessCount++
+            $Results += @{ Name = $ChildName; Status = "success"; Error = $null }
+        } catch {
+            Write-Host ($ChildName + " setup failed: " + $_.Exception.Message) -ForegroundColor Red
+            $FailCount++
+            $Results += @{ Name = $ChildName; Status = "failed"; Error = $_.Exception.Message }
+        } finally {
+            # Restore PATH if we added Git
+            if ($AddedGit) {
+                $env:Path = $OriginalPath
+            }
             Pop-Location
         }
     }
-    else {
-        Write-Host "Warning: No setup.bat found in $ChildDir" -ForegroundColor Yellow
-        $script:SetupResults += @{ Name = $ChildName; Success = $null; Error = "No setup.bat found" }
-    }
-}
 
-# Main execution with comprehensive error handling
-Push-Location $ScriptDir
-try {
-    # Find all 1-level child directories and run their setup scripts
-    $ChildDirectories = Get-ChildItem -Path $ScriptDir -Directory -ErrorAction Stop
-    
-    if ($ChildDirectories.Count -eq 0) {
-        Write-Host "No child directories found to set up." -ForegroundColor Yellow
-        exit 0
-    }
-    
-    foreach ($ChildDir in $ChildDirectories) {
-        try {
-            Invoke-ChildSetup -ChildDir $ChildDir.FullName
-        }
-        catch {
-            # Error already logged in Invoke-ChildSetup, continue with next
-            Write-Host "Continuing with remaining engine workers..." -ForegroundColor Yellow
-        }
-    }
-
-    # Display summary
+    # Summary
     Write-Host ""
-    Write-Host "========================================" -ForegroundColor Cyan
-    Write-Host "Engine Setup Summary" -ForegroundColor Cyan
-    Write-Host "========================================" -ForegroundColor Cyan
-    
-    if ($script:SuccessCount -gt 0) {
-        Write-Host "✅ Successful: $script:SuccessCount" -ForegroundColor Green
-        foreach ($result in ($script:SetupResults | Where-Object { $_.Success -eq $true })) {
-            Write-Host "   - $($result.Name)" -ForegroundColor Green
+    Write-Host "=== Engine Setup Summary ===" -ForegroundColor Cyan
+    foreach ($r in $Results) {
+        if ($r.Status -eq "success") {
+            Write-Host "  [OK] $($r.Name)" -ForegroundColor Green
+        } else {
+            Write-Host "  [FAIL] $($r.Name): $($r.Error)" -ForegroundColor Red
         }
     }
-    
-    if ($script:FailCount -gt 0) {
-        Write-Host "❌ Failed: $script:FailCount" -ForegroundColor Red
-        foreach ($result in ($script:SetupResults | Where-Object { $_.Success -eq $false })) {
-            Write-Host "   - $($result.Name): $($result.Error)" -ForegroundColor Red
-        }
-    }
-    
-    $skippedResults = $script:SetupResults | Where-Object { $_.Success -eq $null }
-    if ($skippedResults.Count -gt 0) {
-        Write-Host "⏭️  Skipped: $($skippedResults.Count)" -ForegroundColor Yellow
-        foreach ($result in $skippedResults) {
-            Write-Host "   - $($result.Name): $($result.Error)" -ForegroundColor Yellow
-        }
-    }
-    
-    Write-Host "========================================" -ForegroundColor Cyan
-    
-    if ($script:FailCount -gt 0) {
-        Write-Host "Engine setup completed with errors." -ForegroundColor Red
+
+    if ($FailCount -gt 0) {
+        Write-Host "Engine setup completed with $FailCount error(s)." -ForegroundColor Red
         exit 1
-    } else {
-        Write-Host "All engine setup scripts completed successfully!" -ForegroundColor Green
-        exit 0
     }
+
+    Write-Host "Engine setup completed successfully!" -ForegroundColor Green
+    exit 0
 } catch {
-    Write-Host "========================================" -ForegroundColor Red
-    Write-Host "❌ FATAL ERROR in engine setup" -ForegroundColor Red
-    Write-Host "========================================" -ForegroundColor Red
-    Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
-    if ($Verbose -and $_.ScriptStackTrace) {
-        Write-Host "Stack trace: $($_.ScriptStackTrace)" -ForegroundColor Red
-    }
+    Write-Host ("Engine setup failed: " + $_.Exception.Message) -ForegroundColor Red
     exit 1
 } finally {
     Pop-Location

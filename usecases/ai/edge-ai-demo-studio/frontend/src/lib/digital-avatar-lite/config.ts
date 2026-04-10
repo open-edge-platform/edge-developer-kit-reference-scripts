@@ -1,13 +1,10 @@
-// Copyright (C) 2025 Intel Corporation
+// Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-/**
- * Configuration for the digital avatar lite streaming API
- */
-
-import path from 'path'
 import os from 'os'
-import type { VideoPaths, IdleConfig } from './types'
+import path from 'path'
+
+import type { IdleConfig, VideoPaths } from './types'
 
 export const DEFAULT_FPS = 30
 
