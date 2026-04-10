@@ -11,4 +11,4 @@ pdf2image==1.17.0
 pillow==12.1.1
 qwen-vl-utils==0.0.14
 tqdm==4.67.1
-transformers==4.55.4
+transformers==5.0.0rc3
