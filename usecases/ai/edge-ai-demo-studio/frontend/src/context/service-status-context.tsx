@@ -16,27 +16,28 @@ import {
   useServiceAction,
   useServicesQuery,
 } from '@/hooks/use-services'
+import {
+  type ServiceConfigUpdate,
+  updateServiceConfig,
+} from '@/hooks/use-service-config'
 import { engines } from '@/engines/_generated/meta'
 import { services as staticServices } from '@/services/registry'
 import type { Service, ServiceStatus } from '@/services/types'
 import { hasExecutionMode } from '@/services/types'
 
 interface ServiceStatusContextValue {
-  /** Map of service type → current status */
   statusMap: Record<string, ServiceStatus>
-  /** Map of service type → PayloadCMS service info */
   serviceInfoMap: Record<string, PayloadServiceInfo>
-  /** Services enriched with live DB status */
   services: Service[]
-  /** Whether initial load is in progress */
+  serviceById: Map<string, Service>
   loading: boolean
-  /** Start a service by its type (e.g. "text-generation") */
   startService: (serviceType: string) => Promise<void>
-  /** Stop a service by its type */
+  configureAndStartService: (
+    serviceType: string,
+    device: string,
+  ) => Promise<void>
   stopService: (serviceType: string) => Promise<void>
-  /** Restart a service by its type */
   restartService: (serviceType: string) => Promise<void>
-  /** Whether an action is currently in flight for a service type */
   isActionPending: (serviceType: string) => boolean
 }
 
@@ -87,6 +88,12 @@ export function ServiceStatusProvider({ children }: { children: ReactNode }) {
     return map
   }, [enrichedServices])
 
+  // Pre-built lookup map for O(1) service lookups by ID
+  const serviceById = useMemo(
+    () => new Map<string, Service>(enrichedServices.map((s) => [s.id, s])),
+    [enrichedServices],
+  )
+
   const performAction = useCallback(
     (serviceType: string, action: 'start' | 'stop' | 'restart') => {
       const info = serviceInfoMap[serviceType]
@@ -124,6 +131,51 @@ export function ServiceStatusProvider({ children }: { children: ReactNode }) {
     [performAction],
   )
 
+  const configureAndStartService = useCallback(
+    async (serviceType: string, device: string) => {
+      const info = serviceInfoMap[serviceType]
+      if (!info) {
+        throw new Error(
+          `Service "${serviceType}" has no database record. Restart the app to auto-create it.`,
+        )
+      }
+
+      // Validate device string: must be a known base (CPU, GPU, NPU, xpu, cpu)
+      // with an optional index suffix (.N or :N)
+      if (!/^(cpu|gpu|npu|xpu|auto)(([.:])\d+)?$/i.test(device)) {
+        throw new Error(
+          `Invalid device "${device}". Expected a device like CPU, GPU, GPU.1, xpu, xpu:0, NPU, etc.`,
+        )
+      }
+
+      // Resolve model name: prefer current DB value, fall back to static default
+      const staticService = staticServices.find((s) => s.id === serviceType)
+      const modelName =
+        info.currentModel ?? staticService?.defaultModel?.name ?? ''
+      if (!modelName) {
+        // No model to configure — just start as-is
+        return performAction(serviceType, 'start')
+      }
+
+      // Apply device config, then start
+      const configBody: ServiceConfigUpdate = {
+        name: modelName,
+        device,
+      }
+      if (info.currentBackend) configBody.backend = info.currentBackend
+      if (info.currentQuant) configBody.quant = info.currentQuant
+
+      await updateServiceConfig({
+        serviceId: info.id,
+        serviceType,
+        config: configBody,
+      })
+
+      return performAction(serviceType, 'start')
+    },
+    [serviceInfoMap, performAction],
+  )
+
   const stopService = useCallback(
     (serviceType: string) => performAction(serviceType, 'stop'),
     [performAction],
@@ -140,8 +192,10 @@ export function ServiceStatusProvider({ children }: { children: ReactNode }) {
         statusMap: enrichedStatusMap,
         serviceInfoMap,
         services: enrichedServices,
+        serviceById,
         loading: isLoading,
         startService,
+        configureAndStartService,
         stopService,
         restartService,
         isActionPending,
@@ -166,8 +220,8 @@ export function useServiceStatus() {
  * Look up a single service by its ID.
  */
 export function useGetService(serviceId: string): Service | undefined {
-  const { services } = useServiceStatus()
-  return services.find((s) => s.id === serviceId)
+  const { serviceById } = useServiceStatus()
+  return serviceById.get(serviceId)
 }
 
 /**
@@ -181,10 +235,9 @@ export function useGetService(serviceId: string): Service | undefined {
 export function useGetServices<T extends string>(
   serviceIds: T[],
 ): Record<T, Service | undefined> {
-  const { services } = useServiceStatus()
-  const map = new Map<string, Service>(services.map((s) => [s.id, s]))
+  const { serviceById } = useServiceStatus()
   return Object.fromEntries(
-    serviceIds.map((id) => [id, map.get(id)]),
+    serviceIds.map((id) => [id, serviceById.get(id)]),
   ) as Record<T, Service | undefined>
 }
 

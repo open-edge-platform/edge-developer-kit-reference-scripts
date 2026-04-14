@@ -65,7 +65,6 @@ export function PptTranslatorDemo({ sample: _sample }: { sample: Sample }) {
 
   return (
     <div className="space-y-6 p-6">
-      {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <FileText className="h-6 w-6" />
@@ -136,7 +135,6 @@ export function PptTranslatorDemo({ sample: _sample }: { sample: Sample }) {
         </div>
       </div>
 
-      {/* Upload error */}
       {translate.isError && (
         <div className="border-destructive/50 bg-destructive/10 text-destructive rounded-lg border p-4">
           <p className="flex items-center gap-2 font-medium">
@@ -147,7 +145,6 @@ export function PptTranslatorDemo({ sample: _sample }: { sample: Sample }) {
         </div>
       )}
 
-      {/* Main content */}
       {appState === 'idle' && (
         <TranslationUpload
           disabled={!isServiceReady}
@@ -167,7 +164,6 @@ export function PptTranslatorDemo({ sample: _sample }: { sample: Sample }) {
           />
         )}
 
-      {/* Settings dialog */}
       <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
         <DialogContent className="max-h-[80vh] max-w-2xl overflow-y-auto">
           <DialogHeader>

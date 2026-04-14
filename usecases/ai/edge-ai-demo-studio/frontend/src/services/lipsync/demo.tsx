@@ -134,7 +134,6 @@ export function LipsyncDemo({ service }: { service: Service }) {
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_minmax(0,400px)]">
-      {/* ── Left: Video Stream ── */}
       <AvatarStream
         videoRef={videoRef}
         isConnected={sessionId !== null}
@@ -145,7 +144,6 @@ export function LipsyncDemo({ service }: { service: Service }) {
         onDisconnect={disconnect}
       />
 
-      {/* ── Right: Tabbed Controls ── */}
       <Tabs defaultValue="audio">
         <TabsList>
           <TabsTrigger value="audio">

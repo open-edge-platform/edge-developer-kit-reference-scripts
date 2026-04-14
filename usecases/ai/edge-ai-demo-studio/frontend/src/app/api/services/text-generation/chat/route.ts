@@ -19,6 +19,7 @@ import { logger } from '@/lib/logger'
 import { buildMcpTools } from '@/lib/mcp-tools'
 import type { Service } from '@/payload-types'
 import { metaMap } from '@/services/_generated/meta'
+import { hermesToolMiddleware } from '@ai-sdk-tool/parser'
 
 const createDefaultSystemPrompt = () => {
   return `You are a human-like conversational AI. 
@@ -93,17 +94,17 @@ function getLastUserText(messages: UIMessage[]): string {
 
 function cleanupImageMessage(messages: UIMessage[]): UIMessage[] {
   return messages.map((msg) => {
-    if (msg.role === 'user') {
-      msg.parts.forEach((p) => {
+    if (msg.role !== 'user') return msg
+    return {
+      ...msg,
+      parts: msg.parts.map((p) => {
         if (p.type === 'file') {
-          const url = p.url
-          const [, base64] = url.split(',', 2)
-          p.url = base64
+          const [, base64] = p.url.split(',', 2)
+          return { ...p, url: base64 }
         }
-      })
+        return p
+      }),
     }
-
-    return msg
   })
 }
 
@@ -129,6 +130,25 @@ async function getWorkloadModel(
 }
 
 export async function POST(req: Request) {
+  let body: {
+    messages: UIMessage[]
+    systemPrompt?: string
+    maxTokens?: number
+    temperature?: number
+    topP?: number
+    topK?: number
+    repetitionPenalty?: number
+    knowledgeBaseId?: number
+    disableReasoning?: boolean
+    mcpServerIds?: number[]
+  }
+
+  try {
+    body = await req.json()
+  } catch {
+    return new Response('Invalid JSON in request body', { status: 400 })
+  }
+
   const {
     messages,
     systemPrompt: customSystemPrompt,
@@ -140,20 +160,8 @@ export async function POST(req: Request) {
     knowledgeBaseId,
     disableReasoning,
     mcpServerIds,
-  }: {
-    messages: UIMessage[]
-    systemPrompt?: string
-    maxTokens?: number
-    temperature?: number
-    topP?: number
-    topK?: number
-    repetitionPenalty?: number
-    knowledgeBaseId?: number
-    disableReasoning?: boolean
-    mcpServerIds?: number[]
-  } = await req.json()
+  } = body
 
-  // Get available model
   let model: string
   const textGenerationMeta = metaMap['text-generation']
   try {
@@ -163,7 +171,6 @@ export async function POST(req: Request) {
     return new Response('No available model', { status: 500 })
   }
 
-  // Build system prompt — use custom prompt if provided, otherwise default
   let systemPrompt = customSystemPrompt?.trim() || createDefaultSystemPrompt()
   if (knowledgeBaseId != null) {
     const query = getLastUserText(messages)
@@ -175,12 +182,10 @@ export async function POST(req: Request) {
     }
   }
 
-  // When reasoning is disabled, ensure /no_think prefix is present
   if (disableReasoning && !systemPrompt.startsWith('/no_think')) {
     systemPrompt = `/no_think ${systemPrompt}`
   }
 
-  // Create OpenAI compatible provider using absolute Next.js proxy URL
   const provider = createOpenAICompatible({
     baseURL: `http://localhost:${textGenerationMeta.port}/v1`,
     name: 'ovms',
@@ -197,13 +202,18 @@ export async function POST(req: Request) {
 
   const baseModel = provider(model)
   const wrappedModel = disableReasoning
-    ? baseModel
+    ? wrapLanguageModel({
+        model: baseModel,
+        middleware: [hermesToolMiddleware],
+      })
     : wrapLanguageModel({
         model: baseModel,
-        middleware: extractReasoningMiddleware({ tagName: 'think' }),
+        middleware: [
+          hermesToolMiddleware,
+          extractReasoningMiddleware({ tagName: 'think' }),
+        ],
       })
 
-  // Build MCP tools if server IDs were provided
   let mcpTools: Awaited<ReturnType<typeof buildMcpTools>> | undefined
   if (mcpServerIds && mcpServerIds.length > 0) {
     mcpTools = await buildMcpTools(mcpServerIds)

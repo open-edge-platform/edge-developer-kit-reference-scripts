@@ -93,7 +93,6 @@ export function AvatarsTab({ sessionId }: AvatarsTabProps) {
         </div>
       </div>
 
-      {/* Video File Upload Zone */}
       <div>
         <input
           ref={videoInputRef}
@@ -159,7 +158,6 @@ export function AvatarsTab({ sessionId }: AvatarsTabProps) {
         {skinUpload.isPending ? 'Uploading & Generating...' : 'Generate Avatar'}
       </Button>
 
-      {/* Existing Avatars List */}
       {avatarList.data && avatarList.data.length > 0 && (
         <div className="space-y-2">
           <p className="text-muted-foreground text-xs font-medium">

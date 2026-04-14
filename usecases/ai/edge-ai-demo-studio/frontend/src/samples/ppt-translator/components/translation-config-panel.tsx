@@ -55,7 +55,6 @@ export function TranslationConfigPanel({
         <CardDescription>Configure translation options</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Source Language */}
         <div className="space-y-2">
           <Label htmlFor="source-language">Source Language</Label>
           <Select
@@ -79,7 +78,6 @@ export function TranslationConfigPanel({
           </Select>
         </div>
 
-        {/* Target Language */}
         <div className="space-y-2">
           <Label htmlFor="target-language">Target Language</Label>
           <Select
@@ -103,7 +101,6 @@ export function TranslationConfigPanel({
           </Select>
         </div>
 
-        {/* Model Selection */}
         {availableModels.length > 1 && (
           <div className="space-y-2">
             <Label htmlFor="model">AI Model</Label>
@@ -126,7 +123,6 @@ export function TranslationConfigPanel({
           </div>
         )}
 
-        {/* Presentation Context */}
         <div className="space-y-2">
           <Label htmlFor="context">
             Presentation Context{' '}
@@ -149,7 +145,6 @@ export function TranslationConfigPanel({
           </p>
         </div>
 
-        {/* Toggle Options */}
         <div className="space-y-4 pt-2">
           <div className="flex items-center justify-between space-x-2 rounded-lg border p-4">
             <div className="space-y-0.5">

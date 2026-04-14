@@ -36,7 +36,6 @@ function useUpdateAvatarState() {
 }
 
 export function DigitalAvatarLiteDemo({ sample }: { sample: Sample }) {
-  // ── Parameter groups ─────────────────────────────────────────
   const textGen = useTextGenerationParams()
   const tts = useTtsParams(sample.id, { optional: false })
 
@@ -52,14 +51,11 @@ export function DigitalAvatarLiteDemo({ sample }: { sample: Sample }) {
   const textGenService = useGetService('text-generation')
   const isMultimodal = textGenService?.currentModelType === 'multimodal'
 
-  // ── Avatar state ─────────────────────────────────────────────
   const [isSpeaking, setIsSpeaking] = useState(false)
   const updateAvatarState = useUpdateAvatarState()
 
-  // ── Chat (text-generation) ───────────────────────────────────
   const chat = useTextGenChat({ textGenValues: textGen.values, extraBody })
 
-  // ── Wake word → auto-trigger STT recording ──────────────────
   const { wakeWord } = useWakeWordStt({
     onTranscription: useCallback(
       (text: string) => {
@@ -71,7 +67,6 @@ export function DigitalAvatarLiteDemo({ sample }: { sample: Sample }) {
     ),
   })
 
-  // ── Auto-speak AI response through TTS + avatar ──────────────
   const synthesizeSpeech = useSynthesizeSpeech()
   const prevMessageCountRef = useRef(0)
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -157,7 +152,6 @@ export function DigitalAvatarLiteDemo({ sample }: { sample: Sample }) {
         ]}
       />
 
-      {/* Main layout */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_minmax(0,420px)]">
         <AvatarSection
           streamUrl="/api/digital-avatar-lite/stream"

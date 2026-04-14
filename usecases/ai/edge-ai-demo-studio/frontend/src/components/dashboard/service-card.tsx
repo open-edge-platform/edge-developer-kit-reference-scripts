@@ -49,7 +49,6 @@ export function ServiceCard({
       )}
       style={{ '--card-index': index } as React.CSSProperties}
     >
-      {/* Status accent line */}
       <div
         className={cn(
           'accent-line-animate absolute top-0 h-[3px] transition-colors',
@@ -65,7 +64,6 @@ export function ServiceCard({
         )}
       />
 
-      {/* Header */}
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-3">
           <div
@@ -111,12 +109,10 @@ export function ServiceCard({
         )}
       </div>
 
-      {/* Description */}
       <p className="text-muted-foreground mt-3 line-clamp-2 flex-1 text-[13px] leading-relaxed">
         {service.description}
       </p>
 
-      {/* Unsupported reason */}
       {isUnsupported && (
         <div className="mt-3 flex items-center gap-1.5 rounded-md border border-orange-500/10 bg-orange-500/5 px-2.5 py-1.5">
           <Monitor className="h-3 w-3 shrink-0 text-orange-400" />
@@ -128,7 +124,6 @@ export function ServiceCard({
         </div>
       )}
 
-      {/* Tags */}
       {(liveModel || liveDevice) && (
         <TooltipProvider>
           <div className="mt-auto flex flex-wrap items-center gap-1.5 pt-4">

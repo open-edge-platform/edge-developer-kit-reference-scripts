@@ -49,7 +49,6 @@ export function WebcamStream({
 
   return (
     <div className="border-border flex h-full max-h-full flex-col rounded-xl border">
-      {/* Header */}
       <div className="flex-shrink-0 px-5 pt-5 pb-3">
         <div className="flex items-center justify-between gap-4">
           <div className="min-w-0">
@@ -131,7 +130,6 @@ export function WebcamStream({
         </div>
       </div>
 
-      {/* Video area */}
       <div className="flex-1 overflow-hidden p-4 pt-0">
         <div className="bg-muted/20 border-border relative h-full min-h-[300px] w-full overflow-hidden rounded-lg border-2 border-dashed">
           <video

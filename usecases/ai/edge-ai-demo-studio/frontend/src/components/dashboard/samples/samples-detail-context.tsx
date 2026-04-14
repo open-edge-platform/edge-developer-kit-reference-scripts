@@ -24,6 +24,7 @@ import { cn } from '@/lib/utils'
 import type { Service } from '@/services/types'
 import { getSampleById } from '@/samples/registry'
 import {
+  getDeviceMap,
   getOptionalDeps,
   getReadinessLabel,
   getRequiredDeps,
@@ -38,6 +39,7 @@ export function SampleDetailContent({ sampleId }: { sampleId: string }) {
   const sample = getSampleById(sampleId)!
   const requiredDeps = getRequiredDeps(sample)
   const optDeps = getOptionalDeps(sample)
+  const deviceMap = getDeviceMap(sample)
 
   const allDepIds = sample.dependencies.map((d) => d.serviceId)
   const serviceMap = useGetServices(allDepIds)
@@ -50,7 +52,6 @@ export function SampleDetailContent({ sampleId }: { sampleId: string }) {
     .map((d) => serviceMap[d.serviceId])
     .filter(Boolean) as Service[]
 
-  // Pipeline steps — explicit pipeline or sequential fallback from dependencies
   const pipelineSteps: PipelineStep[] =
     sample.pipeline ?? sample.dependencies.map((d) => d.serviceId)
 
@@ -75,9 +76,7 @@ export function SampleDetailContent({ sampleId }: { sampleId: string }) {
 
   return (
     <>
-      {/* ─── Header ───────────────────────────────────────────────── */}
       <div className="glass-card relative overflow-hidden rounded-xl">
-        {/* Gradient accent bar */}
         <div
           className={cn(
             'h-1',
@@ -88,14 +87,11 @@ export function SampleDetailContent({ sampleId }: { sampleId: string }) {
           )}
         />
 
-        {/* Decorative background glow */}
         <div className="from-primary/[0.04] via-secondary/[0.02] pointer-events-none absolute inset-0 bg-gradient-to-br to-transparent" />
 
         <div className="relative flex flex-col gap-6 p-5 md:p-6">
-          {/* Top row: Icon + Title + Badges */}
           <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
             <div className="flex min-w-0 items-start gap-4">
-              {/* Icon with layered background */}
               <div className="relative shrink-0">
                 <div
                   className={cn(
@@ -119,7 +115,6 @@ export function SampleDetailContent({ sampleId }: { sampleId: string }) {
                     </div>
                   )}
                 </div>
-                {/* Status dot on icon */}
                 <span
                   className={cn(
                     'absolute -right-0.5 -bottom-0.5 h-3 w-3 rounded-full ring-2 ring-[var(--glass-bg)]',
@@ -130,7 +125,6 @@ export function SampleDetailContent({ sampleId }: { sampleId: string }) {
                 />
               </div>
 
-              {/* Title + category */}
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2.5">
                   <h1 className="text-foreground text-2xl font-bold tracking-tight">
@@ -146,9 +140,7 @@ export function SampleDetailContent({ sampleId }: { sampleId: string }) {
               </div>
             </div>
 
-            {/* CTA area */}
             <div className="flex shrink-0 items-center gap-3">
-              {/* Readiness chip */}
               <div
                 className={cn(
                   'hidden items-center gap-2 rounded-lg px-3 py-2 lg:flex',
@@ -245,9 +237,7 @@ export function SampleDetailContent({ sampleId }: { sampleId: string }) {
             </div>
           </div>
 
-          {/* Bottom row: Tags + Mobile readiness */}
           <div className="border-border/50 flex flex-wrap items-center gap-x-4 gap-y-2 border-t pt-4">
-            {/* Tags */}
             <div className="flex flex-wrap gap-1.5">
               {sample.tags.map((tag) => (
                 <span
@@ -259,7 +249,6 @@ export function SampleDetailContent({ sampleId }: { sampleId: string }) {
               ))}
             </div>
 
-            {/* Mobile readiness (hidden on lg where the chip shows) */}
             <span
               className={cn(
                 'ml-auto flex items-center gap-1.5 text-[11px] lg:hidden',
@@ -284,9 +273,7 @@ export function SampleDetailContent({ sampleId }: { sampleId: string }) {
         </div>
       </div>
 
-      {/* ─── Services Panel ───────────────────────────────────────── */}
       <div className="glass-card overflow-hidden rounded-xl">
-        {/* Panel header */}
         <div className="border-border flex flex-wrap items-center justify-between gap-3 border-b px-5 py-3.5">
           <div className="flex items-center gap-3">
             <h2 className="text-foreground text-sm font-semibold">Services</h2>
@@ -308,15 +295,23 @@ export function SampleDetailContent({ sampleId }: { sampleId: string }) {
           {!allRequiredOnline && (
             <StartAllServicesButton
               serviceIds={requiredServices.map((s) => s.id)}
+              deviceMap={deviceMap}
               label="Start Required"
             />
           )}
+          {allRequiredOnline &&
+            hasOptional &&
+            optionalOnline < optionalServices.length && (
+              <StartAllServicesButton
+                serviceIds={optionalServices.map((s) => s.id)}
+                deviceMap={deviceMap}
+                label="Start Optional"
+              />
+            )}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_240px]">
-          {/* ── Service list ── */}
           <div className="divide-border divide-y">
-            {/* Inline status alert */}
             {!allRequiredOnline && (
               <div className="flex items-center gap-2.5 bg-rose-500/5 px-5 py-2.5">
                 <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-rose-400" />
@@ -347,12 +342,10 @@ export function SampleDetailContent({ sampleId }: { sampleId: string }) {
                 </div>
               )}
 
-            {/* Required services */}
             {requiredServices.map((s) => (
               <ServiceRow key={s.id} service={s} />
             ))}
 
-            {/* Optional services separator */}
             {hasOptional && (
               <>
                 <div className="bg-muted/30 px-5 py-2">
@@ -375,7 +368,6 @@ export function SampleDetailContent({ sampleId }: { sampleId: string }) {
             )}
           </div>
 
-          {/* ── Pipeline diagram ── */}
           <div className="border-border hidden border-l lg:block">
             <div className="px-4 py-3.5">
               <p className="text-muted-foreground text-[11px] font-medium tracking-wider uppercase">

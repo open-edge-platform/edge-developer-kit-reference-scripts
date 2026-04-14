@@ -64,7 +64,6 @@ export function SampleCard({
           : 'card-lift cursor-pointer',
       )}
     >
-      {/* Cover image */}
       <div className="relative aspect-[16/9] w-full">
         {sample.image ? (
           <Image
@@ -92,7 +91,6 @@ export function SampleCard({
           </div>
         )}
 
-        {/* Readiness / Unsupported pill — overlay */}
         <div className="absolute top-2.5 right-2.5">
           {unsupported ? (
             <Badge
@@ -120,7 +118,6 @@ export function SampleCard({
         </div>
       </div>
 
-      {/* Content */}
       <div className="flex flex-1 flex-col px-5 pt-4 pb-5">
         <div className="flex items-start justify-between gap-2">
           <h3
@@ -138,7 +135,6 @@ export function SampleCard({
           {sample.description}
         </p>
 
-        {/* Unsupported reason */}
         {unsupported && unsupportedReason && (
           <div className="mt-3 flex items-center gap-1.5 rounded-md border border-orange-500/10 bg-orange-500/5 px-2.5 py-1.5">
             <Monitor className="h-3 w-3 shrink-0 text-orange-400" />
@@ -148,7 +144,6 @@ export function SampleCard({
           </div>
         )}
 
-        {/* Category + demo type */}
         <div className="mt-3 flex items-center gap-1.5">
           <Badge variant="secondary" className="text-[11px]">
             {sample.category}
@@ -164,7 +159,6 @@ export function SampleCard({
           )}
         </div>
 
-        {/* Required Services */}
         <div className="border-border mt-4 border-t pt-3">
           <p className="text-muted-foreground mb-2 text-[11px] font-medium tracking-wider uppercase">
             Required Services

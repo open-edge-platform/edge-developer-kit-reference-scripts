@@ -12,9 +12,15 @@ export const sample: Sample = {
   longDescription:
     'A project-based synthetic image generation pipeline for creating training datasets. Upload a base image and generate variations including good samples, missing component scenarios, and custom modifications. Supports project management with asset organization, export, and deletion. Uses diffusion models for high-quality synthetic data generation.',
   category: 'Creative',
-  dependencies: [{ serviceId: 'synthetic-image-generation', role: 'required' }],
+  dependencies: [
+    {
+      serviceId: 'synthetic-image-generation',
+      role: 'required',
+    },
+  ],
   tags: ['Image Generation', 'Synthetic Data', 'Dataset', 'Diffusion'],
   supportedOS: ['linux'],
+  requiredDevices: ['xpu'],
   demo: {
     type: 'component',
     component: SyntheticImageGenerationDemo,

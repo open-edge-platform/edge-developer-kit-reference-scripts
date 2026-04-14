@@ -17,12 +17,6 @@ interface StoredEvent {
 const MAX_EVENTS = 200
 const events: StoredEvent[] = []
 
-/**
- * POST /api/wake-word-events
- *
- * Local webhook receiver for the wake-word-detection worker.
- * The worker sends detection events here when a wake word is detected.
- */
 export async function POST(request: Request) {
   const body = await request.json()
   events.unshift({ ...body, receivedAt: Date.now() })
@@ -30,12 +24,6 @@ export async function POST(request: Request) {
   return NextResponse.json({ ok: true })
 }
 
-/**
- * GET /api/wake-word-events?since=<timestamp>
- *
- * Returns detection events received since the given timestamp.
- * Used by the frontend to poll for new detection events.
- */
 export async function GET(request: Request) {
   const url = new URL(request.url)
   const since = Number(url.searchParams.get('since') ?? 0)
@@ -43,11 +31,6 @@ export async function GET(request: Request) {
   return NextResponse.json({ events: recent })
 }
 
-/**
- * DELETE /api/wake-word-events
- *
- * Clears all stored detection events.
- */
 export async function DELETE() {
   events.length = 0
   return NextResponse.json({ ok: true })

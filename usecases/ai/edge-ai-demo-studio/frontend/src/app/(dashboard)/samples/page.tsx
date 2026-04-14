@@ -15,7 +15,12 @@ import {
 import { Button } from '@/components/ui/button'
 import { useSystemInfo } from '@/context/system-info-context'
 import { getOSLabel } from '@/services/registry'
-import { isSampleSupportedOnOS, samples } from '@/samples/registry'
+import {
+  getMissingSampleDevices,
+  isSampleSupportedOnDevices,
+  isSampleSupportedOnOS,
+  samples,
+} from '@/samples/registry'
 import { computeSampleReadiness } from '@/samples/common/util'
 import { useServiceStatus } from '@/context/service-status-context'
 
@@ -33,9 +38,15 @@ export default function SamplesPage() {
 
   const { unsupported } = useMemo(() => {
     if (!systemInfo) return { supported: samples, unsupported: [] }
-    const sup = samples.filter((s) => isSampleSupportedOnOS(s, systemInfo.os))
+    const sup = samples.filter(
+      (s) =>
+        isSampleSupportedOnOS(s, systemInfo.os) &&
+        isSampleSupportedOnDevices(s, systemInfo.devices),
+    )
     const unsup = samples.filter(
-      (s) => !isSampleSupportedOnOS(s, systemInfo.os),
+      (s) =>
+        !isSampleSupportedOnOS(s, systemInfo.os) ||
+        !isSampleSupportedOnDevices(s, systemInfo.devices),
     )
     return { supported: sup, unsupported: unsup }
   }, [systemInfo])
@@ -118,12 +129,15 @@ export default function SamplesPage() {
     if (!isSampleSupportedOnOS(s, systemInfo.os)) {
       return `Not available on ${getOSLabel(systemInfo.os)}`
     }
+    const missing = getMissingSampleDevices(s, systemInfo.devices)
+    if (missing.length > 0) {
+      return `Requires ${missing.map((d) => d.toUpperCase()).join(', ')} device`
+    }
     return undefined
   }
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div>
         <h1 className="text-foreground text-2xl font-bold">Samples</h1>
         <p className="text-muted-foreground mt-1 text-sm">
@@ -147,14 +161,12 @@ export default function SamplesPage() {
         hasFilters={hasFilters}
       />
 
-      {/* Results count */}
       <p className="text-muted-foreground text-sm">
         Showing{' '}
         <span className="text-foreground font-medium">{filtered.length}</span>{' '}
         of {samples.length} sample{samples.length !== 1 && 's'}
       </p>
 
-      {/* Gallery grid */}
       {filtered.length > 0 ? (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {filtered.map((s, i) => (

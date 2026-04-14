@@ -14,6 +14,7 @@ export function useSynthesizeSpeech() {
       voice: string
       speed: number
       responseFormat: string
+      volumeMultiplier?: number
     }): Promise<Blob> => {
       const res = await fetch('/api/text-to-speech/v1/audio/speech', {
         method: 'POST',
@@ -24,6 +25,9 @@ export function useSynthesizeSpeech() {
           speed: params.speed,
           response_format: params.responseFormat,
           stream: false,
+          ...(params.volumeMultiplier !== undefined && {
+            volume_multiplier: params.volumeMultiplier,
+          }),
         }),
       })
       if (!res.ok) {

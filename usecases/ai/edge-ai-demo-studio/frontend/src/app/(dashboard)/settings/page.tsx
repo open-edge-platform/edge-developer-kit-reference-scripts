@@ -27,8 +27,6 @@ function formatTimeout(seconds: number): string {
   return s > 0 ? `${m}m ${s}s` : `${m}m`
 }
 
-// ─── Section wrapper ──────────────────────────────────────────────
-
 function SettingsSection({
   title,
   description,
@@ -54,8 +52,6 @@ function SettingsSection({
     </div>
   )
 }
-
-// ─── Appearance ───────────────────────────────────────────────────
 
 function AppearanceSection({
   theme,
@@ -93,8 +89,6 @@ function AppearanceSection({
     </SettingsSection>
   )
 }
-
-// ─── API Configuration ────────────────────────────────────────────
 
 function ApiConfigSection({
   hfToken,
@@ -147,8 +141,6 @@ function ApiConfigSection({
   )
 }
 
-// ─── Service Health ───────────────────────────────────────────────
-
 function ServiceHealthSection({
   startupTimeout,
   onTimeoutChange,
@@ -193,8 +185,6 @@ function ServiceHealthSection({
   )
 }
 
-// ─── Actions bar ──────────────────────────────────────────────────
-
 function ActionsBar({ saved, onSave }: { saved: boolean; onSave: () => void }) {
   return (
     <div className="flex items-center justify-end">
@@ -215,8 +205,6 @@ function ActionsBar({ saved, onSave }: { saved: boolean; onSave: () => void }) {
     </div>
   )
 }
-
-// ─── Page ─────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
   const { settings, updateSettings } = useSettings()

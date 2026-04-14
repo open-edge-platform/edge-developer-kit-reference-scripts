@@ -70,7 +70,6 @@ export function SampleFilters({
   return (
     <div className="glass-card rounded-xl p-4">
       <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-center md:gap-4">
-        {/* Search */}
         <div className="relative flex-1">
           <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
           <Input
@@ -81,7 +80,6 @@ export function SampleFilters({
           />
         </div>
 
-        {/* Category filter */}
         <Select
           value={selectedCategory ?? 'all'}
           onValueChange={(v) => setSelectedCategory(v === 'all' ? null : v)}
@@ -99,7 +97,6 @@ export function SampleFilters({
           </SelectContent>
         </Select>
 
-        {/* Readiness filter */}
         <Select
           value={selectedReadiness}
           onValueChange={(v) => setSelectedReadiness(v as ReadinessFilter)}
@@ -116,7 +113,6 @@ export function SampleFilters({
           </SelectContent>
         </Select>
 
-        {/* Supported OS filter */}
         <Select
           value={selectedOS}
           onValueChange={(v) => setSelectedOS(v as OSFilter)}
@@ -134,7 +130,6 @@ export function SampleFilters({
           </SelectContent>
         </Select>
 
-        {/* Sort */}
         <Select value={sort} onValueChange={(v) => setSort(v as SortOption)}>
           <SelectTrigger className="bg-muted/30 w-full md:w-[150px]">
             <SlidersHorizontal className="mr-2 h-3.5 w-3.5" />
@@ -161,7 +156,6 @@ export function SampleFilters({
         )}
       </div>
 
-      {/* Active filter badges */}
       {hasFilters && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <span className="text-muted-foreground text-xs">Filters:</span>

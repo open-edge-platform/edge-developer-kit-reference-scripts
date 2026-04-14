@@ -35,7 +35,10 @@ interface WorkerConfigurePanelProps {
 }
 
 export function WorkerConfigurePanel({ service }: WorkerConfigurePanelProps) {
-  const availableModels = service.config?.availableModels ?? []
+  const availableModels = useMemo(
+    () => service.config?.availableModels ?? [],
+    [service.config?.availableModels],
+  )
   const availableSources = service.config?.availableModelSources ?? []
   const supportsCustomModel = service.config?.supportsCustomModel !== false
 
@@ -158,7 +161,6 @@ export function WorkerConfigurePanel({ service }: WorkerConfigurePanelProps) {
       open={open}
       onOpenChange={handleOpenChange}
     >
-      {/* Model Source */}
       <div className="space-y-3 px-2">
         <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
           Model
@@ -274,7 +276,6 @@ export function WorkerConfigurePanel({ service }: WorkerConfigurePanelProps) {
 
       <Separator />
 
-      {/* Device Selection */}
       <div className="space-y-3 px-2">
         <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
           Accelerator
@@ -318,7 +319,6 @@ export function WorkerConfigurePanel({ service }: WorkerConfigurePanelProps) {
 
       <Separator />
 
-      {/* Clear Model Cache */}
       <ClearModelCacheSection service={service} />
     </ServiceConfigurePanel>
   )

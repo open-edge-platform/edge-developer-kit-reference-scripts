@@ -2,16 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { Service } from '@/payload-types'
-import type { SelectOption, ServiceConfig } from '@/services/types'
-import type { OS } from '@/types/common'
+import type { OS, SelectOption, ServiceConfig } from '@/types/common'
 import { supportedBackends } from './backends'
 
-// ─── Constants ────────────────────────────────────────────────────
-
-/**
- * Known weight formats for OpenVINO model conversion.
- * Used to validate user-supplied weight formats for non-OpenVINO models.
- */
 export const KNOWN_QUANTIZATIONS = [
   'int4',
   'int8',
@@ -26,7 +19,6 @@ export const KNOWN_QUANTIZATIONS = [
   'int8_asym',
 ] as const
 
-/** Pipeline types for OpenVINO Model Server text-generation. */
 export const OVMS_PIPELINE_TYPES: SelectOption[] = [
   { value: 'AUTO', label: 'AUTO (Automatic Detection)' },
   { value: 'LLM', label: 'LLM' },
@@ -35,14 +27,12 @@ export const OVMS_PIPELINE_TYPES: SelectOption[] = [
   { value: 'VLM_CB', label: 'VLM (Continuous Batching)' },
 ]
 
-/** Platforms where a model can be fetched from. */
 export const MODEL_SOURCES: SelectOption[] = [
   { value: 'huggingface', label: 'Hugging Face' },
   { value: 'modelscope', label: 'ModelScope' },
   { value: 'custom', label: 'Custom (Local Upload)' },
 ]
 
-/** Model type / usage options (standard vs. vision-language). */
 export const MODEL_TYPES: SelectOption[] = [
   { value: 'default', label: 'Default (Text Generation)' },
   { value: 'multimodal', label: 'Multimodal (VLM)' },
@@ -50,9 +40,6 @@ export const MODEL_TYPES: SelectOption[] = [
 
 // ─── Helpers ──────────────────────────────────────────────────────
 
-/**
- * Derive a human-readable label from a model's backend metadata.
- */
 function deriveModelLabel(
   model: Service['models']['default'],
   backendName: string,
@@ -61,7 +48,6 @@ function deriveModelLabel(
     ? (model.name.split('/').pop() as string)
     : model.name
 
-  // Strip common repo suffixes (-ov, -GGUF) and replace dashes with spaces
   const cleaned = shortName.replace(/-ov$/, '').replace(/-GGUF$/, '')
 
   const parts = [cleaned]
@@ -74,10 +60,7 @@ function deriveModelLabel(
 
 // ─── Config Builders ──────────────────────────────────────────────
 
-/**
- * Build a ServiceConfig for a given service type by aggregating
- * models, devices, and backend-specific options from all multiserve backends.
- */
+// Aggregates models, devices, and options from all multiserve backends for a service
 export function getMultiserveServiceConfig(
   serviceType: Service['type'],
 ): ServiceConfig {
@@ -120,11 +103,7 @@ export function getMultiserveServiceConfig(
   }
 }
 
-/**
- * Get the default model for a given service type.
- * When `os` is provided, prefers the backend whose `recommendedOS` matches,
- * falling back to the first compatible backend.
- */
+// Gets default model for a service type, preferring backend matching current OS
 export function getMultiserveDefaultModel(
   serviceType: Service['type'],
   os?: OS,

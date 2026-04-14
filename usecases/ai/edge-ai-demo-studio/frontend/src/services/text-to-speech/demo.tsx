@@ -58,6 +58,7 @@ export function TextToSpeechDemo({ service }: { service: Service }) {
         voice: ttsValues.voice,
         speed: ttsValues.speed,
         responseFormat: ttsValues.format,
+        volumeMultiplier: ttsValues.volume,
       },
       {
         onSuccess: (blob) => {
@@ -116,7 +117,6 @@ export function TextToSpeechDemo({ service }: { service: Service }) {
     <div className="flex flex-col gap-6 xl:flex-row">
       <div className="min-w-0 flex-1 space-y-6">
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          {/* Input */}
           <div className="space-y-3">
             <p className="text-foreground text-sm font-medium">Text Input</p>
             <Textarea
@@ -150,7 +150,6 @@ export function TextToSpeechDemo({ service }: { service: Service }) {
             </Button>
           </div>
 
-          {/* Output - Audio Player */}
           <div className="space-y-3">
             <p className="text-foreground text-sm font-medium">Audio Output</p>
             <div className="border-border bg-muted/20 flex min-h-[200px] flex-col rounded-xl border p-4">
@@ -185,7 +184,6 @@ export function TextToSpeechDemo({ service }: { service: Service }) {
                   className="flex flex-1 flex-col gap-4"
                   data-testid="tts-audio-output"
                 >
-                  {/* Hidden audio element */}
                   <audio
                     ref={audioRef}
                     src={audioUrl}
@@ -198,7 +196,6 @@ export function TextToSpeechDemo({ service }: { service: Service }) {
                     }}
                   />
 
-                  {/* Waveform */}
                   <div className="flex h-16 items-end gap-[2px] px-2">
                     {waveformBars.map((bar, i) => {
                       const playedPercent =
@@ -218,7 +215,6 @@ export function TextToSpeechDemo({ service }: { service: Service }) {
                     })}
                   </div>
 
-                  {/* Playback controls */}
                   <div className="flex items-center gap-3">
                     <Button
                       size="icon"
@@ -251,7 +247,6 @@ export function TextToSpeechDemo({ service }: { service: Service }) {
         </div>
       </div>
 
-      {/* Sidebar */}
       <div className="shrink-0 space-y-4 xl:w-72">
         <DemoParameterSidebar params={params} />
       </div>

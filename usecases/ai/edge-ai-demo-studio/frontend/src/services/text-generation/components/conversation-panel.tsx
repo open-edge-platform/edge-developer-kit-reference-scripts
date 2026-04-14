@@ -22,7 +22,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-import { useSttRecording, useTtsPlayback } from '@/samples/common/hooks'
+import { useSttRecording, useTtsPlayback } from '@/services/common/hooks'
 import {
   type ChatMsg,
   type ChatStatus,
@@ -32,55 +32,33 @@ import {
 import { ChatMessage, ThinkingIndicator } from './chat-message'
 
 interface ConversationPanelProps {
-  /** Chat messages array from useChat */
   messages: ChatMsg[]
-  /** Chat status from useChat */
   status: ChatStatus
-  /** Current input text */
   input: string
-  /** Update input text */
   onInputChange: (value: string) => void
-  /** Send the current input */
   onSend: () => void
-  /** Stop the current generation */
   onStop?: () => void
-  /** Reset / clear conversation */
   onReset: () => void
 
-  /** Disables the input area */
   disabled?: boolean
-  /** Textarea placeholder text */
   placeholder?: string
-  /** Textarea rows (default 1) */
   textareaRows?: number
 
-  /** Custom empty state (replaces default) */
   emptyState?: ReactNode
-  /** Short empty-state text (used when emptyState is not provided) */
   emptyStateText?: string
 
-  /** Show STT voice button */
   sttOnline?: boolean
-  /** Show TTS speak buttons on assistant messages */
   ttsOnline?: boolean
-  /** TTS voice id */
   ttsVoice?: string
-  /** TTS playback speed */
   ttsSpeed?: number
 
-  /** Custom avatar className for ChatMessage */
   avatarClassName?: string
-  /** Custom avatar text className for ChatMessage */
   avatarTextClassName?: string
 
-  /** Extra toolbar buttons rendered after Reset/Voice (e.g. Capture) */
   toolbarExtra?: ReactNode
-  /** Content rendered above the toolbar (e.g. image preview) */
   inputExtra?: ReactNode
 
-  /** className for the outer container */
   className?: string
-  /** className for the scrollable messages area */
   messagesClassName?: string
 }
 
@@ -120,7 +98,7 @@ export function ConversationPanel({
     }
   }, [messages.length, status])
 
-  // Keep scrolling to bottom while streaming new tokens
+  // Keep scrolling to bottom while streaming
   useEffect(() => {
     if (status !== 'streaming' && status !== 'submitted') return
     const id = setInterval(() => {
@@ -139,7 +117,6 @@ export function ConversationPanel({
         className,
       )}
     >
-      {/* ── Messages ──────────────────────────────────────────── */}
       <div
         className={cn(
           'min-h-0 flex-1 space-y-4 overflow-x-hidden p-4',
@@ -188,7 +165,6 @@ export function ConversationPanel({
         <div ref={bottomRef} />
       </div>
 
-      {/* ── Input area ────────────────────────────────────────── */}
       <div className="border-border border-t p-3">
         {showToolbar && (
           <div className="mb-2 flex items-center gap-1.5">

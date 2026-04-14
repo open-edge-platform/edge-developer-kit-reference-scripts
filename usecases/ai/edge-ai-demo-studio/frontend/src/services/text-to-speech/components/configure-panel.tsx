@@ -121,7 +121,6 @@ export function TtsConfigurePanel({ service }: TtsConfigurePanelProps) {
       open={open}
       onOpenChange={handleOpenChange}
     >
-      {/* Model selection */}
       <div className="space-y-3 px-2">
         <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
           Model
@@ -154,7 +153,6 @@ export function TtsConfigurePanel({ service }: TtsConfigurePanelProps) {
 
       <Separator />
 
-      {/* Read-only voice/language info */}
       <div className="space-y-3 px-2">
         <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
           Available Voices
@@ -184,7 +182,6 @@ export function TtsConfigurePanel({ service }: TtsConfigurePanelProps) {
 
       <Separator />
 
-      {/* Device selection */}
       <div className="space-y-3 px-2">
         <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
           Accelerator
@@ -234,7 +231,6 @@ export function TtsConfigurePanel({ service }: TtsConfigurePanelProps) {
 
       <Separator />
 
-      {/* Clear Model Cache */}
       <ClearModelCacheSection service={service} />
     </ServiceConfigurePanel>
   )

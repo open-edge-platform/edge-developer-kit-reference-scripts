@@ -14,7 +14,7 @@ export const sample: Sample = {
   category: 'Productivity',
   dependencies: [
     { serviceId: 'ppt-translator', role: 'required' },
-    { serviceId: 'text-generation', role: 'required' },
+    { serviceId: 'text-generation', role: 'required', defaultDevice: 'GPU.1' },
   ],
   tags: ['Translation', 'PowerPoint', 'LLM', 'Document'],
   supportedOS: ['linux', 'windows'],

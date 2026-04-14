@@ -11,7 +11,6 @@ import {
 } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
-/** Check whether the multiserve engine is reachable on this service's port. */
 async function fetchEngineHealth(serviceId: string): Promise<boolean> {
   const url = new URL(`/api/${serviceId}/v1/health`, window.location.origin)
   const res = await fetch(url)
@@ -20,11 +19,6 @@ async function fetchEngineHealth(serviceId: string): Promise<boolean> {
   return data?.health?.['llama.cpp'] === 'OK' && data?.health?.ovms === 'OK'
 }
 
-/**
- * Polls the multiserve engine health endpoint for a given service.
- * Returns `true` once the engine process is up and responding,
- * regardless of whether a model has been loaded.
- */
 export function useEngineHealth(serviceId: string, enabled = true) {
   return useQuery({
     queryKey: ['multiserve-engine-health', serviceId],
@@ -38,7 +32,6 @@ export function useEngineHealth(serviceId: string, enabled = true) {
 
 const ENGINE_START_KEY = ['start-engine'] as const
 
-/** Start the multiserve engine for a service (without loading a model). */
 async function startEngine(dbId: number): Promise<void> {
   const url = new URL(`/api/services/${dbId}/engine`, window.location.origin)
   const res = await fetch(url, { method: 'POST' })
@@ -48,10 +41,6 @@ async function startEngine(dbId: number): Promise<void> {
   }
 }
 
-/**
- * Mutation to start the multiserve engine process for a service.
- * On success, invalidates the engine health query so the UI updates.
- */
 export function useStartEngine(serviceId: string) {
   const queryClient = useQueryClient()
 
@@ -72,7 +61,6 @@ export function useStartEngine(serviceId: string) {
   })
 }
 
-/** Returns `true` if any start-engine mutation is in-flight (from any component). */
 export function useIsEngineStarting() {
   return useIsMutating({ mutationKey: ENGINE_START_KEY }) > 0
 }

@@ -7,14 +7,7 @@ import config from '@payload-config'
 import { getPayload } from 'payload'
 import { logger } from '@/lib/logger'
 
-/**
- * Build AI SDK tools from MCP servers using @ai-sdk/mcp.
- *
- * Accepts an array of MCP server IDs, fetches their configs from Payload,
- * connects to each via Streamable HTTP, discovers tools, and returns:
- * - `tools`: a `ToolSet` to pass to `streamText()`
- * - `cleanup`: an async function to close all MCP clients when done
- */
+// Builds AI SDK tools from MCP servers, returns tools and cleanup function
 export async function buildMcpTools(serverIds: number[]): Promise<{
   tools: ToolSet
   cleanup: () => Promise<void>

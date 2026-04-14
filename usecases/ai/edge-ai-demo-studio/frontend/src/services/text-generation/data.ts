@@ -17,6 +17,7 @@ export const service: ServiceMeta = {
     'High-performance text generation powered by optimized LLMs running on Intel Xeon processors with OpenVINO acceleration. Supports streaming output, configurable temperature, top-k/top-p sampling, and custom system prompts.',
   icon: MessageSquare,
   port: 8001,
+  reservedPorts: [8002, 8003, 8004, 8005],
   supportedOS: ['linux', 'windows'],
   execution: { mode: 'multiserve' },
   defaultModel: getMultiserveDefaultModel('text-generation'),

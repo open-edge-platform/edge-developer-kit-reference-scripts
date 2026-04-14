@@ -25,7 +25,7 @@ export const sample: Sample = {
       capabilityKey: 'voice_input',
       impactText: 'Voice input will be disabled.',
     },
-    { serviceId: 'text-generation', role: 'required' },
+    { serviceId: 'text-generation', role: 'required', defaultDevice: 'GPU.1' },
     {
       serviceId: 'embeddings',
       role: 'optional',

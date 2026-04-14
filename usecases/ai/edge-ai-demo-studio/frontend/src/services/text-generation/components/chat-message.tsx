@@ -18,8 +18,6 @@ import { Streamdown } from 'streamdown'
 import { cn } from '@/lib/utils'
 import { ChatMsg, extractTextContent } from './chat-helpers'
 
-// ── Tool-part helpers ────────────────────────────────────────────
-
 interface ToolPartShape {
   type: string
   toolCallId: string
@@ -45,8 +43,6 @@ function resolveToolName(part: ToolPartShape): string {
 function formatToolName(name: string): string {
   return name.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }
-
-// ── Reasoning Block ──────────────────────────────────────────────
 
 function ReasoningBlock({
   text,
@@ -100,7 +96,11 @@ function ReasoningBlock({
       </button>
       {showContent && (
         <div className="text-muted-foreground border-primary/20 border-t px-3 pt-2 pb-3 text-xs leading-relaxed italic">
-          <div ref={scrollRef} className="max-h-64 min-w-0 overflow-auto">
+          <div
+            ref={scrollRef}
+            className="min-w-0 overflow-auto"
+            style={{ maxHeight: '100px' }}
+          >
             <span className="break-words whitespace-pre-wrap">{text}</span>
           </div>
         </div>
@@ -108,8 +108,6 @@ function ReasoningBlock({
     </div>
   )
 }
-
-// ── Tool Call Block ──────────────────────────────────────────────
 
 function ToolCallBlock({ part }: { part: ToolPartShape }) {
   const [expanded, setExpanded] = useState(false)
@@ -213,8 +211,6 @@ function ToolCallBlock({ part }: { part: ToolPartShape }) {
   )
 }
 
-// ── Chat Message ─────────────────────────────────────────────────
-
 interface ChatMessageProps {
   msg: ChatMsg
   isLastAssistant: boolean
@@ -241,7 +237,6 @@ export function ChatMessage({
       p.type === 'file',
   )
 
-  // ── User message ──────────────────────────────────────────────
   if (isUser) {
     if (textContent.trim() === '' && fileParts.length === 0) return null
 
@@ -276,7 +271,6 @@ export function ChatMessage({
     )
   }
 
-  // ── Assistant message — render parts in order ────────────────
   const hasContent = msg.parts.some(
     (p) =>
       (p.type === 'text' && p.text.trim() !== '') ||

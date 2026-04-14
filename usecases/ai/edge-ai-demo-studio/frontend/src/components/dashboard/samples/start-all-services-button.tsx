@@ -10,24 +10,25 @@ import { useServiceStatus } from '@/context/service-status-context'
 
 interface StartAllServicesButtonProps {
   serviceIds: string[]
+  deviceMap?: Record<string, string>
   label?: string
   className?: string
 }
 
 export function StartAllServicesButton({
   serviceIds,
+  deviceMap,
   label = 'Start All Services',
   className,
 }: StartAllServicesButtonProps) {
-  const { statusMap, startService, isActionPending } = useServiceStatus()
+  const { statusMap, startService, configureAndStartService, isActionPending } =
+    useServiceStatus()
 
-  // Services that still need to reach 'online' (not yet online)
   const notOnline = useMemo(
     () => serviceIds.filter((id) => statusMap[id] !== 'online'),
     [serviceIds, statusMap],
   )
 
-  // Services that can actually be triggered (offline/error — not already starting)
   const actionable = useMemo(
     () =>
       notOnline.filter((id) => {
@@ -43,11 +44,15 @@ export function StartAllServicesButton({
 
   const handleStartAll = useCallback(() => {
     for (const id of actionable) {
-      startService(id)
+      const device = deviceMap?.[id]
+      if (device) {
+        configureAndStartService(id, device)
+      } else {
+        startService(id)
+      }
     }
-  }, [actionable, startService])
+  }, [actionable, deviceMap, startService, configureAndStartService])
 
-  // Hide once all required services are online
   if (notOnline.length === 0) return null
 
   return (

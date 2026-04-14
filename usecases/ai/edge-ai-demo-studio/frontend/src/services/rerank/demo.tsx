@@ -60,7 +60,6 @@ export function RerankerDemo({ service }: { service: Service }) {
     <div className="flex flex-col gap-6 xl:flex-row">
       <div className="min-w-0 flex-1 space-y-6">
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          {/* Input */}
           <div className="space-y-3">
             <p className="text-foreground text-sm font-medium">Query</p>
             <Textarea
@@ -119,7 +118,6 @@ export function RerankerDemo({ service }: { service: Service }) {
             )}
           </div>
 
-          {/* Output - Ranked results */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <p className="text-foreground text-sm font-medium">
@@ -199,7 +197,6 @@ export function RerankerDemo({ service }: { service: Service }) {
         </div>
       </div>
 
-      {/* Sidebar */}
       <div className="shrink-0 space-y-4 xl:w-72">
         <DemoParameterSidebar params={params} />
       </div>

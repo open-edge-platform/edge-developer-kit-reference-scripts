@@ -7,12 +7,14 @@ import {
   AlertTriangle,
   ArrowLeft,
   CircleDot,
+  ScrollText,
   Settings,
   ShieldCheck,
 } from 'lucide-react'
 import Link from 'next/link'
 import { useState } from 'react'
 import { StatusIndicator } from '@/components/common/status-indicator'
+import { SampleLogDrawer } from '@/components/dashboard/samples/sample-log-drawer'
 import { StartAllServicesButton } from '@/components/dashboard/samples/start-all-services-button'
 import { SampleDemo } from '@/components/dashboard/samples/samples-demo'
 import { Badge } from '@/components/ui/badge'
@@ -26,13 +28,14 @@ import { useGetServices } from '@/context/service-status-context'
 import { cn } from '@/lib/utils'
 import { SampleParamsSlotContext } from '@/samples/common/sample-params-slot'
 import { getSampleById } from '@/samples/registry'
-import { getOptionalDeps, getRequiredDeps } from '@/samples/types'
+import { getDeviceMap, getOptionalDeps, getRequiredDeps } from '@/samples/types'
 import type { Service } from '@/services/types'
 
 export function SampleDemoContent({ sampleId }: { sampleId: string }) {
   const sample = getSampleById(sampleId)!
   const requiredDeps = getRequiredDeps(sample)
   const optDeps = getOptionalDeps(sample)
+  const deviceMap = getDeviceMap(sample)
 
   const allDepIds = [
     ...requiredDeps.map((d) => d.serviceId),
@@ -55,10 +58,19 @@ export function SampleDemoContent({ sampleId }: { sampleId: string }) {
   const hasOptional = optionalServices.length > 0
 
   const [paramsSlot, setParamsSlot] = useState<HTMLDivElement | null>(null)
+  const [isLogDrawerOpen, setIsLogDrawerOpen] = useState(false)
+
+  const allServices = [...requiredServices, ...optionalServices]
+  const hasError = allServices.some((s) => s.status === 'error')
+  const hasStarting = allServices.some((s) => s.status === 'starting')
+  const logStatusDot: 'none' | 'error' | 'starting' = hasError
+    ? 'error'
+    : hasStarting
+      ? 'starting'
+      : 'none'
 
   return (
     <div className="space-y-5">
-      {/* ─── Back link (above toolbar) ───────────────────────────── */}
       <Link
         href={`/samples/${sample.id}`}
         className="group text-muted-foreground hover:text-foreground inline-flex items-center gap-2 text-sm transition-colors"
@@ -67,9 +79,7 @@ export function SampleDemoContent({ sampleId }: { sampleId: string }) {
         Back to {sample.title}
       </Link>
 
-      {/* ─── Toolbar ─────────────────────────────────────────────── */}
       <div className="glass-card relative overflow-hidden rounded-xl">
-        {/* Gradient accent bar */}
         <div
           className={cn(
             'h-1',
@@ -79,18 +89,14 @@ export function SampleDemoContent({ sampleId }: { sampleId: string }) {
           )}
         />
 
-        {/* Decorative background glow */}
         <div className="from-primary/[0.04] via-secondary/[0.02] pointer-events-none absolute inset-0 bg-gradient-to-br to-transparent" />
 
         <div className="relative flex flex-wrap items-center justify-between gap-4 px-4 py-3">
-          {/* Left: title */}
           <h1 className="text-foreground text-base leading-tight font-semibold">
             {sample.title}
           </h1>
 
-          {/* Right: service status + actions */}
           <div className="flex items-center gap-3">
-            {/* Compact service status summary */}
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
@@ -102,7 +108,6 @@ export function SampleDemoContent({ sampleId }: { sampleId: string }) {
                       : 'border-rose-500/20 bg-rose-500/5',
                   )}
                 >
-                  {/* Stacked status dots */}
                   <span className="flex -space-x-1">
                     {requiredServices.map((s) => (
                       <span
@@ -196,27 +201,62 @@ export function SampleDemoContent({ sampleId }: { sampleId: string }) {
               </TooltipContent>
             </Tooltip>
 
-            {/* Portal target for DemoConfigSheet rendered by each demo */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  data-testid="log-drawer-toggle"
+                  variant="outline"
+                  size="sm"
+                  className={cn(
+                    'relative gap-2 text-xs',
+                    isLogDrawerOpen && 'bg-accent text-accent-foreground',
+                  )}
+                  onClick={() => setIsLogDrawerOpen((v) => !v)}
+                  aria-expanded={isLogDrawerOpen}
+                  aria-controls="sample-log-drawer"
+                >
+                  <ScrollText className="h-3.5 w-3.5" />
+                  Logs
+                  {logStatusDot !== 'none' && (
+                    <span
+                      className={cn(
+                        'ring-background absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full ring-2',
+                        logStatusDot === 'error' && 'bg-red-500',
+                        logStatusDot === 'starting' &&
+                          'bg-warning animate-pulse',
+                      )}
+                    />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {isLogDrawerOpen ? 'Hide service logs' : 'Show service logs'}
+              </TooltipContent>
+            </Tooltip>
+
             <div ref={setParamsSlot} />
           </div>
         </div>
       </div>
 
-      {/* ─── Blocked state ───────────────────────────────────────── */}
+      {isLogDrawerOpen && (
+        <SampleLogDrawer
+          services={allServices}
+          onClose={() => setIsLogDrawerOpen(false)}
+        />
+      )}
+
       {!allRequiredOnline ? (
         <div className="glass-card relative overflow-hidden rounded-xl">
-          {/* Subtle gradient accent at top */}
           <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-rose-500/10 via-rose-500/5 to-transparent" />
 
           <div className="flex flex-col items-center justify-center px-6 py-20 text-center sm:py-28">
-            {/* Icon */}
             <div className="relative mb-6">
               <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-rose-500/10 ring-1 ring-rose-500/20">
                 <AlertTriangle className="h-9 w-9 text-rose-400" />
               </div>
             </div>
 
-            {/* Copy */}
             <h3 className="text-foreground text-xl font-semibold tracking-tight">
               Services Required
             </h3>
@@ -227,7 +267,6 @@ export function SampleDemoContent({ sampleId }: { sampleId: string }) {
               them to begin using this demo.
             </p>
 
-            {/* Offline service badges */}
             <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
               {requiredServices
                 .filter((s) => s.status !== 'online')
@@ -244,7 +283,6 @@ export function SampleDemoContent({ sampleId }: { sampleId: string }) {
                 ))}
             </div>
 
-            {/* Online services (show what's already ready) */}
             {requiredOnline > 0 && (
               <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
                 {requiredServices
@@ -263,10 +301,10 @@ export function SampleDemoContent({ sampleId }: { sampleId: string }) {
               </div>
             )}
 
-            {/* CTAs */}
             <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row">
               <StartAllServicesButton
                 serviceIds={requiredServices.map((s) => s.id)}
+                deviceMap={deviceMap}
                 label="Start All Services"
                 className="bg-primary hover:bg-primary-light shadow-primary/10 text-white shadow-lg"
               />
@@ -278,7 +316,6 @@ export function SampleDemoContent({ sampleId }: { sampleId: string }) {
               </Link>
             </div>
 
-            {/* Progress hint */}
             <p className="text-muted-foreground/60 mt-6 flex items-center gap-1.5 text-xs">
               <CircleDot className="h-3 w-3" />
               {requiredOnline}/{requiredServices.length} services ready
@@ -286,7 +323,6 @@ export function SampleDemoContent({ sampleId }: { sampleId: string }) {
           </div>
         </div>
       ) : (
-        /* ─── Demo content (full width, primary focus) ──────────── */
         <SampleParamsSlotContext.Provider value={paramsSlot}>
           <SampleDemo sample={sample} />
         </SampleParamsSlotContext.Provider>

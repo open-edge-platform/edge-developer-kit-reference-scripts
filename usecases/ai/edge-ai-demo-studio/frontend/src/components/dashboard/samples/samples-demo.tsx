@@ -5,6 +5,7 @@
 
 import { ExternalLink, Rocket, Zap } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { DemoErrorBoundary } from '@/components/common/demo-error-boundary'
 import type { Sample } from '@/samples/types'
 
 export function SampleDemo({ sample }: { sample: Sample }) {
@@ -13,7 +14,11 @@ export function SampleDemo({ sample }: { sample: Sample }) {
   // ─── Custom component mode ──────────────────────────────────────────
   if (demo.type === 'component' && demo.component) {
     const DemoComponent = demo.component
-    return <DemoComponent sample={sample} />
+    return (
+      <DemoErrorBoundary>
+        <DemoComponent sample={sample} />
+      </DemoErrorBoundary>
+    )
   }
 
   // ─── External redirect mode ─────────────────────────────────────

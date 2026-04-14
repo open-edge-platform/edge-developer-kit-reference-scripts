@@ -238,7 +238,6 @@ export function ImageGenerationDemo({ service }: { service: Service }) {
             <TabsTrigger value="edit">Edit Image</TabsTrigger>
           </TabsList>
 
-          {/* Generate Tab */}
           <TabsContent value="generate" className="mt-6">
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
               <div className="space-y-3">
@@ -306,7 +305,6 @@ export function ImageGenerationDemo({ service }: { service: Service }) {
             </div>
           </TabsContent>
 
-          {/* Edit Tab */}
           <TabsContent value="edit" className="mt-6">
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
               <div className="space-y-3">
@@ -405,7 +403,6 @@ export function ImageGenerationDemo({ service }: { service: Service }) {
         </Tabs>
       </div>
 
-      {/* Sidebar */}
       <div className="shrink-0 space-y-4 xl:w-72">
         <DemoParameterSidebar params={params} />
       </div>

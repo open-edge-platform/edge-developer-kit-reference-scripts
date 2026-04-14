@@ -6,8 +6,6 @@ import { toast } from 'sonner'
 
 const SERVICES_QUERY_KEY = ['services'] as const
 
-// ─── Types ────────────────────────────────────────────────────────
-
 interface ClearModelCacheVariables {
   serviceId: number
   serviceName: string
@@ -17,8 +15,6 @@ interface ClearModelCacheResponse {
   cleared: string[]
   errors: string[]
 }
-
-// ─── API Call ─────────────────────────────────────────────────────
 
 async function clearModelCache({
   serviceId,
@@ -37,13 +33,6 @@ async function clearModelCache({
   return res.json()
 }
 
-// ─── Hook ─────────────────────────────────────────────────────────
-
-/**
- * Mutation hook for clearing a worker service's model cache.
- * On success, invalidates the services query so the UI can reflect
- * the updated state.
- */
 export function useClearModelCache() {
   const queryClient = useQueryClient()
 

@@ -6,8 +6,6 @@ import { toast } from 'sonner'
 
 const SERVICES_QUERY_KEY = ['services'] as const
 
-// ─── Types ────────────────────────────────────────────────────────
-
 export interface ServiceConfigUpdate {
   name: string
   device: string
@@ -25,9 +23,7 @@ interface UpdateServiceConfigVariables {
   config: ServiceConfigUpdate
 }
 
-// ─── API Call ─────────────────────────────────────────────────────
-
-async function updateServiceConfig({
+export async function updateServiceConfig({
   serviceId,
   config,
 }: UpdateServiceConfigVariables): Promise<void> {
@@ -43,13 +39,6 @@ async function updateServiceConfig({
   }
 }
 
-// ─── Hook ─────────────────────────────────────────────────────────
-
-/**
- * Mutation hook for updating a service's model configuration and
- * triggering a restart. On success, invalidates the services query
- * so the UI picks up the new model/device.
- */
 export function useUpdateServiceConfig() {
   const queryClient = useQueryClient()
 

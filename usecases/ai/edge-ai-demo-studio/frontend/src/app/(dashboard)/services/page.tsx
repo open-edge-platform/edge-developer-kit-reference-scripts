@@ -31,7 +31,6 @@ export default function ServicesPage() {
 
   return (
     <div className="space-y-8">
-      {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <div className="flex items-center gap-3">
@@ -46,7 +45,6 @@ export default function ServicesPage() {
           </p>
         </div>
 
-        {/* Summary pills */}
         {loading ? (
           <div className="flex items-center gap-3">
             <Skeleton className="h-8 w-28 rounded-full" />
@@ -87,7 +85,6 @@ export default function ServicesPage() {
         )}
       </div>
 
-      {/* Loading skeleton */}
       {loading ? (
         <div className="space-y-8">
           <div>
@@ -110,7 +107,6 @@ export default function ServicesPage() {
         </div>
       ) : (
         <>
-          {/* Running services */}
           {running.length > 0 && (
             <div
               className="section-fade"
@@ -133,7 +129,6 @@ export default function ServicesPage() {
             </div>
           )}
 
-          {/* Stopped services */}
           {stopped.length > 0 && (
             <div
               className="section-fade"
@@ -156,7 +151,6 @@ export default function ServicesPage() {
             </div>
           )}
 
-          {/* Unsupported services */}
           {unsupported.length > 0 && (
             <div
               className="section-fade"

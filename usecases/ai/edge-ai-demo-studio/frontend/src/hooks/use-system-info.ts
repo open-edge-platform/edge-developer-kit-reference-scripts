@@ -6,6 +6,8 @@ import type { OS } from '@/types/common'
 
 export interface SystemInfo {
   os: OS
+  /** Available device identifiers — includes both families (e.g. 'gpu') and specific IDs (e.g. 'GPU.1', 'xpu:0') */
+  devices: string[]
 }
 
 const SYSTEM_INFO_QUERY_KEY = ['system-info'] as const
@@ -18,6 +20,7 @@ async function fetchSystemInfo(): Promise<SystemInfo> {
   const data = await res.json()
   return {
     os: data.os as OS,
+    devices: (data.devices as string[]) ?? ['cpu'],
   }
 }
 

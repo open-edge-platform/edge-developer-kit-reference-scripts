@@ -14,6 +14,7 @@ export type {
 
 export {
   categories,
+  getDeviceMap,
   getOptionalDeps,
   getReadinessLabel,
   getRequiredDeps,
@@ -22,11 +23,11 @@ export {
 import { getServiceById } from '@/services/registry'
 import type { Service } from '@/services/types'
 import type { OS } from '@/types/common'
+import { getDeviceFamily } from '@/lib/utils'
 import { sampleMap } from './_generated/samples'
 import type { Sample } from './types'
 import { getOptionalDeps, getRequiredDeps } from './types'
 
-// ─── Aggregated Exports ───────────────────────────────────────────
 export { sampleMap } from './_generated/samples'
 
 export const samples: Sample[] = Object.values(sampleMap)
@@ -35,27 +36,18 @@ export function getSampleById(id: string): Sample | undefined {
   return sampleMap[id]
 }
 
-/** Resolve required dependency service objects */
 export function getRequiredServicesForSample(sample: Sample): Service[] {
   return getRequiredDeps(sample)
     .map((d) => getServiceById(d.serviceId))
     .filter(Boolean) as Service[]
 }
 
-/** Resolve optional dependency service objects */
 export function getOptionalServicesForSample(sample: Sample): Service[] {
   return getOptionalDeps(sample)
     .map((d) => getServiceById(d.serviceId))
     .filter(Boolean) as Service[]
 }
 
-// ─── OS compatibility helpers ──────────────────────────────────────
-
-/**
- * Get the effective supported OS list for a sample.
- * If the sample has explicit `supportedOS`, use that.
- * Otherwise, compute the intersection of all required services' supported OS.
- */
 export function getSampleSupportedOS(sample: Sample): OS[] {
   if (sample.supportedOS && sample.supportedOS.length > 0) {
     return sample.supportedOS
@@ -67,7 +59,46 @@ export function getSampleSupportedOS(sample: Sample): OS[] {
   )
 }
 
-/** Check if a sample is supported on the given OS */
 export function isSampleSupportedOnOS(sample: Sample, os: OS): boolean {
   return getSampleSupportedOS(sample).includes(os)
+}
+
+function isDeviceAvailable(
+  required: string,
+  availableDevices: string[],
+): boolean {
+  const isFamily = !required.includes('.') && !required.includes(':')
+  if (isFamily) {
+    const reqFamily = required.toLowerCase()
+    return availableDevices.some((d) => {
+      const family = getDeviceFamily(d)
+      if (reqFamily === 'gpu' || reqFamily === 'xpu') {
+        return family === 'gpu' || family === 'xpu'
+      }
+      return family === reqFamily
+    })
+  }
+  const reqLower = required.toLowerCase()
+  return availableDevices.some((d) => d.toLowerCase() === reqLower)
+}
+
+export function isSampleSupportedOnDevices(
+  sample: Sample,
+  availableDevices: string[],
+): boolean {
+  if (!sample.requiredDevices || sample.requiredDevices.length === 0)
+    return true
+  return sample.requiredDevices.every((d) =>
+    isDeviceAvailable(d, availableDevices),
+  )
+}
+
+export function getMissingSampleDevices(
+  sample: Sample,
+  availableDevices: string[],
+): string[] {
+  if (!sample.requiredDevices || sample.requiredDevices.length === 0) return []
+  return sample.requiredDevices.filter(
+    (d) => !isDeviceAvailable(d, availableDevices),
+  )
 }
