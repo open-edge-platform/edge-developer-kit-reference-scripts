@@ -12,15 +12,6 @@ import { getWorkerConfig } from '@/services/worker-registry'
 
 export const dynamic = 'force-dynamic'
 
-/**
- * DELETE /api/services/[id]/models
- *
- * Clears the model cache directories for a worker-based service so that
- * models are re-downloaded on the next start. Useful when a download was
- * interrupted or when the HF_TOKEN changed.
- *
- * The service must be stopped (inactive) before clearing models.
- */
 export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> },

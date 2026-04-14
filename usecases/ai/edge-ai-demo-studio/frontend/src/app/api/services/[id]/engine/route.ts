@@ -8,13 +8,6 @@ import { ensureMultiserveEngine } from '@/engines/multiserve/process-handler'
 
 export const dynamic = 'force-dynamic'
 
-/**
- * POST /api/services/[id]/engine
- *
- * Starts the multiserve engine process for a service WITHOUT loading
- * any model. This makes the model management API available so the user
- * can browse, download, and delete models before starting inference.
- */
 export async function POST(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> },

@@ -26,7 +26,6 @@ import { SampleParamsSlot } from '../common/sample-params-slot'
 import { extractTextContent } from '@/services/text-generation/components/chat-helpers'
 
 export function DigitalAvatarDemo({ sample }: { sample: Sample }) {
-  // ── Parameter groups ─────────────────────────────────────────
   const textGen = useTextGenerationParams()
   const tts = useTtsParams(sample.id, { optional: false })
 
@@ -39,7 +38,6 @@ export function DigitalAvatarDemo({ sample }: { sample: Sample }) {
 
   const { mcp, ragGroups, extraBody } = useRagChatSetup()
 
-  // ── WebRTC connection state ──────────────────────────────────
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [isSpeaking, setIsSpeaking] = useState(false)
@@ -161,16 +159,13 @@ export function DigitalAvatarDemo({ sample }: { sample: Sample }) {
     return () => window.removeEventListener('beforeunload', disconnect)
   }, [sessionId, disconnect])
 
-  // ── Chat (text-generation) ───────────────────────────────────
   const chat = useTextGenChat({ textGenValues: textGen.values, extraBody })
 
-  // ── Wake word → auto-trigger STT recording ──────────────────
   const { wakeWord } = useWakeWordStt({
     onTranscription: useCallback(
       (text: string) => {
         chat.setInput(text)
       },
-      // chat.setInput is stable
       // eslint-disable-next-line react-hooks/exhaustive-deps
       [],
     ),
@@ -219,7 +214,6 @@ export function DigitalAvatarDemo({ sample }: { sample: Sample }) {
 
   return (
     <div className="space-y-5">
-      {/* Main layout — avatar hero + sidebar chat */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_minmax(0,400px)]">
         <AvatarStream
           videoRef={videoRef}

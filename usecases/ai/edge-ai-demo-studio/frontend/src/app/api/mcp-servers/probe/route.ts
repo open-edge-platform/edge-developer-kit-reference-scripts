@@ -61,10 +61,6 @@ function offlineResult(error: string): ProbeResult {
   return { online: false, tools: [], error }
 }
 
-/**
- * Probe an MCP server via Streamable HTTP transport (JSON-RPC over POST).
- * Sends initialize → initialized notification → tools/list, then returns results.
- */
 export async function POST(request: NextRequest): Promise<NextResponse> {
   let body: { url?: string; apiKey?: string }
   try {
@@ -232,9 +228,6 @@ async function probeMcpServer(
   return { online: true, tools, serverInfo }
 }
 
-/**
- * Parse a JSON-RPC response, handling both plain JSON and SSE formats.
- */
 async function parseJsonRpcResponse(
   res: Response,
 ): Promise<{ result?: Record<string, unknown> } | null> {

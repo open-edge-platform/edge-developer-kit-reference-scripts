@@ -8,12 +8,8 @@ import type { OS } from '@/types/common'
 import { engines } from './_generated/meta'
 import type { EngineBackend } from './types'
 
-// ─── Aggregated Exports ───────────────────────────────────────────
 export { engines } from './_generated/meta'
 
-// ─── Aggregation helpers ──────────────────────────────────────────
-
-/** Get all engine backends that support a given service type. */
 export function getBackendsForService(
   serviceType: Service['type'],
 ): EngineBackend[] {
@@ -24,11 +20,7 @@ export function getBackendsForService(
   )
 }
 
-/**
- * Get the recommended backend for a service type based on the current OS.
- * Prefers the backend whose `recommendedOS` matches, falls back to the first
- * compatible backend.
- */
+// Gets recommended backend for a service type based on OS
 export function getRecommendedBackendForService(
   serviceType: Service['type'],
   os: OS,
@@ -43,11 +35,6 @@ export function getRecommendedBackendForService(
   )
 }
 
-/**
- * Resolve the engine identifier for a Payload service document.
- * Now that `doc.engine` stores the engine ID directly (e.g. "multiserve"),
- * this simply validates the value exists in the registry.
- */
 export function resolveEngineIdForDoc(doc: Service): string | undefined {
   if (doc.engine in engines) {
     return doc.engine
@@ -55,7 +42,6 @@ export function resolveEngineIdForDoc(doc: Service): string | undefined {
   return undefined
 }
 
-/** Find a backend definition by its value (e.g. "openvino", "llamacpp"). */
 export function getBackendByValue(value: string): EngineBackend | undefined {
   for (const engine of Object.values(engines)) {
     const found = engine.supportedBackends.find((b) => b.value === value)

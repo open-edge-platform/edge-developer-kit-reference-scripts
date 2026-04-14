@@ -21,7 +21,6 @@ export function useWebcamStream() {
 
   const clearError = useCallback(() => setError(null), [])
 
-  /** Enumerate available video devices */
   const listDevices = useCallback(async (requestPermission = false) => {
     try {
       if (requestPermission) {
@@ -53,7 +52,6 @@ export function useWebcamStream() {
     }
   }, [])
 
-  /** Start webcam with specific device or default */
   const startCamera = useCallback(
     async (deviceId?: string) => {
       try {
@@ -88,7 +86,6 @@ export function useWebcamStream() {
     [clearError, listDevices],
   )
 
-  /** Stop webcam */
   const stopCamera = useCallback(() => {
     if (streamRef.current) {
       for (const track of streamRef.current.getTracks()) track.stop()
@@ -98,7 +95,6 @@ export function useWebcamStream() {
     clearError()
   }, [clearError])
 
-  /** Capture current frame as base64 PNG data URL */
   const captureImage = useCallback((): string | null => {
     if (!videoRef.current) return null
 
@@ -113,7 +109,6 @@ export function useWebcamStream() {
     return canvas.toDataURL('image/png')
   }, [])
 
-  /** Check camera permission status */
   const checkPermission = useCallback(async (): Promise<boolean> => {
     try {
       const result = await navigator.permissions.query({
@@ -125,7 +120,6 @@ export function useWebcamStream() {
     }
   }, [])
 
-  /** Initialize device list on mount */
   useEffect(() => {
     if (typeof navigator === 'undefined' || !navigator.mediaDevices) return
 
@@ -137,7 +131,6 @@ export function useWebcamStream() {
     initializeDevices()
   }, [checkPermission, listDevices])
 
-  /** Listen for device changes */
   useEffect(() => {
     if (typeof navigator === 'undefined' || !navigator.mediaDevices) return
 
@@ -156,7 +149,6 @@ export function useWebcamStream() {
     }
   }, [checkPermission, listDevices])
 
-  /** Cleanup on unmount */
   useEffect(() => {
     return () => {
       stopCamera()

@@ -16,26 +16,14 @@ import type { Service } from '@/payload-types'
 import { MULTISERVE_REPO_PATH, engine as multiserve_engine } from './data'
 import type { MultiserveModel } from './types'
 
-// ─── Helpers ──────────────────────────────────────────────────────
 const activeStartControllers = new Map<string, AbortController>()
 
 const activeHealthCheckControllers = new Map<string, AbortController>()
 
-/**
- * In-flight `ensureMultiserveEngine` promises keyed by process name.
- * Used to coalesce concurrent calls so only one spawn attempt runs
- * at a time — prevents the race condition where two callers each
- * kill the other's newly-spawned process.
- */
+// Coalesces concurrent ensureMultiserveEngine calls per process name
 const activeEnsurePromises = new Map<string, Promise<boolean>>()
 
-/**
- * Returns `true` once the given port is free (can be bound to).
- * Uses an actual bind test rather than a connect test so that
- * TIME_WAIT sockets (which refuse connections but block bind) are
- * correctly detected as "still in use".
- * Polls every `interval` ms up to `maxWait` ms total.
- */
+// Waits for a port to be free using bind test, polling every interval ms
 const waitForPortFree = async (
   port: number,
   maxWait = 15_000,
@@ -67,8 +55,6 @@ export function cancelMultiserveStart(serviceType: string): void {
     hcController.abort()
     activeHealthCheckControllers.delete(serviceType)
   }
-  // Clear any coalesced ensure-engine promise so the next call
-  // starts fresh after a stop/restart.
   activeEnsurePromises.delete(serviceType)
 }
 
@@ -99,13 +85,12 @@ const waitForHealthCheck = async (
   const healthUrl = `http://localhost:${port}/v1/health`
 
   for (let i = 0; i < maxRetries; i++) {
-    // Bail out if this health check was cancelled (e.g. service stopped/restarted)
     if (signal?.aborted) {
       logger.log(`Health check for ${processName} aborted`)
       return false
     }
 
-    // Check if the underlying process is still alive
+    // Check if the process is still alive
     const status = getStatus(processName)
     if (!status || status.status === 'stopped') {
       logger.error(
@@ -134,7 +119,6 @@ const waitForHealthCheck = async (
       )
     }
 
-    // Wait 2 seconds before retry
     await new Promise((resolve) => setTimeout(() => resolve(0), 2000))
   }
 
@@ -317,7 +301,6 @@ const startMultiserveServer = async (service: Service) => {
   const processName = getMultiserveProcessName(service)
   const processes = listProcesses()
   logger.info(`Existing processes: ${processes.map((p) => p.name).join(', ')}`)
-  // check if process is already running
   if (processes.some((p) => p.name === processName)) {
     logger.log(`${service.name} with already running on this port: ${port}`)
     return
@@ -361,8 +344,7 @@ const startMultiserveServer = async (service: Service) => {
     activeHealthCheckControllers.delete(processName)
   }
 
-  // Wait for the port to be released by a previously-killed process.
-  // Without this, the new server fails with EADDRINUSE.
+  // Wait for port release before starting
   const portFree = await waitForPortFree(port)
   if (!portFree) {
     logger.error(
@@ -377,7 +359,6 @@ const startMultiserveServer = async (service: Service) => {
     command: UV_PATH,
   })
 
-  // Wait for health check to pass, with cancellation support
   const hcController = new AbortController()
   activeHealthCheckControllers.set(processName, hcController)
 
@@ -387,13 +368,11 @@ const startMultiserveServer = async (service: Service) => {
     hcController.signal,
   )
 
-  // Clean up the controller if we're still the active one
   if (activeHealthCheckControllers.get(processName) === hcController) {
     activeHealthCheckControllers.delete(processName)
   }
 
   if (!healthCheckPassed) {
-    // Only kill if the process is still tracked (it may have already died)
     const status = getStatus(processName)
     if (status && status.status !== 'stopped') {
       logger.error('Health check failed, killing the process...')
@@ -420,10 +399,7 @@ const updateServiceStatus = async (
   })
 }
 
-/**
- * Quick (non-retrying) health probe. Returns `true` only if the
- * engine responds with both backends OK.
- */
+// Quick non-retrying health probe
 const isEngineHealthy = async (port: number): Promise<boolean> => {
   try {
     const url = new URL(`http://localhost:${port}/v1/health`)
@@ -438,26 +414,13 @@ const isEngineHealthy = async (port: number): Promise<boolean> => {
   }
 }
 
-/**
- * Ensure the multiserve engine process is running for a service.
- * This starts the engine WITHOUT loading any model, making the
- * model management API available immediately.
- *
- * Safe to call multiple times — skips if the process is already up
- * and healthy.  If a stale/dying process is detected it will be
- * cleaned up before spawning a new one.
- *
- * Concurrent calls for the same service are coalesced: the second
- * caller reuses the first caller's in-flight promise instead of
- * racing against it.
- */
+// Ensures the multiserve engine process is running (without loading a model)
 export const ensureMultiserveEngine = async (
   service: Service,
 ): Promise<boolean> => {
   const processName = getMultiserveProcessName(service)
 
-  // Coalesce concurrent calls — reuse the in-flight promise if one
-  // already exists for this process name.
+  // Coalesce concurrent calls
   const existing = activeEnsurePromises.get(processName)
   if (existing) {
     logger.log(
@@ -472,37 +435,28 @@ export const ensureMultiserveEngine = async (
   try {
     return await promise
   } finally {
-    // Only delete if we're still the active promise (not replaced).
     if (activeEnsurePromises.get(processName) === promise) {
       activeEnsurePromises.delete(processName)
     }
   }
 }
 
-/** Internal implementation — callers should use `ensureMultiserveEngine`. */
 const ensureMultiserveEngineImpl = async (
   service: Service,
 ): Promise<boolean> => {
   const processName = getMultiserveProcessName(service)
 
   if (isMultiserveRunning(service)) {
-    // Process entry exists and is not 'stopped'. Verify it is
-    // actually responding so we don't return true for a dying
-    // process that hasn't been cleaned up yet.
     if (await isEngineHealthy(service.port)) {
       return true
     }
 
-    // Process is listed but unhealthy — stop it so a fresh one
-    // can be spawned below.
+    // Process listed but unhealthy — clean up and respawn
     logger.log(
       `Engine process ${processName} listed but unhealthy, cleaning up…`,
     )
     await stopProcess(processName)
   } else {
-    // The process entry may still be in the map with status
-    // 'stopped' (killed but not yet cleaned up). Remove it so
-    // spawnProcess won't treat the name as "already running".
     removeDeadProcess(processName)
   }
 
@@ -510,14 +464,7 @@ const ensureMultiserveEngineImpl = async (
   return isMultiserveRunning(service)
 }
 
-/**
- * Full service start: ensures the engine is running, then downloads
- * and starts the configured model. Called when the user starts a service.
- *
- * Uses an AbortController so that if the service is restarted or stopped
- * while this handler is still running, the stale handler bails out
- * instead of overwriting the status to 'error'.
- */
+// Full service start: engine + model download + model start
 export const startMultiserveModel = async (
   service: Service,
   payload: BasePayload,

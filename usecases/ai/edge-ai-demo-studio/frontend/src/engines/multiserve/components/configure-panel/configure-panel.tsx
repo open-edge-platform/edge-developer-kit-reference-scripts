@@ -52,20 +52,16 @@ import {
   type ConfigurePanelStatus,
   ServiceConfigurePanel,
 } from '@/services/common/demo/components/service-configure-panel'
-import { getOSLabel } from '@/services/registry'
+import { getOSLabel } from '@/lib/utils'
 import type { Service } from '@/services/types'
 import { ModelManager } from '../model-manager'
 import { ConfigSection, LabelWithTooltip } from './config-section'
 import { ExtraParamsSection } from './extra-params-section'
 import { buildInitialDraft, type ConfigDraft } from './types'
 
-// ─── Props ────────────────────────────────────────────────────────
-
 interface MultiserveConfigurePanelProps {
   service: Service
 }
-
-// ─── Component ────────────────────────────────────────────────────
 
 export function MultiserveConfigurePanel({
   service,
@@ -91,8 +87,6 @@ export function MultiserveConfigurePanel({
   )
 
   const { mutate: updateConfig, isPending: isSaving } = useUpdateServiceConfig()
-
-  // ── Auto-start engine when panel opens ────────────────────────
 
   const { data: isEngineUp } = useEngineHealth(service.id, open)
   const { mutate: startEngine } = useStartEngine(service.id)
@@ -134,8 +128,6 @@ export function MultiserveConfigurePanel({
     ],
   )
 
-  // ── Derived state ─────────────────────────────────────────────
-
   const selectedBackend = useMemo(
     () => supportedBackends.find((b) => b.value === draft.backend),
     [draft.backend],
@@ -149,8 +141,7 @@ export function MultiserveConfigurePanel({
 
   const filteredDevices = backendDevices ?? []
 
-  // Reconcile draft.device with fetched device list (handles case mismatches
-  // like "cpu" in DB vs "CPU" from the OpenVINO device API).
+  // Reconcile draft.device with fetched device list
   const [normalizedDevices, setNormalizedDevices] = useState(backendDevices)
   if (backendDevices !== normalizedDevices) {
     setNormalizedDevices(backendDevices)
@@ -182,12 +173,11 @@ export function MultiserveConfigurePanel({
 
   const isValid = draft.modelName.trim().length > 0
 
-  // For llamacpp, quant is baked into the stored name (e.g. "repo:Q8_0").
-  // Compare effective "name:quant" strings to avoid false dirty state.
+  // For llamacpp, quant is baked into the stored name (e.g. "repo:Q8_0")
   const storedEffectiveName =
     currentBackend === 'llamacpp'
       ? currentQuant && !currentModel.endsWith(`:${currentQuant}`)
-        ? `${currentModel}:${currentQuant}` // backwards-compat: old saves stored quant separately
+        ? `${currentModel}:${currentQuant}`
         : currentModel
       : currentModel
   const draftEffectiveName =
@@ -200,8 +190,6 @@ export function MultiserveConfigurePanel({
     draft.device.toLowerCase() !== currentDevice.toLowerCase() ||
     (draft.backend !== 'llamacpp' && draft.quant !== (currentQuant ?? '')) ||
     (currentBackend !== undefined && draft.backend !== currentBackend)
-
-  // ── Updater helpers ───────────────────────────────────────────
 
   const updateDraft = useCallback(
     (patch: Partial<ConfigDraft>) =>
@@ -308,8 +296,7 @@ export function MultiserveConfigurePanel({
           })
         : undefined
 
-    // For llamacpp, bake quant into the name (e.g. "repo:Q8_0") so the healthcheck
-    // can match the repo_id returned by the multiserve /v1/status endpoint.
+    // Bake quant into name for llamacpp healthcheck matching
     const savedName =
       draft.backend === 'llamacpp' && draft.quant
         ? `${draft.modelName}:${draft.quant}`
@@ -343,15 +330,11 @@ export function MultiserveConfigurePanel({
     needsWeightFormat,
   ])
 
-  // ── Status items for the panel header ─────────────────────────
-
   const statusItems: ConfigurePanelStatus[] = [
     { label: 'Current model', value: currentModel || '—' },
     { label: 'Current device', value: currentDevice || '—' },
     { label: 'Backend', value: currentBackend ?? '—' },
   ]
-
-  // ── Render ────────────────────────────────────────────────────
 
   return (
     <ServiceConfigurePanel
@@ -365,7 +348,6 @@ export function MultiserveConfigurePanel({
       open={open}
       onOpenChange={handleOpenChange}
     >
-      {/* Backend selector */}
       <ConfigSection title="Backend">
         <TooltipProvider>
           <div className="grid grid-cols-2 gap-2">
@@ -425,7 +407,6 @@ export function MultiserveConfigurePanel({
 
       <Separator />
 
-      {/* Model library — browse, download, upload, select models */}
       <ModelManager
         serviceId={service.id}
         dbId={service.dbId}
@@ -437,7 +418,6 @@ export function MultiserveConfigurePanel({
         }
       />
 
-      {/* OpenVINO-specific: pipeline type */}
       {showOpenVINOOptions && (
         <>
           <Separator />
@@ -469,7 +449,6 @@ export function MultiserveConfigurePanel({
         </>
       )}
 
-      {/* OpenVINO-specific: weight format */}
       {needsWeightFormat && (
         <>
           <Separator />
@@ -505,7 +484,6 @@ export function MultiserveConfigurePanel({
         </>
       )}
 
-      {/* llama.cpp-specific: model type */}
       {draft.backend === 'llamacpp' && draft.modelName.trim() !== '' && (
         <>
           <Separator />
@@ -539,7 +517,6 @@ export function MultiserveConfigurePanel({
 
       <Separator />
 
-      {/* Device selector */}
       <ConfigSection title="Accelerator">
         <div className="space-y-2">
           <Label className="text-muted-foreground text-xs">
@@ -593,7 +570,6 @@ export function MultiserveConfigurePanel({
         </div>
       </ConfigSection>
 
-      {/* Extra params (OpenVINO, collapsible) */}
       {showOpenVINOOptions && (
         <>
           <Separator />

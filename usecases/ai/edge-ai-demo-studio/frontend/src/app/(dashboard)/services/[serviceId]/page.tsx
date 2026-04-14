@@ -36,7 +36,6 @@ export default async function ServiceDetailPage({
 
   return (
     <div className="space-y-6">
-      {/* Back link */}
       <Link
         href="/services"
         className="group text-muted-foreground hover:text-foreground inline-flex items-center gap-2 text-sm transition-colors"
@@ -45,12 +44,10 @@ export default async function ServiceDetailPage({
         Back to Services
       </Link>
 
-      {/* Service header */}
       <div
         className="section-fade glass-card relative overflow-hidden rounded-xl p-6"
         style={{ '--stagger': 0 } as React.CSSProperties}
       >
-        {/* Top accent bar */}
         <ServiceAccentBar
           service={{ id: service.id, status: service.status }}
         />
@@ -99,11 +96,8 @@ export default async function ServiceDetailPage({
             )}
           </div>
         </div>
-
-        {/* Metrics bar */}
       </div>
 
-      {/* Tabs: Demo | Documentation | Logs */}
       <div
         className="section-fade"
         style={{ '--stagger': 1 } as React.CSSProperties}

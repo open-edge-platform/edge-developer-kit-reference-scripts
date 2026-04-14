@@ -10,20 +10,9 @@ import type { KnowledgeBase } from '@/services/vectordb/types'
 import type { ServiceParamGroup } from '../components/demo-config-sheet'
 
 interface UseRagParamsOptions {
-  /** Whether the rerank service is independently togglable (default: true) */
   rerankOptional?: boolean
 }
 
-/**
- * Reusable hook for RAG (embeddings + vectordb + rerank) integration in
- * any sample. Returns:
- *
- * - `selectedKb` / `onSelectKb` — knowledge base selection state
- * - `extraBody` — object to spread into `useTextGenChat` options
- * - `groups` — `ServiceParamGroup[]` for the configure sheet
- * - Service status booleans for conditional rendering
- * - Embedding & rerank model info for the knowledge base panel
- */
 export function useRagParams(options?: UseRagParamsOptions) {
   const { rerankOptional = true } = options ?? {}
 
@@ -39,7 +28,6 @@ export function useRagParams(options?: UseRagParamsOptions) {
   const embeddingsOnline = embeddingsService?.status === 'online'
   const vectordbOnline = vectordbService?.status === 'online'
 
-  // ── Embedding model info ────────────────────────────────────
   const embeddingPort = embeddingsService?.port
   const embeddingEngine = embeddingsService?.engine ?? 'multiserve'
   const embeddingModelConfig = {
@@ -61,7 +49,6 @@ export function useRagParams(options?: UseRagParamsOptions) {
       ? engines[embeddingEngine].getModelName(embeddingModelConfig, true)
       : undefined
 
-  // ── Rerank model info ───────────────────────────────────────
   const rerankOnline =
     rerankService?.status === 'online' &&
     (rerankOptional ? rerankEnabled : true)
@@ -81,7 +68,6 @@ export function useRagParams(options?: UseRagParamsOptions) {
       ? engines[rerankEngine].getModelName(rerankModelConfig, true)
       : undefined
 
-  // ── Service param groups ────────────────────────────────────
   const ragGroup: ServiceParamGroup = {
     serviceLabel: 'RAG',
     serviceId: 'vectordb',
@@ -108,7 +94,6 @@ export function useRagParams(options?: UseRagParamsOptions) {
       : {}),
   }
 
-  // ── Extra body for useTextGenChat ───────────────────────────
   const extraBody = useMemo(
     () => (selectedKb?.id != null ? { knowledgeBaseId: selectedKb.id } : {}),
     [selectedKb],

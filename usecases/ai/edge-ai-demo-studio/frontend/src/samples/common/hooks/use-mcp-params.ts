@@ -19,8 +19,6 @@ export function useMcpParams(options?: UseMcpParamsOptions) {
   const { data: probeResults = {} } = useMcpServersProbe(servers)
 
   const [enabled, setEnabled] = useState(true)
-  // Track which servers the user has explicitly deselected.
-  // All enabled servers are selected by default.
   const [deselectedIds, setDeselectedIds] = useState<Set<number>>(new Set())
 
   const enabledServerIds = useMemo(
@@ -30,7 +28,6 @@ export function useMcpParams(options?: UseMcpParamsOptions) {
 
   const available = enabledServers.length > 0
 
-  // Build tool info lists for each selected server
   const toolParams: DemoParam[] = enabledServers
     .filter((s) => !deselectedIds.has(s.id))
     .flatMap((server) => {

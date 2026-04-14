@@ -88,7 +88,6 @@ export function AudioLipsyncTab({ sessionId }: AudioLipsyncTabProps) {
         Upload an audio file to sync with the avatar.
       </p>
 
-      {/* Audio File Upload Zone */}
       <div>
         <input
           data-testid="lipsync-audio-input"

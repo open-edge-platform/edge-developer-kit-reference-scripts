@@ -127,7 +127,6 @@ export function WebcamVlmDemo({ sample }: { sample: Sample }) {
 
   return (
     <div className="space-y-4">
-      {/* VLM warning */}
       {textGenService?.status === 'online' && !isMultimodal && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20">
           <div className="flex items-start gap-3">
@@ -149,7 +148,6 @@ export function WebcamVlmDemo({ sample }: { sample: Sample }) {
         groups={[textGen.group, tts.group, stt.group, mcp.group]}
       />
 
-      {/* Main layout: webcam + chat */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[2fr_1fr]">
         <WebcamStream
           videoRef={videoRef}

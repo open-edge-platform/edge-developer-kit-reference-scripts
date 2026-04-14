@@ -3,8 +3,6 @@
 
 import type { ServiceConfig } from '@/services/types'
 
-// ─── Voice Definitions ───────────────────────────────────────────
-
 export interface VoiceInfo {
   id: string
   label: string
@@ -16,7 +14,6 @@ interface VoiceLanguage {
   label: string
 }
 
-/** Languages supported by the Kokoro model (prefix → language). */
 export const KOKORO_LANGUAGES: VoiceLanguage[] = [
   { code: 'a', label: 'English (American)' },
   { code: 'b', label: 'English (British)' },
@@ -29,7 +26,6 @@ export const KOKORO_LANGUAGES: VoiceLanguage[] = [
   { code: 'z', label: 'Chinese' },
 ]
 
-/** All voices available in the Kokoro model. */
 export const KOKORO_VOICES: VoiceInfo[] = [
   // American English — Female
   { id: 'af_heart', label: 'Heart', language: 'English (American)' },
@@ -98,20 +94,17 @@ export const KOKORO_VOICES: VoiceInfo[] = [
   { id: 'zm_yunyang', label: 'Yunyang', language: 'Chinese' },
 ]
 
-/** All voices available in the Malaya model. */
 export const MALAYA_VOICES: VoiceInfo[] = [
   { id: 'Husein', label: 'Husein', language: 'Malay' },
   { id: 'Shafiqah Idayu', label: 'Shafiqah Idayu', language: 'Malay' },
   { id: 'Anwar Ibrahim', label: 'Anwar Ibrahim', language: 'Malay' },
 ]
 
-/** Return the predefined voice list for a given model. */
 export function getVoicesForModel(model: string): VoiceInfo[] {
   if (model === 'malaya') return MALAYA_VOICES
   return KOKORO_VOICES
 }
 
-/** Return the unique language list for a given model. */
 export function getLanguagesForModel(
   model: string,
 ): { value: string; label: string }[] {
@@ -126,8 +119,6 @@ export function getLanguagesForModel(
   }
   return result
 }
-
-// ─── Service Config ──────────────────────────────────────────────
 
 export const ttsConfig: ServiceConfig = {
   availableModels: [

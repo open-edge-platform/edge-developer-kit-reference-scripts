@@ -48,8 +48,7 @@ export function VectorDbDemo(_props: { service: Service }) {
 
   const embeddingPort = embeddingsService?.port
 
-  const embeddingEngine =
-    embeddingsService?.engine ?? embeddingsService?.engine ?? 'multiserve'
+  const embeddingEngine = embeddingsService?.engine ?? 'multiserve'
   const embeddingModelConfig = {
     name:
       embeddingsService?.currentModel ??
@@ -162,7 +161,7 @@ export function VectorDbDemo(_props: { service: Service }) {
     )
   }
 
-  // Worker has no dedicated update endpoint, so we replace a chunk by delete + add.
+  // Replace a chunk by delete + add since worker has no update endpoint
   const handleReplaceChunk = (docId: string, content: string) => {
     if (!selectedKb) return
     setError(null)
@@ -236,7 +235,6 @@ export function VectorDbDemo(_props: { service: Service }) {
         )}
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          {/* Knowledge Base Management */}
           <div className="space-y-3">
             <p className="text-foreground flex items-center gap-2 text-sm font-medium">
               <Database className="h-4 w-4" />
@@ -328,7 +326,6 @@ export function VectorDbDemo(_props: { service: Service }) {
             </div>
           </div>
 
-          {/* Operations Panel */}
           <div className="space-y-4">
             {!selectedKb ? (
               <div className="text-muted-foreground border-border flex h-full items-center justify-center rounded-xl border border-dashed p-8 text-sm">
@@ -356,7 +353,6 @@ export function VectorDbDemo(_props: { service: Service }) {
                   onReplaceChunk={handleReplaceChunk}
                 />
 
-                {/* Search */}
                 <div className="space-y-2">
                   <p className="text-muted-foreground flex items-center gap-1.5 text-xs font-medium">
                     <Search className="h-3.5 w-3.5" />
@@ -389,7 +385,6 @@ export function VectorDbDemo(_props: { service: Service }) {
                   </div>
                 </div>
 
-                {/* Search Results */}
                 {searchMutation.data && searchMutation.data.length > 0 && (
                   <div className="space-y-2">
                     <p className="text-muted-foreground text-xs font-medium">

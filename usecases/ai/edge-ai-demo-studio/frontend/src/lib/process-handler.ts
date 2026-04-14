@@ -75,7 +75,6 @@ globalThis.processHandlerLogStreams ??= logStreams
 
 // --- Log stream helpers ---
 
-/** Close and remove a log stream for a given process name. */
 function closeLogStream(name: string): boolean {
   const stream = logStreams.get(name)
   if (!stream) return false
@@ -84,7 +83,6 @@ function closeLogStream(name: string): boolean {
   return true
 }
 
-/** Get or create a rotating log stream. */
 function getLogStream(processName: string): ReturnType<typeof createStream> {
   const existing = logStreams.get(processName)
   if (existing) return existing
@@ -99,7 +97,6 @@ function getLogStream(processName: string): ReturnType<typeof createStream> {
   return stream
 }
 
-/** Format a JSON log line. */
 function createLogEntry(
   type: 'out' | 'info' | 'error',
   message: string,
@@ -115,7 +112,6 @@ function createLogEntry(
   })}\n`
 }
 
-/** Write a log entry via the rotating stream, falling back to direct file append. */
 async function writeToLog(
   processName: string,
   logEntry: string,
@@ -138,7 +134,6 @@ async function writeToLog(
 
 // --- Log archival ---
 
-/** Drain and close a log stream, waiting for it to finish. */
 async function drainLogStream(name: string): Promise<void> {
   const stream = logStreams.get(name)
   if (!stream) return
@@ -154,7 +149,6 @@ async function drainLogStream(name: string): Promise<void> {
   logStreams.delete(name)
 }
 
-/** Cap a file to the last `maxBytes` by truncating the beginning. */
 async function capFileSize(filePath: string, maxBytes: number): Promise<void> {
   const fileUrl = pathToFileURL(filePath)
   const stats = await fsPromises.stat(fileUrl)
@@ -168,7 +162,6 @@ async function capFileSize(filePath: string, maxBytes: number): Promise<void> {
   await fsPromises.rename(tmpUrl, fileUrl)
 }
 
-/** Archive current logs to logs/old/ and truncate the active log before a fresh start. */
 async function archiveProcessLogs(name: string): Promise<void> {
   const logFilePath = path.join(LOGS_DIR, `${name}.log`)
   const oldLogsDirPath = path.join(LOGS_DIR, 'old')
@@ -211,7 +204,6 @@ async function archiveProcessLogs(name: string): Promise<void> {
 
 // --- Process cleanup helpers ---
 
-/** Remove a process entry and close its log stream. */
 function cleanupProcessEntry(name: string): void {
   closeLogStream(name)
   processes.delete(name)
@@ -237,14 +229,12 @@ function killProcessTree(proc: ChildProcess, name: string): void {
 
 // --- Public API ---
 
-/** Ensure the logs directory exists. */
 function init() {
   if (!fs.existsSync(LOGS_DIR)) {
     fs.mkdirSync(LOGS_DIR, { recursive: true })
   }
 }
 
-/** Spawn a managed child process using the worker's start script or a custom command. */
 async function spawnProcess(
   name: string,
   args: Array<string> = [],
@@ -260,19 +250,15 @@ async function spawnProcess(
     return processes.get(name)
   }
 
-  // Claim the slot before the first await so concurrent calls are blocked
-  // during async log/token operations (before processes.set is reached).
   pendingSpawns.add(name)
 
   let command: string
   let spawnArgs: string[]
 
   if (options.command) {
-    // Custom command – invoke the executable directly with args.
     command = options.command
     spawnArgs = args
   } else {
-    // Default – use the worker's start script.
     const startScript = path.join(options.cwd, START_SCRIPT)
     if (!fs.existsSync(startScript)) {
       logger.error(`[${name}] Start script not found: ${startScript}`)
@@ -366,7 +352,6 @@ async function spawnProcess(
   return proc
 }
 
-/** Get status info for a named process. */
 function getStatus(name: string) {
   const entry = processes.get(name)
   if (!entry) return null
@@ -377,7 +362,6 @@ function getStatus(name: string) {
   }
 }
 
-/** Stop a running process and clean up its resources. */
 async function stopProcess(name: string): Promise<boolean> {
   logger.log('Stopping process:', name)
   const entry = processes.get(name)
@@ -423,7 +407,6 @@ async function stopProcess(name: string): Promise<boolean> {
   })
 }
 
-/** List all tracked processes with their status. */
 function listProcesses() {
   return Array.from(processes.entries()).map(
     ([name, { proc, startTime, status }]) => ({
@@ -435,7 +418,6 @@ function listProcesses() {
   )
 }
 
-/** Read and parse JSON log lines for a process. */
 async function getProcessLogs(name: string, limit?: number) {
   const logFile = path.join(LOGS_DIR, `${name}.log`)
 
@@ -471,7 +453,6 @@ async function getProcessLogs(name: string, limit?: number) {
   }
 }
 
-/** Clear log file contents for a process. */
 async function clearProcessLogs(name: string) {
   const logFile = path.join(LOGS_DIR, `${name}.log`)
 
@@ -485,7 +466,6 @@ async function clearProcessLogs(name: string) {
   }
 }
 
-/** Stop all tracked processes and close all log streams. */
 async function killAllProcesses() {
   logger.log('Killing all processes...')
   for (const [name] of processes.entries()) {
@@ -501,7 +481,6 @@ async function killAllProcesses() {
   logStreams.clear()
 }
 
-/** Remove a dead process from tracking without attempting to kill it. */
 function removeDeadProcess(name: string): boolean {
   const entry = processes.get(name)
   if (!entry) return false

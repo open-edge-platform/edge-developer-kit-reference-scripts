@@ -32,7 +32,6 @@ function decodeBase64Embedding(embedding: string): number[] {
   const binary = atob(embedding)
   const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0))
 
-  // OpenAI-compatible APIs return float32 embeddings for base64 encoding.
   if (bytes.byteLength % 4 !== 0) {
     throw new Error('Invalid base64 embedding payload length')
   }
@@ -176,7 +175,6 @@ export function EmbeddingDemo({ service }: { service: Service }) {
   return (
     <div className="flex flex-col gap-6 xl:flex-row">
       <div className="min-w-0 flex-1 space-y-6">
-        {/* === Input === */}
         <div className="space-y-4">
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <div className="space-y-2">
@@ -264,7 +262,6 @@ export function EmbeddingDemo({ service }: { service: Service }) {
           )}
         </div>
 
-        {/* === Empty state === */}
         {!embedding && !embedMutation.isPending && (
           <div className="border-border bg-muted/5 flex flex-col items-center justify-center rounded-xl border border-dashed py-12">
             <div className="bg-muted/50 mb-4 flex h-12 w-12 items-center justify-center rounded-full">
@@ -281,7 +278,6 @@ export function EmbeddingDemo({ service }: { service: Service }) {
           </div>
         )}
 
-        {/* === Semantic Similarity (Hero) === */}
         {(similarityResults.length > 0 || similarityMutation.isPending) && (
           <div className="space-y-4">
             <div className="flex items-center gap-2">
@@ -363,7 +359,6 @@ export function EmbeddingDemo({ service }: { service: Service }) {
           </div>
         )}
 
-        {/* === Under the Hood: Embedding Visualization (Collapsible) === */}
         {(embedding || embedMutation.isPending) && (
           <>
             <Separator />
@@ -521,7 +516,6 @@ export function EmbeddingDemo({ service }: { service: Service }) {
         )}
       </div>
 
-      {/* Sidebar */}
       <div className="shrink-0 space-y-4 xl:w-72">
         <DemoParameterSidebar params={params} />
       </div>

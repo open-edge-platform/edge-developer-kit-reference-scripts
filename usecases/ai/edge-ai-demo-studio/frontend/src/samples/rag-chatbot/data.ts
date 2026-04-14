@@ -13,7 +13,7 @@ export const sample: Sample = {
     'A retrieval-augmented generation chatbot that ingests documents, embeds them into a vector store for semantic search, and uses an LLM to generate grounded answers with source citations. Optionally supports voice input via STT and voice output via TTS for hands-free interaction.',
   category: 'Conversational AI',
   dependencies: [
-    { serviceId: 'text-generation', role: 'required' },
+    { serviceId: 'text-generation', role: 'required', defaultDevice: 'GPU.1' },
     { serviceId: 'embeddings', role: 'required' },
     { serviceId: 'vectordb', role: 'required' },
     {

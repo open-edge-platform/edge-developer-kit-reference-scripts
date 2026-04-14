@@ -120,7 +120,6 @@ export function TranslationProgress({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Status icon and message */}
         <div className="flex flex-col items-center space-y-4 py-6">
           <StatusIcon status={job.status} />
           <p className="text-muted-foreground max-w-md text-center">
@@ -128,7 +127,6 @@ export function TranslationProgress({
           </p>
         </div>
 
-        {/* Progress bar — plain div, no Progress component needed */}
         {(job.status === 'processing' || job.status === 'pending') && (
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
@@ -149,7 +147,6 @@ export function TranslationProgress({
           </div>
         )}
 
-        {/* Error details — plain div, no Alert component needed */}
         {job.status === 'failed' && job.error && (
           <div className="border-destructive/50 bg-destructive/10 text-destructive rounded-lg border p-4">
             <p className="flex items-center gap-2 font-medium">
@@ -160,7 +157,6 @@ export function TranslationProgress({
           </div>
         )}
 
-        {/* Download error */}
         {download.isError && (
           <div className="border-destructive/50 bg-destructive/10 text-destructive rounded-lg border p-4">
             <p className="flex items-center gap-2 text-sm font-medium">
@@ -170,7 +166,6 @@ export function TranslationProgress({
           </div>
         )}
 
-        {/* Job timestamps */}
         <div className="bg-muted rounded-lg p-4">
           <div className="text-muted-foreground space-y-1 text-xs">
             <p>Created: {new Date(job.created_at).toLocaleString()}</p>
@@ -180,7 +175,6 @@ export function TranslationProgress({
           </div>
         </div>
 
-        {/* Actions */}
         <div className="flex flex-col gap-3 sm:flex-row">
           {job.status === 'completed' && (
             <Button

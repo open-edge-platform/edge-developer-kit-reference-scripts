@@ -23,9 +23,11 @@ function formatLogTime(timestamp: string) {
 export function ServiceLogs({
   service,
   logSources,
+  compact = false,
 }: {
   service: Service
   logSources: LogSource[]
+  compact?: boolean
 }) {
   const {
     logs,
@@ -83,10 +85,12 @@ export function ServiceLogs({
         logSession={logSession}
       />
 
-      {/* Log output */}
       <div
         ref={containerRef}
-        className="border-border bg-muted/40 h-[500px] overflow-auto rounded-xl border p-4 font-mono text-xs leading-6 dark:bg-[#050810]"
+        className={cn(
+          'border-border bg-muted/40 overflow-auto rounded-xl border p-4 font-mono text-xs leading-6 dark:bg-[#050810]',
+          compact ? 'h-[240px]' : 'h-[500px]',
+        )}
       >
         {logs.length === 0 ? (
           <div className="text-muted-foreground flex h-full items-center justify-center">

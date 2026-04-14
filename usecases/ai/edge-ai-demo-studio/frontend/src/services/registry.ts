@@ -39,12 +39,5 @@ export function isServiceSupportedOnOS(service: Service, os: OS): boolean {
   return service.supportedOS.includes(os)
 }
 
-/** Get the OS display label */
-export function getOSLabel(os: OS): string {
-  switch (os) {
-    case 'linux':
-      return 'Linux'
-    case 'windows':
-      return 'Windows'
-  }
-}
+// Re-export from shared location for backward compatibility
+export { getOSLabel } from '@/types/common'

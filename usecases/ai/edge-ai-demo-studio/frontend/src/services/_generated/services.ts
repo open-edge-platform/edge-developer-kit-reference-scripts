@@ -4,7 +4,7 @@
 
 import type { Service as ServiceType } from '@/payload-types'
 
-// Data imports (only for services that provide demos)
+// Data imports
 import { service as embeddingsMeta } from '../embeddings/data'
 import { service as imageGenerationMeta } from '../image-generation/data'
 import { service as lipsyncMeta } from '../lipsync/data'
@@ -24,11 +24,8 @@ import { EmbeddingDemo } from '../embeddings/demo'
 import { ImageGenerationDemo } from '../image-generation/demo'
 import { LipsyncDemo } from '../lipsync/demo'
 import { McpDemo } from '../mcp/demo'
-import { PptTranslatorDemo } from '../ppt-translator/demo'
 import { RerankerDemo } from '../rerank/demo'
-import { RoboticsAIDemo } from '../robotics-ai/demo'
 import { SpeechToTextDemo } from '../speech-to-text/demo'
-import { SyntheticImageGenerationDemo } from '../synthetic-image-generation/demo'
 import { TextGenerationDemo } from '../text-generation/demo'
 import { TextToSpeechDemo } from '../text-to-speech/demo'
 import { VectorDbDemo } from '../vectordb/demo'
@@ -61,7 +58,6 @@ export const serviceMap: Record<ServiceType['type'], Service> = {
   'ppt-translator': {
     ...pptTranslatorMeta,
     status: 'offline',
-    demo: PptTranslatorDemo,
   },
   rerank: {
     ...rerankMeta,
@@ -71,7 +67,6 @@ export const serviceMap: Record<ServiceType['type'], Service> = {
   'robotics-ai': {
     ...roboticsAiMeta,
     status: 'offline',
-    demo: RoboticsAIDemo,
   },
   'speech-to-text': {
     ...speechToTextMeta,
@@ -81,7 +76,6 @@ export const serviceMap: Record<ServiceType['type'], Service> = {
   'synthetic-image-generation': {
     ...syntheticImageGenerationMeta,
     status: 'offline',
-    demo: SyntheticImageGenerationDemo,
   },
   'text-generation': {
     ...textGenerationMeta,

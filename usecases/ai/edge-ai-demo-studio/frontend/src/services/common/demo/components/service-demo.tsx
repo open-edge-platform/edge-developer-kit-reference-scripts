@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { DemoErrorBoundary } from '@/components/common/demo-error-boundary'
 import {
   useGetService,
   useGetServices,
@@ -192,5 +193,9 @@ export function ServiceDemo({ service }: { service: Service }) {
   }
 
   // ─── Online — Specialized Demo ─────────────────────────────────
-  return <DemoComponent service={selectedService} />
+  return (
+    <DemoErrorBoundary>
+      <DemoComponent service={selectedService} />
+    </DemoErrorBoundary>
+  )
 }

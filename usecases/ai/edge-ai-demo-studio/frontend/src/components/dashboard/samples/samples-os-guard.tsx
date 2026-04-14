@@ -3,12 +3,17 @@
 
 'use client'
 
-import { ArrowLeft, Ban, Monitor } from 'lucide-react'
+import { ArrowLeft, Ban, Cpu, Monitor } from 'lucide-react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { useSystemInfo } from '@/context/system-info-context'
 import { getOSLabel } from '@/services/registry'
-import { getSampleSupportedOS, isSampleSupportedOnOS } from '@/samples/registry'
+import {
+  getMissingSampleDevices,
+  getSampleSupportedOS,
+  isSampleSupportedOnDevices,
+  isSampleSupportedOnOS,
+} from '@/samples/registry'
 import type { Sample } from '@/samples/types'
 
 interface SampleOSGuardProps {
@@ -16,23 +21,25 @@ interface SampleOSGuardProps {
   children: React.ReactNode
 }
 
-/**
- * Client wrapper that blocks a sample detail/demo page
- * when the current system OS is not supported.
- */
 export function SampleOSGuard({ sample, children }: SampleOSGuardProps) {
   const { systemInfo, loading } = useSystemInfo()
 
-  // While loading system info, render children (avoids flash)
   if (loading || !systemInfo) {
     return <>{children}</>
   }
 
-  if (isSampleSupportedOnOS(sample, systemInfo.os)) {
+  const osSupported = isSampleSupportedOnOS(sample, systemInfo.os)
+  const devicesSupported = isSampleSupportedOnDevices(
+    sample,
+    systemInfo.devices,
+  )
+
+  if (osSupported && devicesSupported) {
     return <>{children}</>
   }
 
   const supportedList = getSampleSupportedOS(sample)
+  const missingDevices = getMissingSampleDevices(sample, systemInfo.devices)
 
   return (
     <div className="space-y-8">
@@ -51,22 +58,52 @@ export function SampleOSGuard({ sample, children }: SampleOSGuardProps) {
         <h2 className="text-foreground text-xl font-bold">
           Sample Not Available
         </h2>
-        <p className="text-muted-foreground mt-2 max-w-md text-center text-sm leading-relaxed">
-          <span className="text-foreground font-semibold">{sample.title}</span>{' '}
-          is not supported on{' '}
-          <span className="font-semibold text-orange-400">
-            {getOSLabel(systemInfo.os)}
-          </span>
-          .
-        </p>
 
-        {supportedList.length > 0 && (
+        {!osSupported && (
+          <p className="text-muted-foreground mt-2 max-w-md text-center text-sm leading-relaxed">
+            <span className="text-foreground font-semibold">
+              {sample.title}
+            </span>{' '}
+            is not supported on{' '}
+            <span className="font-semibold text-orange-400">
+              {getOSLabel(systemInfo.os)}
+            </span>
+            .
+          </p>
+        )}
+
+        {!osSupported && supportedList.length > 0 && (
           <div className="mt-4 flex items-center gap-2">
             <Monitor className="text-muted-foreground h-4 w-4" />
             <span className="text-muted-foreground text-sm">
               Supported on:{' '}
               <span className="text-foreground font-medium">
                 {supportedList.map(getOSLabel).join(', ')}
+              </span>
+            </span>
+          </div>
+        )}
+
+        {missingDevices.length > 0 && (
+          <p className="text-muted-foreground mt-2 max-w-md text-center text-sm leading-relaxed">
+            <span className="text-foreground font-semibold">
+              {sample.title}
+            </span>{' '}
+            requires a{' '}
+            <span className="font-semibold text-orange-400">
+              {missingDevices.map((d) => d.toUpperCase()).join(', ')}
+            </span>{' '}
+            device which was not detected on this system.
+          </p>
+        )}
+
+        {missingDevices.length > 0 && (
+          <div className="mt-4 flex items-center gap-2">
+            <Cpu className="text-muted-foreground h-4 w-4" />
+            <span className="text-muted-foreground text-sm">
+              Required devices:{' '}
+              <span className="text-foreground font-medium">
+                {sample.requiredDevices?.map((d) => d.toUpperCase()).join(', ')}
               </span>
             </span>
           </div>

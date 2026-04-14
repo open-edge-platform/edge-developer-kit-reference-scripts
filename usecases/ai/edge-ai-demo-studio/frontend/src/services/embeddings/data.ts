@@ -17,6 +17,7 @@ export const service: ServiceMeta = {
     'Text embedding service generating high-quality dense vectors for semantic search, retrieval-augmented generation, and document clustering. Optimized for Intel hardware with OpenVINO acceleration. Supports batch processing and automatic chunking.',
   icon: FileText,
   port: 8006,
+  reservedPorts: [8007, 8008, 8009, 8010],
   supportedOS: ['linux', 'windows'],
   execution: { mode: 'multiserve' },
   defaultModel: getMultiserveDefaultModel('embeddings'),

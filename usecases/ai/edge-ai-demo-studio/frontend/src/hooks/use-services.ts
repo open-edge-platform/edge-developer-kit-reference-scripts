@@ -4,7 +4,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback } from 'react'
 import type { Service as PayloadService } from '@/payload-types'
-import type { ServiceStatus } from '@/services/types'
+import type { DeviceBackend, ServiceStatus } from '@/services/types'
 
 const SERVICES_QUERY_KEY = ['services'] as const
 const POLL_INTERVAL = 5000
@@ -34,7 +34,7 @@ export interface PayloadServiceInfo {
   engine: PayloadService['engine']
   currentModel: string | undefined
   currentDevice: string | undefined
-  currentBackend: string | undefined
+  currentBackend: DeviceBackend | undefined
   currentModelType: string | undefined
   currentQuant: string | undefined
   currentSource: string | undefined
@@ -63,7 +63,7 @@ function buildServiceInfoMap(
       engine: doc.engine,
       currentModel: doc.models?.default?.name,
       currentDevice: doc.models?.default?.device,
-      currentBackend: doc.models?.default?.backend ?? undefined,
+      currentBackend: doc.models?.default?.backend as DeviceBackend | undefined,
       currentModelType: doc.models?.default?.type ?? undefined,
       currentQuant: doc.models?.default?.quant ?? undefined,
       currentSource: doc.models?.default?.source ?? undefined,

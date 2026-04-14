@@ -32,15 +32,11 @@ import {
   validateModelName,
 } from '@/engines/multiserve/validation'
 
-// ─── Constants ────────────────────────────────────────────────────
-
 const SERVICE_TASK_MAP: Record<string, string[]> = {
   'text-generation': ['text_generation', 'multimodal'],
   embeddings: ['embeddings'],
   rerank: ['rerank'],
 }
-
-// ─── Props ────────────────────────────────────────────────────────
 
 interface DownloadModelDialogProps {
   open: boolean
@@ -57,8 +53,6 @@ interface DownloadModelDialogProps {
   }) => void
   isDownloading: boolean
 }
-
-// ─── Component ────────────────────────────────────────────────────
 
 export function DownloadModelDialog({
   open,
@@ -182,7 +176,6 @@ export function DownloadModelDialog({
             )}
           </div>
 
-          {/* Task Type */}
           <div className="space-y-1.5">
             <Label
               htmlFor="download-task-type"
@@ -217,7 +210,6 @@ export function DownloadModelDialog({
             )}
           </div>
 
-          {/* OpenVINO: non-native model warning */}
           {isNonNativeOpenVINO && (
             <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-2.5 dark:border-amber-900 dark:bg-amber-950">
               <TriangleAlert className="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
@@ -229,7 +221,6 @@ export function DownloadModelDialog({
             </div>
           )}
 
-          {/* OpenVINO: weight format (optional) */}
           {showOpenVINOFields && (
             <div className="space-y-1.5">
               <Label
@@ -263,7 +254,6 @@ export function DownloadModelDialog({
             </div>
           )}
 
-          {/* OpenVINO: extra parameters (optional) */}
           {showOpenVINOFields && (
             <div className="space-y-1.5">
               <Label

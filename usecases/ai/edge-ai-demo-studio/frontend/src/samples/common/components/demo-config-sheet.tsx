@@ -23,42 +23,29 @@ import {
 } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
 import type { DemoParam } from '@/types/demo-params'
-import { ParamRenderer } from './param-renderer'
+import { ParamRenderer } from '@/components/common/param-renderer'
 
 export type { ParamSlider, ParamSelect, DemoParam } from '@/types/demo-params'
 
-/** A group of params tied to a specific service */
 export interface ServiceParamGroup {
-  /** Service display name, e.g. "Text Generation" */
   serviceLabel: string
-  /** Service id (used to look up status) */
   serviceId: string
-  /** Whether the service is currently online */
   online: boolean
-  /** Whether this service is optional for the sample */
   optional: boolean
-  /** Message to show when the service is offline */
   offlineMessage?: string
-  /** Link to navigate to for turning the service on */
   configHref?: string
-  /** The params belonging to this service */
   params: DemoParam[]
-  /** Whether this optional service is currently enabled (toggled on) */
   enabled?: boolean
-  /** Callback to toggle this optional service on/off */
   onToggle?: (enabled: boolean) => void
-  /** Extra content rendered below the params inside the accordion */
   children?: ReactNode
 }
 
 interface DemoConfigSheetProps {
   groups: ServiceParamGroup[]
-  /** Extra content at the bottom of the sheet */
   children?: ReactNode
 }
 
 export function DemoConfigSheet({ groups, children }: DemoConfigSheetProps) {
-  // Open the first required (online) group by default
   const defaultOpen =
     groups.find((g) => !g.optional && g.online)?.serviceId ??
     groups[0]?.serviceId ??
@@ -160,7 +147,6 @@ export function DemoConfigSheet({ groups, children }: DemoConfigSheetProps) {
                         </a>
                       )}
 
-                      {/* Grayed-out params preview */}
                       <div className="pointer-events-none space-y-3 opacity-30 select-none">
                         {group.params.map((param) => (
                           <ParamRenderer key={param.id} param={param} />

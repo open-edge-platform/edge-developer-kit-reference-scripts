@@ -61,13 +61,9 @@ import { cn } from '@/lib/utils'
 // ─── Props ────────────────────────────────────────────────────────
 
 interface ModelManagerProps {
-  /** Service type id used for API routing (e.g. "text-generation"). */
   serviceId: string
-  /** Payload database id of the service (used to start the engine). */
   dbId?: number
-  /** Active backend filter. */
   backend?: BackendId
-  /** Called when the user selects a model to use. */
   onSelectModel?: (
     repoId: string,
     backend: BackendId,
@@ -77,24 +73,16 @@ interface ModelManagerProps {
     additionalParams?: string,
     source?: ModelSource,
   ) => void
-  /** Currently selected model repo_id. */
   selectedModel?: string
-  /** Additional params associated with the currently selected model. */
   selectedAdditionalParams?: string
-  /** Currently selected model source. */
   selectedSource?: ModelSource
 }
 
-// ─── Constants ────────────────────────────────────────────────────
-
-/** Map service type IDs to the API task_type values they should display. */
 const SERVICE_TASK_MAP: Record<string, string[]> = {
   'text-generation': ['text_generation', 'multimodal'],
   embeddings: ['embeddings'],
   rerank: ['rerank'],
 }
-
-// ─── Component ────────────────────────────────────────────────────
 
 export function ModelManager({
   serviceId,
@@ -125,7 +113,6 @@ export function ModelManager({
 
   const uploadMutation = useUploadModel(serviceId)
 
-  /** Flatten API response, filter by service task, tag with backend. */
   const models = useMemo(() => {
     if (!data) return []
     const allowedTasks = SERVICE_TASK_MAP[serviceId]
@@ -139,21 +126,18 @@ export function ModelManager({
     return result
   }, [data, serviceId])
 
-  /** Models that are either downloaded or verified — the only ones selectable. */
   const selectableModels = useMemo(
     () =>
       models.filter((m) => m.downloaded.length > 0 || m.verified.length > 0),
     [models],
   )
 
-  /** Apply search filter. */
   const filteredModels = useMemo(() => {
     if (!search.trim()) return selectableModels
     const q = search.toLowerCase()
     return selectableModels.filter((m) => m.repo_id.toLowerCase().includes(q))
   }, [selectableModels, search])
 
-  /** Sort: selected first, then downloaded, then alphabetical. */
   const { downloaded, available } = useMemo(() => {
     const sortFn = (
       a: (typeof filteredModels)[0],
@@ -195,7 +179,6 @@ export function ModelManager({
             newSource,
           )
         } else {
-          // Draft card model (pending download) — not yet in selectableModels
           onSelectModel?.(
             selectedModel,
             backend ?? 'openvino',
@@ -269,7 +252,6 @@ export function ModelManager({
     [uploadMutation],
   )
 
-  // ── Engine not running ─────────────────────────────────────────
   if (!isEngineUp && !isHealthLoading) {
     return (
       <div className="space-y-2 px-2">
@@ -312,7 +294,6 @@ export function ModelManager({
     )
   }
 
-  // ── Loading ───────────────────────────────────────────────────
   if (isLoading || isHealthLoading) {
     return (
       <div className="space-y-2 px-2">
@@ -325,7 +306,6 @@ export function ModelManager({
     )
   }
 
-  // ── Error ─────────────────────────────────────────────────────
   if (isError) {
     return (
       <div className="space-y-2 px-2">
@@ -342,7 +322,6 @@ export function ModelManager({
     )
   }
 
-  // ── Loaded ────────────────────────────────────────────────────
   return (
     <div className="space-y-2 px-2">
       <div className="flex items-center justify-between">
@@ -519,7 +498,6 @@ export function ModelManager({
         </div>
       </div>
 
-      {/* Download Model Dialog */}
       <DownloadModelDialog
         open={downloadDialogOpen}
         onOpenChange={setDownloadDialogOpen}
@@ -530,7 +508,6 @@ export function ModelManager({
         isDownloading={false}
       />
 
-      {/* Upload Model Dialog */}
       <UploadModelDialog
         open={uploadDialogOpen}
         onOpenChange={setUploadDialogOpen}
@@ -547,8 +524,6 @@ export function ModelManager({
     </div>
   )
 }
-
-// ─── Model Row ────────────────────────────────────────────────────
 
 function ModelRow({
   model,

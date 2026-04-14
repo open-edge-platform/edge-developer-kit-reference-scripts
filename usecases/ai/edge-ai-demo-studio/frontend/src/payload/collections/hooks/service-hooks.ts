@@ -36,15 +36,7 @@ export const deleteServiceAfterDelete: CollectionAfterDeleteHook<
   return doc
 }
 
-/**
- * Resolve the execution mode for a service by looking up its metadata.
- * Returns "worker" or an engine identifier (e.g. "multiserve").
- *
- * When a service declares multiple modes, the Payload document's `engine`
- * field is used to pick the matching one:
- *   - "custom" engine → "worker"
- *   - Otherwise, find the engine whose backends include that value.
- */
+// Resolves execution mode from service metadata and Payload engine field
 const getExecutionMode = (doc: Service): string => {
   const meta = metaMap[doc.type as keyof typeof metaMap]
   if (meta?.execution) {
@@ -52,40 +44,36 @@ const getExecutionMode = (doc: Service): string => {
 
     if (modes.length === 1) return modes[0]
 
-    // Multiple modes – resolve via the Payload engine field.
     if (doc.engine === 'worker' && modes.includes('worker')) return 'worker'
 
-    // Engine field now stores the engine ID directly (e.g. "multiserve").
     if (modes.includes(doc.engine as (typeof modes)[number])) {
       return doc.engine
     }
 
-    // Fallback to first declared mode.
     return modes[0]
   }
-  // No metadata – fall back to raw engine value.
   return doc.engine === 'worker' ? 'worker' : doc.engine
 }
 
-/**
- * Start a worker-based service using its registered WorkerConfig.
- * Each service's data.ts defines how to build CLI args and resolve paths.
- */
-const startWorkerProcess = async (service: Service) => {
-  const processName = getProcessName(service)
+const resolveWorkerDir = (service: Service): string => {
   const workerConfig = getWorkerConfig(service.type)
-  const args = workerConfig ? workerConfig.buildArgs(service) : []
 
-  let workerDir: string
   if (workerConfig?.workerSubDir) {
     const subDir =
       typeof workerConfig.workerSubDir === 'function'
         ? workerConfig.workerSubDir(service)
         : workerConfig.workerSubDir
-    workerDir = path.join(WORKER_DIR, subDir)
-  } else {
-    workerDir = path.join(WORKER_DIR, service.type)
+    return path.join(WORKER_DIR, subDir)
   }
+  return path.join(WORKER_DIR, service.type)
+}
+
+const startWorkerProcess = async (service: Service) => {
+  const processName = getProcessName(service)
+  const workerConfig = getWorkerConfig(service.type)
+  const args = workerConfig ? workerConfig.buildArgs(service) : []
+
+  const workerDir = resolveWorkerDir(service)
 
   if (!fs.existsSync(workerDir)) {
     throw new Error(
@@ -100,16 +88,9 @@ const startWorkerProcess = async (service: Service) => {
   })
 }
 
-/**
- * Start a service based on its execution mode:
- * - "worker" → spawns a Python process via the worker registry
- * - Any other mode → delegates to the matching engine handler
- */
 const startService = async (service: Service, payload: BasePayload) => {
   const mode = getExecutionMode(service)
 
-  // Services with execution mode 'none' do not spawn a process.
-  // Immediately mark them as active.
   if (mode === 'none') {
     await updateServiceStatus(payload, service.id, 'active')
     return
@@ -144,8 +125,15 @@ const updateServiceStatus = async (
 const tryStartService = async (service: Service, payload: BasePayload) => {
   try {
     await startService(service, payload)
-  } catch {
-    await updateServiceStatus(payload, service.id, 'error')
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : 'Unknown startup error'
+    logger.error(`Service ${service.type} failed to start: ${message}`)
+    await payload.update({
+      collection: 'services',
+      id: service.id,
+      data: { status: 'error', statusMessage: message },
+    })
   }
 }
 

@@ -200,36 +200,33 @@ function resolveConfigurePanel(serviceDir, folder) {
   return null
 }
 
-const serviceFolders = readdirSync(servicesDir)
+// Scan for subdirectories that contain data.ts
+const services = readdirSync(servicesDir)
   .filter((name) => {
     if (SKIP.has(name)) return false
     const dir = join(servicesDir, name)
     return statSync(dir).isDirectory() && existsSync(join(dir, 'data.ts'))
   })
-  .sort()
+  .map((folder) => {
+    const dataPath = join(servicesDir, folder, 'data.ts')
+    const serviceDir = join(servicesDir, folder)
+    const demoPath = resolveDemoPath(serviceDir)
+    const configurePanel = resolveConfigurePanel(serviceDir, folder)
 
-const services = serviceFolders.map((folder) => {
-  const dataPath = join(servicesDir, folder, 'data.ts')
-  const serviceDir = join(servicesDir, folder)
-  const demoPath = resolveDemoPath(serviceDir)
-  const configurePanel = resolveConfigurePanel(serviceDir, folder)
-
-  return {
-    folder,
-    dataAlias: toAlias(folder),
-    hasDemo: demoPath !== null,
-    demoPath,
-    demoExport: demoPath ? parseDemoExport(demoPath) : null,
-    configurePanelExport: configurePanel
-      ? parseDemoExport(configurePanel.filePath)
-      : null,
-    configurePanelImportPath: configurePanel?.importPath ?? null,
-    hasWorker: hasExport(dataPath, 'worker'),
-    hasDocs: existsSync(join(servicesDir, folder, 'docs.ts')),
-  }
-})
-
-const servicesWithDemo = services.filter((s) => s.hasDemo)
+    return {
+      folder,
+      dataAlias: toAlias(folder),
+      demoExport: demoPath ? parseDemoExport(demoPath) : null,
+      configurePanelExport: configurePanel
+        ? parseDemoExport(configurePanel.filePath)
+        : null,
+      configurePanelImportPath: configurePanel?.importPath ?? null,
+      hasWorker: hasExport(dataPath, 'worker'),
+      hasDocs: existsSync(join(servicesDir, folder, 'docs.ts')),
+    }
+  })
+  // Sort for deterministic output
+  .sort((a, b) => a.folder.localeCompare(b.folder))
 
 // ─── Service code generation ──────────────────────────────────────
 
@@ -255,27 +252,29 @@ const lines = [
   ...HEADER,
   'import type { Service as ServiceType } from "@/payload-types";',
   '',
-  '// Data imports (only for services that provide demos)',
-  ...servicesWithDemo.map(
+  '// Data imports',
+  ...services.map(
     ({ folder, dataAlias }) =>
       `import { service as ${dataAlias} } from "../${folder}/data";`,
   ),
   '',
   '// Demo imports',
-  ...servicesWithDemo.map(
-    ({ folder, demoExport }) =>
-      `import { ${demoExport} } from "../${folder}/demo";`,
-  ),
+  ...services
+    .filter((s) => s.demoExport)
+    .map(
+      ({ folder, demoExport }) =>
+        `import { ${demoExport} } from "../${folder}/demo";`,
+    ),
   '',
   'import type { Service } from "../types";',
   '',
   '/** Full service map including React demo components. */',
   'export const serviceMap: Record<ServiceType["type"], Service> = {',
-  ...servicesWithDemo.flatMap(({ folder, dataAlias, demoExport }) => [
+  ...services.flatMap(({ folder, dataAlias, demoExport }) => [
     `  ${key(folder)}: {`,
     `    ...${dataAlias},`,
     '    status: "offline",',
-    `    demo: ${demoExport},`,
+    ...(demoExport ? [`    demo: ${demoExport},`] : []),
     '  },',
   ]),
   '};',
@@ -361,7 +360,6 @@ const workerLines = [
 writeFileSync(workerRegistryPath, workerLines.join('\n'), 'utf8')
 
 // --- _generated/docs.ts (docs factory registry) ---
-// Docs registry should include any service that has docs.ts (metadata-only)
 const docsServices = services.filter((s) => s.hasDocs)
 
 /** Convert a folder name to a camelCase docs alias (e.g. "speech-to-text" → "speechToTextDocs") */
@@ -525,6 +523,70 @@ const engineLines = [
 
 writeFileSync(enginesOutputPath, engineLines.join('\n'), 'utf8')
 
+// ═══════════════════════════════════════════════════════════════════
+// ─── Port allocation summary ──────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════
+
+/** Extract `port: <number>` from a data.ts file */
+function extractPort(filePath) {
+  const src = readFileSync(filePath, 'utf8')
+  const m = src.match(/\bport:\s*(\d+)/)
+  return m ? parseInt(m[1], 10) : null
+}
+
+/** Extract `reservedPorts: [<numbers>]` from a data.ts file */
+function extractReservedPorts(filePath) {
+  const src = readFileSync(filePath, 'utf8')
+  const m = src.match(/\breservedPorts:\s*\[([^\]]*?)\]/)
+  if (!m) return []
+  return m[1]
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map(Number)
+    .filter((n) => !isNaN(n))
+}
+
+const portEntries = []
+const allPorts = new Set()
+
+for (const { folder } of services) {
+  const dataPath = join(servicesDir, folder, 'data.ts')
+  const port = extractPort(dataPath)
+  if (port !== null) {
+    portEntries.push({ port, owner: folder })
+    allPorts.add(port)
+  }
+  for (const rp of extractReservedPorts(dataPath)) {
+    portEntries.push({ port: rp, owner: `${folder} (reserved)` })
+    allPorts.add(rp)
+  }
+}
+
+for (const folder of sampleFolders) {
+  const dataPath = join(samplesDir, folder, 'data.ts')
+  for (const rp of extractReservedPorts(dataPath)) {
+    portEntries.push({ port: rp, owner: `sample:${folder} (reserved)` })
+    allPorts.add(rp)
+  }
+}
+
+portEntries.sort((a, b) => a.port - b.port)
+
+// Find first duplicate
+const seen = new Map()
+let duplicateWarning = ''
+for (const { port, owner } of portEntries) {
+  if (seen.has(port)) {
+    duplicateWarning += `  ⚠️  Port ${port} used by both "${seen.get(port)}" and "${owner}"\n`
+  }
+  seen.set(port, owner)
+}
+
+// Compute next available port
+let nextPort = 8001
+while (allPorts.has(nextPort)) nextPort++
+
 // ─── Summary ──────────────────────────────────────────────────────
 console.log(
   `✓ Generated registries:\n` +
@@ -532,3 +594,13 @@ console.log(
     `  samples:   ${sampleFolders.length} samples → src/samples/_generated/\n` +
     `  engines:   ${engineFolders.length} engines → src/engines/_generated/`,
 )
+
+console.log('\n📡 Port allocation (ascending):')
+for (const { port, owner } of portEntries) {
+  console.log(`  ${port}  ${owner}`)
+}
+if (duplicateWarning) {
+  console.log('\n⚠️  Duplicate port warnings:')
+  process.stdout.write(duplicateWarning)
+}
+console.log(`\n✅ Next available port: ${nextPort}`)

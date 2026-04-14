@@ -1,14 +1,7 @@
 // Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-/**
- * AES-256-GCM field-level encryption for sensitive values stored in the DB.
- *
- * Wire format: `v1:<base64(iv[12] || authTag[16] || ciphertext)>`
- *
- * Key derivation: HKDF-SHA256 from PAYLOAD_SECRET with a fixed, purpose-specific
- * info string so the derived key is domain-separated from any other key material.
- */
+// AES-256-GCM field encryption. Wire format: v1:<base64(iv[12] || authTag[16] || ciphertext)>
 
 import crypto from 'node:crypto'
 
@@ -36,7 +29,6 @@ function getDerivedKey(): Buffer {
 
 export function encryptField(plaintext: string): string {
   if (!plaintext) return plaintext
-  // Guard: never double-encrypt an already-encrypted value.
   if (plaintext.startsWith(VERSION_PREFIX)) return plaintext
 
   const key = getDerivedKey()
@@ -56,7 +48,6 @@ export function encryptField(plaintext: string): string {
 export function decryptField(stored: string): string {
   if (!stored) return stored
   if (!stored.startsWith(VERSION_PREFIX)) {
-    // Legacy plaintext value — return as-is.
     return stored
   }
 
@@ -64,7 +55,6 @@ export function decryptField(stored: string): string {
   const bundle = Buffer.from(stored.slice(VERSION_PREFIX.length), 'base64')
 
   if (bundle.length < 28) {
-    // 12 (iv) + 16 (tag) minimum; anything shorter is corrupt.
     throw new Error('Encrypted field value is corrupt or truncated.')
   }
 

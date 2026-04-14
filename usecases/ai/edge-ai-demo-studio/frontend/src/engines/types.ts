@@ -2,12 +2,17 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { Service } from '@/payload-types'
-import type { LogSource } from '@/services/types'
-import type { Device, OS } from '@/types/common'
+import type {
+  Device,
+  DeviceBackend,
+  EngineId,
+  LogSource,
+  OS,
+} from '@/types/common'
 
 export interface EngineBackend {
   name: string
-  value: string
+  value: DeviceBackend
   description: string
   supportedServices: Service['type'][]
   supportedOS: OS[]
@@ -19,7 +24,7 @@ export interface EngineBackend {
 
 export interface Engine {
   name: string
-  value: string
+  value: EngineId
   description: string
   supportedBackends: EngineBackend[]
   getSubPorts?: (basePort: number) => number[]
@@ -29,5 +34,5 @@ export interface Engine {
     modelConfig: Service['models']['default'],
     inference?: boolean,
   ) => string
-  getLogs: (type: Service['type'], backend?: string) => LogSource[]
+  getLogs: (type: Service['type'], backend?: DeviceBackend) => LogSource[]
 }

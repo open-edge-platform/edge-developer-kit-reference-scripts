@@ -7,9 +7,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import type { BackendId, MultiserveModel } from '../types'
 
-// ─── Types ────────────────────────────────────────────────────────
-
-/** Response shape from GET /v1/model — keyed by backend. */
 type ModelsResponse = Record<string, MultiserveModel[]>
 
 interface DeleteModelParams {
@@ -34,13 +31,9 @@ interface UploadModelResponse {
   task: string
 }
 
-// ─── Query Keys ───────────────────────────────────────────────────
-
 function modelsQueryKey(serviceId: string, backend?: BackendId) {
   return ['multiserve-models', serviceId, backend] as const
 }
-
-// ─── API Functions ────────────────────────────────────────────────
 
 async function fetchModels(
   serviceId: string,
@@ -107,12 +100,6 @@ async function uploadModel({
   return res.json()
 }
 
-// ─── Hooks ────────────────────────────────────────────────────────
-
-/**
- * Fetches the model registry from the multiserve engine.
- * Returns models grouped by backend (llamacpp / openvino).
- */
 export function useMultiserveModels(
   serviceId: string,
   backend?: BackendId,
@@ -127,10 +114,6 @@ export function useMultiserveModels(
   })
 }
 
-/**
- * Mutation to delete a model from disk via the multiserve engine.
- * Invalidates the models query on success.
- */
 export function useDeleteModel(serviceId: string) {
   const queryClient = useQueryClient()
 
@@ -152,10 +135,6 @@ export function useDeleteModel(serviceId: string) {
   })
 }
 
-/**
- * Mutation to upload a local model file to the multiserve engine.
- * Invalidates the models query on success.
- */
 export function useUploadModel(serviceId: string) {
   const queryClient = useQueryClient()
 

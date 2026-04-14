@@ -67,7 +67,6 @@ export function SyntheticImageGenerationDemo({
 
   const [image, setImage] = useState<string | null>(null)
 
-  // Generation Configuration
   const [genType, setGenType] = useState<GenerationType>(
     GenerationType.GOOD_DATASET,
   )
@@ -77,14 +76,12 @@ export function SyntheticImageGenerationDemo({
   const [count, setCount] = useState(1)
   const [isGenerating, setIsGenerating] = useState(false)
 
-  // Results & Tracking
   const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([])
   const [activeTab, setActiveTab] = useState<GenerationType | 'all'>('all')
   const [selectedImage, setSelectedImage] = useState<GeneratedImage | null>(
     null,
   )
 
-  // Project Management
   const [currentProject, setCurrentProject] = useState('')
   const [isProjectDropdownOpen, setIsProjectDropdownOpen] = useState(false)
 
@@ -96,7 +93,6 @@ export function SyntheticImageGenerationDemo({
       ? projectImages
       : projectImages.filter((img) => img.type === activeTab)
 
-  // Action Processing State
   const [processingImageId, setProcessingImageId] = useState<string | null>(
     null,
   )
@@ -107,7 +103,6 @@ export function SyntheticImageGenerationDemo({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const projectDropdownRef = useRef<HTMLDivElement>(null)
 
-  // Sync project selection when projects list changes
   useEffect(() => {
     if (projects.length > 0) {
       setCurrentProject((prev) =>
@@ -118,7 +113,6 @@ export function SyntheticImageGenerationDemo({
     }
   }, [projects])
 
-  // Parse history URLs into GeneratedImage objects
   useEffect(() => {
     if (historyUrls.length > 0) {
       const historyImages: GeneratedImage[] = historyUrls.map((url, i) => {
@@ -197,7 +191,6 @@ export function SyntheticImageGenerationDemo({
     }
   }, [historyUrls])
 
-  // Handle Escape key for modal
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -212,7 +205,6 @@ export function SyntheticImageGenerationDemo({
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [selectedImage])
 
-  // Handle image upload
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
@@ -349,7 +341,6 @@ export function SyntheticImageGenerationDemo({
   return (
     <>
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-10">
-        {/* Left Panel — Configuration */}
         <section className="flex flex-col space-y-6 lg:col-span-3">
           <div className="bg-card border-border text-card-foreground h-full rounded-2xl border p-6 shadow-xl">
             <div className="mb-6 flex items-center gap-2">
@@ -360,7 +351,6 @@ export function SyntheticImageGenerationDemo({
             </div>
 
             <div className="space-y-5">
-              {/* Image Upload Area */}
               <div>
                 <label
                   htmlFor="image-upload"
@@ -424,7 +414,6 @@ export function SyntheticImageGenerationDemo({
                 />
               </div>
 
-              {/* Type Selection */}
               <div>
                 <span className="text-muted-foreground mb-2 block text-xs font-bold uppercase">
                   Generation Type
@@ -487,7 +476,6 @@ export function SyntheticImageGenerationDemo({
                 </div>
               </div>
 
-              {/* Conditional Prompt Field */}
               {genType === GenerationType.CUSTOM && (
                 <div className="animate-in slide-in-from-top-2 fade-in space-y-4 duration-300">
                   <div>
@@ -526,7 +514,6 @@ export function SyntheticImageGenerationDemo({
                 </div>
               )}
 
-              {/* Count Slider */}
               <div>
                 <div className="mb-2 flex items-center justify-between">
                   <label
@@ -550,7 +537,6 @@ export function SyntheticImageGenerationDemo({
                 />
               </div>
 
-              {/* Generate Button */}
               <button
                 disabled={!image || isGenerating || projects.length === 0}
                 onClick={handleGenerate}
@@ -576,7 +562,6 @@ export function SyntheticImageGenerationDemo({
           </div>
         </section>
 
-        {/* Right Panel — Results */}
         <section className="flex flex-col space-y-6 lg:col-span-7">
           <div className="bg-card border-border text-card-foreground h-full min-h-[500px] rounded-2xl border p-6 shadow-xl">
             {projects.length === 0 ? (
@@ -657,7 +642,6 @@ export function SyntheticImageGenerationDemo({
         </section>
       </div>
 
-      {/* Image Preview Modal */}
       {selectedImage && (
         <ImagePreviewModal
           image={selectedImage}
@@ -665,7 +649,6 @@ export function SyntheticImageGenerationDemo({
         />
       )}
 
-      {/* Processing Dialog */}
       {processingImageId && (
         <div className="animate-in fade-in fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm duration-200">
           <div className="bg-card border-border mx-4 flex w-full max-w-sm flex-col items-center gap-6 rounded-2xl border p-8 shadow-2xl">
@@ -758,7 +741,6 @@ function ProjectHeader({
             <h2 className="text-lg font-semibold">Generated Dataset Assets</h2>
           </div>
 
-          {/* Project Dropdown */}
           <div className="relative" ref={projectDropdownRef}>
             <button
               onClick={() => setIsProjectDropdownOpen(!isProjectDropdownOpen)}

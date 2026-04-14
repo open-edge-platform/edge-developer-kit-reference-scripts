@@ -13,20 +13,10 @@ import { useQuickStart } from '@/services/wake-word-detection/hooks/use-quick-st
 import type { ServiceParamGroup } from '../components/demo-config-sheet'
 
 interface UseWakeWordTriggerOptions {
-  /** Called once when a wake word is detected */
   onWakeWord: (event: DetectionEvent) => void
-  /** Minimum score to accept a detection (default: 0.5) */
   threshold?: number
 }
 
-/**
- * Reusable hook that monitors the wake-word-detection service and fires a
- * callback when a wake word is detected. Automatically starts detection
- * when the service is online and the feature is enabled.
- *
- * Returns a `ServiceParamGroup` for the configure sheet so any sample can
- * include wake-word settings in its sidebar.
- */
 export function useWakeWordTrigger({
   onWakeWord,
   threshold = 0.5,

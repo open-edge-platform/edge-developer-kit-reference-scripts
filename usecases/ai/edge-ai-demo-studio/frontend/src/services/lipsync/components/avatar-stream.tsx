@@ -49,7 +49,6 @@ export function AvatarStream({
 }: AvatarStreamProps) {
   return (
     <Card className="gap-0 overflow-hidden py-0">
-      {/* ── Card header ─────────────────────────────────────────── */}
       <CardHeader className="border-b px-4 py-3">
         <div className="flex items-center gap-2.5">
           <div
@@ -106,7 +105,6 @@ export function AvatarStream({
         </CardAction>
       </CardHeader>
 
-      {/* ── Video viewport ──────────────────────────────────────── */}
       <CardContent className="relative p-0">
         <div
           className={cn(
@@ -114,7 +112,6 @@ export function AvatarStream({
             isConnected ? 'bg-black' : 'bg-muted/30',
           )}
         >
-          {/* Live video */}
           <div
             className={cn('h-full w-full', isConnected ? 'block' : 'hidden')}
           >
@@ -127,7 +124,6 @@ export function AvatarStream({
             />
           </div>
 
-          {/* Disconnected placeholder */}
           {!isConnected && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 px-6 text-center">
               <div className="bg-muted/60 flex h-16 w-16 items-center justify-center rounded-2xl">
@@ -145,7 +141,6 @@ export function AvatarStream({
             </div>
           )}
 
-          {/* ── Status overlays (bottom-left) ──────────────────── */}
           {isConnected && (statusMessage || isSpeaking) && (
             <div className="pointer-events-none absolute bottom-3 left-3 flex items-center gap-2">
               {statusMessage && (

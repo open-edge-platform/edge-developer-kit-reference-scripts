@@ -7,6 +7,7 @@ import { Loader2, Mic, MicOff, Square, Upload } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { getMicErrorMessage } from '@/lib/media-utils'
 import { cn } from '@/lib/utils'
 import { DemoParameterSidebar } from '@/services/common/demo/components/demo-parameter-sidebar'
 import type { Service } from '@/services/types'
@@ -21,19 +22,6 @@ const PROCESSING_ANIM_DURATIONS = [
   0.4, 0.5, 0.3, 0.6, 0.4, 0.5, 0.3, 0.6, 0.4, 0.5, 0.3, 0.6, 0.4, 0.5, 0.3,
   0.6, 0.4, 0.5, 0.3, 0.6, 0.4, 0.5, 0.3, 0.4,
 ]
-
-function getMicErrorMessage(error: unknown): string {
-  if (error instanceof DOMException) {
-    if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError')
-      return 'No microphone found. Please connect a microphone and try again.'
-    if (
-      error.name === 'NotAllowedError' ||
-      error.name === 'PermissionDeniedError'
-    )
-      return 'Microphone access denied. Please allow microphone permissions.'
-  }
-  return 'Failed to access microphone.'
-}
 
 export function SpeechToTextDemo(_props: { service: Service }) {
   const [isRecording, setIsRecording] = useState(false)
@@ -169,7 +157,6 @@ export function SpeechToTextDemo(_props: { service: Service }) {
     <div className="flex flex-col gap-6 xl:flex-row">
       <div className="min-w-0 flex-1 space-y-6">
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          {/* Recording Area */}
           <div className="space-y-3">
             <p className="text-foreground text-sm font-medium">Audio Input</p>
             <div className="border-border bg-muted/20 flex flex-col items-center justify-center rounded-xl border p-8">
@@ -274,7 +261,6 @@ export function SpeechToTextDemo(_props: { service: Service }) {
             </div>
           </div>
 
-          {/* Transcription Output */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <p className="text-foreground text-sm font-medium">
@@ -318,7 +304,6 @@ export function SpeechToTextDemo(_props: { service: Service }) {
         </div>
       </div>
 
-      {/* Sidebar */}
       <div className="shrink-0 space-y-4 xl:w-72">
         <DemoParameterSidebar params={params} />
       </div>

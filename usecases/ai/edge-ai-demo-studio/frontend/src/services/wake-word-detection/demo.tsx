@@ -337,33 +337,25 @@ function WebhookSubscribers({
   )
 }
 
-/* ------------------------------------------------------------------ */
-/*  Main Demo                                                         */
-/* ------------------------------------------------------------------ */
-
 export function WakeWordDetectionDemo(_props: { service: Service }) {
   const queryClient = useQueryClient()
 
-  // Queries
   const healthQuery = useWakeWordHealth(true)
   const subscribersQuery = useWakeWordSubscribers(true)
   const devicesQuery = useWakeWordDevices(true)
   const modelsQuery = useWakeWordModels(true)
 
-  // Mutations
   const subscribeMutation = useSubscribeWebhook()
   const unsubscribeMutation = useUnsubscribeWebhook()
   const toggleMutation = useToggleDetection()
   const quickStartMutation = useQuickStart()
 
-  // Derived state
   const health = healthQuery.data ?? null
   const isDetecting = health?.detection_active ?? false
   const loadedModels = modelsQuery.data?.loadedModels ?? health?.models ?? []
   const subscribers = subscribersQuery.data ?? []
   const devices = devicesQuery.data?.devices ?? []
 
-  // Params hook
   const refreshDevices = () => {
     queryClient.invalidateQueries({
       queryKey: ['wake-word-detection', 'devices'],
@@ -374,15 +366,12 @@ export function WakeWordDetectionDemo(_props: { service: Service }) {
     isRefreshingDevices: devicesQuery.isFetching,
   })
 
-  // Detection events
   const { events, latestEvent, clearEvents, resetSince } =
     useDetectionEvents(isDetecting)
 
-  // Real-time audio level from the worker
   const { level: audioLevel } = useAudioLevel(isDetecting)
   const hasAudio = audioLevel > 0.01
 
-  // Flash animation on detection
   const lastEventIdRef = useRef<string | null>(null)
   const [detectionFlash, setDetectionFlash] = useState(false)
   useEffect(() => {
@@ -398,7 +387,6 @@ export function WakeWordDetectionDemo(_props: { service: Service }) {
     }
   }, [latestEvent])
 
-  // Stop detection when navigating away from the page
   const isDetectingRef = useRef(isDetecting)
   useEffect(() => {
     isDetectingRef.current = isDetecting
@@ -462,9 +450,7 @@ export function WakeWordDetectionDemo(_props: { service: Service }) {
       )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
-        {/* Left column — Detection Control + Events */}
         <div className="flex flex-col gap-6">
-          {/* Detection Control */}
           <div className="border-border bg-card flex flex-[7] flex-col rounded-xl border p-6">
             <div className="flex items-center justify-between">
               <p className="text-foreground flex items-center gap-2 text-sm font-medium">
@@ -540,7 +526,6 @@ export function WakeWordDetectionDemo(_props: { service: Service }) {
             </div>
           </div>
 
-          {/* Detection Events */}
           <div className="border-border bg-card flex flex-[3] flex-col rounded-xl border p-6">
             <div className="mb-4 flex items-center justify-between">
               <p className="text-foreground flex items-center gap-2 text-sm font-medium">
@@ -589,7 +574,6 @@ export function WakeWordDetectionDemo(_props: { service: Service }) {
           </div>
         </div>
 
-        {/* Right column — Parameters */}
         <DemoParameterSidebar params={params}>
           <WebhookSubscribers
             subscribers={subscribers}

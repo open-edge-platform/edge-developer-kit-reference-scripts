@@ -6,7 +6,7 @@
 import { Settings2 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Separator } from '@/components/ui/separator'
-import { ParamRenderer } from '@/samples/common/components/param-renderer'
+import { ParamRenderer } from '@/components/common/param-renderer'
 import type { DemoParam } from '@/types/demo-params'
 
 interface DemoParameterSidebarProps {

@@ -6,6 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import { logger } from '@/lib/logger'
+import { metaMap } from '@/services/_generated/meta'
 import { getServicesPortMap } from '@/services/config-registry'
 
 const execPromise = promisify(exec)
@@ -26,11 +27,7 @@ interface PortCheckResult {
   belongsToProject: boolean
 }
 
-/**
- * Get the project root directory
- */
 function getProjectRoot(): string {
-  // Navigate up from frontend/src/lib to project root
   return path.resolve(
     __dirname,
     process.env.NODE_ENV !== 'production'
@@ -39,10 +36,6 @@ function getProjectRoot(): string {
   )
 }
 
-/**
- * Allowed process identifiers for this project
- * This is an explicit allowlist of processes that belong to this project
- */
 const ALLOWED_PROCESS_IDENTIFIERS = {
   executableNames: [
     'python',
@@ -56,22 +49,14 @@ const ALLOWED_PROCESS_IDENTIFIERS = {
   frameworkMarkers: ['fastapi'],
 } as const
 
-/**
- * Normalize path separators for cross-platform comparison
- */
 function normalizePath(filePath: string): string {
   return filePath.replace(/\\/g, '/').toLowerCase()
 }
 
-/**
- * Check if a string contains a whole word match (case-insensitive)
- * Uses a safe approach without dynamic regex construction from untrusted input
- */
 function containsWholeWord(haystack: string, needle: string): boolean {
   const haystackLower = haystack.toLowerCase()
   const needleLower = needle.toLowerCase()
 
-  // Find all occurrences of the needle
   let index = haystackLower.indexOf(needleLower)
 
   while (index !== -1) {
@@ -81,7 +66,6 @@ function containsWholeWord(haystack: string, needle: string): boolean {
         ? haystack[index + needle.length]
         : ' '
 
-    // Check if it's a word boundary (not alphanumeric or underscore)
     const isWordBoundaryBefore = !/[a-zA-Z0-9_]/.test(beforeChar)
     const isWordBoundaryAfter = !/[a-zA-Z0-9_]/.test(afterChar)
 
@@ -89,17 +73,13 @@ function containsWholeWord(haystack: string, needle: string): boolean {
       return true
     }
 
-    // Search for next occurrence
     index = haystackLower.indexOf(needleLower, index + 1)
   }
 
   return false
 }
 
-/**
- * Check if a process belongs to this project based on its command line
- * Uses an explicit allowlist approach for security
- */
+// Checks if a process belongs to this project via allowlist matching
 function belongsToProject(commandLine: string | undefined): boolean {
   if (!commandLine) return false
 
@@ -126,7 +106,6 @@ function belongsToProject(commandLine: string | undefined): boolean {
     return false
   }
 
-  // Check 3: Verify it's in the workers directory or uses allowed frameworks
   const workersPath = path.join(projectRoot, 'workers')
   const workersPathNormalized = normalizePath(workersPath)
 
@@ -140,18 +119,13 @@ function belongsToProject(commandLine: string | undefined): boolean {
     (marker) => containsWholeWord(commandLine, marker),
   )
 
-  // Must be in workers directory OR use allowed scripts/frameworks
   if (!inWorkersDirectory && !hasAllowedScript && !hasAllowedFramework) {
     return false
   }
 
-  // All security checks passed
   return true
 }
 
-/**
- * Get process information for a specific port on Windows
- */
 async function getPortInfoWindows(port: number): Promise<PortInfo | null> {
   try {
     // Use netstat to find the PID
@@ -161,14 +135,13 @@ async function getPortInfoWindows(port: number): Promise<PortInfo | null> {
 
     if (!stdout.trim()) return null
 
-    // Parse netstat output to get PID
     const lines = stdout.trim().split('\n')
     const pidMatch = lines[0].match(/\s+(\d+)\s*$/)
     if (!pidMatch) return null
 
     const pid = parseInt(pidMatch[1], 10)
 
-    // Get process name and command line using WMIC
+    // Get process details using WMIC
     try {
       const { stdout: wmicOut } = await execPromise(
         `wmic process where ProcessId=${pid} get Name,CommandLine,ParentProcessId /format:list`,
@@ -205,9 +178,6 @@ async function getPortInfoWindows(port: number): Promise<PortInfo | null> {
   }
 }
 
-/**
- * Get process information for a specific port on Unix/Linux/Mac
- */
 async function getPortInfoUnix(port: number): Promise<PortInfo | null> {
   try {
     // Use lsof to find the process
@@ -236,14 +206,10 @@ async function getPortInfoUnix(port: number): Promise<PortInfo | null> {
       commandLine,
     }
   } catch {
-    // Exit code 1 means no process is listening - this is expected, not an error
     return null
   }
 }
 
-/**
- * Check if a specific port is in use and get process information
- */
 async function checkPort(port: number): Promise<PortCheckResult> {
   const processInfo = isWindows
     ? await getPortInfoWindows(port)
@@ -265,18 +231,29 @@ async function checkPort(port: number): Promise<PortCheckResult> {
 }
 
 /**
- * Check all ports defined in ALLOWED_PORTS
+ * Collect all reserved ports from services and samples.
  */
+function getReservedPorts(): number[] {
+  const ports: number[] = []
+  for (const service of Object.values(metaMap)) {
+    for (const port of service.reservedPorts ?? []) {
+      ports.push(port)
+    }
+  }
+  return ports
+}
+
 async function checkAllPorts(): Promise<PortCheckResult[]> {
+  const allPorts = new Set([
+    ...Object.values(getServicesPortMap()),
+    ...getReservedPorts(),
+  ])
   const results = await Promise.all(
-    Object.values(getServicesPortMap()).map((port) => checkPort(port)),
+    [...allPorts].map((port) => checkPort(port)),
   )
   return results
 }
 
-/**
- * Kill a process by PID
- */
 async function killProcess(pid: number): Promise<boolean> {
   try {
     if (isWindows) {
@@ -291,9 +268,6 @@ async function killProcess(pid: number): Promise<boolean> {
   }
 }
 
-/**
- * Get the parent process ID of a given PID
- */
 async function getParentPid(pid: number): Promise<number | null> {
   try {
     if (isWindows) {
@@ -312,9 +286,6 @@ async function getParentPid(pid: number): Promise<number | null> {
   }
 }
 
-/**
- * Check if a process is a descendant of another process
- */
 async function isDescendant(
   pid: number,
   ancestorPid: number,
@@ -330,7 +301,6 @@ async function isDescendant(
   while (nextPpid && depth < MAX_DEPTH) {
     if (nextPpid === ancestorPid) return true
 
-    // Prepare for next iteration
     currentPid = nextPpid
     nextPpid = await getParentPid(currentPid)
     depth++
@@ -339,9 +309,6 @@ async function isDescendant(
   return false
 }
 
-/**
- * Kill all project-related processes occupying the required ports
- */
 async function killProjectProcessesOnPorts(): Promise<{
   killed: number[]
   failed: number[]
@@ -352,7 +319,6 @@ async function killProjectProcessesOnPorts(): Promise<{
 
   for (const result of portResults) {
     if (result.inUse && result.belongsToProject && result.processInfo) {
-      // Check if the process was spawned by the current process (or its descendants)
       const isSpawnedByUs = await isDescendant(
         result.processInfo.pid,
         process.pid,
@@ -381,9 +347,6 @@ async function killProjectProcessesOnPorts(): Promise<{
   return { killed, failed }
 }
 
-/**
- * Check ports and prompt user if non-project processes are occupying them
- */
 export async function checkAndHandlePortConflicts(): Promise<{
   ready: boolean
   conflicts: PortCheckResult[]
@@ -391,7 +354,6 @@ export async function checkAndHandlePortConflicts(): Promise<{
 }> {
   logger.log('Checking port availability...')
 
-  // Check all ports
   const portResults = await checkAllPorts()
   const occupiedPorts = portResults.filter((r) => r.inUse)
 
@@ -400,10 +362,8 @@ export async function checkAndHandlePortConflicts(): Promise<{
     return { ready: true, conflicts: [], killedPorts: [] }
   }
 
-  // Separate project and non-project processes
   const externalProcesses = occupiedPorts.filter((r) => !r.belongsToProject)
 
-  // Kill project processes automatically
   const { killed, failed } = await killProjectProcessesOnPorts()
 
   if (failed.length > 0) {

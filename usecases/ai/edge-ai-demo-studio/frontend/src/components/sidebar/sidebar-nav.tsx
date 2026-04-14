@@ -46,7 +46,6 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void } = {}) {
     >
       <div className="sidebar-brand-stripe absolute top-0 bottom-0 left-0 w-[3px] opacity-60" />
 
-      {/* Header */}
       <div className="border-sidebar-border flex h-16 items-center gap-3 border-b px-4">
         <Image
           src={'/logo-classicblue-white.svg'}
@@ -65,7 +64,6 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void } = {}) {
         )}
       </div>
 
-      {/* Navigation */}
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
         <div className={cn('mb-3 px-2', collapsed && 'text-center')}>
           {!collapsed && (

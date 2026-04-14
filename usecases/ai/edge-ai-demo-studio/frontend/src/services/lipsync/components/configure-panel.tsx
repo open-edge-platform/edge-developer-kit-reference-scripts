@@ -198,7 +198,6 @@ export function LipsyncConfigurePanel({ service }: LipsyncConfigurePanelProps) {
       open={open}
       onOpenChange={handleOpenChange}
     >
-      {/* Model Source */}
       <div className="space-y-3 px-2">
         <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
           Model
@@ -305,7 +304,6 @@ export function LipsyncConfigurePanel({ service }: LipsyncConfigurePanelProps) {
 
       <Separator />
 
-      {/* Device Selection */}
       <div className="space-y-3 px-2">
         <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
           Accelerator
@@ -355,7 +353,6 @@ export function LipsyncConfigurePanel({ service }: LipsyncConfigurePanelProps) {
 
       <Separator />
 
-      {/* ICE Server Configuration */}
       <div className="space-y-3 px-2">
         <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
           WebRTC
@@ -404,7 +401,6 @@ export function LipsyncConfigurePanel({ service }: LipsyncConfigurePanelProps) {
 
       <Separator />
 
-      {/* Clear Model Cache */}
       <ClearModelCacheSection service={service} />
     </ServiceConfigurePanel>
   )

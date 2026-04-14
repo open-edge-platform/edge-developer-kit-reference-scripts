@@ -10,6 +10,7 @@ import { getLanguagesForModel, getVoicesForModel } from '../config'
 export const TTS_DEFAULTS = {
   speed: 1.0,
   format: 'wav',
+  volume: 1.0,
 }
 
 export const TTS_FORMAT_OPTIONS = [
@@ -23,6 +24,7 @@ export interface TtsParamValues {
   voice: string
   speed: number
   format: string
+  volume: number
 }
 
 export function useTtsParams(
@@ -39,6 +41,7 @@ export function useTtsParams(
   const [voice, setVoice] = useState(() => allVoices[0]?.id ?? '')
   const [speed, setSpeed] = useState(TTS_DEFAULTS.speed)
   const [format, setFormat] = useState(TTS_DEFAULTS.format)
+  const [volume, setVolume] = useState(TTS_DEFAULTS.volume)
 
   // Reset language & voice when model changes
   const [prevModel, setPrevModel] = useState(model)
@@ -68,11 +71,14 @@ export function useTtsParams(
     return voiceOptions[0]?.value ?? ''
   }, [voiceOptions, voice])
 
+  const isKokoro = model === 'kokoro'
+
   const values: TtsParamValues = {
     language,
     voice: effectiveVoice,
     speed,
     format,
+    volume: isKokoro ? volume : TTS_DEFAULTS.volume,
   }
 
   const selectedVoiceNotCached =
@@ -114,6 +120,20 @@ export function useTtsParams(
       step: 0.25,
       onChange: setSpeed,
     },
+    ...(isKokoro
+      ? [
+          {
+            type: 'slider' as const,
+            id: 'volume',
+            label: 'Volume',
+            value: volume,
+            min: 0.0,
+            max: 5.0,
+            step: 0.1,
+            onChange: setVolume,
+          },
+        ]
+      : []),
     {
       type: 'select',
       id: 'format',

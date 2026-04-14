@@ -44,6 +44,7 @@ export function ServiceActionButton({
 
   const handleClick = () => {
     if (pending) return
+
     if (liveStatus === 'online' || liveStatus === 'starting') {
       stopService(service.id)
     } else if (liveStatus === 'error') {

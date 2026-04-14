@@ -15,14 +15,12 @@ export interface LogEntry {
   source: string
 }
 
-/** Map the `type` field from file-based logs to a LogLevel. */
 function mapTypeToLevel(type: string): LogLevel {
   if (type === 'error') return 'ERROR'
   if (type === 'info') return 'INFO'
-  return 'INFO' // "out" and anything else → INFO
+  return 'INFO'
 }
 
-/** Map the `level` string from multiserve API logs to a LogLevel. */
 function mapApiLevel(level: string | undefined): LogLevel {
   if (!level) return 'INFO'
   const upper = level.toUpperCase()
@@ -32,7 +30,6 @@ function mapApiLevel(level: string | undefined): LogLevel {
 
 export type LogFilter = 'ALL' | 'INFO' | 'ERROR'
 
-// ─── Pagination state per source ──────────────────────────────────
 interface PaginationState {
   offset: number
   timestamp: string | null
@@ -103,13 +100,11 @@ export function useLog({
 
         const data: ApiLogResponse = await res.json()
 
-        // Detect log rotation: offset went backwards → file was reset on restart
         if (pagination?.offset && data.offset < pagination.offset) {
           accumulatedRef.current = []
           paginationRef.current.clear()
         }
 
-        // Persist pagination cursor for next poll
         paginationRef.current.set(key, {
           offset: data.offset,
           timestamp: data.timestamp,
@@ -128,7 +123,6 @@ export function useLog({
     [sourceKey],
   )
 
-  // ── Fetch API-based ("api") logs through the service proxy ────
   const fetchApiSource = useCallback(
     async (source: LogSource): Promise<LogEntry[]> => {
       if (logSessionRef.current === 'previous') return []
@@ -171,7 +165,6 @@ export function useLog({
     [serviceName, sourceKey],
   )
 
-  // ── Single fetch across all sources ───────────────────────────
   const fetchAllSources = useCallback(async (): Promise<LogEntry[]> => {
     const results = await Promise.allSettled(
       sources.map((src) =>
@@ -186,7 +179,6 @@ export function useLog({
       }
     }
 
-    // Sort merged entries by timestamp (parse to Date for reliable ordering)
     combined.sort(
       (a, b) =>
         new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
@@ -196,7 +188,6 @@ export function useLog({
 
   const currentKey = `${serviceName}:${logSession}:${clearCounter}`
 
-  // ── Use React Query for polling & accumulation ────────────────
   const { data: logs = [], refetch } = useQuery<LogEntry[]>({
     queryKey: [
       'service-logs',
@@ -206,7 +197,6 @@ export function useLog({
       clearCounter,
     ],
     queryFn: async () => {
-      // Reset accumulation when the key changes (session switch, clear, etc.)
       if (accumulatedKeyRef.current !== currentKey) {
         accumulatedKeyRef.current = currentKey
         accumulatedRef.current = []
@@ -223,20 +213,15 @@ export function useLog({
       }
       return accumulatedRef.current
     },
-    // Only live-poll for the current session while the service is online
     refetchInterval: POLL_INTERVAL,
-    // Always enabled — offline services still have log files on disk
     enabled: true,
   })
 
-  // ── Reset logs when a new service run begins ─────────────────
   const prevStatusRef = useRef(serviceStatus)
   useEffect(() => {
     if (serviceStatus !== prevStatusRef.current) {
       prevStatusRef.current = serviceStatus
 
-      // A transition into 'starting' means a fresh run — clear accumulated
-      // logs and pagination so the viewer starts clean.
       if (serviceStatus === 'starting') {
         accumulatedRef.current = []
         paginationRef.current.clear()

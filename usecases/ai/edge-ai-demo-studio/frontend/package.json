@@ -16,6 +16,7 @@
     "knip": "NODE_OPTIONS='--require tsconfig-paths/register' knip"
   },
   "dependencies": {
+    "@ai-sdk-tool/parser": "^4.1.19",
     "@ai-sdk/mcp": "^1.0.25",
     "@ai-sdk/openai-compatible": "^2.0.35",
     "@ai-sdk/react": "^3.0.118",

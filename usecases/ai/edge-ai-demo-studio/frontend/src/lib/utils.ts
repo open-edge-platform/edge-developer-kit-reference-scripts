@@ -10,6 +10,9 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+/** Get the OS display label */
+export { getOSLabel } from '@/types/common'
+
 export function getDeviceFamily(deviceId: string): Device {
   const base = deviceId.split(/[.:]/)[0].toLowerCase()
   if (ALL_DEVICE_TYPES.includes(base as Device)) {
@@ -25,14 +28,9 @@ export function isDeviceInFamilies(
   return families.includes(getDeviceFamily(deviceId))
 }
 
-/**
- * Extract the first meaningful sentence from a tool description,
- * stripping Args/parameter documentation that follows double newlines.
- */
+// Extracts the first meaningful sentence from a description, stripping Args/parameter blocks
 export function getFirstSentence(text: string): string {
-  // Cut at the first double-newline (often precedes "Args:" blocks)
   const beforeArgs = text.split(/\n\n/)[0].trim()
-  // If still long, take the first sentence (ends with . or : followed by space/end)
   const sentenceMatch = beforeArgs.match(/^(.+?[.!?])(?:\s|$)/)
   return sentenceMatch ? sentenceMatch[1] : beforeArgs
 }

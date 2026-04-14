@@ -39,7 +39,6 @@ export default function DashboardPage() {
 
       {loading ? (
         <>
-          {/* Skeleton metric cards */}
           <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
             {Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="glass-card rounded-xl px-5 py-4">
@@ -48,7 +47,6 @@ export default function DashboardPage() {
               </div>
             ))}
           </div>
-          {/* Skeleton info cards */}
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             {Array.from({ length: 3 }).map((_, i) => (
               <div
@@ -63,7 +61,6 @@ export default function DashboardPage() {
               </div>
             ))}
           </div>
-          {/* Skeleton service cards */}
           <div>
             <Skeleton className="mb-4 h-6 w-36" />
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -150,7 +147,6 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Featured Samples */}
           <div
             className="section-fade"
             style={{ '--stagger': 2 } as React.CSSProperties}

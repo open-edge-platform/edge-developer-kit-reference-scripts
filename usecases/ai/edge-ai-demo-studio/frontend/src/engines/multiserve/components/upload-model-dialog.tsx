@@ -34,8 +34,6 @@ import type { BackendId } from '@/engines/multiserve/types'
 import { validateModelName } from '@/engines/multiserve/validation'
 import { cn } from '@/lib/utils'
 
-// ─── Helpers ──────────────────────────────────────────────────────
-
 function formatFileSize(bytes: number): string {
   if (bytes === 0) return '0 B'
   const units = ['B', 'KB', 'MB', 'GB', 'TB']
@@ -54,8 +52,6 @@ function acceptedMimeTypes(backend: BackendId): string {
     : '.zip,application/zip'
 }
 
-// ─── Props ────────────────────────────────────────────────────────
-
 interface UploadModelDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -72,8 +68,6 @@ interface UploadModelDialogProps {
   isUploadSuccess: boolean
   uploadError: Error | null
 }
-
-// ─── Component ────────────────────────────────────────────────────
 
 export function UploadModelDialog({
   open,
@@ -184,7 +178,6 @@ export function UploadModelDialog({
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Model Name */}
           <div className="space-y-1.5">
             <Label
               htmlFor="upload-model-name"
@@ -213,7 +206,6 @@ export function UploadModelDialog({
             )}
           </div>
 
-          {/* File Dropzone */}
           {!selectedFile && !isUploading && (
             <div className="space-y-1.5">
               <Label className="text-foreground text-xs font-medium">
@@ -262,7 +254,6 @@ export function UploadModelDialog({
             </div>
           )}
 
-          {/* Selected File Preview */}
           {selectedFile && !isUploading && (
             <div className="bg-card flex items-center gap-2 rounded-md border p-2.5">
               <div className="bg-muted/50 flex h-8 w-8 shrink-0 items-center justify-center rounded">
@@ -292,7 +283,6 @@ export function UploadModelDialog({
             </div>
           )}
 
-          {/* Upload Progress */}
           {isUploading && selectedFile && (
             <div className="bg-card space-y-2 rounded-md border p-2.5">
               <div className="flex items-center gap-2">
@@ -315,7 +305,6 @@ export function UploadModelDialog({
             </div>
           )}
 
-          {/* File validation error */}
           {fileError && (
             <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-2.5 dark:border-red-900 dark:bg-red-950">
               <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-600 dark:text-red-400" />
@@ -325,7 +314,6 @@ export function UploadModelDialog({
             </div>
           )}
 
-          {/* Upload error */}
           {uploadError && (
             <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-2.5 dark:border-red-900 dark:bg-red-950">
               <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-600 dark:text-red-400" />
@@ -335,7 +323,6 @@ export function UploadModelDialog({
             </div>
           )}
 
-          {/* Upload success */}
           {isUploadSuccess && (
             <div className="flex items-start gap-2 rounded-md border border-green-200 bg-green-50 p-2.5 dark:border-green-900 dark:bg-green-950">
               <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-green-600 dark:text-green-400" />

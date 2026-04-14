@@ -56,7 +56,6 @@ export async function PATCH(
     return NextResponse.json({ error: 'Service not found' }, { status: 404 })
   }
 
-  // ── Config update (model/device change + restart) ───────────
   if (body.config) {
     const modelUpdate: Record<string, unknown> = {}
     for (const [key, value] of Object.entries(body.config)) {
@@ -113,7 +112,6 @@ export async function PATCH(
     return NextResponse.json(updated)
   }
 
-  // ── Action (start / stop / restart) ─────────────────────────
   const action = body.action as Action
   if (!VALID_ACTIONS.includes(action)) {
     return NextResponse.json(

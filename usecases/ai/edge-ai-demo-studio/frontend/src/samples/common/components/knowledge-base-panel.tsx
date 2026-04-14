@@ -251,7 +251,6 @@ export function KnowledgeBasePanel({
         </div>
       )}
 
-      {/* KB List + Create */}
       <div className="border-border bg-muted/10 space-y-3 rounded-xl border p-4">
         <div className="text-foreground flex items-center gap-2 text-sm font-medium">
           <Database className="text-primary h-4 w-4" />
@@ -328,7 +327,6 @@ export function KnowledgeBasePanel({
         </div>
       </div>
 
-      {/* File Upload + Embedding (only when KB selected) */}
       {selectedKb && (
         <div className="border-border bg-muted/10 space-y-3 rounded-xl border p-4">
           <div className="text-foreground flex items-center gap-2 text-sm font-medium">
@@ -339,7 +337,6 @@ export function KnowledgeBasePanel({
             </Badge>
           </div>
 
-          {/* Upload button */}
           <div>
             <input
               ref={fileInputRef}
@@ -365,7 +362,6 @@ export function KnowledgeBasePanel({
             </Button>
           </div>
 
-          {/* File list */}
           {files.length > 0 && (
             <div className="max-h-[160px] min-h-0 space-y-1 overflow-y-auto pr-0.5">
               {files.map((f: KbFile) => (
@@ -389,7 +385,6 @@ export function KnowledgeBasePanel({
             </div>
           )}
 
-          {/* Embed button */}
           <Button
             onClick={handleCreateEmbeddings}
             disabled={isEmbedding || !embeddingsOnline || files.length === 0}
