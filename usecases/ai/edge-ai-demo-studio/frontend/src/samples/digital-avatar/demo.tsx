@@ -15,15 +15,10 @@ import {
 } from '@/samples/common/hooks'
 import { useTextGenChat } from '@/services/text-generation/hooks'
 import { AvatarStream } from '@/services/lipsync/components/avatar-stream'
-import {
-  buildIceConfig,
-  useLipsyncChat,
-  useLipsyncOffer,
-} from '@/services/lipsync/hooks'
+import { buildIceConfig, useLipsyncOffer } from '@/services/lipsync/hooks'
 import type { Sample } from '../types'
 import { ChatPanel } from './components/chat-panel'
 import { SampleParamsSlot } from '../common/sample-params-slot'
-import { extractTextContent } from '@/services/text-generation/components/chat-helpers'
 
 export function DigitalAvatarDemo({ sample }: { sample: Sample }) {
   const textGen = useTextGenerationParams()
@@ -159,7 +154,35 @@ export function DigitalAvatarDemo({ sample }: { sample: Sample }) {
     return () => window.removeEventListener('beforeunload', disconnect)
   }, [sessionId, disconnect])
 
-  const chat = useTextGenChat({ textGenValues: textGen.values, extraBody })
+  // ── Chat (text-generation) with server-side sentence splitting ─
+  const ttsUrl = ttsService
+    ? `http://localhost:${ttsService.port}/v1`
+    : undefined
+
+  const lipsyncExtraBody = sessionId
+    ? {
+        lipsync: {
+          sessionId,
+          voice: tts.values.voice,
+          speed: String(tts.values.speed),
+          ttsUrl,
+        },
+      }
+    : {}
+
+  const chat = useTextGenChat({
+    textGenValues: textGen.values,
+    extraBody: { ...extraBody, ...lipsyncExtraBody },
+  })
+
+  // Track speaking state based on chat status
+  useEffect(() => {
+    if (chat.status === 'streaming' && sessionId) {
+      setIsSpeaking(true)
+    } else if (chat.status === 'ready') {
+      setIsSpeaking(false)
+    }
+  }, [chat.status, sessionId])
 
   const { wakeWord } = useWakeWordStt({
     onTranscription: useCallback(
@@ -170,47 +193,6 @@ export function DigitalAvatarDemo({ sample }: { sample: Sample }) {
       [],
     ),
   })
-
-  const lipsyncChatMutation = useLipsyncChat()
-  const prevMessageCountRef = useRef(0)
-
-  useEffect(() => {
-    if (chat.status !== 'ready') return
-    if (!sessionId) return
-    if (chat.messages.length <= prevMessageCountRef.current) {
-      prevMessageCountRef.current = chat.messages.length
-      return
-    }
-    prevMessageCountRef.current = chat.messages.length
-
-    const lastMsg = chat.messages[chat.messages.length - 1]
-    if (!lastMsg || lastMsg.role !== 'assistant') return
-
-    const text = extractTextContent(lastMsg)
-
-    if (!text.trim()) return
-
-    const ttsUrl = ttsService
-      ? `http://localhost:${ttsService.port}/v1`
-      : undefined
-
-    setIsSpeaking(true)
-    lipsyncChatMutation.mutate(
-      {
-        session_id: sessionId,
-        chat_type: 'echo',
-        text: text.trim(),
-        voice: tts.values.voice,
-        speed: String(tts.values.speed),
-        tts_url: ttsUrl,
-      },
-      {
-        onSettled: () => setIsSpeaking(false),
-      },
-    )
-    // Only trigger when status transitions to 'ready' (response complete)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chat.status, sessionId])
 
   return (
     <div className="space-y-5">
