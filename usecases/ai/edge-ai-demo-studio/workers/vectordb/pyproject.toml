@@ -23,7 +23,7 @@ dependencies = [
     "langchain-community>=0.3.31",
     # Document Processing
     "unstructured>=0.18.3",
-    "pypdf>=6.6.2",
+    "pypdf>=6.10.1",
     "filelock==3.20.3",
     # Database and Modeling
     "sqlmodel>=0.0.24",
