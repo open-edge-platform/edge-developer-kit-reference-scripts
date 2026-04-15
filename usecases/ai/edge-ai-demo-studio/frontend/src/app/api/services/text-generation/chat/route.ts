@@ -17,6 +17,7 @@ import { getPayload } from 'payload'
 import { engines } from '@/engines/registry'
 import { logger } from '@/lib/logger'
 import { buildMcpTools } from '@/lib/mcp-tools'
+import { SentenceProcessor } from '@/lib/sentence-processor'
 import type { Service } from '@/payload-types'
 import { metaMap } from '@/services/_generated/meta'
 import { hermesToolMiddleware } from '@ai-sdk-tool/parser'
@@ -129,6 +130,39 @@ async function getWorkloadModel(
   )
 }
 
+interface LipsyncConfig {
+  sessionId: string
+  voice: string
+  speed: string
+}
+
+function dispatchSentenceToLipsync(
+  sentence: string,
+  lipsync: LipsyncConfig,
+): void {
+  const lipsyncMeta = metaMap['lipsync']
+  if (!lipsyncMeta) return
+
+  // Derive the TTS URL server-side from trusted config to prevent SSRF.
+  const ttsMeta = metaMap['text-to-speech']
+  const ttsUrl = ttsMeta ? `http://localhost:${ttsMeta.port}/v1` : undefined
+
+  fetch(`http://localhost:${lipsyncMeta.port}/v1/lipsync/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      text: sentence,
+      session_id: lipsync.sessionId,
+      chat_type: 'echo',
+      voice: lipsync.voice,
+      speed: lipsync.speed,
+      ...(ttsUrl ? { tts_url: ttsUrl } : {}),
+    }),
+  }).catch((err) => {
+    logger.error('Failed to dispatch sentence to lipsync:', err)
+  })
+}
+
 export async function POST(req: Request) {
   let body: {
     messages: UIMessage[]
@@ -141,6 +175,7 @@ export async function POST(req: Request) {
     knowledgeBaseId?: number
     disableReasoning?: boolean
     mcpServerIds?: number[]
+    lipsync?: LipsyncConfig
   }
 
   try {
@@ -160,8 +195,10 @@ export async function POST(req: Request) {
     knowledgeBaseId,
     disableReasoning,
     mcpServerIds,
+    lipsync,
   } = body
 
+  // Get available model
   let model: string
   const textGenerationMeta = metaMap['text-generation']
   try {
@@ -224,6 +261,9 @@ export async function POST(req: Request) {
         cleanupImageMessage(messages),
       )
 
+      // Initialize sentence processor for lipsync sentence-by-sentence streaming
+      const sentenceProcessor = lipsync ? new SentenceProcessor() : null
+
       const result = streamText({
         model: wrappedModel,
         system: systemPrompt,
@@ -235,7 +275,21 @@ export async function POST(req: Request) {
         ...(mcpTools && Object.keys(mcpTools.tools).length > 0
           ? { tools: mcpTools.tools, stopWhen: stepCountIs(5) }
           : {}),
+        onChunk({ chunk }) {
+          if (chunk.type === 'text-delta' && sentenceProcessor && lipsync) {
+            const sentences = sentenceProcessor.addTextChunk(chunk.text)
+            for (const sentence of sentences) {
+              dispatchSentenceToLipsync(sentence, lipsync)
+            }
+          }
+        },
         onFinish: async () => {
+          if (sentenceProcessor && lipsync) {
+            const finalSentences = sentenceProcessor.flush()
+            for (const sentence of finalSentences) {
+              dispatchSentenceToLipsync(sentence, lipsync)
+            }
+          }
           await mcpTools?.cleanup()
         },
       })

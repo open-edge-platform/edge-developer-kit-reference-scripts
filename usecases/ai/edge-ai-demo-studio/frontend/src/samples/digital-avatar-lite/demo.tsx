@@ -9,6 +9,7 @@ import { useGetService } from '@/context/service-status-context'
 import {
   useOptionalServiceGroup,
   useRagChatSetup,
+  useSentenceSpeech,
   useTextGenerationParams,
   useTtsParams,
   useWakeWordStt,
@@ -19,7 +20,6 @@ import type { Sample } from '../types'
 import { AvatarSection } from './components/avatar-section'
 import { ChatPanel } from './components/chat-panel'
 import { SampleParamsSlot } from '../common/sample-params-slot'
-import { extractTextContent } from '@/services/text-generation/components/chat-helpers'
 
 function useUpdateAvatarState() {
   return useMutation({
@@ -68,66 +68,114 @@ export function DigitalAvatarLiteDemo({ sample }: { sample: Sample }) {
   })
 
   const synthesizeSpeech = useSynthesizeSpeech()
-  const prevMessageCountRef = useRef(0)
+  const audioQueueRef = useRef<string[]>([])
+  const isPlayingRef = useRef(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const currentUrlRef = useRef<string | null>(null)
+  const processNextRef = useRef<() => void>(() => {})
 
+  const stopSpeaking = useCallback(() => {
+    isPlayingRef.current = false
+    setIsSpeaking(false)
+    updateAvatarState.mutate({ state: 'idle' })
+  }, [updateAvatarState])
+
+  // Keep the processor in a ref so audio callbacks always call the latest version
   useEffect(() => {
-    if (chat.status !== 'ready') return
-    if (!tts.online) return
-    if (chat.messages.length <= prevMessageCountRef.current) {
-      prevMessageCountRef.current = chat.messages.length
-      return
+    processNextRef.current = () => {
+      const nextSentence = audioQueueRef.current.shift()
+      if (!nextSentence) {
+        stopSpeaking()
+        return
+      }
+
+      synthesizeSpeech.mutate(
+        {
+          input: nextSentence,
+          voice: tts.values.voice,
+          speed: tts.values.speed,
+          responseFormat: 'mp3',
+        },
+        {
+          onSuccess: (blob) => {
+            const url = URL.createObjectURL(blob)
+            currentUrlRef.current = url
+            const audio = new Audio(url)
+            audioRef.current = audio
+
+            let handled = false
+            const cleanup = () => {
+              if (handled) return
+              handled = true
+              URL.revokeObjectURL(url)
+              currentUrlRef.current = null
+              audioRef.current = null
+              processNextRef.current()
+            }
+
+            audio.onended = cleanup
+            audio.onerror = cleanup
+
+            audio
+              .play()
+              .then(() => {
+                setIsSpeaking(true)
+                updateAvatarState.mutate({ state: 'talking' })
+              })
+              .catch(cleanup)
+          },
+          onError: () => {
+            processNextRef.current()
+          },
+        },
+      )
     }
-    prevMessageCountRef.current = chat.messages.length
+  }, [
+    synthesizeSpeech,
+    tts.values.voice,
+    tts.values.speed,
+    stopSpeaking,
+    updateAvatarState,
+  ])
 
-    const lastMsg = chat.messages[chat.messages.length - 1]
-    if (!lastMsg || lastMsg.role !== 'assistant') return
+  const onSentence = useCallback((sentence: string) => {
+    audioQueueRef.current.push(sentence)
+    if (!isPlayingRef.current) {
+      isPlayingRef.current = true
+      processNextRef.current()
+    }
+  }, [])
 
-    const text = extractTextContent(lastMsg)
+  const { reset: resetSentenceSpeech } = useSentenceSpeech({
+    messages: chat.messages,
+    status: chat.status,
+    onSentence,
+    enabled: tts.online,
+  })
 
-    if (!text.trim()) return
-
-    setIsSpeaking(true)
-    updateAvatarState.mutate({ state: 'talking' })
-
-    synthesizeSpeech.mutate(
-      {
-        input: text.trim(),
-        voice: tts.values.voice,
-        speed: tts.values.speed,
-        responseFormat: 'mp3',
-      },
-      {
-        onSuccess: (blob) => {
-          const url = URL.createObjectURL(blob)
-          const audio = new Audio(url)
-          audioRef.current = audio
-
-          audio.onended = () => {
-            setIsSpeaking(false)
-            updateAvatarState.mutate({ state: 'idle' })
-            URL.revokeObjectURL(url)
-            audioRef.current = null
-          }
-
-          audio.onerror = () => {
-            setIsSpeaking(false)
-            updateAvatarState.mutate({ state: 'idle' })
-            URL.revokeObjectURL(url)
-            audioRef.current = null
-          }
-
-          audio.play()
-        },
-        onError: () => {
-          setIsSpeaking(false)
-          updateAvatarState.mutate({ state: 'idle' })
-        },
-      },
-    )
-    // Only trigger when status transitions to 'ready' (response complete)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chat.status])
+  const forceStop = useCallback(() => {
+    // Stop current audio and revoke its blob URL
+    if (audioRef.current) {
+      audioRef.current.onended = null
+      audioRef.current.onerror = null
+      audioRef.current.pause()
+      audioRef.current = null
+    }
+    if (currentUrlRef.current) {
+      URL.revokeObjectURL(currentUrlRef.current)
+      currentUrlRef.current = null
+    }
+    // Clear pending queue
+    audioQueueRef.current = []
+    isPlayingRef.current = false
+    // Reset sentence processor
+    resetSentenceSpeech()
+    // Stop LLM streaming if in progress
+    chat.handleStop()
+    // Reset avatar state
+    setIsSpeaking(false)
+    updateAvatarState.mutate({ state: 'idle' })
+  }, [resetSentenceSpeech, chat, updateAvatarState])
 
   // Cleanup audio on unmount
   useEffect(() => {
@@ -135,6 +183,10 @@ export function DigitalAvatarLiteDemo({ sample }: { sample: Sample }) {
       if (audioRef.current) {
         audioRef.current.pause()
         audioRef.current = null
+      }
+      if (currentUrlRef.current) {
+        URL.revokeObjectURL(currentUrlRef.current)
+        currentUrlRef.current = null
       }
     }
   }, [])
@@ -163,10 +215,11 @@ export function DigitalAvatarLiteDemo({ sample }: { sample: Sample }) {
           input={chat.input}
           onInputChange={chat.setInput}
           onSend={chat.handleSend}
-          onStop={chat.handleStop}
+          onStop={forceStop}
           onReset={chat.handleReset}
           sttOnline={stt.enabled}
           isVlm={isMultimodal}
+          isSpeaking={isSpeaking}
           imagePreview={chat.imagePreview}
           onImageSelect={chat.handleImageSelect}
           onImageRemove={chat.handleRemoveImage}

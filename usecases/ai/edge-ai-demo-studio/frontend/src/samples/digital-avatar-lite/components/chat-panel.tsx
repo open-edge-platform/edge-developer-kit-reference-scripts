@@ -20,6 +20,7 @@ interface ChatPanelProps {
   sttOnline?: boolean
   disabled?: boolean
   isVlm?: boolean
+  isSpeaking?: boolean
   imagePreview?: string | null
   onImageSelect?: (e: React.ChangeEvent<HTMLInputElement>) => void
   onImageRemove?: () => void
@@ -36,14 +37,19 @@ export function ChatPanel({
   sttOnline,
   disabled,
   isVlm,
+  isSpeaking,
   imagePreview,
   onImageSelect,
   onImageRemove,
 }: ChatPanelProps) {
+  // Show the stop button while the avatar is speaking, even after LLM finishes
+  const effectiveStatus =
+    isSpeaking && status === 'ready' ? 'streaming' : status
+
   return (
     <VlmChatPanel
       messages={messages}
-      status={status}
+      status={effectiveStatus}
       input={input}
       onInputChange={onInputChange}
       onSend={onSend}
