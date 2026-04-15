@@ -1,7 +1,7 @@
 openvino-dev[onnx,pytorch,tensorflow]==2024.6.0
 opencv-python==4.10.0.84
 ultralytics==8.3.61
-python-multipart==0.0.22
+python-multipart==0.0.26
 numpy<2.0.0
 grpcio==1.69.0
 ovmsclient==2023.1
