@@ -17,7 +17,7 @@ dependencies = [
     # LangChain Ecosystem
     "langchain>=1.0.0",
     "langchain-classic>=1.0.0",
-    "langchain-text-splitters>=0.3.0",
+    "langchain-text-splitters>=1.1.2",
     "langchain-openai>=1.0.0a4",
     "langchain-cohere>=0.5.0",
     "langchain-community>=0.3.31",
