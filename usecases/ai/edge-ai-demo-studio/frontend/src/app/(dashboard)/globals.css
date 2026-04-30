@@ -465,6 +465,13 @@
     transition-duration: 0.01ms;
     scroll-behavior: auto;
   }
+
+  /* Keep essential loading spinners visible even with reduced motion */
+  .animate-spin {
+    animation: spin 1.5s linear infinite;
+    animation-duration: 1.5s;
+    animation-iteration-count: infinite;
+  }
 }
 
 /* Card-lift disabled on touch devices (hover unreliable) */

@@ -156,6 +156,8 @@ export interface Service {
   id: number;
   name: string;
   type:
+    | 'medical-scribe-database'
+    | 'diarization'
     | 'embeddings'
     | 'image-generation'
     | 'lipsync'

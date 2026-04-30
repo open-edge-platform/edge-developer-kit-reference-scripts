@@ -9,6 +9,7 @@ import type {
   EngineId,
   HttpMethod,
   LogSource,
+  ModelSource,
   OS,
   ServiceConfig,
 } from '@/types/common'
@@ -21,6 +22,7 @@ export type {
   LogLevel,
   LogSource,
   ModelOption,
+  ModelSource,
   SelectOption,
   ServiceConfig,
 } from '@/types/common'
@@ -136,7 +138,7 @@ export interface Service extends ServiceMeta {
   currentBackend?: DeviceBackend
   currentModelType?: string
   currentQuant?: string
-  currentSource?: string
+  currentSource?: ModelSource
   metadata?: PayloadService['metadata']
 }
 

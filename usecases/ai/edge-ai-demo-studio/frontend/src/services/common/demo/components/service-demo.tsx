@@ -22,6 +22,7 @@ import {
 import type { Service } from '@/services/types'
 import { hasExecutionMode } from '@/services/types'
 import { cn } from '@/lib/utils'
+import { GatedModelAlert } from './gated-model-alert'
 
 export function ServiceDemo({ service }: { service: Service }) {
   const {
@@ -39,6 +40,14 @@ export function ServiceDemo({ service }: { service: Service }) {
   const selectedService = useGetService(service.id)
   const prereqs = selectedService?.prerequisiteServices ?? []
   const prereqMap = useGetServices(prereqs)
+
+  // Gated model detection — resolve the active model option from config
+  const activeModelName =
+    selectedService?.currentModel ?? service.defaultModel?.name ?? ''
+  const activeSource = selectedService?.currentSource ?? 'huggingface'
+  const activeModel = service.config?.availableModels?.find(
+    (m) => m.value === activeModelName,
+  )
 
   if (!selectedService) return null
 
@@ -86,6 +95,7 @@ export function ServiceDemo({ service }: { service: Service }) {
 
     return (
       <div className="space-y-6">
+        <GatedModelAlert model={activeModel} source={activeSource} />
         <div className="border-border bg-muted/10 flex flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-16 text-center">
           {liveStatus === 'error' ? (
             <>
@@ -195,6 +205,7 @@ export function ServiceDemo({ service }: { service: Service }) {
   // ─── Online — Specialized Demo ─────────────────────────────────
   return (
     <DemoErrorBoundary>
+      <GatedModelAlert model={activeModel} source={activeSource} />
       <DemoComponent service={selectedService} />
     </DemoErrorBoundary>
   )

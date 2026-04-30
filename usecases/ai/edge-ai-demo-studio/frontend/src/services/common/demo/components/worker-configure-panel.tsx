@@ -20,6 +20,7 @@ import { cn } from '@/lib/utils'
 import { useDevicesQuery, resolveDeviceOptions } from '@/hooks/use-devices'
 import { useUpdateServiceConfig } from '@/hooks/use-service-config'
 import {
+  type ModelSource,
   type Service,
   getBackendForModel,
   getDevicesForModel,
@@ -32,6 +33,10 @@ import {
 
 interface WorkerConfigurePanelProps {
   service: Service
+}
+
+function isModelSource(value: string): value is ModelSource {
+  return value === 'huggingface' || value === 'modelscope'
 }
 
 export function WorkerConfigurePanel({ service }: WorkerConfigurePanelProps) {
@@ -51,7 +56,8 @@ export function WorkerConfigurePanel({ service }: WorkerConfigurePanelProps) {
   const [draftModel, setDraftModel] = useState(currentModel)
   const [customModel, setCustomModel] = useState('')
   const [draftDevice, setDraftDevice] = useState(currentDevice)
-  const [draftSource, setDraftSource] = useState('huggingface')
+  const currentSource = service.currentSource ?? 'huggingface'
+  const [draftSource, setDraftSource] = useState(currentSource)
 
   const availableDevices = useMemo(
     () => getDevicesForModel(service.config, draftModel),
@@ -80,9 +86,16 @@ export function WorkerConfigurePanel({ service }: WorkerConfigurePanelProps) {
         isCustom ? (availableModels[0]?.value ?? currentModel) : currentModel,
       )
       setDraftDevice(currentDevice)
+      setDraftSource(currentSource)
       setOpen(newOpen)
     },
-    [currentModel, currentDevice, availableModels, supportsCustomModel],
+    [
+      currentModel,
+      currentDevice,
+      currentSource,
+      availableModels,
+      supportsCustomModel,
+    ],
   )
 
   // Resolve device options: enrich static device values with labels from API
@@ -103,7 +116,8 @@ export function WorkerConfigurePanel({ service }: WorkerConfigurePanelProps) {
   const isDirty =
     open &&
     (resolvedModel !== currentModel ||
-      draftDevice.toLowerCase() !== currentDevice.toLowerCase())
+      draftDevice.toLowerCase() !== currentDevice.toLowerCase() ||
+      draftSource !== currentSource)
 
   const isValid = resolvedModel.length > 0
 
@@ -117,7 +131,14 @@ export function WorkerConfigurePanel({ service }: WorkerConfigurePanelProps) {
       isCustom ? (availableModels[0]?.value ?? currentModel) : currentModel,
     )
     setDraftDevice(currentDevice)
-  }, [currentModel, currentDevice, availableModels, supportsCustomModel])
+    setDraftSource(currentSource)
+  }, [
+    currentModel,
+    currentDevice,
+    currentSource,
+    availableModels,
+    supportsCustomModel,
+  ])
 
   const handleSave = useCallback(() => {
     if (!service.dbId || !isValid) return
@@ -129,7 +150,7 @@ export function WorkerConfigurePanel({ service }: WorkerConfigurePanelProps) {
         config: {
           name: resolvedModel,
           device: selectedDeviceValue,
-          ...(draftSource !== 'huggingface' ? { source: draftSource } : {}),
+          ...(availableSources.length > 0 ? { source: draftSource } : {}),
         },
       },
       { onSuccess: () => setOpen(false) },
@@ -139,6 +160,7 @@ export function WorkerConfigurePanel({ service }: WorkerConfigurePanelProps) {
     service.id,
     resolvedModel,
     selectedDeviceValue,
+    availableSources.length,
     draftSource,
     isValid,
     updateConfig,
@@ -259,7 +281,11 @@ export function WorkerConfigurePanel({ service }: WorkerConfigurePanelProps) {
                     type="button"
                     size="sm"
                     variant={isSelected ? 'default' : 'outline'}
-                    onClick={() => setDraftSource(s.value)}
+                    onClick={() => {
+                      if (isModelSource(s.value)) {
+                        setDraftSource(s.value)
+                      }
+                    }}
                     className={cn(
                       'h-7 px-3 text-xs transition-all',
                       isSelected && 'ring-ring ring-1 ring-offset-0',

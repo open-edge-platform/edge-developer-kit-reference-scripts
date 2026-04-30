@@ -1,0 +1,17 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+[project]
+name = "medical-scribe-database-worker"
+version = "0.1.0"
+description = "Database persistence worker for Medical Scribe"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi[standard]>=0.120.1",
+    "pydantic>=2.7.0",
+    "sqlalchemy>=2.0.44",
+    "uvicorn>=0.35.0",
+]
+
+[tool.uv]
+prerelease = "if-necessary-or-explicit"

@@ -218,19 +218,16 @@ def validate_and_sanitize_model_id(model_id: str) -> str:
     return model_id
 
 
-class OptimumCLI:
-    def run_export(model_name_or_path, output_dir):
-        # Build the command as a list to avoid shell injection
-        command = [
-            "optimum-cli",
-            "export",
-            "openvino",
-            "--trust-remote-code",
-            "--model",
-            model_name_or_path,
-            output_dir,
-        ]
-        subprocess.run(command, check=True)
+def _get_export_model_paths():
+    """Get paths to the export_model.py script and its venv Python."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    thirdparty_dir = os.path.join(script_dir, "thirdparty")
+    if os.name == "nt":
+        python_path = os.path.join(thirdparty_dir, ".venv", "Scripts", "python.exe")
+    else:
+        python_path = os.path.join(thirdparty_dir, ".venv", "bin", "python")
+    export_script = os.path.join(thirdparty_dir, "export_model.py")
+    return python_path, export_script
 
 
 def download_model(model_id: str, model_dir: str, source: str = "huggingface") -> str:
@@ -250,8 +247,24 @@ def download_model(model_id: str, model_dir: str, source: str = "huggingface") -
 
 
 def export_model(model_name_or_path, output_dir):
-    logger.info(f"Downloading model: {model_name_or_path} to {output_dir}")
-    OptimumCLI.run_export(model_name_or_path, output_dir)
+    logger.info(f"Exporting model: {model_name_or_path} to {output_dir}")
+    python_path, export_script = _get_export_model_paths()
+    model_repository_path = os.path.dirname(output_dir)
+    model_name = os.path.basename(output_dir)
+    command = [
+        python_path,
+        export_script,
+        "speech2text",
+        "--source_model",
+        model_name_or_path,
+        "--model_repository_path",
+        model_repository_path,
+        "--model_name",
+        model_name,
+        "--weight-format",
+        "fp32",
+    ]
+    subprocess.run(command, check=True)
 
 
 def verify_device_available(device):
@@ -299,7 +312,7 @@ def ensure_wav(in_path: str, out_wav: str) -> bool:
     # Avoid in-place conversion: if paths overlap, rename the input first
     if os.path.abspath(in_path) == os.path.abspath(out_wav):
         new_in = in_path + ".orig"
-        os.rename(in_path, new_in)
+        os.replace(in_path, new_in)  # os.replace is atomic and overwrites on all platforms (unlike os.rename on Windows)
         in_path = new_in
 
     try:

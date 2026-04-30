@@ -6,6 +6,7 @@ import type { ServiceDocsData } from '../types'
 
 export type DocsFactory = (opts: { host: string }) => ServiceDocsData
 
+import { getDocsData as diarizationDocs } from '../diarization/docs'
 import { getDocsData as embeddingsDocs } from '../embeddings/docs'
 import { getDocsData as imageGenerationDocs } from '../image-generation/docs'
 import { getDocsData as lipsyncDocs } from '../lipsync/docs'
@@ -19,6 +20,7 @@ import { getDocsData as wakeWordDetectionDocs } from '../wake-word-detection/doc
 
 /** Registry of docs factory functions keyed by service ID. */
 export const docsRegistry: Record<string, DocsFactory> = {
+  diarization: diarizationDocs,
   embeddings: embeddingsDocs,
   'image-generation': imageGenerationDocs,
   lipsync: lipsyncDocs,

@@ -27,11 +27,14 @@ export interface SelectOption {
   label: string
 }
 
+export type ModelSource = 'huggingface' | 'modelscope'
+
 export interface ModelOption {
   value: string
   label: string
   availableDevices?: string[]
   backend?: DeviceBackend
+  gated?: ModelSource[]
 }
 
 export type DeviceBackend = 'openvino' | 'pytorch' | 'vulkan' | 'llamacpp'
