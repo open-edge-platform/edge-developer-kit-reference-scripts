@@ -230,6 +230,9 @@ async def transcription(
             os.remove(input_file_path)
         if os.path.exists(file_path):
             os.remove(file_path)
+        orig_path = input_file_path + ".orig"
+        if os.path.exists(orig_path):
+            os.remove(orig_path)
 
     return {"text": text, "status": True}
 
@@ -272,6 +275,14 @@ async def translation(
             status_code=500,
             detail=f"Failed to translate the voice input. Error: {error}",
         )
+    finally:
+        if os.path.exists(input_file_path):
+            os.remove(input_file_path)
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        orig_path = input_file_path + ".orig"
+        if os.path.exists(orig_path):
+            os.remove(orig_path)
 
     return {"text": text, "status": True}
 

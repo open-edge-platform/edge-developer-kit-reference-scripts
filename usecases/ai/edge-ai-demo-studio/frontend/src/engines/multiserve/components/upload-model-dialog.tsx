@@ -10,10 +10,10 @@ import {
   FileArchive,
   Loader2,
   Upload,
-  X,
 } from 'lucide-react'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { FileDropZone } from '@/components/common/file-drop-zone'
 import {
   Dialog,
   DialogClose,
@@ -25,22 +25,8 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
 import type { BackendId } from '@/engines/multiserve/types'
 import { validateModelName } from '@/engines/multiserve/validation'
-import { cn } from '@/lib/utils'
-
-function formatFileSize(bytes: number): string {
-  if (bytes === 0) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(1024))
-  const size = bytes / 1024 ** i
-  return `${size.toFixed(i > 0 ? 1 : 0)} ${units[i]}`
-}
 
 function acceptedExtensions(backend: BackendId): string {
   return backend === 'llamacpp' ? '.gguf' : '.zip'
@@ -81,8 +67,6 @@ export function UploadModelDialog({
 }: UploadModelDialogProps) {
   const [modelName, setModelName] = useState('')
   const [selectedFile, setSelectedFile] = useState<globalThis.File | null>(null)
-  const [isDragging, setIsDragging] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const nameError = useMemo(() => {
     if (!modelName.trim()) return ''
@@ -94,20 +78,19 @@ export function UploadModelDialog({
     return ''
   }, [modelName, backend])
 
-  const fileError = useMemo(() => {
-    if (!selectedFile) return ''
-    const ext = acceptedExtensions(backend)
-    if (!selectedFile.name.toLowerCase().endsWith(ext)) {
-      return `Only ${ext} files are accepted for ${backend}.`
-    }
-    return ''
-  }, [selectedFile, backend])
+  const validateModelFile = useCallback(
+    (file: File) => {
+      const ext = acceptedExtensions(backend)
+      if (!file.name.toLowerCase().endsWith(ext)) {
+        return `Only ${ext} files are accepted for ${backend}.`
+      }
+      return null
+    },
+    [backend],
+  )
 
   const isValid =
-    modelName.trim().length > 0 &&
-    !nameError &&
-    selectedFile !== null &&
-    !fileError
+    modelName.trim().length > 0 && !nameError && selectedFile !== null
 
   const handleUpload = useCallback(() => {
     if (!isValid || !selectedFile) return
@@ -128,34 +111,6 @@ export function UploadModelDialog({
       onOpenChange(nextOpen)
     },
     [isUploading, onOpenChange],
-  )
-
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsDragging(true)
-  }, [])
-
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsDragging(false)
-  }, [])
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsDragging(false)
-    const file = e.dataTransfer.files[0]
-    if (file) setSelectedFile(file)
-  }, [])
-
-  const handleFileChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0]
-      if (file) setSelectedFile(file)
-    },
-    [],
   )
 
   const placeholder =
@@ -206,80 +161,23 @@ export function UploadModelDialog({
             )}
           </div>
 
-          {!selectedFile && !isUploading && (
+          {!isUploading && (
             <div className="space-y-1.5">
               <Label className="text-foreground text-xs font-medium">
                 Model File
               </Label>
-              <div
-                role="button"
-                tabIndex={0}
-                onClick={() => fileInputRef.current?.click()}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault()
-                    fileInputRef.current?.click()
-                  }
-                }}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-                className={cn(
-                  'flex cursor-pointer flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed p-6 transition-colors',
-                  isDragging
-                    ? 'border-primary bg-primary/5'
-                    : 'border-muted-foreground/25 hover:border-muted-foreground/50 hover:bg-muted/20',
-                )}
-              >
-                <div className="bg-muted/50 flex h-10 w-10 items-center justify-center rounded-full">
-                  <Upload className="text-muted-foreground h-4 w-4" />
-                </div>
-                <div className="text-center">
-                  <p className="text-foreground text-xs font-medium">
-                    Drag &amp; drop a file, or click to browse
-                  </p>
-                  <p className="text-muted-foreground mt-1 text-[11px]">
-                    {acceptedExtensions(backend)} files
-                  </p>
-                </div>
-              </div>
-              <input
-                data-testid="upload-model-file"
-                ref={fileInputRef}
-                type="file"
+              <FileDropZone
+                file={selectedFile}
+                onFileChange={setSelectedFile}
                 accept={acceptedMimeTypes(backend)}
-                className="hidden"
-                onChange={handleFileChange}
+                validate={validateModelFile}
+                compact
+                label="Drag & drop a file, or click to browse"
+                hint={`${acceptedExtensions(backend)} files`}
+                fileIcon={FileIcon}
+                testId="upload-model-file-dropzone"
+                inputTestId="upload-model-file"
               />
-            </div>
-          )}
-
-          {selectedFile && !isUploading && (
-            <div className="bg-card flex items-center gap-2 rounded-md border p-2.5">
-              <div className="bg-muted/50 flex h-8 w-8 shrink-0 items-center justify-center rounded">
-                <FileIcon className="text-muted-foreground h-4 w-4" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-medium">
-                  {selectedFile.name}
-                </p>
-                <p className="text-muted-foreground text-[11px]">
-                  {formatFileSize(selectedFile.size)}
-                </p>
-              </div>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="text-muted-foreground hover:text-destructive h-6 w-6 shrink-0"
-                    onClick={() => setSelectedFile(null)}
-                  >
-                    <X className="h-3 w-3" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Remove file</TooltipContent>
-              </Tooltip>
             </div>
           )}
 
@@ -302,15 +200,6 @@ export function UploadModelDialog({
               <div className="bg-muted h-1.5 w-full overflow-hidden rounded-full">
                 <div className="bg-primary h-full w-2/3 animate-pulse rounded-full" />
               </div>
-            </div>
-          )}
-
-          {fileError && (
-            <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-2.5 dark:border-red-900 dark:bg-red-950">
-              <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-600 dark:text-red-400" />
-              <p className="text-xs text-red-700 dark:text-red-300">
-                {fileError}
-              </p>
             </div>
           )}
 

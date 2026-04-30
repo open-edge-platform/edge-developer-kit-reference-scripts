@@ -562,9 +562,14 @@ function ServiceRow({
             s.status === 'starting' && 'bg-warning animate-pulse',
           )}
         />
-        {!s.hidden && (
-          <ArrowUpRight className="text-muted-foreground/0 group-hover:text-muted-foreground h-3.5 w-3.5 transition-all" />
-        )}
+        <ArrowUpRight
+          className={cn(
+            'h-3.5 w-3.5 transition-all',
+            s.hidden
+              ? 'invisible'
+              : 'text-muted-foreground/0 group-hover:text-muted-foreground',
+          )}
+        />
       </div>
     </>
   )

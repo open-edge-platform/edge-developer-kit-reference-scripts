@@ -6,6 +6,7 @@ import type { Sample } from '../types'
 
 import { sample as digitalAvatar } from '../digital-avatar/data'
 import { sample as digitalAvatarLite } from '../digital-avatar-lite/data'
+import { sample as medicalScribe } from '../medical-scribe/data'
 import { sample as pptTranslator } from '../ppt-translator/data'
 import { sample as ragChatbot } from '../rag-chatbot/data'
 import { sample as roboticsAi } from '../robotics-ai/data'
@@ -16,6 +17,7 @@ import { sample as webcamVlm } from '../webcam-vlm/data'
 export const sampleMap: Record<string, Sample> = {
   'digital-avatar': digitalAvatar,
   'digital-avatar-lite': digitalAvatarLite,
+  'medical-scribe': medicalScribe,
   'ppt-translator': pptTranslator,
   'rag-chatbot': ragChatbot,
   'robotics-ai': roboticsAi,

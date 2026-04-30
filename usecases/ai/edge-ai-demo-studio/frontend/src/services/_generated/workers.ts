@@ -5,8 +5,10 @@
 import type { Service } from '@/payload-types'
 import type { WorkerConfig } from '../types'
 
+import { worker as diarizationWorker } from '../diarization/data'
 import { worker as imageGenerationWorker } from '../image-generation/data'
 import { worker as lipsyncWorker } from '../lipsync/data'
+import { worker as medicalScribeDatabaseWorker } from '../medical-scribe-database/data'
 import { worker as pptTranslatorWorker } from '../ppt-translator/data'
 import { worker as roboticsAiWorker } from '../robotics-ai/data'
 import { worker as speechToTextWorker } from '../speech-to-text/data'
@@ -17,8 +19,10 @@ import { worker as wakeWordDetectionWorker } from '../wake-word-detection/data'
 
 /** Worker configuration registry keyed by Payload service type. */
 export const workerRegistry: Partial<Record<Service['type'], WorkerConfig>> = {
+  diarization: diarizationWorker,
   'image-generation': imageGenerationWorker,
   lipsync: lipsyncWorker,
+  'medical-scribe-database': medicalScribeDatabaseWorker,
   'ppt-translator': pptTranslatorWorker,
   'robotics-ai': roboticsAiWorker,
   'speech-to-text': speechToTextWorker,

@@ -4,7 +4,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback } from 'react'
 import type { Service as PayloadService } from '@/payload-types'
-import type { DeviceBackend, ServiceStatus } from '@/services/types'
+import type {
+  DeviceBackend,
+  ModelSource,
+  ServiceStatus,
+} from '@/services/types'
 
 const SERVICES_QUERY_KEY = ['services'] as const
 const POLL_INTERVAL = 5000
@@ -37,8 +41,14 @@ export interface PayloadServiceInfo {
   currentBackend: DeviceBackend | undefined
   currentModelType: string | undefined
   currentQuant: string | undefined
-  currentSource: string | undefined
+  currentSource: ModelSource | undefined
   metadata: PayloadService['metadata']
+}
+
+function toModelSource(source: unknown): ModelSource | undefined {
+  return source === 'huggingface' || source === 'modelscope'
+    ? source
+    : undefined
 }
 
 async function fetchServices(): Promise<PayloadService[]> {
@@ -66,7 +76,7 @@ function buildServiceInfoMap(
       currentBackend: doc.models?.default?.backend as DeviceBackend | undefined,
       currentModelType: doc.models?.default?.type ?? undefined,
       currentQuant: doc.models?.default?.quant ?? undefined,
-      currentSource: doc.models?.default?.source ?? undefined,
+      currentSource: toModelSource(doc.models?.default?.source),
       metadata: doc.metadata ?? undefined,
     }
   }

@@ -5,10 +5,12 @@
 import type { Service as ServiceType } from '@/payload-types'
 
 // Data imports
+import { service as diarizationMeta } from '../diarization/data'
 import { service as embeddingsMeta } from '../embeddings/data'
 import { service as imageGenerationMeta } from '../image-generation/data'
 import { service as lipsyncMeta } from '../lipsync/data'
 import { service as mcpMeta } from '../mcp/data'
+import { service as medicalScribeDatabaseMeta } from '../medical-scribe-database/data'
 import { service as pptTranslatorMeta } from '../ppt-translator/data'
 import { service as rerankMeta } from '../rerank/data'
 import { service as roboticsAiMeta } from '../robotics-ai/data'
@@ -20,6 +22,7 @@ import { service as vectordbMeta } from '../vectordb/data'
 import { service as wakeWordDetectionMeta } from '../wake-word-detection/data'
 
 // Demo imports
+import { DiarizationDemo } from '../diarization/demo'
 import { EmbeddingDemo } from '../embeddings/demo'
 import { ImageGenerationDemo } from '../image-generation/demo'
 import { LipsyncDemo } from '../lipsync/demo'
@@ -35,6 +38,11 @@ import type { Service } from '../types'
 
 /** Full service map including React demo components. */
 export const serviceMap: Record<ServiceType['type'], Service> = {
+  diarization: {
+    ...diarizationMeta,
+    status: 'offline',
+    demo: DiarizationDemo,
+  },
   embeddings: {
     ...embeddingsMeta,
     status: 'offline',
@@ -54,6 +62,10 @@ export const serviceMap: Record<ServiceType['type'], Service> = {
     ...mcpMeta,
     status: 'offline',
     demo: McpDemo,
+  },
+  'medical-scribe-database': {
+    ...medicalScribeDatabaseMeta,
+    status: 'offline',
   },
   'ppt-translator': {
     ...pptTranslatorMeta,
