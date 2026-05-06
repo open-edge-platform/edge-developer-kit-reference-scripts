@@ -12,6 +12,24 @@ This repository provides simplified developer kit reference setup scripts for va
 - Officially Supported: Ubuntu 24.04 LTS (tested on `Ubuntu 24.04.4 LTS`) with the 6.17 kernel.
 - Kernel / HWE Guidance: The setup and reference scripts are validated against the Ubuntu 24.04 HWE stack (Linux 6.14). We recommend using the HWE kernel matching the tested version for best compatibility and to avoid driver/packaging mismatches.
 
+## 🌟 Try Our Flagship Sample: Edge AI Demo Studio 🌟
+
+> **The best way to experience what this Edge Developer Kit can do — in one step.**
+
+[**Edge AI Demo Studio**](./usecases/ai/edge-ai-demo-studio/README.md) is a ready-to-run AI toolkit featuring a web-based UI to deploy and manage AI models on Intel® hardware.
+
+**Includes out-of-the-box AI services:**
+- Text Generation (LLM), Text-to-Speech, Speech-to-Text
+- Image Generation, Embeddings, Lipsync, Wake Word Detection
+
+**Sample use cases included:**
+- Digital Avatar — conversational AI with lip sync
+- RAG Chat — retrieval-augmented generation knowledge base
+
+👉 **[Click here to Get started with Edge AI Demo Studio ](./usecases/ai/edge-ai-demo-studio/README.md)**
+
+---
+
 ## Who Is This For?
 
 | **Your Background** | **What You'll Get** | **Start Here** |
