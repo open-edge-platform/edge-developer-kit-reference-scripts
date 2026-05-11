@@ -16,4 +16,5 @@ dependencies = [
     "uvicorn==0.32.1",
     "protobuf==6.33.5",
     "pillow>=12.1.1",
+    "huggingface-hub>=1.13.0",
 ]

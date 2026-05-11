@@ -4,6 +4,7 @@
 'use client'
 
 import {
+  Activity,
   ChevronLeft,
   ChevronRight,
   GalleryHorizontalEnd,
@@ -26,6 +27,7 @@ const navItems = [
     href: '/samples',
     icon: GalleryHorizontalEnd,
   },
+  { label: 'System', href: '/system-monitoring', icon: Activity },
   { label: 'Settings', href: '/settings', icon: Settings },
 ]
 

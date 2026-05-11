@@ -57,14 +57,35 @@ export function getOptionalDeps(s: Sample): ServiceDependency[] {
   return s.dependencies.filter((d) => d.role === 'optional')
 }
 
-export function getDeviceMap(s: Sample): Record<string, string> {
+export function getDeviceMap(
+  s: Sample,
+  availableDevices?: string[],
+): Record<string, string> {
   const map: Record<string, string> = {}
   for (const d of s.dependencies) {
     if (d.defaultDevice) {
-      map[d.serviceId] = d.defaultDevice
+      map[d.serviceId] = resolveDevice(d.defaultDevice, availableDevices)
     }
   }
   return map
+}
+
+function resolveDevice(requested: string, availableDevices?: string[]): string {
+  if (!availableDevices || availableDevices.length === 0) return requested
+
+  const reqLower = requested.toLowerCase()
+
+  const found = availableDevices.some((d) => {
+    const family = d.split(/[.:]/)[0].toLowerCase()
+    return d.toLowerCase() === reqLower || family === reqLower
+  })
+
+  if (found) return requested
+
+  const cpu = availableDevices.find(
+    (d) => d.split(/[.:]/)[0].toLowerCase() === 'cpu',
+  )
+  return cpu ?? availableDevices[0] ?? requested
 }
 
 export type ReadinessStatus = 'ready' | 'partial' | 'blocked'

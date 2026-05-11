@@ -41,9 +41,12 @@ export function useDoctorProfiles() {
 
   const deleteProfileMutation = useMutation({
     mutationFn: async (id: string) => {
-      const res = await fetch(new URL(`${API_BASE}/${id}`), {
-        method: 'DELETE',
-      })
+      const res = await fetch(
+        new URL(`${API_BASE}/${id}`, window.location.origin),
+        {
+          method: 'DELETE',
+        },
+      )
       if (!res.ok) {
         const text = await res.text()
         throw new Error(text || 'Failed to delete doctor profile')
@@ -59,11 +62,14 @@ export function useDoctorProfiles() {
       id: string
       embedding: number[]
     }) => {
-      const res = await fetch(new URL(`${API_BASE}/${id}`), {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ embedding }),
-      })
+      const res = await fetch(
+        new URL(`${API_BASE}/${id}`, window.location.origin),
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ embedding }),
+        },
+      )
       return parseResponse<DoctorProfile>(res, 'Failed to update embedding')
     },
   })
@@ -83,8 +89,8 @@ export function useDoctorProfiles() {
         profile,
       ])
 
-      void createProfileMutation.mutateAsync(profile).catch(() => {
-        void queryClient.invalidateQueries({ queryKey: QUERY_KEY })
+      createProfileMutation.mutateAsync(profile).catch(() => {
+        queryClient.invalidateQueries({ queryKey: QUERY_KEY })
       })
 
       return profile
@@ -98,8 +104,8 @@ export function useDoctorProfiles() {
         prev.filter((p) => p.id !== id),
       )
 
-      void deleteProfileMutation.mutateAsync(id).catch(() => {
-        void queryClient.invalidateQueries({ queryKey: QUERY_KEY })
+      deleteProfileMutation.mutateAsync(id).catch(() => {
+        queryClient.invalidateQueries({ queryKey: QUERY_KEY })
       })
     },
     [deleteProfileMutation, queryClient],
@@ -111,8 +117,8 @@ export function useDoctorProfiles() {
         prev.map((p) => (p.id === id ? { ...p, embedding } : p)),
       )
 
-      void updateEmbeddingMutation.mutateAsync({ id, embedding }).catch(() => {
-        void queryClient.invalidateQueries({ queryKey: QUERY_KEY })
+      updateEmbeddingMutation.mutateAsync({ id, embedding }).catch(() => {
+        queryClient.invalidateQueries({ queryKey: QUERY_KEY })
       })
     },
     [queryClient, updateEmbeddingMutation],

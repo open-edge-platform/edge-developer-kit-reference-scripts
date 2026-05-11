@@ -51,20 +51,26 @@ export function useSessions() {
       id: string
       updates: Partial<Omit<Session, 'id'>>
     }) => {
-      const res = await fetch(new URL(`${API_BASE}/${id}`), {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(sanitizeSessionUpdate(updates)),
-      })
+      const res = await fetch(
+        new URL(`${API_BASE}/${id}`, window.location.origin),
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(sanitizeSessionUpdate(updates)),
+        },
+      )
       return parseResponse<Session>(res, 'Failed to update session')
     },
   })
 
   const deleteSessionMutation = useMutation({
     mutationFn: async (id: string) => {
-      const res = await fetch(new URL(`${API_BASE}/${id}`), {
-        method: 'DELETE',
-      })
+      const res = await fetch(
+        new URL(`${API_BASE}/${id}`, window.location.origin),
+        {
+          method: 'DELETE',
+        },
+      )
       if (!res.ok) {
         const text = await res.text()
         throw new Error(text || 'Failed to delete session')
@@ -94,8 +100,8 @@ export function useSessions() {
         ...prev,
       ])
 
-      void createSessionMutation.mutateAsync(session).catch(() => {
-        void queryClient.invalidateQueries({ queryKey: QUERY_KEY })
+      createSessionMutation.mutateAsync(session).catch(() => {
+        queryClient.invalidateQueries({ queryKey: QUERY_KEY })
       })
 
       return session
@@ -109,8 +115,8 @@ export function useSessions() {
         prev.map((s) => (s.id === id ? { ...s, ...updates } : s)),
       )
 
-      void updateSessionMutation.mutateAsync({ id, updates }).catch(() => {
-        void queryClient.invalidateQueries({ queryKey: QUERY_KEY })
+      updateSessionMutation.mutateAsync({ id, updates }).catch(() => {
+        queryClient.invalidateQueries({ queryKey: QUERY_KEY })
       })
     },
     [queryClient, updateSessionMutation],
@@ -122,8 +128,8 @@ export function useSessions() {
         prev.filter((s) => s.id !== id),
       )
 
-      void deleteSessionMutation.mutateAsync(id).catch(() => {
-        void queryClient.invalidateQueries({ queryKey: QUERY_KEY })
+      deleteSessionMutation.mutateAsync(id).catch(() => {
+        queryClient.invalidateQueries({ queryKey: QUERY_KEY })
       })
     },
     [deleteSessionMutation, queryClient],

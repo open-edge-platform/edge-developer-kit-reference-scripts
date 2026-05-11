@@ -1,0 +1,14 @@
+services:
+  edge-ai-studio:
+    build:
+      context: ../
+      dockerfile: docker/Dockerfile
+    image: edge-ai-studio:v1.0.0
+    container_name: edge-ai-studio
+    # devices: # Uncomment if you have a GPU/NPU
+      # - "/dev/dri:/dev/dri" # Uncomment if you have a GPU
+      # - "/dev/accel:/dev/accel" # Uncomment if you have an NPU
+    # group_add: # Uncomment if you have a GPU/NPU
+      # - ${RENDER_GROUP_ID:-992} # Uncomment if you have a GPU/NPU (render group)
+    ports:
+      - "8080:8080"

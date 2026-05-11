@@ -25,6 +25,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { useGetServices } from '@/context/service-status-context'
+import { useSystemInfo } from '@/context/system-info-context'
 import { cn } from '@/lib/utils'
 import { SampleParamsSlotContext } from '@/samples/common/sample-params-slot'
 import { getSampleById } from '@/samples/registry'
@@ -35,7 +36,8 @@ export function SampleDemoContent({ sampleId }: { sampleId: string }) {
   const sample = getSampleById(sampleId)!
   const requiredDeps = getRequiredDeps(sample)
   const optDeps = getOptionalDeps(sample)
-  const deviceMap = getDeviceMap(sample)
+  const { systemInfo } = useSystemInfo()
+  const deviceMap = getDeviceMap(sample, systemInfo?.devices)
 
   const allDepIds = [
     ...requiredDeps.map((d) => d.serviceId),

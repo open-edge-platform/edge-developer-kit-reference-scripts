@@ -20,6 +20,7 @@ import { StartAllServicesButton } from '@/components/dashboard/samples/start-all
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useGetServices } from '@/context/service-status-context'
+import { useSystemInfo } from '@/context/system-info-context'
 import { cn } from '@/lib/utils'
 import type { Service } from '@/services/types'
 import { getSampleById } from '@/samples/registry'
@@ -39,7 +40,8 @@ export function SampleDetailContent({ sampleId }: { sampleId: string }) {
   const sample = getSampleById(sampleId)!
   const requiredDeps = getRequiredDeps(sample)
   const optDeps = getOptionalDeps(sample)
-  const deviceMap = getDeviceMap(sample)
+  const { systemInfo } = useSystemInfo()
+  const deviceMap = getDeviceMap(sample, systemInfo?.devices)
 
   const allDepIds = sample.dependencies.map((d) => d.serviceId)
   const serviceMap = useGetServices(allDepIds)

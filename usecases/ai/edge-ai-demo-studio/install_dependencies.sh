@@ -9,21 +9,30 @@ XPU_SMI_DOWNLOAD_FILE="xpu-smi.deb"
 
 # Parse command-line arguments
 AUTO_YES=false
-while getopts "y" opt; do
+AUTO_NO=false
+while getopts "yn" opt; do
   case $opt in
     y)
       AUTO_YES=true
       ;;
+    n)
+      AUTO_NO=true
+      ;;
     \?)
       echo "Invalid option: -$OPTARG" >&2
-      echo "Usage: $0 [-y]"
-      echo "  -y    Auto-accept all prompts (non-interactive mode)"
+      echo "Usage: $0 [-y] [-n]"
+      echo "  -y    Auto-accept GPU driver installation (non-interactive mode)"
+      echo "  -n    Auto-skip GPU driver installation (non-interactive mode)"
       exit 1
       ;;
   esac
 done
 
-# Handle root execution (Docker/CI)
+if [ "$AUTO_YES" = true ] && [ "$AUTO_NO" = true ]; then
+  echo "Error: -y and -n are mutually exclusive."
+  exit 1
+fi
+
 if [ "$EUID" -eq 0 ]; then
     if ! command -v sudo >/dev/null 2>&1; then
         sudo() { "$@"; }
@@ -122,52 +131,6 @@ install_system_dependencies() {
   fi
 }
 
-
-# Check and setup Mesa drivers (kisak-mesa)
-check_mesa_drivers() {
-    echo "0. Mesa Drivers Check"
-
-    # Only relevant for Debian/Ubuntu (apt)
-    if ! command_exists apt-get; then
-        echo "Not on a Debian/Ubuntu-based system. Skipping Mesa driver check."
-        return
-    fi
-
-    # Check if PPA is already added
-    if grep -r "kisak/kisak-mesa" /etc/apt/sources.list /etc/apt/sources.list.d/ >/dev/null 2>&1; then
-        echo "kisak-mesa PPA is already configured."
-        return
-    fi
-
-    echo "kisak-mesa PPA not found."
-
-    # Install software-properties-common if missing (needed for add-apt-repository)
-    if ! command_exists add-apt-repository; then
-        echo "Installing software-properties-common..."
-        if ! sudo apt-get update && sudo apt-get install -y software-properties-common; then
-            echo "Failed to install software-properties-common."
-            exit 1
-        fi
-    fi
-
-    # Add PPA and update
-    echo "Adding PPA: ppa:kisak/kisak-mesa..."
-    if ! sudo add-apt-repository -y ppa:kisak/kisak-mesa; then
-        echo "Failed to add kisak-mesa PPA."
-        exit 1
-    fi
-
-    echo "Updating package lists..."
-    if ! sudo apt-get update; then
-        echo "Failed to update package lists."
-        exit 1
-    fi
-
-    echo "kisak-mesa PPA added and apt updated."
-    echo "To upgrade to the latest Mesa drivers, please run: sudo apt upgrade"
-    return 0
-}
-
 download_espeak_ng() {
     if dpkg -s espeak-ng &> /dev/null; then
         echo "✅ espeak-ng is already installed."
@@ -206,7 +169,16 @@ install_drivers() {
   echo "  • Set up necessary permissions"
   echo ""
   
-  if [ "$AUTO_YES" = false ]; then
+  if [ "$AUTO_NO" = true ]; then
+    echo "Auto-skipping driver installation (-n flag set)."
+    echo ""
+    echo "⚠️  Driver installation skipped."
+    echo ""
+    echo "You can manually install drivers later by running:"
+    echo "sudo bash -c \"\$(wget -qLO - https://raw.githubusercontent.com/open-edge-platform/edge-developer-kit-reference-scripts/refs/heads/main/main_installer.sh)\""
+    echo ""
+    return 0
+  elif [ "$AUTO_YES" = false ]; then
     read -p "Would you like to download and run the drivers installer script now? (y/N): " -n 1 -r
     echo ""
     
@@ -220,7 +192,7 @@ install_drivers() {
       return 0
     fi
   else
-    echo "Auto-accepting driver installation (non-interactive mode)..."
+    echo "Auto-accepting driver installation (-y flag set)..."
   fi
   
   echo ""
@@ -329,9 +301,6 @@ main() {
   echo ""
   
   install_system_dependencies
-  echo ""
-
-  check_mesa_drivers
   echo ""
   
   download_espeak_ng
