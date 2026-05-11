@@ -223,11 +223,11 @@ def _get_export_model_paths():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     thirdparty_dir = os.path.join(script_dir, "thirdparty")
     if os.name == "nt":
-        python_path = os.path.join(thirdparty_dir, ".venv", "Scripts", "python.exe")
+        venv_bin_path = os.path.join(thirdparty_dir, ".venv", "Scripts")
     else:
-        python_path = os.path.join(thirdparty_dir, ".venv", "bin", "python")
+        venv_bin_path = os.path.join(thirdparty_dir, ".venv", "bin")
     export_script = os.path.join(thirdparty_dir, "export_model.py")
-    return python_path, export_script
+    return venv_bin_path, export_script
 
 
 def download_model(model_id: str, model_dir: str, source: str = "huggingface") -> str:
@@ -248,11 +248,17 @@ def download_model(model_id: str, model_dir: str, source: str = "huggingface") -
 
 def export_model(model_name_or_path, output_dir):
     logger.info(f"Exporting model: {model_name_or_path} to {output_dir}")
-    python_path, export_script = _get_export_model_paths()
+    venv_bin_path, export_script = _get_export_model_paths()
     model_repository_path = os.path.dirname(output_dir)
     model_name = os.path.basename(output_dir)
+
+    os.makedirs(model_repository_path, exist_ok=True)
+
+    temp_env = copy.deepcopy(os.environ)
+    temp_env["PATH"] = f"{venv_bin_path}:{temp_env.get('PATH', '')}"
+
     command = [
-        python_path,
+        "python",
         export_script,
         "speech2text",
         "--source_model",
@@ -264,7 +270,7 @@ def export_model(model_name_or_path, output_dir):
         "--weight-format",
         "fp32",
     ]
-    subprocess.run(command, check=True)
+    subprocess.run(command, check=True, env=temp_env)
 
 
 def verify_device_available(device):

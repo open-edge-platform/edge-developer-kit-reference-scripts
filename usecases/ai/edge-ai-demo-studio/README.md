@@ -78,6 +78,12 @@ Once started, access the web UI at [http://localhost:8080](http://localhost:8080
 
 ---
 
+### Docker
+
+See [docker/README.md](docker/README.md) for docker guidelines.
+
+---
+
 
 ## Project Structure
 

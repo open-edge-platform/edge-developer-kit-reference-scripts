@@ -5,7 +5,10 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { useTextGenerationParams } from '@/samples/common/hooks'
+import {
+  useOptionalServiceGroup,
+  useTextGenerationParams,
+} from '@/samples/common/hooks'
 import { SampleParamsSlot } from '@/samples/common/sample-params-slot'
 import { DIARIZATION_DEFAULTS, useDiarize } from '@/services/diarization/hooks'
 import { useTranscribe } from '@/services/speech-to-text/hooks'
@@ -24,6 +27,14 @@ import { alignTranscriptWithSegments } from './utils'
 
 export function MedicalScribeDemo({ sample: _sample }: { sample: Sample }) {
   const textGen = useTextGenerationParams()
+  const diarizationGroup = useOptionalServiceGroup({
+    serviceId: 'diarization',
+    serviceLabel: 'Diarization',
+    offlineMessage:
+      'Start the Diarization service to enable speaker identification.',
+    initialEnabled: true,
+    optional: true,
+  })
   const { profiles, addProfile, removeProfile, updateEmbedding } =
     useDoctorProfiles()
   const { sessions, isFetched, createSession, updateSession, deleteSession } =
@@ -79,23 +90,35 @@ export function MedicalScribeDemo({ sample: _sample }: { sample: Sample }) {
             language: session.language,
             useDenoise: true,
           }),
-          diarize.mutateAsync({
-            file: audio,
-            speakerMatchThreshold: DIARIZATION_DEFAULTS.speakerMatchThreshold,
-            ...(doctorProfile?.embedding
-              ? {
-                  referenceEmbedding: doctorProfile.embedding,
-                  referenceLabel: 'Doctor',
-                  otherLabel: 'Patient',
-                }
-              : { numSpeakers: 2 }),
-          }),
+          diarizationGroup.enabled
+            ? diarize.mutateAsync({
+                file: audio,
+                speakerMatchThreshold:
+                  DIARIZATION_DEFAULTS.speakerMatchThreshold,
+                ...(doctorProfile?.embedding
+                  ? {
+                      referenceEmbedding: doctorProfile.embedding,
+                      referenceLabel: 'Doctor',
+                      otherLabel: 'Patient',
+                    }
+                  : { numSpeakers: 2 }),
+              })
+            : Promise.resolve(null),
         ])
 
-        const transcripts = alignTranscriptWithSegments(
-          transcriptResult.text,
-          diarizeResult.segments,
-        )
+        const transcripts = diarizeResult
+          ? alignTranscriptWithSegments(
+              transcriptResult.text,
+              diarizeResult.segments,
+            )
+          : [
+              {
+                speaker: 'Speaker',
+                text: transcriptResult.text,
+                start: 0,
+                end: 0,
+              },
+            ]
 
         updateSession(sessionId, {
           status: 'completed',
@@ -112,7 +135,14 @@ export function MedicalScribeDemo({ sample: _sample }: { sample: Sample }) {
         setIsProcessing(false)
       }
     },
-    [sessions, profiles, transcribe, diarize, updateSession],
+    [
+      sessions,
+      profiles,
+      transcribe,
+      diarize,
+      diarizationGroup.enabled,
+      updateSession,
+    ],
   )
 
   processAudioRef.current = processAudio
@@ -171,7 +201,7 @@ export function MedicalScribeDemo({ sample: _sample }: { sample: Sample }) {
 
   return (
     <div className="flex h-[calc(100dvh-12rem)] flex-col">
-      <SampleParamsSlot groups={[textGen.group]} />
+      <SampleParamsSlot groups={[textGen.group, diarizationGroup.group]} />
 
       <div className="grid min-h-0 flex-1 grid-cols-[280px_1fr_1fr] overflow-hidden">
         <SessionPanel
