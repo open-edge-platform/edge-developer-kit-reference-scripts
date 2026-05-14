@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
-import config from '@payload-config'
 import {
   convertToModelMessages,
   createUIMessageStream,
@@ -13,14 +12,12 @@ import {
   type UIMessage,
   wrapLanguageModel,
 } from 'ai'
-import { getPayload } from 'payload'
-import { engines } from '@/engines/registry'
 import { logger } from '@/lib/logger'
 import { buildMcpTools } from '@/lib/mcp-tools'
 import { SentenceProcessor } from '@/lib/sentence-processor'
-import type { Service } from '@/payload-types'
 import { metaMap } from '@/services/_generated/meta'
 import { hermesToolMiddleware } from '@ai-sdk-tool/parser'
+import { getWorkloadModel } from '@/app/api/common/get-workload-model'
 
 const createDefaultSystemPrompt = () => {
   return `You are a human-like conversational AI. 
@@ -107,27 +104,6 @@ function cleanupImageMessage(messages: UIMessage[]): UIMessage[] {
       }),
     }
   })
-}
-
-async function getWorkloadModel(
-  workloadType: Service['type'],
-): Promise<string> {
-  const payload = await getPayload({ config })
-  const textGenerationDoc = await payload.find({
-    collection: 'services',
-    where: { type: { equals: workloadType } },
-    limit: 1,
-  })
-
-  if (textGenerationDoc.totalDocs < 1)
-    return Promise.reject(`No ${workloadType} workload found`)
-
-  const textGenerationWorkload = textGenerationDoc.docs[0]
-  const selectedEngine = engines[textGenerationWorkload.engine]
-  return selectedEngine.getModelName(
-    textGenerationWorkload.models.default,
-    true,
-  )
 }
 
 interface LipsyncConfig {

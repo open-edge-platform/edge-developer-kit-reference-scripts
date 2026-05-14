@@ -7,6 +7,7 @@ import type { Service as ServiceType } from '@/payload-types'
 // Data imports
 import { service as diarizationMeta } from '../diarization/data'
 import { service as embeddingsMeta } from '../embeddings/data'
+import { service as getiClassifierMeta } from '../geti-classifier/data'
 import { service as imageGenerationMeta } from '../image-generation/data'
 import { service as lipsyncMeta } from '../lipsync/data'
 import { service as mcpMeta } from '../mcp/data'
@@ -24,6 +25,7 @@ import { service as wakeWordDetectionMeta } from '../wake-word-detection/data'
 // Demo imports
 import { DiarizationDemo } from '../diarization/demo'
 import { EmbeddingDemo } from '../embeddings/demo'
+import { GetiClassifierDemo } from '../geti-classifier/demo'
 import { ImageGenerationDemo } from '../image-generation/demo'
 import { LipsyncDemo } from '../lipsync/demo'
 import { McpDemo } from '../mcp/demo'
@@ -47,6 +49,11 @@ export const serviceMap: Record<ServiceType['type'], Service> = {
     ...embeddingsMeta,
     status: 'offline',
     demo: EmbeddingDemo,
+  },
+  'geti-classifier': {
+    ...getiClassifierMeta,
+    status: 'offline',
+    demo: GetiClassifierDemo,
   },
   'image-generation': {
     ...imageGenerationMeta,

@@ -474,7 +474,7 @@ main() {
     echo ""
     
     # Install components
-    check_mesa_drivers || exit 1
+    # check_mesa_drivers || exit 1
     install_uv || exit 1
     install_llamacpp || exit 1
     install_xpu_smi || exit 1

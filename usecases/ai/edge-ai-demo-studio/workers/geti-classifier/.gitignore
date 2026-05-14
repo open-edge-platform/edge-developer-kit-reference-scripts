@@ -1,0 +1,4 @@
+/deployment_cls/*
+/deployment_seg/*
+worker_config_cls.json
+worker_config_seg.json

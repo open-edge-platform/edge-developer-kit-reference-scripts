@@ -99,11 +99,30 @@ clone_kokoro_repo() {
     echo "Kokoro prepared at $DEST_DIR."
 }
 
+setup_export_venv() {
+    echo "Setting up export virtual environment (.export-venv)..."
+    "$UV_PATH" venv --seed "$SCRIPT_DIR/.export-venv"
+    "$UV_PATH" pip install \
+        --python "$SCRIPT_DIR/.export-venv/bin/python" \
+        -q \
+        "kokoro>=0.8.2" \
+        "misaki[en]>=0.8.2" \
+        "soundfile" \
+        "psutil" \
+        "modelscope" \
+        "transformers==4.53.3" \
+        "torch<2.9" \
+        "openvino>=2025.3.0" \
+        --extra-index-url "https://download.pytorch.org/whl/cpu"
+    echo "Export virtual environment ready."
+}
+
 main() {
     echo "Starting Kokoro setup..."
     cd "$SCRIPT_DIR"
     check_uv
     clone_kokoro_repo
+    setup_export_venv
     echo "Kokoro setup completed successfully!"
 }
 

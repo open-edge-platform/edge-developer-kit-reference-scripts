@@ -2,16 +2,16 @@ import os
 import enum
 import secrets
 import logging
-import argparse
 import uvicorn
 import shutil
 import tempfile
+import argparse
 import multiprocessing
 from io import BytesIO
 from PIL import Image
 from datetime import datetime
 
-from typing import Annotated
+from typing import Annotated, Optional
 from fastapi import FastAPI, File, Form
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -24,7 +24,7 @@ from utils.model import ImageGen, ImageGenPrompt, ImageSegmentation
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-DEFAULT_PORT = 5015
+DEFAULT_PORT = 5010
 APP_WORKFLOW = None
 
 
@@ -125,6 +125,10 @@ def create_app() -> FastAPI:
         for root, dirs, files in os.walk(output_dir):
             for filename in files:
                 if filename.lower().endswith((".png", ".jpg", ".jpeg")):
+                    # Exclude mask images (used internally for side-by-side preview)
+                    stem = os.path.splitext(filename)[0]
+                    if stem.endswith("-mask"):
+                        continue
                     rel_dir = os.path.relpath(root, output_dir)
                     if rel_dir == ".":
                         images.append(filename)
@@ -157,6 +161,7 @@ def create_app() -> FastAPI:
         custom_prompt: Annotated[str, Form()] = "",
         custom_type: Annotated[str, Form()] = "",
         project_name: Annotated[str, Form()] = "default",
+        reference_file: Annotated[Optional[bytes], File()] = None,
     ):
 
         if generation_type == GenerationType.SYNTHETIC:
@@ -172,20 +177,44 @@ def create_app() -> FastAPI:
         image = Image.open(BytesIO(file)).convert("RGB")
         preprocessed_image = APP_WORKFLOW.preprocess_image(image)
 
+        # Reference image is only supported in CUSTOM mode
+        if generation_type == GenerationType.CUSTOM and reference_file is not None:
+            reference_image = Image.open(BytesIO(reference_file)).convert("RGB")
+            preprocessed_reference = APP_WORKFLOW.preprocess_image(reference_image)
+            preprocessed_image = [preprocessed_image, preprocessed_reference]
+            prompt = (
+                prompt
+                + " Incorporate the visual style, color palette, texture, and lighting characteristics of the provided reference image."
+            )
+
+        selected_mask_image = None
+        selected_bbox_image = None
         if generation_type == GenerationType.MISSING_COMPONENT:
+            # Segmentation always operates on the base image only
+            base_image_for_seg = (
+                preprocessed_image[0]
+                if isinstance(preprocessed_image, list)
+                else preprocessed_image
+            )
             image_seg = ImageSegmentation()
             results = image_seg.inference(
-                image_path=preprocessed_image,
+                image_path=base_image_for_seg,
             )
             masked_image_list = image_seg.get_mask_results(
-                ori_image=preprocessed_image,
+                ori_image=base_image_for_seg,
                 results=results,
                 min_area=1000,
                 max_area=10000,
                 save_results=False,
             )
             if len(masked_image_list) > 0:
-                preprocessed_image = secrets.choice(masked_image_list)
+                selected = secrets.choice(masked_image_list)
+                selected_mask_image, selected_bbox_image = selected
+                # Replace the base image with the masked version, keep reference if present
+                if isinstance(preprocessed_image, list):
+                    preprocessed_image = [selected_mask_image] + preprocessed_image[1:]
+                else:
+                    preprocessed_image = selected_mask_image
             else:
                 # raise HTTPException if no valid masks found
                 return {
@@ -196,14 +225,29 @@ def create_app() -> FastAPI:
         if generation_type == GenerationType.CUSTOM and custom_type:
             gen_type_str = f"{generation_type.value}_{custom_type}"
 
-        image = APP_WORKFLOW.generate_image(
+        image_path = APP_WORKFLOW.generate_image(
             image=preprocessed_image,
             prompt=prompt,
             generation_type=gen_type_str,
             project_name=project_name,
         )
 
-        return {"message": "Image generated successfully.", "image": image}
+        mask_path = None
+        if selected_mask_image is not None:
+            # Save the bounding box image alongside the generated image
+            base, ext = os.path.splitext(image_path)
+            mask_relative_path = f"{base}-mask{ext}"
+            mask_save_path = os.path.join("outputs", mask_relative_path)
+            selected_bbox_image.save(mask_save_path)
+            mask_path = mask_relative_path
+
+        response_data = {
+            "message": "Image generated successfully.",
+            "image": image_path,
+        }
+        if mask_path:
+            response_data["mask_image"] = mask_path
+        return response_data
 
     @app.get("/projects")
     def list_projects():

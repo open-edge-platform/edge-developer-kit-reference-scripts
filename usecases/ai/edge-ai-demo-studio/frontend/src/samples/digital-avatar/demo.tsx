@@ -35,7 +35,6 @@ export function DigitalAvatarDemo({ sample }: { sample: Sample }) {
 
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
-  const [isSpeaking, setIsSpeaking] = useState(false)
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const pcRef = useRef<RTCPeerConnection | null>(null)
@@ -175,14 +174,7 @@ export function DigitalAvatarDemo({ sample }: { sample: Sample }) {
     extraBody: { ...extraBody, ...lipsyncExtraBody },
   })
 
-  // Track speaking state based on chat status
-  useEffect(() => {
-    if (chat.status === 'streaming' && sessionId) {
-      setIsSpeaking(true)
-    } else if (chat.status === 'ready') {
-      setIsSpeaking(false)
-    }
-  }, [chat.status, sessionId])
+  const isSpeaking = chat.status === 'streaming' && !!sessionId
 
   const { wakeWord } = useWakeWordStt({
     onTranscription: useCallback(

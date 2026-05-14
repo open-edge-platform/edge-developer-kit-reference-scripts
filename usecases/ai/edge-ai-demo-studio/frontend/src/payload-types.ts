@@ -156,12 +156,13 @@ export interface Service {
   id: number;
   name: string;
   type:
-    | 'medical-scribe-database'
     | 'diarization'
     | 'embeddings'
+    | 'geti-classifier'
     | 'image-generation'
     | 'lipsync'
     | 'mcp'
+    | 'medical-scribe-database'
     | 'ppt-translator'
     | 'rerank'
     | 'robotics-ai'

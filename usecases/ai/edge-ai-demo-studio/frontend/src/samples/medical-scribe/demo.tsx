@@ -40,15 +40,12 @@ export function MedicalScribeDemo({ sample: _sample }: { sample: Sample }) {
   const { sessions, isFetched, createSession, updateSession, deleteSession } =
     useSessions()
   const { isRecording, startRecording, stopRecording } = useRecording()
-  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
-    null,
-  )
+  const [selectedSessionIdState, setSelectedSessionId] = useState<
+    string | null
+  >(null)
+  const selectedSessionId =
+    selectedSessionIdState ?? (isFetched ? (sessions[0]?.id ?? null) : null)
   const [isProcessing, setIsProcessing] = useState(false)
-  useEffect(() => {
-    if (isFetched && selectedSessionId === null && sessions.length > 0) {
-      setSelectedSessionId(sessions[0].id)
-    }
-  }, [isFetched, sessions, selectedSessionId])
 
   const generatingSessionIdRef = useRef<string | null>(null)
 
@@ -145,7 +142,9 @@ export function MedicalScribeDemo({ sample: _sample }: { sample: Sample }) {
     ],
   )
 
-  processAudioRef.current = processAudio
+  useEffect(() => {
+    processAudioRef.current = processAudio
+  })
 
   const handleStartRecording = useCallback(async () => {
     if (!selectedSessionId) return

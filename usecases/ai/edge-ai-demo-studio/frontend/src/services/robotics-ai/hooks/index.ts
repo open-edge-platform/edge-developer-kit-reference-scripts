@@ -233,21 +233,24 @@ export function useRoboticsAiDemo(): UseRoboticsAiDemoReturn {
   const [isConnected, setIsConnected] = useState(false)
   const [mcpStatus, setMcpStatus] = useState<
     'disconnected' | 'connecting' | 'connected' | 'error'
-  >('disconnected')
-  const [mcpStatusMessage, setMcpStatusMessage] = useState('Not connected')
+  >('connecting')
+  const [mcpStatusMessage, setMcpStatusMessage] = useState(
+    'Connecting to MCP server\u2026',
+  )
   const [input, setInput] = useState('')
   const [availableTools, setAvailableTools] = useState<ToolOption[]>([])
   const [selectedToolId, setSelectedToolId] = useState('')
   const [isListening, setIsListening] = useState(false)
   const [micLanguage, setMicLanguage] = useState('en')
-  const [cameraStatusMessage, setCameraStatusMessage] = useState('')
+  const [cameraStatusMessage, setCameraStatusMessage] = useState(
+    'Waiting for camera…',
+  )
   const [hasMicrophone, setHasMicrophone] = useState(false)
   const [micError, setMicError] = useState<string | null>(null)
-  const [selectedSetupRobotType, setSelectedSetupRobotType] = useState('')
+  const [selectedSetupRobotTypeState, setSelectedSetupRobotType] = useState('')
   const [robotTypeSetError, setRobotTypeSetError] = useState<string | null>(
     null,
   )
-  const [cameraPolling, setCameraPolling] = useState(false)
   const [calibrationState, setCalibrationState] = useState<
     'idle' | 'awaiting_confirmation'
   >('idle')
@@ -255,7 +258,7 @@ export function useRoboticsAiDemo(): UseRoboticsAiDemoReturn {
   const [calibrationMessage, setCalibrationMessage] = useState<string | null>(
     null,
   )
-  const [motorCalibrationState, setMotorCalibrationState] =
+  const [motorCalibrationLocalState, setMotorCalibrationState] =
     useState<MotorCalibrationState>('idle')
   const [motorCalibrationError, setMotorCalibrationError] = useState<
     string | null
@@ -264,11 +267,15 @@ export function useRoboticsAiDemo(): UseRoboticsAiDemoReturn {
     string | null
   >(null)
   const motorCalibrationPolling =
-    motorCalibrationState === 'awaiting_calibration_choice' ||
-    motorCalibrationState === 'awaiting_middle_position' ||
-    motorCalibrationState === 'awaiting_range_motion'
-  const [gripperOpen, setGripperOpen] = useState(60)
-  const [gripperClose, setGripperClose] = useState(40)
+    motorCalibrationLocalState === 'awaiting_calibration_choice' ||
+    motorCalibrationLocalState === 'awaiting_middle_position' ||
+    motorCalibrationLocalState === 'awaiting_range_motion'
+  const [gripperOpenOverride, setGripperOpen] = useState<number | undefined>(
+    undefined,
+  )
+  const [gripperCloseOverride, setGripperClose] = useState<number | undefined>(
+    undefined,
+  )
   const [gripperConfigError, setGripperConfigError] = useState<string | null>(
     null,
   )
@@ -339,6 +346,9 @@ export function useRoboticsAiDemo(): UseRoboticsAiDemoReturn {
   const { mutateAsync: transcribeMutateAsync, isPending: isTranscribing } =
     useTranscribe()
 
+  // Derived: camera polling is active whenever the stream is not connected
+  const cameraPolling = !isConnected
+
   const { data: cameraStatusData } = useCameraStatusQuery(
     workerBaseUrl,
     cameraPolling,
@@ -354,6 +364,20 @@ export function useRoboticsAiDemo(): UseRoboticsAiDemoReturn {
     !isRobotTypeLoading &&
     !!robotTypeData &&
     !!(robotTypeData.type && robotTypeData.type.toLowerCase() !== 'none')
+
+  // Derived state: default to first available robot type if none explicitly chosen
+  const selectedSetupRobotType =
+    selectedSetupRobotTypeState || availableRobotTypes[0] || ''
+
+  // Derived state: prefer server data, fall back to local override
+  const motorCalibrationState: MotorCalibrationState =
+    motorCalibrationStatusData?.state ?? motorCalibrationLocalState
+
+  // Derived state: user override takes priority; falls back to server config then hardcoded default
+  const gripperOpen =
+    gripperOpenOverride ?? gripperConfigData?.gripper_open ?? 60
+  const gripperClose =
+    gripperCloseOverride ?? gripperConfigData?.gripper_close ?? 40
 
   const isLoading = chatStatus === 'submitted' || chatStatus === 'streaming'
   const isReloadingCamera = isCameraReloadPending
@@ -575,13 +599,11 @@ export function useRoboticsAiDemo(): UseRoboticsAiDemoReturn {
     const mjpegImg = imgRef.current
     if (!mjpegImg) return
     if (!isSafeUrl(workerBaseUrl)) return
-    setIsConnected(false)
     mjpegImg.src = `${workerBaseUrl}/stream/camera?ts=${Date.now()}`
   }, [workerBaseUrl])
 
   const startCameraPolling = useCallback(() => {
     setCameraStatusMessage('Waiting for camera…')
-    setCameraPolling(true)
   }, [])
 
   const handleReloadCamera = useCallback(async () => {
@@ -597,7 +619,6 @@ export function useRoboticsAiDemo(): UseRoboticsAiDemoReturn {
           ? `Failed to reload camera: ${error.message}`
           : 'Failed to reload camera.',
       )
-      startCameraPolling()
     }
   }, [
     startCameraPolling,
@@ -752,40 +773,11 @@ export function useRoboticsAiDemo(): UseRoboticsAiDemoReturn {
     }
   }, [])
 
-  // Once camera reports ready, stop polling and subscribe to the MJPEG stream
+  // When camera reports ready and stream is not yet connected, start the MJPEG stream
   useEffect(() => {
-    if (!cameraPolling || !cameraStatusData?.ready) return
-    setCameraPolling(false)
-    setCameraStatusMessage('')
+    if (isConnected || !cameraStatusData?.ready) return
     connect()
-  }, [cameraPolling, cameraStatusData, connect])
-
-  useEffect(() => {
-    if (availableRobotTypes.length > 0 && !selectedSetupRobotType) {
-      setSelectedSetupRobotType(availableRobotTypes[0])
-    }
-  }, [availableRobotTypes, selectedSetupRobotType])
-
-  useEffect(() => {
-    if (robotTypeReady) {
-      // Defer until the img element is mounted in the DOM
-      const id = setTimeout(() => startCameraPolling(), 0)
-      return () => clearTimeout(id)
-    }
-  }, [robotTypeReady, startCameraPolling])
-
-  // Sync gripper config from server on first load
-  useEffect(() => {
-    if (!gripperConfigData) return
-    setGripperOpen(gripperConfigData.gripper_open)
-    setGripperClose(gripperConfigData.gripper_close)
-  }, [gripperConfigData])
-
-  // Sync motor calibration state from polling
-  useEffect(() => {
-    if (!motorCalibrationStatusData) return
-    setMotorCalibrationState(motorCalibrationStatusData.state)
-  }, [motorCalibrationStatusData])
+  }, [isConnected, cameraStatusData, connect])
 
   useEffect(() => {
     if (chatMessagesRef.current) {
@@ -794,12 +786,36 @@ export function useRoboticsAiDemo(): UseRoboticsAiDemoReturn {
   }, [messages])
 
   useEffect(() => {
-    startCameraPolling()
-  }, [startCameraPolling])
-
-  useEffect(() => {
-    connectMcpServer().catch(() => {})
-  }, [connectMcpServer])
+    if (isMcpConnectingRef.current) return
+    let cancelled = false
+    isMcpConnectingRef.current = true
+    mcpConnectMutateAsync({ workerBaseUrl })
+      .then((payload) => {
+        if (cancelled) return
+        isMcpConnectingRef.current = false
+        const tools = normalizeTools(payload.tools)
+        setAvailableTools(tools)
+        setSelectedToolId((prev) =>
+          prev && tools.some((t) => t.id === prev) ? prev : '',
+        )
+        setMcpStatus('connected')
+        setMcpStatusMessage(payload.message ?? 'Connected to MCP server')
+      })
+      .catch((error) => {
+        if (cancelled) return
+        isMcpConnectingRef.current = false
+        setMcpStatus('error')
+        setMcpStatusMessage(
+          error instanceof Error ? error.message : 'Failed to connect',
+        )
+        setAvailableTools([])
+        setSelectedToolId('')
+      })
+    return () => {
+      cancelled = true
+      isMcpConnectingRef.current = false
+    }
+  }, [workerBaseUrl, mcpConnectMutateAsync])
 
   useEffect(() => {
     if (
@@ -874,7 +890,7 @@ export function useRoboticsAiDemo(): UseRoboticsAiDemoReturn {
     micLanguageOptions,
     selectedMicLanguageLabel,
     isReloadingCamera,
-    cameraStatusMessage,
+    cameraStatusMessage: cameraPolling ? cameraStatusMessage : '',
     hasMicrophone,
     micButtonDisabled,
     imgRef,

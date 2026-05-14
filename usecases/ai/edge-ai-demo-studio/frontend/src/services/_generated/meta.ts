@@ -4,6 +4,7 @@
 
 import { service as diarizationMeta } from '../diarization/data'
 import { service as embeddingsMeta } from '../embeddings/data'
+import { service as getiClassifierMeta } from '../geti-classifier/data'
 import { service as imageGenerationMeta } from '../image-generation/data'
 import { service as lipsyncMeta } from '../lipsync/data'
 import { service as mcpMeta } from '../mcp/data'
@@ -22,6 +23,7 @@ import { service as wakeWordDetectionMeta } from '../wake-word-detection/data'
 export const metaMap = {
   diarization: diarizationMeta,
   embeddings: embeddingsMeta,
+  'geti-classifier': getiClassifierMeta,
   'image-generation': imageGenerationMeta,
   lipsync: lipsyncMeta,
   mcp: mcpMeta,

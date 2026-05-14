@@ -125,7 +125,7 @@ export const ttsConfig: ServiceConfig = {
     {
       value: 'kokoro',
       label: 'Kokoro (Multilingual, OpenVINO)',
-      availableDevices: ['CPU'],
+      availableDevices: ['CPU', 'NPU'],
       backend: 'openvino',
     },
     {

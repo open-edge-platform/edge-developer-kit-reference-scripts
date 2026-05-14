@@ -24,6 +24,7 @@ Edge AI Demo Studio is a modern toolkit for deploying, managing, and serving AI 
 - **Samples:** Samples use cases that implements the ai services
   - Digital Avatar
   - RAG Chat
+  - [AI Exam Marking](./frontend/src/samples/ai-exam-marking/README.md)
 
 ## Architecture Diagram
 ![Archictecture Diagram](./docs/Architecture.png)
