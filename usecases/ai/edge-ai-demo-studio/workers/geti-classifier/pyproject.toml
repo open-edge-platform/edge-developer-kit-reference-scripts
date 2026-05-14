@@ -1,0 +1,24 @@
+[project]
+name = "geti-classifier"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.111.0",
+    "uvicorn>=0.29.0",
+    "python-multipart>=0.0.9",
+    # Use opencv-python instead of headless on Windows
+    # headless has no wheels for some Windows Python versions
+    "opencv-python>=4.10",
+    "numpy>=2.1",
+    "openvino>=2025.2,<2026.0",
+    "openvino-model-api>=0.4.1",
+    "geti-sdk~=2.13",
+]
+
+[tool.uv]
+# Ensure uv resolves platform-specific wheels correctly
+environments = [
+    "sys_platform == 'win32'",
+    "sys_platform == 'linux'",
+    "sys_platform == 'darwin'",
+]

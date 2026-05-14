@@ -16,8 +16,8 @@ import {
 } from '@/samples/common/hooks'
 import type { Sample } from '../types'
 import { ChatArea } from './components/chat-area'
-import { WebcamStream } from './components/webcam-stream'
-import { useWebcamStream } from './hooks/use-webcam-stream'
+import { WebcamStream } from '@/samples/common/components/webcam-stream'
+import { useWebcamStream } from '@/samples/common/hooks/use-webcam-stream'
 import { SampleParamsSlot } from '../common/sample-params-slot'
 
 function dataUrlToFile(dataUrl: string, filename: string): File {

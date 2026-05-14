@@ -11,6 +11,7 @@ export type SampleCategory =
   | 'Vision'
   | 'Productivity'
   | 'Creative'
+  | 'Education'
 
 export type DependencyRole = 'required' | 'optional'
 
@@ -106,4 +107,5 @@ export const categories: SampleCategory[] = [
   'Vision',
   'Productivity',
   'Creative',
+  'Education',
 ]

@@ -21,6 +21,7 @@ import {
   Folder,
 } from 'lucide-react'
 import { useCallback, useMemo, useState, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useServiceLiveStatus } from '@/context/service-status-context'
 import type { Sample } from '../types'
 import {
@@ -43,6 +44,7 @@ interface GeneratedImage {
   prompt: string
   isLoading?: boolean
   project?: string
+  maskUrl?: string
 }
 
 export function SyntheticImageGenerationDemo({
@@ -66,6 +68,7 @@ export function SyntheticImageGenerationDemo({
   const exportProjectMutation = useExportSyntheticImageProject()
 
   const [image, setImage] = useState<string | null>(null)
+  const [referenceImage, setReferenceImage] = useState<string | null>(null)
 
   const [genType, setGenType] = useState<GenerationType>(
     GenerationType.GOOD_DATASET,
@@ -76,14 +79,144 @@ export function SyntheticImageGenerationDemo({
   const [count, setCount] = useState(1)
   const [isGenerating, setIsGenerating] = useState(false)
 
-  const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([])
+  const [localImages, setLocalImages] = useState<GeneratedImage[]>([])
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(() => new Set())
   const [activeTab, setActiveTab] = useState<GenerationType | 'all'>('all')
   const [selectedImage, setSelectedImage] = useState<GeneratedImage | null>(
     null,
   )
 
-  const [currentProject, setCurrentProject] = useState('')
+  const [selectedProject, setSelectedProject] = useState<string | null>(null)
+  const currentProject = useMemo(() => {
+    if (selectedProject !== null && projects.includes(selectedProject))
+      return selectedProject
+    return projects[0] ?? ''
+  }, [selectedProject, projects])
+  const setCurrentProject = setSelectedProject
   const [isProjectDropdownOpen, setIsProjectDropdownOpen] = useState(false)
+
+  const historyImages = useMemo<GeneratedImage[]>(() => {
+    if (historyUrls.length === 0) return []
+    return historyUrls.map((url, i) => {
+      let type = GenerationType.GOOD_DATASET
+      let customTypeRaw: string | undefined
+      let timestamp = 0
+      let datePart = ''
+      let projectName = 'Default Project'
+
+      const filename = url.split('/').pop() || ''
+      const urlDecoded = decodeURIComponent(url)
+      const outputsIndex = urlDecoded.indexOf('/outputs/')
+
+      if (outputsIndex !== -1) {
+        const pathParts = urlDecoded.substring(outputsIndex + 9).split('/')
+        if (pathParts.length >= 3) {
+          projectName = pathParts[0]
+          const typeStr = pathParts[1]
+
+          if (typeStr === 'SYNTHETIC') type = GenerationType.GOOD_DATASET
+          else if (typeStr === 'MISSING_COMPONENT')
+            type = GenerationType.MISSING_COMPONENTS
+          else if (typeStr.startsWith('CUSTOM')) {
+            type = GenerationType.CUSTOM
+            if (typeStr.startsWith('CUSTOM_')) {
+              customTypeRaw = typeStr.substring(7)
+            }
+          }
+          const nameParts = pathParts[2].split('-')
+          if (nameParts.length > 0) datePart = nameParts[0]
+        } else if (!filename.includes('-')) {
+          const parts = filename.split('_')
+          datePart = parts[0]
+          if (parts.length >= 3) {
+            const typeStr = parts.slice(1, parts.length - 1).join('_')
+            if (typeStr === 'SYNTHETIC') type = GenerationType.GOOD_DATASET
+            else if (typeStr === 'MISSING_COMPONENT')
+              type = GenerationType.MISSING_COMPONENTS
+            else if (typeStr === 'CUSTOM') type = GenerationType.CUSTOM
+            else if (typeStr.startsWith('CUSTOM_')) {
+              type = GenerationType.CUSTOM
+              customTypeRaw = typeStr.substring(7)
+            }
+          }
+        }
+      } else {
+        if (filename.includes('_')) {
+          const parts = filename.split('_')
+          datePart = parts[0]
+        }
+      }
+
+      if (datePart && datePart.length === 14) {
+        const year = parseInt(datePart.substring(0, 4))
+        const month = parseInt(datePart.substring(4, 6)) - 1
+        const day = parseInt(datePart.substring(6, 8))
+        const hour = parseInt(datePart.substring(8, 10))
+        const minute = parseInt(datePart.substring(10, 12))
+        const second = parseInt(datePart.substring(12, 14))
+        timestamp = new Date(year, month, day, hour, minute, second).getTime()
+      }
+
+      const maskUrl =
+        type === GenerationType.MISSING_COMPONENTS
+          ? url.replace(/\.png$/, '-mask.png')
+          : undefined
+
+      return {
+        id: `history-${i}`,
+        url,
+        type,
+        customTypeRaw,
+        timestamp,
+        prompt: '',
+        project: projectName,
+        maskUrl,
+      }
+    })
+  }, [historyUrls])
+
+  const generatedImages = useMemo<GeneratedImage[]>(() => {
+    const historyFiltered = historyImages.filter(
+      (img) => !deletedIds.has(img.id),
+    )
+    return [...localImages, ...historyFiltered]
+  }, [localImages, historyImages, deletedIds])
+
+  const setGeneratedImages = useCallback(
+    (
+      updater:
+        | GeneratedImage[]
+        | ((prev: GeneratedImage[]) => GeneratedImage[]),
+    ) => {
+      if (typeof updater === 'function') {
+        setLocalImages((prevLocal) => {
+          const prevAll = [
+            ...prevLocal,
+            ...historyImages.filter((img) => !deletedIds.has(img.id)),
+          ]
+          const next = updater(prevAll)
+          const historyIds = new Set(historyImages.map((img) => img.id))
+          const newDeleted = new Set(deletedIds)
+          historyImages.forEach((img) => {
+            if (!next.find((n) => n.id === img.id)) newDeleted.add(img.id)
+            else newDeleted.delete(img.id)
+          })
+          setDeletedIds(newDeleted)
+          return next.filter((img) => !historyIds.has(img.id))
+        })
+      } else {
+        const historyIds = new Set(historyImages.map((img) => img.id))
+        const newDeleted = new Set(deletedIds)
+        historyImages.forEach((img) => {
+          if (!updater.find((n) => n.id === img.id)) newDeleted.add(img.id)
+          else newDeleted.delete(img.id)
+        })
+        setDeletedIds(newDeleted)
+        setLocalImages(updater.filter((img) => !historyIds.has(img.id)))
+      }
+    },
+    [historyImages, deletedIds],
+  )
 
   const projectImages = generatedImages.filter(
     (img) => img.project === currentProject,
@@ -101,95 +234,8 @@ export function SyntheticImageGenerationDemo({
   >(null)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const refInputRef = useRef<HTMLInputElement>(null)
   const projectDropdownRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (projects.length > 0) {
-      setCurrentProject((prev) =>
-        projects.includes(prev) ? prev : projects[0],
-      )
-    } else {
-      setCurrentProject('')
-    }
-  }, [projects])
-
-  useEffect(() => {
-    if (historyUrls.length > 0) {
-      const historyImages: GeneratedImage[] = historyUrls.map((url, i) => {
-        let type = GenerationType.GOOD_DATASET
-        let customTypeRaw: string | undefined
-        let timestamp = Date.now()
-        let datePart = ''
-        let projectName = 'Default Project'
-
-        const filename = url.split('/').pop() || ''
-        const urlDecoded = decodeURIComponent(url)
-        const outputsIndex = urlDecoded.indexOf('/outputs/')
-
-        if (outputsIndex !== -1) {
-          const pathParts = urlDecoded.substring(outputsIndex + 9).split('/')
-          if (pathParts.length >= 3) {
-            projectName = pathParts[0]
-            const typeStr = pathParts[1]
-
-            if (typeStr === 'SYNTHETIC') type = GenerationType.GOOD_DATASET
-            else if (typeStr === 'MISSING_COMPONENT')
-              type = GenerationType.MISSING_COMPONENTS
-            else if (typeStr.startsWith('CUSTOM')) {
-              type = GenerationType.CUSTOM
-              if (typeStr.startsWith('CUSTOM_')) {
-                customTypeRaw = typeStr.substring(7)
-              }
-            }
-            const nameParts = pathParts[2].split('-')
-            if (nameParts.length > 0) datePart = nameParts[0]
-          } else if (!filename.includes('-')) {
-            const parts = filename.split('_')
-            datePart = parts[0]
-            if (parts.length >= 3) {
-              const typeStr = parts.slice(1, parts.length - 1).join('_')
-              if (typeStr === 'SYNTHETIC') type = GenerationType.GOOD_DATASET
-              else if (typeStr === 'MISSING_COMPONENT')
-                type = GenerationType.MISSING_COMPONENTS
-              else if (typeStr === 'CUSTOM') type = GenerationType.CUSTOM
-              else if (typeStr.startsWith('CUSTOM_')) {
-                type = GenerationType.CUSTOM
-                customTypeRaw = typeStr.substring(7)
-              }
-            }
-          }
-        } else {
-          if (filename.includes('_')) {
-            const parts = filename.split('_')
-            datePart = parts[0]
-          }
-        }
-
-        if (datePart && datePart.length === 14) {
-          const year = parseInt(datePart.substring(0, 4))
-          const month = parseInt(datePart.substring(4, 6)) - 1
-          const day = parseInt(datePart.substring(6, 8))
-          const hour = parseInt(datePart.substring(8, 10))
-          const minute = parseInt(datePart.substring(10, 12))
-          const second = parseInt(datePart.substring(12, 14))
-          timestamp = new Date(year, month, day, hour, minute, second).getTime()
-        }
-
-        return {
-          id: i.toString(),
-          url,
-          type,
-          customTypeRaw,
-          timestamp,
-          prompt: '',
-          project: projectName,
-        }
-      })
-      setGeneratedImages(historyImages)
-    } else {
-      setGeneratedImages([])
-    }
-  }, [historyUrls])
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -211,6 +257,19 @@ export function SyntheticImageGenerationDemo({
       const reader = new FileReader()
       reader.onloadend = () => {
         setImage(reader.result as string)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
+  const handleReferenceImageChange = (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setReferenceImage(reader.result as string)
       }
       reader.readAsDataURL(file)
     }
@@ -239,9 +298,12 @@ export function SyntheticImageGenerationDemo({
         setGeneratedImages((prev) => [placeholder, ...prev])
 
         try {
-          const { imageUrls, finalPrompt } =
+          const { imageUrls, finalPrompt, maskUrl } =
             await generateSyntheticImageMutation.mutateAsync({
               baseImage64: base64Image,
+              referenceImage64: referenceImage
+                ? referenceImage.split(',')[1]
+                : undefined,
               type: genType,
               objective,
               customPrompt,
@@ -257,6 +319,7 @@ export function SyntheticImageGenerationDemo({
                   url: imageUrls[0],
                   prompt: finalPrompt,
                   isLoading: false,
+                  maskUrl,
                 }
               }
               return img
@@ -273,6 +336,7 @@ export function SyntheticImageGenerationDemo({
     }
   }, [
     image,
+    referenceImage,
     count,
     genType,
     customType,
@@ -280,6 +344,7 @@ export function SyntheticImageGenerationDemo({
     customPrompt,
     currentProject,
     generateSyntheticImageMutation,
+    setGeneratedImages,
   ])
 
   const handleDownload = useCallback(async (img: GeneratedImage) => {
@@ -335,7 +400,7 @@ export function SyntheticImageGenerationDemo({
         setProcessingAction(null)
       }
     },
-    [deleteAssetMutation, selectedImage],
+    [deleteAssetMutation, selectedImage, setGeneratedImages],
   )
 
   return (
@@ -352,66 +417,138 @@ export function SyntheticImageGenerationDemo({
 
             <div className="space-y-5">
               <div>
-                <label
-                  htmlFor="image-upload"
-                  className="text-muted-foreground mb-2 block text-xs font-bold uppercase"
-                >
-                  Base Image
-                </label>
-                <div
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      fileInputRef.current?.click()
-                    }
-                  }}
-                  onClick={() => fileInputRef.current?.click()}
-                  className={`group relative cursor-pointer overflow-hidden rounded-xl border-2 border-dashed transition-all duration-300 ${
-                    image
-                      ? 'border-primary/50'
-                      : 'border-border hover:border-primary/50'
-                  }`}
-                  style={{ aspectRatio: '16/9' }}
-                >
-                  {image ? (
-                    <NextImage
-                      src={image}
-                      className="object-cover"
-                      alt="Upload"
-                      fill
-                      unoptimized
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label
+                      htmlFor="image-upload"
+                      className="text-muted-foreground mb-2 block text-xs font-bold uppercase"
+                    >
+                      Base Image
+                    </label>
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          fileInputRef.current?.click()
+                        }
+                      }}
+                      onClick={() => fileInputRef.current?.click()}
+                      className={`group relative cursor-pointer overflow-hidden rounded-xl border-2 border-dashed transition-all duration-300 ${
+                        image
+                          ? 'border-primary/50'
+                          : 'border-border hover:border-primary/50'
+                      }`}
+                      style={{ aspectRatio: '1/1' }}
+                    >
+                      {image ? (
+                        <NextImage
+                          src={image}
+                          className="object-cover"
+                          alt="Base image"
+                          fill
+                          unoptimized
+                        />
+                      ) : (
+                        <div className="text-muted-foreground flex h-full flex-col items-center justify-center gap-2 p-2">
+                          <Upload className="group-hover:text-foreground h-6 w-6 transition-colors" />
+                          <span className="text-center text-xs font-medium">
+                            Upload source
+                          </span>
+                        </div>
+                      )}
+                      {image && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setImage(null)
+                            if (fileInputRef.current)
+                              fileInputRef.current.value = ''
+                          }}
+                          className="absolute top-2 right-2 rounded-full bg-black/50 p-1 transition-colors hover:bg-black/70"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
+                    <input
+                      id="image-upload"
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleImageChange}
+                      accept="image/*"
+                      className="hidden"
                     />
-                  ) : (
-                    <div className="text-muted-foreground flex h-full flex-col items-center justify-center gap-2">
-                      <Upload className="group-hover:text-foreground h-8 w-8 transition-colors" />
-                      <span className="text-sm font-medium">
-                        Click to upload source
-                      </span>
+                  </div>
+
+                  {genType === GenerationType.CUSTOM && (
+                    <div>
+                      <label
+                        htmlFor="reference-upload"
+                        className="text-muted-foreground mb-2 block text-xs font-bold uppercase"
+                      >
+                        Reference Image
+                      </label>
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            refInputRef.current?.click()
+                          }
+                        }}
+                        onClick={() => refInputRef.current?.click()}
+                        className={`group relative cursor-pointer overflow-hidden rounded-xl border-2 border-dashed transition-all duration-300 ${
+                          referenceImage
+                            ? 'border-primary/50'
+                            : 'border-border hover:border-primary/50'
+                        }`}
+                        style={{ aspectRatio: '1/1' }}
+                      >
+                        {referenceImage ? (
+                          <NextImage
+                            src={referenceImage}
+                            className="object-cover"
+                            alt="Reference image"
+                            fill
+                            unoptimized
+                          />
+                        ) : (
+                          <div className="text-muted-foreground flex h-full flex-col items-center justify-center gap-2 p-2">
+                            <Upload className="group-hover:text-foreground h-6 w-6 transition-colors" />
+                            <span className="text-center text-xs font-medium">
+                              Upload reference
+                            </span>
+                          </div>
+                        )}
+                        {referenceImage && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setReferenceImage(null)
+                              if (refInputRef.current)
+                                refInputRef.current.value = ''
+                            }}
+                            className="absolute top-2 right-2 rounded-full bg-black/50 p-1 transition-colors hover:bg-black/70"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        )}
+                      </div>
+                      <input
+                        id="reference-upload"
+                        type="file"
+                        ref={refInputRef}
+                        onChange={handleReferenceImageChange}
+                        accept="image/*"
+                        className="hidden"
+                      />
+                      <p className="text-muted-foreground mt-1 text-[10px]">
+                        Optional — used as style guide
+                      </p>
                     </div>
                   )}
-                  {image && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setImage(null)
-                        if (fileInputRef.current)
-                          fileInputRef.current.value = ''
-                      }}
-                      className="absolute top-2 right-2 rounded-full bg-black/50 p-1 transition-colors hover:bg-black/70"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  )}
                 </div>
-                <input
-                  id="image-upload"
-                  type="file"
-                  ref={fileInputRef}
-                  onChange={handleImageChange}
-                  accept="image/*"
-                  className="hidden"
-                />
               </div>
 
               <div>
@@ -420,7 +557,11 @@ export function SyntheticImageGenerationDemo({
                 </span>
                 <div className="grid grid-cols-1 gap-2">
                   <button
-                    onClick={() => setGenType(GenerationType.GOOD_DATASET)}
+                    onClick={() => {
+                      setGenType(GenerationType.GOOD_DATASET)
+                      setReferenceImage(null)
+                      if (refInputRef.current) refInputRef.current.value = ''
+                    }}
                     className={`flex items-center justify-between rounded-xl border px-4 py-3 text-left transition-all ${
                       genType === GenerationType.GOOD_DATASET
                         ? 'bg-primary/10 border-primary/50 text-primary'
@@ -436,9 +577,11 @@ export function SyntheticImageGenerationDemo({
                     )}
                   </button>
                   <button
-                    onClick={() =>
+                    onClick={() => {
                       setGenType(GenerationType.MISSING_COMPONENTS)
-                    }
+                      setReferenceImage(null)
+                      if (refInputRef.current) refInputRef.current.value = ''
+                    }}
                     className={`flex items-center justify-between rounded-xl border px-4 py-3 text-left transition-all ${
                       genType === GenerationType.MISSING_COMPONENTS
                         ? 'border-warning/50 bg-warning/10 text-warning'
@@ -623,7 +766,7 @@ export function SyntheticImageGenerationDemo({
                     </p>
                   </div>
                 ) : (
-                  <div className="grid max-h-[625px] grid-cols-1 gap-6 overflow-y-auto pr-2 sm:grid-cols-2 lg:grid-cols-5">
+                  <div className="grid max-h-[625px] grid-cols-1 gap-6 overflow-y-auto pr-2 sm:grid-cols-2 lg:grid-cols-3">
                     {filteredImages.map((img) => (
                       <ImageCard
                         key={img.id}
@@ -879,9 +1022,9 @@ function ImageCard({
           )}
         </div>
       </div>
-      <div className="flex items-center justify-between p-4">
-        <div className="flex flex-col">
-          <span className="text-muted-foreground font-mono text-[10px]">
+      <div className="flex items-center justify-between gap-2 p-4">
+        <div className="flex min-w-0 flex-col">
+          <span className="text-muted-foreground block truncate font-mono text-[10px]">
             ID: {img.url.split('/').pop()}
           </span>
           <span className="text-muted-foreground text-[10px]">
@@ -922,10 +1065,10 @@ function ImageCard({
 function TypeBadge({ type }: { type: GenerationType }) {
   const className =
     type === GenerationType.GOOD_DATASET
-      ? 'bg-primary/10 text-primary border-primary/30'
+      ? 'bg-primary border-primary text-white'
       : type === GenerationType.MISSING_COMPONENTS
-        ? 'border-warning/30 bg-warning/10 text-warning'
-        : 'border-success/30 bg-success/10 text-success'
+        ? 'border-warning bg-warning text-white'
+        : 'border-success bg-success text-white'
 
   return (
     <span
@@ -943,7 +1086,7 @@ function ImagePreviewModal({
   image: GeneratedImage
   onClose: () => void
 }) {
-  return (
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
@@ -957,14 +1100,45 @@ function ImagePreviewModal({
       </button>
 
       <div className="flex h-full w-full max-w-7xl flex-col items-center justify-center gap-4">
-        <NextImage
-          src={image.url}
-          className="h-auto max-h-[80vh] w-auto max-w-full rounded-lg border border-slate-800 object-contain shadow-2xl"
-          alt="Full preview"
-          height={1024}
-          width={1024}
-          unoptimized
-        />
+        {image.type === GenerationType.MISSING_COMPONENTS && image.maskUrl ? (
+          <div className="flex w-full items-start justify-center gap-4">
+            <div className="flex flex-1 flex-col items-center gap-2">
+              <span className="text-xs font-bold tracking-widest text-slate-400 uppercase">
+                Bounding Box Mask
+              </span>
+              <NextImage
+                src={image.maskUrl}
+                className="h-auto max-h-[72vh] w-auto max-w-full rounded-lg border border-slate-800 object-contain shadow-2xl"
+                alt="Bounding box mask"
+                height={1024}
+                width={1024}
+                unoptimized
+              />
+            </div>
+            <div className="flex flex-1 flex-col items-center gap-2">
+              <span className="text-xs font-bold tracking-widest text-slate-400 uppercase">
+                Generated Image
+              </span>
+              <NextImage
+                src={image.url}
+                className="h-auto max-h-[72vh] w-auto max-w-full rounded-lg border border-slate-800 object-contain shadow-2xl"
+                alt="Full preview"
+                height={1024}
+                width={1024}
+                unoptimized
+              />
+            </div>
+          </div>
+        ) : (
+          <NextImage
+            src={image.url}
+            className="h-auto max-h-[80vh] w-auto max-w-full rounded-lg border border-slate-800 object-contain shadow-2xl"
+            alt="Full preview"
+            height={1024}
+            width={1024}
+            unoptimized
+          />
+        )}
 
         <div className="w-full max-w-2xl rounded-xl border border-slate-800 bg-slate-900/90 p-4 backdrop-blur-sm">
           <div className="mb-2 flex items-center justify-between">
@@ -982,6 +1156,7 @@ function ImagePreviewModal({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

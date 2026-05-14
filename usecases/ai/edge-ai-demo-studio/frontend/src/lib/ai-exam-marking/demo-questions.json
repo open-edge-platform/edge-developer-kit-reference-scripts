@@ -1,0 +1,63 @@
+{
+  "1": {
+    "number": 1,
+    "question": "Explain one way a business could increase its gross profit margin. ",
+    "marks": 3,
+    "scheme": "Award 1 mark for identification of a way, plus 2 further marks for explaining how this way will affect a business for a maximum of 3 marks.\n• A business could negotiate deals with suppliers at a cheaper rate (1) this will keep costs as low as possible (1) meaning that the business can look to reduce the prices of their products/services to encourage more sales (1).\nAnswers that list three ways with no explanation will get a maximum of 1 mark.\nAccept any other appropriate response.\n",
+    "boundingBox": {
+      "x1": 459,
+      "y1": 116,
+      "x2": 591,
+      "y2": 200
+    }
+  },
+  "2": {
+    "number": 2,
+    "question": "Analyze the importance to Backyard Shoez of satisfying customer needs.",
+    "marks": 6,
+    "scheme": "AO2 = 3 marks, AO3 = 3 marks\nAO2 = \nBackyard Shoez is located in three shopping malls where there are other shoe shops.\nBackyard Shoez need to maintain a high standard at all times to encourage customers to buy its shoes and bags.\nAO3 = \nIf customer needs are not met then present customers to go other shoe shops.\nBackyard Shoez will maintain customer loyalty with positive effects on sales and revenue.\nLevel Mark Descriptor\nLevel 1: 1-2 Limited application of knowledge and issues to the business context (AO3).\nAttempts to deconstruct business information and/or issues, finding limited connections between points (AO3).\nLevel 2: 3-4 Sound application of knowledge and understanding of business concepts and issues to the business context although there may be some inconsistencies (AO2).\nDeconstructs business information and/or issues, finding interconnected points with chains of reasoning, although there may be some logical inconsistencies (AO3).\nLevel 3: 5-6 Detailed application of knowledge and understanding of business concepts and issues to the business context throughout (AO2).\nDeconstructs business information and/or issues, finding detailed interconnected points with logical chains of reasoning (AO3).\n",
+    "boundingBox": {
+      "x1": 489,
+      "y1": 245,
+      "x2": 594,
+      "y2": 377
+    }
+  },
+  "3": {
+    "number": 3,
+    "question": "Explain one method of above the line promotion a business could use. ",
+    "marks": 3,
+    "scheme": "Award 1 mark for identification of method, plus 2 further marks for explaining this method, for a maximum of 3 marks.\n• A business could use television advertising (1). This can be seen by large numbers of people raising awareness (1) resulting in an increase in sales for a business (1).\nAnswers that list more than one method with no explanation will get a maximum of 1 mark.\nAccept any other appropriate response.\n",
+    "boundingBox": {
+      "x1": 510,
+      "y1": 392,
+      "x2": 602,
+      "y2": 482
+    }
+  },
+  "4": {
+    "number": 4,
+    "question": "Explain one reason why non-renewable energy resources need to be managed.",
+    "marks": 4,
+    "scheme": "Award 1 mark for point about energy source and a further one mark for explanation of its effect, up to a maximum of 4 marks:\nnon-renewable energy resources are finite (1), which means they will eventually run out so alternatives in the form of renewables are needed that can be recycled/reused/replenished (1) over a shorter period of time\nnon-renewable energy resources emit carbon dioxide (1) which is a greenhouse gas and causes sea level rise/extremes in climate (1)\nAccept any other appropriate response.\n",
+    "boundingBox": {
+      "x1": 503,
+      "y1": 521,
+      "x2": 600,
+      "y2": 610
+    }
+  },
+  "5": {
+    "number": 5,
+    "question": "Explain the change in breathing rate during exercise.",
+    "marks": 3,
+    "scheme": "An explanation that makes reference to three of the following points:\n• increases (1)\n• oxygen for respiration / aerobic respiration (1)\n• muscle (1)\n• remove carbon dioxide (1)\n",
+    "boundingBox": {
+      "x1": 483,
+      "y1": 635,
+      "x2": 599,
+      "y2": 754
+    }
+  }
+}
+

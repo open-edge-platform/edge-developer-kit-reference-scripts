@@ -24,7 +24,6 @@ from kokoro import KPipeline, KModel
 
 from misaki.espeak import EspeakWrapper
 
-
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -131,30 +130,36 @@ class KokoroTTSService:
         return res
 
     def init_model_and_pipeline(self, model_dir: str, source: str = "huggingface"):
+        repo_id = "hexgrad/Kokoro-82M"
         try:
+            logger.info("Loading Kokoro model with OpenVINO runtime...")
             self.model = OVKModel(model_dir, self.device, source=source)
-
-            # Initialize default pipeline
             self.pipelines["a"] = KPipeline(
                 lang_code="a",
-                repo_id="hexgrad/Kokoro-82M",
+                repo_id=repo_id,
                 model=self.model,
                 model_dir=model_dir,
             )
         except Exception as e:
             logger.warning(f"OVKModel initialization failed: {e}")
-            # Fallback to standard KModel (PyTorch) if OVKModel fails
-            # Download model files to the same model_dir
-            repo_id = "hexgrad/Kokoro-82M"
+            config_local = os.path.join(model_dir, "config.json")
+            if os.path.exists(config_local):
+                config_path = config_local
+            else:
+                config_path = self._download_file(
+                    repo_id=repo_id, file_path="config.json", local_dir=model_dir
+                )
 
-            config_path = self._download_file(
-                repo_id=repo_id, file_path="config.json", local_dir=model_dir
-            )
-            model_path = self._download_file(
-                repo_id=repo_id,
-                file_path=KModel.MODEL_NAMES[repo_id],
-                local_dir=model_dir,
-            )
+            model_filename = KModel.MODEL_NAMES[repo_id]
+            model_local = os.path.join(model_dir, model_filename)
+            if os.path.exists(model_local):
+                model_path = model_local
+            else:
+                model_path = self._download_file(
+                    repo_id=repo_id,
+                    file_path=model_filename,
+                    local_dir=model_dir,
+                )
 
             self.model = (
                 KModel(repo_id=repo_id, config=config_path, model=model_path)

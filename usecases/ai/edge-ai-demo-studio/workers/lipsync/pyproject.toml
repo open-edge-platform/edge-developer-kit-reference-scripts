@@ -3,12 +3,12 @@ name = "lipsync"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.11, <3.12"
+requires-python = ">=3.11"
 dependencies = [
     "accelerate==1.7.0",
     "aiortc==1.14.0",
     "cjk_textwrap==0.1.0",
-    "diffusers==0.33.1",
+    "diffusers>=0.38.0",
     "einops==0.8.1",
     "fastapi[standard]>=0.120.1",
     "ffmpeg-python==0.2.0",

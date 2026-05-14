@@ -27,7 +27,7 @@ dependencies = [
     "requests>=2.32.5",
     "tiktoken>=0.12.0",
     "tqdm>=4.67.1",
-    "urllib3==2.6.3",
+    "urllib3>=2.6.3",
     "uvicorn>=0.38.0",
     "wmi>=1.5.1 ; sys_platform == 'win32'",
 ]

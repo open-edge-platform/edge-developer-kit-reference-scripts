@@ -34,3 +34,6 @@ pytorch-triton-xpu = { index = "pytorch" }
 name = "pytorch"
 url = "https://download.pytorch.org/whl/xpu"
 explicit = true
+
+[tool.uv]
+override-dependencies = ["diffusers==0.38.0"]

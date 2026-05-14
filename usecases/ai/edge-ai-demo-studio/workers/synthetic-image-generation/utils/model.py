@@ -2,10 +2,11 @@ import os
 import time
 import logging
 import torch
-from PIL import Image
+from PIL import Image, ImageDraw
+from typing import Union
 from ultralytics import FastSAM
 from transformers import Qwen3ForCausalLM
-from diffusers import AutoModel, Flux2KleinPipeline
+from diffusers import AutoModel, Flux2KleinPipeline, AutoencoderKLFlux2
 from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig
 from transformers import BitsAndBytesConfig as TransformersBitsAndBytesConfig
 
@@ -39,11 +40,18 @@ class ImageGen:
         self.pipeline = None
 
         if self.mode == "local":
-            self._load_model_pipeline()
+            if "FLUX.2-klein" in self.model_id:
+                self._load_flux2_model_pipeline()
+            else:
+                raise NotImplementedError(
+                    "Only FLUX.2-klein models are supported currently."
+                )
         else:
             raise NotImplementedError("Only local mode is supported currently.")
 
-    def _load_model_pipeline(self, use_quantized: bool = True):
+    def _load_flux2_model_pipeline(
+        self, use_quantized: bool = True, optimize_decoder: bool = True
+    ):
         logger.info(
             f"Loading model pipeline from {self.model_id} on device {self.device} with dtype {self.dtype}"
         )
@@ -73,11 +81,16 @@ class ImageGen:
                 quantization_config=transformer_quant_config,
             ).to(self.device)
 
-            quant_vae = AutoModel.from_pretrained(
-                self.model_id,
-                subfolder="vae",
-                torch_dtype=self.dtype,
-            ).to(self.device)
+            if optimize_decoder:
+                quant_vae = AutoencoderKLFlux2.from_pretrained(
+                    "black-forest-labs/FLUX.2-small-decoder", torch_dtype=self.dtype
+                ).to(self.device)
+            else:
+                quant_vae = AutoModel.from_pretrained(
+                    self.model_id,
+                    subfolder="vae",
+                    torch_dtype=self.dtype,
+                ).to(self.device)
 
             self.pipeline = Flux2KleinPipeline.from_pretrained(
                 self.model_id,
@@ -126,7 +139,12 @@ class ImageGen:
         return image.resize((target_size, target_size))
 
     def inference(
-        self, image: Image.Image, prompt: str, height: int, width: int, seed: int = 42
+        self,
+        image: Union[Image.Image, list[Image.Image]],
+        prompt: str,
+        height: int,
+        width: int,
+        seed: int = 42,
     ):
         if self.mode == "local":
             st = time.time()
@@ -181,7 +199,7 @@ class ImageSegmentation:
         results: list,
         min_area: int = 1000,
         max_area: int = 10000,
-        save_results: bool = False,
+        save_results: bool = True,
     ):
         masked_image_list = []
         for result in results:
@@ -208,17 +226,33 @@ class ImageSegmentation:
                 if mask.sum() < min_area or mask.sum() > max_area:
                     continue
 
+                # --- Filled red overlay (used for inference) ---
                 masked_image = ori_image.copy()
                 red_mask = Image.new("RGB", masked_image.size, (255, 0, 0))
                 mask_image = Image.fromarray(
                     (mask.numpy() * 255).astype("uint8")
                 ).resize(masked_image.size)
                 masked_image = Image.composite(red_mask, masked_image, mask_image)
-                masked_image_list.append(masked_image)
+
+                # --- Bounding box outline (used for display/saving) ---
+                mask_h, mask_w = mask.shape
+                img_w, img_h = ori_image.size
+                coords = mask.nonzero()
+                x_min = int(coords[:, 1].min().item() * img_w / mask_w)
+                x_max = int(coords[:, 1].max().item() * img_w / mask_w)
+                y_min = int(coords[:, 0].min().item() * img_h / mask_h)
+                y_max = int(coords[:, 0].max().item() * img_h / mask_h)
+                bbox_image = ori_image.copy()
+                draw = ImageDraw.Draw(bbox_image)
+                draw.rectangle(
+                    [x_min, y_min, x_max, y_max], outline=(255, 0, 0), width=3
+                )
+
+                masked_image_list.append((masked_image, bbox_image))
 
                 if save_results:
                     os.makedirs("segmentation_outputs", exist_ok=True)
-                    masked_image.save(
+                    bbox_image.save(
                         f"segmentation_outputs/segmented_image_with_masks_{i+1}.png"
                     )
 
