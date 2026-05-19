@@ -10,7 +10,7 @@ dependencies = [
     "certifi>=2026.2.25",
     "diffusers>=0.38.0",
     "fastapi[all]>=0.135.1",
-    "idna>=3.11",
+    "idna>=3.15",
     "markupsafe==3.0.2",
     "openvino==2026.0.0",
     "requests>=2.33.0",
