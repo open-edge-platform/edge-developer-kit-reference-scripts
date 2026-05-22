@@ -1,4 +1,4 @@
-# Intel IPU6 Camera Setup Scripts
+# Intel IPU6 MIPI Camera Setup Scripts
 
 This directory contains scripts for setting up Intel IPU6 camera support on Ubuntu systems, specifically for Intel ARL (Arrow Lake) development kits.
 
@@ -10,13 +10,7 @@ This directory contains scripts for setting up Intel IPU6 camera support on Ubun
 - Internet connection for downloading packages
 - IPU6 userspace package (ARL-UH_IPU_FW_HDMI-in.zip) from Intel
 
-## Validated System
-
-The exact validated matrix can change across kernel, firmware, and camera/AIC revisions. Use this section as reference. 
-
-| Product Collection | Codename | Camera | Support | Validated Hardware |
-|---------|--------|---------|--------|---------|
-| Intel® Core™ Ultra Processors (Series 2) | Products formerly Arrow Lake | 2 x D3 - AR0234 | ✅ Supported | Innodisk Intel® Core™ Ultra Series 2 Reference Kit |
+## BIOS Configuration
 
 ## Quick Start
 

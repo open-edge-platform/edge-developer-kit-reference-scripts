@@ -16,8 +16,8 @@ Quick answers to common questions about Intel® Edge Developer Kits.
 ### **Q: I'm new to AI development. Where should I start?**
 **A:** Follow this learning path:
 1. Complete our [Getting Started Guide](./getting-started.md)
-2. Try the [OpenWebUI + Ollama](../usecases/ai/openwebui-ollama/README.md) use case (10 minutes)
-3. Read [AI Development Basics](./use-cases.md) for concepts
+2. Try the [Edge AI Demo Studio**](../samples/ai/edge-ai-demo-studio/README.md)(10 minutes)
+3. Refer [Devkit samples](../samples/SAMPLES_README.md) for concepts
 4. Join our [community discussions](https://github.com/open-edge-platform/edge-developer-kit-reference-scripts/discussions) to ask questions
 
 ### **Q: Do I need to buy specific hardware?**
@@ -103,14 +103,6 @@ sudo usermod -aG docker $USER
 - **Memory limits:** Each model needs GPU/system memory
 - **Performance impact:** Multiple models compete for resources
 - **Multi-GPU setups:** Distribute models across different GPUs
-
-## Use Cases & Applications
-
-### **Q: Which use case should I try first?**
-**A:** Based on your interests:
-- **AI Beginner:** [OpenWebUI + Ollama](../usecases/ai/openwebui-ollama/README.md) - Like ChatGPT but local
-- **Computer Vision:** [AI Video Analytics](../usecases/ai/ai-video-analytics/README.md) - Analyze video content
-- **Enterprise AI:** [RAG Toolkit](../usecases/ai/rag-toolkit/README.md) - Build knowledge systems
 
 ### **Q: Can I modify the use cases for my needs?**
 **A:** Absolutely! The use cases are starting points:
