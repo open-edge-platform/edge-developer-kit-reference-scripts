@@ -5,7 +5,6 @@ Welcome to Intel®'s edge computing ecosystem! This guide will help you get up a
 ## Table of Contents
 
 - [Installation Walkthrough](#installation-walkthrough)
-- [Your First AI Application](#your-first-ai-application)
 - [Next Steps](#next-steps)
 
 ## Installation Walkthrough
@@ -109,48 +108,8 @@ Log file saved: /var/log/intel-platform-installer.log
 ========================================================================
 ```
 
-## Your First AI Application
-
-### Quick Test: Chat Interface
-
-Let's deploy a ChatGPT*-like interface running locally:
-
-```bash
-cd usecases/ai/openwebui-ollama
-docker compose up -d
-```
-
-**Access at:** http://localhost
-
-**What you get:**
-- Private AI chat interface
-- No data sent to external servers
-- Runs entirely on your Intel® hardware
-
-### Understanding What Happened
-
-1. **Hardware Detection:** The installer identified your specific Intel® platform
-2. **Driver Installation:** GPU, NPU, and other drivers were configured
-3. **AI Framework:** Intel® Distribution of OpenVINO™ Toolkit and supporting tools were installed
-4. **Optimization:** System was tuned for your hardware configuration
-
-## Next Steps
-
-### 🚀 **Try More Use Cases**
-
-| **Difficulty** | **Project** | **What You'll Learn** |
-|----------------|-------------|-----------------------|
-| 🟢 **Beginner** | [AI Video Analytics](../usecases/ai/ai-video-analytics/README.md) | Computer vision basics |
-| 🟡 **Intermediate** | [RAG Knowledge Base](../usecases/ai/rag-toolkit/README.md) | Enterprise AI patterns |
-| 🔴 **Advanced** | [Real-Time Computing](../usecases/real-time/tcc_tutorial/README.md) | Ultra-low latency systems |
-
-
-### 🤝 **Join the Community**
-
-- **Questions?** → [GitHub* Discussions](https://github.com/open-edge-platform/edge-developer-kit-reference-scripts/discussions)
-- **Issues?** → [GitHub* Issues](https://github.com/open-edge-platform/edge-developer-kit-reference-scripts/issues)
-- **Show & Tell** → Share your projects in discussions!
-
----
-
 **🎉 Congratulations!** You're now ready to build amazing AI applications with Intel® hardware.
+
+### Next Steps
+
+Explore all samples — browse everything available [here](../samples/SAMPLES_README.md), share your projects and help others learn!

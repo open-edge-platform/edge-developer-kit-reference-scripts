@@ -1,6 +1,6 @@
 # IPU7 GMSL Camera Quick Start Guide
 
-## 1. Introduction
+## Introduction
 
 This document is a draft Quick Start Guide (QSG) for bringing up an IPU7-based GMSL camera pipeline on Ubuntu* 24.04 using the scripts in this repository.
 
@@ -10,19 +10,18 @@ Scope:
 
 > Note: BIOS menus and exact settings vary by platform vendor.
 
-## 2. Table of Contents
+## Table of Contents
 
-- [1. Introduction](#1-introduction)
-- [2. Table of Contents](#2-table-of-contents)
-- [3. System requirements](#3-system-requirements)
-- [4. Validated System](#4-validated-system)
-- [5. Hardware Setup and Connections](#5-hardware-setup-and-connections)
-- [6. BIOS configuration](#6-bios-configuration)
-- [7. Software QSG](#7-software-qsg)
-- [8. Support and Documentation](#8-support-and-documentation)
+- [Introduction](#1-introduction)
+- [Table of Contents](#2-table-of-contents)
+- [System requirements](#3-system-requirements)
+- [Hardware Setup and Connections](#5-hardware-setup-and-connections)
+- [BIOS configuration](#6-bios-configuration)
+- [Software QSG](#7-software-qsg)
+- [Support and Documentation](#8-support-and-documentation)
 - [Trademarks](#trademarks)
 
-## 3. System requirements
+## System requirements
 
 ### Operating system
 
@@ -40,15 +39,7 @@ Scope:
 - GMSL cameras and GMSL Max96724 AIC card
 - Network access to download packages and keys
 
-## 4. Validated System
-
-The exact validated matrix can change across kernel, firmware, and camera/AIC revisions. Use this section as reference. 
-
-| Product Collection | Codename | Camera | Support | Validated Hardware |
-|---------|--------|---------|--------|---------|
-| Intel® Core™ Ultra Processors (Series 3) | Products formerly Panther Lake | 8 x D3 - ISX031 | ✅ Supported | Innodisk Intel® Core™ Ultra Series 3 Reference Kit |
-
-## 5. Hardware Setup and Connections
+## Hardware Setup and Connections
 
 1. Power off the system and disconnect AC power.
 2. Install the GMSL AIC into an appropriate MIPI CSI-2 slot.
@@ -58,7 +49,7 @@ The exact validated matrix can change across kernel, firmware, and camera/AIC re
 
 4. Reconnect power and boot the system.
 
-## 6. BIOS configuration
+## BIOS configuration
 
 > Note: BIOS menus and exact settings vary by platform vendor and camera sensor.
 
@@ -87,7 +78,7 @@ BIOS options are platform-specific. Configure the platform BIOS to enable the IP
 System will go into reboot state. 
 
 
-## 7. Software QSG
+## Software QSG
 
 1. Ensure you follow this guide [Intel® Core™ Ultra Processors (Series 3) RDC](https://cdrdv2.intel.com/v1/dl/getContent/858119/view) to boot up the system. 
 
@@ -142,18 +133,6 @@ gst-launch-1.0 \
 	icamerasrc num-vc=8 num-buffers=600 scene-mode=auto device-name=isx031-7 io-mode=dma_mode printfps=true ! 'video/x-raw(memory:DMABuf),drm-format=UYVY,width=1920,height=1536' ! glimagesink sync=false \
 	icamerasrc num-vc=8 num-buffers=600 scene-mode=auto device-name=isx031-8 io-mode=dma_mode printfps=true ! 'video/x-raw(memory:DMABuf),drm-format=UYVY,width=1920,height=1536' ! glimagesink sync=false
 ```
-
-## 8. Support and Documentation
-
-Repository documentation:
-- [usecases/camera/TROUBLESHOOTING.md](../TROUBLESHOOTING.md)
-- [usecases/camera/mipi/README.md](../mipi/README.md)
-- [usecases/camera/gmsl/ECI-README.md](ECI-README.md)
-
-External references:
-- [Intel ECI GMSL tutorial](https://eci.intel.com/docs/3.3/development/tutorials/enable-gmsl.html)
-- [Intel® RealSense™ documentation](https://dev.intelrealsense.com/)
-- [ROS 2* documentation (Jazzy)](https://docs.ros.org/en/jazzy/)
 
 If you are blocked:
 - Capture `uname -r`, `lspci -nn`, and relevant `dmesg` excerpts.

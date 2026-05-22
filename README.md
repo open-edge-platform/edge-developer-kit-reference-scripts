@@ -3,10 +3,6 @@
 
 This repository provides simplified developer kit reference setup scripts for various Intel® platforms and GPUs.
 
-> **First time:** Follow our [detailed setup guide](./docs/getting-started.md) for a guided experience.
-
--> **Quick Start:** Get running in 5 minutes with our [one-line installer](#5-minute-quick-start).
-
 > **Note:** The main branch contains the latest development version of the project. It may include experimental features, work in progress, or unstable code.
 
 - Officially Supported: Ubuntu 24.04 LTS (tested on `Ubuntu 24.04.4 LTS`) with the 6.17 kernel.
@@ -16,7 +12,7 @@ This repository provides simplified developer kit reference setup scripts for va
 
 > **The best way to experience what this Edge Developer Kit can do — in one step.**
 
-[**Edge AI Demo Studio**](./usecases/ai/edge-ai-demo-studio/README.md) is a ready-to-run AI toolkit featuring a web-based UI to deploy and manage AI models on Intel® hardware.
+[**Edge AI Demo Studio**](./samples/ai/edge-ai-demo-studio/README.md) is a ready-to-run AI toolkit featuring a web-based UI to deploy and manage AI models on Intel® hardware.
 
 **Includes out-of-the-box AI services:**
 - Text Generation (LLM), Text-to-Speech, Speech-to-Text
@@ -26,20 +22,9 @@ This repository provides simplified developer kit reference setup scripts for va
 - Digital Avatar — conversational AI with lip sync
 - RAG Chat — retrieval-augmented generation knowledge base
 
-👉 **[Click here to Get started with Edge AI Demo Studio ](./usecases/ai/edge-ai-demo-studio/README.md)**
+👉 **[Click here to Get started with Edge AI Demo Studio ](./samples/ai/edge-ai-demo-studio/README.md)**
 
 ---
-
-## Who Is This For?
-
-| **Your Background** | **What You'll Get** | **Start Here** |
-|-------------------|-------------------|----------------|
-| 🏭 **ODM/OEM Developer** | Production-ready platform setup with validated hardware configurations | [Hardware Setup Guide](#validated-hardware--configurations) |
-| 🤖 **AI/ML Developer** | Ready-to-use AI workloads: LLMs, computer vision, speech processing | [AI Use Cases](./docs/use-cases.md) |
-| 🎓 **Student/Researcher** | Learning-oriented tutorials with step-by-step explanations | [Learning Path](./docs/getting-started.md) |
-| 🔧 **Hardware Enthusiast** | Experiment with cutting-edge Intel® hardware and software | [Quick Start](#5-minute-quick-start) |
-| 🏆 **ESQ Users** | System validation and certification for hardware qualification | [ESQ Overview](https://github.com/open-edge-platform/edge-system-qualification)|
-
 
 ## 5-Minute Quick Start
 1) Run following command:
@@ -47,13 +32,30 @@ This repository provides simplified developer kit reference setup scripts for va
 sudo bash -c "$(wget -qLO - https://raw.githubusercontent.com/open-edge-platform/edge-developer-kit-reference-scripts/refs/heads/main/main_installer.sh)"
 
 ```
+> **First time:** Follow our [detailed setup guide](./docs/getting-started.md) for a guided experience.
+
+---
+
+## Project Structure
+
+```
+edge-developer-kit-reference-scripts/
+├── samples/                        # Ready-to-run sample applications
+│ ├──ai/                            # AI related sample applications
+│ ├──camera/                        # Camera hardware and configuration for MIPI and GMSL 
+│ ├──realtime/                      # TSN and TCC related applications for real time optimization
+├── docs/                           # Documentation and guides
+├── main_installer.sh               # Main platform setup installer
+├── gpu_installer.sh                # GPU driver installer
+├── npu_installer.sh                # NPU driver installer
+├── print_summary_table.sh          # Summary table
+└── openvino_installer.sh           # OpenVINO installer
+```
 
 ### Next Steps
 
-1. **Explore all use cases** from [our gallery](./docs/use-cases.md)
-2. **Discover more ingredients** in [Open Edge Platform Software Catalog](https://edgesoftwarecatalog.intel.com/) and [Open Edge Platform GitHub*](https://github.com/open-edge-platform) 
-3. **Join the community** on [GitHub* Discussions](https://github.com/open-edge-platform/edge-developer-kit-reference-scripts/discussions)
-4. **Share your projects** and help others learn!
+**Explore all samples** — browse everything available [here](./samples/SAMPLES_README.md), **share your projects** and help others learn!
+
 
 ## Validated Hardware & Configurations
 
