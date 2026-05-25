@@ -188,18 +188,18 @@ verify_ubuntu_24() {
     fi
 }
 
-# Install NPU drivers (Core Ultra only)
+# Install NPU drivers (NPU-capable platforms only)
 install_npu_drivers() {
-    # Explicit guard: Only install NPU drivers on Core Ultra platforms
-    if ! is_coreultra; then
-        echo "$S_ERROR NPU drivers are only supported on Core Ultra platforms"
+    # Explicit guard: Only install NPU drivers on NPU-capable platforms
+    if ! is_npu_capable; then
+        echo "$S_ERROR NPU drivers are only supported on NPU-capable platforms"
         echo "Current platform: $CPU_MODEL"
         echo "Skipping NPU driver installation"
             return 0
     fi
     
-    echo "Installing NPU drivers for Core Ultra platform..."
-    echo "$S_VALID NPU driver installation is supported on this Core Ultra platform"
+    echo "Installing NPU drivers for $(npu_platform_label) platform..."
+    echo "$S_VALID NPU driver installation is supported on this $(npu_platform_label) platform"
     
     # Execute the script instead of sourcing it to avoid context issues
     # shellcheck disable=SC1091
@@ -381,15 +381,17 @@ verify_opencl_setup() {
 PLATFORM_FAMILY=""
 CPU_MODEL=""
 IS_COREULTRA=false
+IS_WCL=false
 PTL_PLATFORM=false
 
 # Detect platform information
 detect_platform() {
     echo "Detecting platform family..."
+    local wcl_regex='^Intel\(R\) Core\(TM\) (3|5|7) 3[0-9]{2}[[:alpha:]]*([[:space:]]|$)'
 
     # Get CPU model
     CPU_MODEL=$(grep -m1 "model name" /proc/cpuinfo | cut -d: -f2 | sed 's/^[ \t]*//' || echo "unknown")
-    
+
     # Detect platform family using a case statement for better readability
     case "$CPU_MODEL" in
         *Ultra*)
@@ -404,6 +406,10 @@ detect_platform() {
             ;;
         *Core*)
             PLATFORM_FAMILY="core"
+            # For core family, detect if this is a WCL Core 3 300-series variant
+            if [[ "$CPU_MODEL" =~ $wcl_regex ]]; then
+                IS_WCL=true
+            fi
             ;;
         *Processor*)
             PLATFORM_FAMILY="processor"
@@ -420,6 +426,35 @@ detect_platform() {
 # Check if Core Ultra platform
 is_coreultra() {
     [ "$IS_COREULTRA" = true ]
+}
+
+# Check if WCL platform
+is_wcl() {
+    [ "$IS_WCL" = true ]
+}
+
+# Check if platform supports NPU installation
+is_npu_capable() {
+    if is_coreultra; then
+        return 0
+    fi
+
+    if [ "$PLATFORM_FAMILY" = "core" ] && is_wcl; then
+        return 0
+    fi
+
+    return 1
+}
+
+# Platform label for NPU-capable systems
+npu_platform_label() {
+    if is_coreultra; then
+        echo "Core Ultra"
+    elif is_wcl; then
+        echo "Intel® Core™ 3 300-series"
+    else
+        echo "NPU-capable"
+    fi
 }
 
 # Check if PTL platform
@@ -524,12 +559,12 @@ main() {
     echo "$S_VALID Platform detected: $CPU_MODEL"
     
     # Determine platform family and execute appropriate flow
-    if is_coreultra; then
+    if is_npu_capable; then
         echo ""
         echo "========================================================================"
-        echo "# CORE ULTRA PLATFORM INSTALLATION"
+        echo "# NPU-CAPABLE PLATFORM INSTALLATION"
         echo "========================================================================"
-        echo "Platform: Core Ultra CPU"
+        echo "Platform: $(npu_platform_label) CPU"
         echo "Components: GPU Drivers + NPU Drivers + OpenVINO"
         echo "NPU Support: Available and will be installed"
         echo ""
@@ -537,24 +572,24 @@ main() {
         # Install GPU drivers (will check for GPU presence). Any failure will exit.
         install_gpu_drivers
         
-        # Install NPU drivers (Core Ultra only)
+        # Install NPU drivers (NPU-capable platforms only)
         install_npu_drivers || echo "$S_WARNING NPU driver installation had issues"
         
         # Install OpenVINO with error handling
         if ! install_openvino; then
-            echo "$S_ERROR Core Ultra platform setup incomplete due to OpenVINO installation failure"
+            echo "$S_ERROR $(npu_platform_label) platform setup incomplete due to OpenVINO installation failure"
             echo "You may retry OpenVINO installation manually: bash $SCRIPT_DIR/openvino_installer.sh"
         fi
         
     else
-        # Any platform that is not coreultra
+        # Any platform that is not NPU-capable
         echo ""
         echo "========================================================================"
         echo "# STANDARD INTEL PLATFORM INSTALLATION"
         echo "========================================================================"
         echo "Platform: $CPU_MODEL (Xeon/Atom/Core)"
         echo "Components: GPU Drivers (if GPU present) + OpenVINO"
-        echo "NPU Support: Not available (Core Ultra only)"
+        echo "NPU Support: Not available on this platform"
         echo ""
         
         # Install GPU drivers (will check for GPU presence). Any failure will exit.
