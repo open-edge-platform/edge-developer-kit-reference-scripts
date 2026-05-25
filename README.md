@@ -44,6 +44,7 @@ edge-developer-kit-reference-scripts/
 │ ├──ai/                            # AI related sample applications
 │ ├──camera/                        # Camera hardware and configuration for MIPI and GMSL 
 │ ├──realtime/                      # TSN and TCC related applications for real time optimization
+| |──patient-monitoring-hub/        # Patient Monitoring Hub Reference Implementation
 ├── docs/                           # Documentation and guides
 ├── main_installer.sh               # Main platform setup installer
 ├── gpu_installer.sh                # GPU driver installer

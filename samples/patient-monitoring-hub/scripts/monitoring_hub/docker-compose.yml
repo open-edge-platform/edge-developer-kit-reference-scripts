@@ -1,0 +1,35 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+services:
+
+  mqtt-broker:
+    image: eclipse-mosquitto:2
+    container_name: mqtt-broker
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+
+  influxdb:
+    image: influxdb:2.7
+    container_name: influxdb
+    restart: unless-stopped
+    ports:
+      - "8086:8086"
+    volumes:
+      - influxdb_data:/var/lib/influxdb2
+
+  mqtt-influx-bridge:
+    build: ./bridge
+    container_name: mqtt-influx-bridge
+    restart: unless-stopped
+    env_file:
+      - ./influxdb_token.env
+    depends_on:
+      - mqtt-broker
+      - influxdb
+
+volumes:
+  influxdb_data:

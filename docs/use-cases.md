@@ -22,6 +22,7 @@ Transform your Intel® hardware into powerful AI and edge computing solutions wi
 | [**📄 Visual & Textual Query-driven Document Reasoning Engine**](../usecases/ai/visual-textual-query-driven-document-reasoning-engine/README.md) | Document Search & Retrieval Engine | ⏱️ 30 min | Document embedding, VLM |
 | [**🎬 VLM Video Summarization and Interactive Chat**](../usecases/ai/vlm-video-summarization-and-interactive-chat/README.md) | AI video analysis with interactive chat | ⏱️ 30 min | VLM, vector embeddings, semantic search |
 | [**🤖 Manufacturing HMI with LLM & GenAI**](../usecases/ai/manufacturing-hmi-llm-genai/README.md) | Manufacturing Defect Detection Agent | ⏱️ 90 min | Robotics, Object Detection, LLM, RAG |
+| [**🏥 Patient Monitoring Hub POC**](../samples/patient-monitoring-hub/README.md) | Virtualized patient telemetry pipeline | ⏱️ 60 min | MQTT\*, InfluxDB\*, Proxmox\* networking |
 
 ### 🔴 **Advanced** _(Experienced Developers)_
 
@@ -51,6 +52,7 @@ Transform your Intel® hardware into powerful AI and edge computing solutions wi
 
 - **Knowledge Management:** [RAG Toolkit](../usecases/ai/rag-toolkit/README.md)
 - **Smart Infrastructure:** [Smart Parking](../usecases/ai/smart-parking/README.md)
+- **Healthcare Monitoring:** [Patient Monitoring Hub POC](../samples/patient-monitoring-hub/README.md)
 - **Real-Time Systems:** [TCC Tutorial](../usecases/real-time/tcc_tutorial/README.md)
 
 ### 🔧 **Platform & Framework**
@@ -74,6 +76,7 @@ Transform your Intel® hardware into powerful AI and edge computing solutions wi
 4. Implement [Smart Parking](../usecases/ai/smart-parking/README.md) - IoT + AI integration
 5. Master [Real-Time Computing](../usecases/real-time/tcc_tutorial/README.md) - Performance optimization
 6. Explore [Manufacturing HMI with LLM & GenAI](../usecases/ai/manufacturing-hmi-llm-genai/README.md) - Agentic AI
+7. Explore [Patient Monitoring Hub POC](../samples/patient-monitoring-hub/README.md) - Virtualized healthcare telemetry pipeline
 
 ### **🔬 For Researchers**
 
@@ -131,3 +134,4 @@ Transform your Intel® hardware into powerful AI and edge computing solutions wi
 11. [Visual & Textual Query-driven Document Reasoning Engine](../usecases/ai/visual-textual-query-driven-document-reasoning-engine/README.md)
 12. [LLM Database Query using Intel AI Assistant Builder](../usecases/ai/llm_dbquery/README.md)
 13. [Manufacturing HMI with LLM & GenAI](../usecases/ai/manufacturing-hmi-llm-genai/README.md)
+14. [Patient Monitoring Hub POC](../samples/patient-monitoring-hub/README.md)

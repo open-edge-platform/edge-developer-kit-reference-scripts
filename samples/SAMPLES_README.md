@@ -33,6 +33,8 @@ Refer to below samples to kickstart you own demo or application.
   - [MIPI and GMSL Setup Tutorial](./camera/README.md)
 - **Real-Time**
   - [TCC Tutorial](./real-time/tcc_tutorial/README.md)
+- **Patient-Monitoring-Hub Reference Implementation**
+  - [Patient-Monitoring-Hub Reference Implementation](./patient-monitoring-hub/README.md)
 
 ### Documentation
 - [Getting Started](../docs/getting-started.md)
