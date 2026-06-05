@@ -68,7 +68,7 @@ Ensure the GPU drivers are installed using the [`gpu_installer.sh`](https://gith
    
 4. **Install PyTorch and Intel Extension for XPU support:**
    ```bash
-   pip install -U --force-reinstall --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu   
+   pip install -U --force-reinstall --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
    ```
 
 5. **Create the config file:**
