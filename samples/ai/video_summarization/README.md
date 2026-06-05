@@ -33,11 +33,16 @@ sudo apt install tmux ffmpeg
 mkdir -p $HOME/work
 cd $HOME/work
 git clone https://github.com/intel/edge-developer-kit-reference-scripts edge-ai-devkit
-cp -rf edge-ai-devkit/usecases/ai/video_summarization ./video_summarization
+cp -rf edge-ai-devkit/samples/ai/video_summarization ./video_summarization
 cd $HOME/work/video_summarization
 ```
 
 4. Create conda environment and install conda packages. 
+
+> **Note:**
+> - `conda init bash` only needs to be run once per user account (it modifies your shell rc, typically `~/.bashrc`). If you’ve already initialized conda, you can skip this step.
+> - If you use a different shell, change `bash` accordingly (e.g., `conda init zsh`) and reload that shell’s rc file (or open a new terminal) before running `conda activate`.
+> - `conda update --all` is optional and may take time; you can skip it if you prefer a quicker, more reproducible environment setup.
 
 ```
 conda create -n openvino-env python=3.11

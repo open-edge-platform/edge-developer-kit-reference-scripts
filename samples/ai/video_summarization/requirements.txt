@@ -1,14 +1,14 @@
 --extra-index-url https://download.pytorch.org/whl/xpu
 ipex-llm[xpu_2.6]
 ffmpeg_python==0.2.0
-langchain==0.3.24
+langchain==0.3.30
 langchain-vdms==0.1.4
 numpy==1.26.4
 opencv_python
 Pillow
-streamlit==1.37.0
+streamlit==1.54.0
 streamlit_webrtc==0.62.4
-transformers==4.53.0
+transformers==5.0.0
 ultralytics==8.3.75
 uvicorn
 decord
