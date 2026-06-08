@@ -113,6 +113,7 @@ setup_export_venv() {
         "transformers==4.53.3" \
         "torch<2.9" \
         "openvino>=2025.3.0" \
+        "click>=8.3.3" \
         --extra-index-url "https://download.pytorch.org/whl/cpu"
     echo "Export virtual environment ready."
 }

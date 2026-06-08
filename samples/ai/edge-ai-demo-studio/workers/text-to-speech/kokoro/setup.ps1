@@ -127,12 +127,35 @@ function Install-KokoroRepo {
     }
 }
 
+function Setup-ExportVenv {
+    Write-Host "Setting up export virtual environment (.export-venv)..."
+    & $UVPath venv --seed (Join-Path $ScriptDir ".export-venv")
+    if ($LASTEXITCODE -ne 0) { throw "uv venv failed (exit code $LASTEXITCODE)" }
+
+    & $UVPath pip install `
+        --python (Join-Path $ScriptDir ".export-venv\Scripts\python.exe") `
+        -q `
+        "kokoro>=0.8.2" `
+        "misaki[en]>=0.8.2" `
+        "soundfile" `
+        "psutil" `
+        "modelscope" `
+        "transformers==4.53.3" `
+        "torch<2.9" `
+        "openvino>=2025.3.0" `
+        "click>=8.3.3" `
+        --extra-index-url "https://download.pytorch.org/whl/cpu"
+    if ($LASTEXITCODE -ne 0) { throw "uv pip install failed (exit code $LASTEXITCODE)" }
+    Write-Host "Export virtual environment ready."
+}
+
 Push-Location $ScriptDir
 try {
     Write-Host "Starting Kokoro setup..." -ForegroundColor Cyan
     Test-UV
     Test-Git
     Install-KokoroRepo
+    Setup-ExportVenv
     Write-Host "Kokoro setup completed successfully!" -ForegroundColor Green
     exit 0
 } catch {

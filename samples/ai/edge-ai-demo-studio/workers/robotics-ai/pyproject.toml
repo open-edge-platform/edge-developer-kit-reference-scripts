@@ -36,4 +36,4 @@ url = "https://download.pytorch.org/whl/xpu"
 explicit = true
 
 [tool.uv]
-override-dependencies = ["diffusers==0.38.0"]
+override-dependencies = ["diffusers==0.38.0", "safetensors>=0.8.0rc0"]

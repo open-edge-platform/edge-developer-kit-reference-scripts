@@ -255,10 +255,10 @@ def export_model(model_name_or_path, output_dir):
     os.makedirs(model_repository_path, exist_ok=True)
 
     temp_env = copy.deepcopy(os.environ)
-    temp_env["PATH"] = f"{venv_bin_path}:{temp_env.get('PATH', '')}"
+    temp_env["PATH"] = f"{venv_bin_path}{os.pathsep}{temp_env.get('PATH', '')}"
 
     command = [
-        "python",
+        os.path.join(venv_bin_path, "python"),
         export_script,
         "speech2text",
         "--source_model",
@@ -318,7 +318,9 @@ def ensure_wav(in_path: str, out_wav: str) -> bool:
     # Avoid in-place conversion: if paths overlap, rename the input first
     if os.path.abspath(in_path) == os.path.abspath(out_wav):
         new_in = in_path + ".orig"
-        os.replace(in_path, new_in)  # os.replace is atomic and overwrites on all platforms (unlike os.rename on Windows)
+        os.replace(
+            in_path, new_in
+        )  # os.replace is atomic and overwrites on all platforms (unlike os.rename on Windows)
         in_path = new_in
 
     try:

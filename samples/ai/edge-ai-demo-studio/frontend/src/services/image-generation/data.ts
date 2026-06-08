@@ -14,7 +14,7 @@ export const service: ServiceMeta = {
   longDescription:
     'AI image generation using Stable Diffusion models accelerated with OpenVINO Model Server. Supports text-to-image and image-to-image generation via an OpenAI-compatible API. Configurable inference steps, guidance scale, and resolution.',
   icon: Image,
-  port: 8017,
+  port: 8018,
   supportedOS: ['linux', 'windows'],
   execution: { mode: 'worker' },
   defaultModel: {

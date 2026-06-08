@@ -3,8 +3,31 @@
 
 import withBundleAnalyzer from '@next/bundle-analyzer'
 import { withPayload } from '@payloadcms/next/withPayload'
+import { logger } from './src/lib/logger'
 import type { NextConfig } from 'next'
+import Database from 'libsql'
+import path from 'node:path'
 import { getServicesPortMap } from './src/services/config-registry'
+
+const proxyTimeoutSetting = () => {
+  const dbPath = path.resolve(process.cwd(), 'db.sqlite')
+  const db = new Database(dbPath)
+
+  try {
+    const row = db
+      .prepare('SELECT proxy_timeout FROM app_settings LIMIT 1')
+      .get() as { proxy_timeout?: number } | undefined
+    return row?.proxy_timeout ?? 30
+  } catch (error) {
+    logger.warn(
+      '[next.config.ts] proxyTimeout read skipped: ',
+      error instanceof Error ? error.message : String(error),
+    )
+    return 30
+  } finally {
+    db.close()
+  }
+}
 
 const bundleAnalyzer = withBundleAnalyzer({
   enabled: process.env.ANALYZE === 'true',
@@ -41,6 +64,9 @@ const nextConfig: NextConfig = {
         destination: `http://localhost:${port}/:path*`,
       })),
     ]
+  },
+  experimental: {
+    proxyTimeout: 1000 * proxyTimeoutSetting(),
   },
 }
 

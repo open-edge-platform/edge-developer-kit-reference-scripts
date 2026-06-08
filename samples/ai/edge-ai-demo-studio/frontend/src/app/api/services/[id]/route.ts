@@ -99,10 +99,12 @@ export async function PATCH(
         ...(healthCheckUpdate ? { healthCheck: healthCheckUpdate } : {}),
         ...(metadataUpdate
           ? {
-              metadata: {
-                ...(service.metadata as Record<string, unknown> | undefined),
-                ...metadataUpdate,
-              },
+              metadata: Object.fromEntries(
+                Object.entries({
+                  ...(service.metadata as Record<string, unknown> | undefined),
+                  ...metadataUpdate,
+                }).filter(([, v]) => v !== null && v !== undefined),
+              ),
             }
           : {}),
         status: service.status !== 'inactive' ? 'restart' : service.status,

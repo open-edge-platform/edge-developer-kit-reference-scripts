@@ -14,7 +14,7 @@ export const service: ServiceMeta = {
   longDescription:
     'AI-powered lipsync service using Wav2Lip models for real-time avatar animation. Streams lip-synced video over WebRTC, supports custom avatar uploads, text-driven chat with TTS integration, and direct audio-based lip-sync. Optimized for Intel XPU acceleration.',
   icon: Video,
-  port: 8021,
+  port: 8022,
   supportedOS: ['linux', 'windows'],
   execution: { mode: 'worker' },
   defaultModel: {

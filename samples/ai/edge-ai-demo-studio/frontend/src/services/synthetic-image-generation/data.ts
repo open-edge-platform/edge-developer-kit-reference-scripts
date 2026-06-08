@@ -13,7 +13,7 @@ export const service: ServiceMeta = {
   longDescription:
     'A project-based synthetic image generation pipeline for creating training datasets. Upload a base image and generate variations including good samples, missing component scenarios, and custom modifications. Uses diffusion models for high-quality synthetic data generation.',
   icon: Image,
-  port: 8020,
+  port: 8021,
   supportedOS: ['linux'],
   execution: { mode: 'worker' },
   logSources: [

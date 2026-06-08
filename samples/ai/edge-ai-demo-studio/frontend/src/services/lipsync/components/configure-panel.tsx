@@ -153,8 +153,8 @@ export function LipsyncConfigurePanel({ service }: LipsyncConfigurePanelProps) {
             ? { source: draftSource }
             : {}),
           metadata: {
-            clientIceServerUrl: draftClientIceServerUrl || undefined,
-            serverIceServerUrl: draftServerIceServerUrl || undefined,
+            clientIceServerUrl: draftClientIceServerUrl || null,
+            serverIceServerUrl: draftServerIceServerUrl || null,
           },
         },
       },

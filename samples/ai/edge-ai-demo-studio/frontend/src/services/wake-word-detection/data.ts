@@ -14,7 +14,7 @@ export const service: ServiceMeta = {
   longDescription:
     "Event-driven wake word detection service that monitors the server's microphone for configurable trigger phrases using OpenWakeWord ONNX models. Supports webhook subscriptions for real-time detection notifications, dynamic model management (upload, reload, delete), audio device selection, and tunable VAD thresholds.",
   icon: AudioLines,
-  port: 8018,
+  port: 8019,
   supportedOS: ['linux', 'windows'],
   execution: { mode: 'worker' },
   defaultModel: {

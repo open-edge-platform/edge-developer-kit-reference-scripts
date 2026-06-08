@@ -430,6 +430,7 @@ export interface AppSetting {
   hfToken?: string | null;
   startupTimeout?: number | null;
   theme?: ('light' | 'dark' | 'system') | null;
+  proxyTimeout?: number | null;
   updatedAt?: string | null;
   createdAt?: string | null;
 }
@@ -441,6 +442,7 @@ export interface AppSettingsSelect<T extends boolean = true> {
   hfToken?: T;
   startupTimeout?: T;
   theme?: T;
+  proxyTimeout?: T;
   updatedAt?: T;
   createdAt?: T;
   globalType?: T;

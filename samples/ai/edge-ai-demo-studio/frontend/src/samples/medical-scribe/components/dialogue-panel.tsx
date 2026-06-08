@@ -3,17 +3,22 @@
 
 'use client'
 
-import { Check, Copy, Mic } from 'lucide-react'
+import { Check, Clock, Copy, Mic } from 'lucide-react'
 import { useCallback, useState } from 'react'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
+import { formatDuration } from '../utils'
 import type { TranscriptEntry } from '../types'
 
 interface DialoguePanelProps {
   transcripts: TranscriptEntry[]
+  dialogueCreatedAt: string
   isRecording: boolean
   isProcessing: boolean
+  audioDuration?: number
+  recordingDuration?: number
 }
 
 function formatTime(seconds: number): string {
@@ -24,8 +29,11 @@ function formatTime(seconds: number): string {
 
 export function DialoguePanel({
   transcripts,
+  dialogueCreatedAt,
   isRecording,
   isProcessing,
+  audioDuration,
+  recordingDuration,
 }: DialoguePanelProps) {
   const [copied, setCopied] = useState(false)
 
@@ -46,13 +54,29 @@ export function DialoguePanel({
         <div className="flex items-center gap-2">
           <h3 className="text-sm font-semibold">Dialogue</h3>
           {isRecording && (
-            <span className="flex items-center gap-1 text-xs text-red-500">
-              <Mic className="h-3 w-3 animate-pulse" />
-              Recording
-            </span>
+            <>
+              <span className="flex items-center gap-1 text-xs text-red-500">
+                <Mic className="h-3 w-3 animate-pulse" />
+                Recording
+              </span>
+              {recordingDuration != null && (
+                <Badge variant="outline" className="gap-1">
+                  <Clock className="h-3 w-3" />
+                  {formatDuration(recordingDuration)}
+                </Badge>
+              )}
+            </>
           )}
           {isProcessing && (
-            <span className="text-muted-foreground text-xs">Processing…</span>
+            <>
+              <span className="text-muted-foreground text-xs">Processing…</span>
+              {audioDuration != null && (
+                <Badge variant="outline" className="gap-1">
+                  <Clock className="h-3 w-3" />
+                  {formatDuration(audioDuration)}
+                </Badge>
+              )}
+            </>
           )}
         </div>
         {transcripts.length > 0 && (
@@ -77,30 +101,37 @@ export function DialoguePanel({
             Record or upload audio to see the dialogue transcript
           </p>
         )}
-        <div className="space-y-3">
-          {transcripts.map((entry, i) => {
-            const isDoctor = entry.speaker.toLowerCase().includes('doctor')
-            return (
-              <div key={`${entry.start}-${i}`} className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span
-                    className={cn(
-                      'text-xs font-medium',
-                      isDoctor ? 'text-blue-500' : 'text-green-500',
-                    )}
-                  >
-                    {entry.speaker}
-                  </span>
-                  <span className="text-muted-foreground text-[10px]">
-                    {formatTime(entry.start)} – {formatTime(entry.end)}
-                  </span>
+        <div className="flex h-full flex-col">
+          <div className="flex-1 space-y-3">
+            {transcripts.map((entry, i) => {
+              const isDoctor = entry.speaker.toLowerCase().includes('doctor')
+              return (
+                <div key={`${entry.start}-${i}`} className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={cn(
+                        'text-xs font-medium',
+                        isDoctor ? 'text-blue-500' : 'text-green-500',
+                      )}
+                    >
+                      {entry.speaker}
+                    </span>
+                    <span className="text-muted-foreground text-[10px]">
+                      {formatTime(entry.start)} – {formatTime(entry.end)}
+                    </span>
+                  </div>
+                  <p className="text-sm leading-relaxed">{entry.text}</p>
                 </div>
-                <p className="text-sm leading-relaxed">{entry.text}</p>
-              </div>
-            )
-          })}
+              )
+            })}
+          </div>
         </div>
       </ScrollArea>
+      {dialogueCreatedAt && (
+        <div className="text-muted-foreground border-t p-4 text-xs">
+          Updated {dialogueCreatedAt}
+        </div>
+      )}
     </div>
   )
 }

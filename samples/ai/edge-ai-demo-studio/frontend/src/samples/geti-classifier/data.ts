@@ -13,8 +13,15 @@ export const sample: Sample = {
     'Upload an image to classify it using a locally deployed Intel Geti model. Confirm or correct the prediction to send labelled feedback back to your Geti server, triggering retraining for continuous model improvement. Supports automatic model hot-swap when a newer version is trained.',
   category: 'Vision',
   dependencies: [{ serviceId: 'geti-classifier', role: 'required' }],
-  tags: ['Classification', 'Geti', 'Computer Vision', 'Feedback', 'OpenVINO'],
-  supportedOS: ['linux', 'windows'],
+  tags: [
+    'Segmentation',
+    'Classification',
+    'Geti',
+    'Computer Vision',
+    'Feedback',
+    'OpenVINO',
+  ],
+  supportedOS: ['linux'],
   demo: {
     type: 'component',
     component: GetiImageClassificationDemo,

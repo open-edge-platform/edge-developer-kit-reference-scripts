@@ -14,7 +14,7 @@ export const service: ServiceMeta = {
   longDescription:
     'Automatic speech recognition service using Whisper models optimized with OpenVINO. Supports 99+ languages, batch transcription, audio denoising, and translation to English.',
   icon: Mic,
-  port: 8022,
+  port: 8023,
   supportedOS: ['linux', 'windows'],
   execution: { mode: 'worker' },
   defaultModel: {

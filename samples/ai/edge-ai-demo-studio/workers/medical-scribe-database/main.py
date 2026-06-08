@@ -148,14 +148,23 @@ def create_app(database: MedicalScribeDatabase) -> FastAPI:
             )
             session_id = created["session_id"]
 
+        doctorProfileName = None
+        if payload.doctorProfileId:
+            profile = database.get_doctor_profile(payload.doctorProfileId)
+            doctorProfileName = profile.get("name") if profile else None
+
         database.store_session_state(
             session_id,
             {
                 "name": payload.name,
                 "doctorProfileId": payload.doctorProfileId,
+                "doctorProfileName": doctorProfileName,
                 "language": payload.language,
+                "sessionCreatedAt": payload.sessionCreatedAt,
                 "status": "idle",
                 "transcripts": [],
+                "dialogueCreatedAt": None,
+                "reportCreatedAt": None,
                 "soapReport": None,
                 "errorMessage": None,
             },
@@ -179,6 +188,16 @@ def create_app(database: MedicalScribeDatabase) -> FastAPI:
             if hasattr(payload, "model_dump")
             else payload.dict(exclude_none=True)
         )
+
+        if "doctorProfileId" in payload_data:
+            doctorProfileId = payload_data["doctorProfileId"]
+            if doctorProfileId:
+                profile = database.get_doctor_profile(doctorProfileId)
+                payload_data["doctorProfileName"] = (
+                    profile.get("name") if profile else None
+                )
+            else:
+                payload_data["doctorProfileName"] = None
 
         next_state = {**current, **payload_data}
         next_state.pop("id", None)
@@ -218,7 +237,7 @@ def parse_args():
         os.path.dirname(os.path.abspath(__file__)), "medical_scribe.db"
     )
     parser = argparse.ArgumentParser(description="Medical Scribe Database Worker")
-    parser.add_argument("--port", type=int, default=8026, help="Port to listen on")
+    parser.add_argument("--port", type=int, default=8027, help="Port to listen on")
     parser.add_argument(
         "--host", type=str, default="127.0.0.1", help="Host to listen on"
     )

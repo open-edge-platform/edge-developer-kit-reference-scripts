@@ -4,7 +4,10 @@
 'use client'
 
 import { useState } from 'react'
-import { useServiceLiveStatus } from '@/context/service-status-context'
+import {
+  useGetService,
+  useServiceLiveStatus,
+} from '@/context/service-status-context'
 import {
   type TtsParamValues,
   useTtsParams as useServiceTtsParams,
@@ -12,7 +15,10 @@ import {
 import { useTtsVoiceStatus } from '@/services/text-to-speech/hooks/use-voice-status'
 import { ServiceParamGroup } from '../components/demo-config-sheet'
 
-export type TtsParams = Pick<TtsParamValues, 'voice' | 'speed'>
+export type TtsParams = Pick<
+  TtsParamValues,
+  'voice' | 'speed' | 'format' | 'volume'
+>
 
 interface UseTtsParamsOptions {
   initial?: Partial<TtsParams>
@@ -21,15 +27,23 @@ interface UseTtsParamsOptions {
 
 export function useTtsParams(sampleId: string, options?: UseTtsParamsOptions) {
   const { initial: _initial, optional = true } = options ?? {}
+  const ttsService = useGetService('text-to-speech')
+  const currentModel =
+    ttsService?.currentModel ?? ttsService?.defaultModel?.name ?? 'kokoro'
   const { voiceMap } = useTtsVoiceStatus()
-  const { values, params } = useServiceTtsParams('kokoro', voiceMap)
+  const { values, params } = useServiceTtsParams(currentModel, voiceMap)
   const [enabled, setEnabled] = useState(true)
 
   const online = useServiceLiveStatus('text-to-speech') === 'online'
 
   // Apply initial overrides on first render (handled by service hook defaults)
   // The sample exposes only voice & speed for API calls
-  const sampleValues: TtsParams = { voice: values.voice, speed: values.speed }
+  const sampleValues: TtsParams = {
+    voice: values.voice,
+    speed: values.speed,
+    format: values.format,
+    volume: values.volume,
+  }
 
   const group: ServiceParamGroup = {
     serviceLabel: 'Text to Speech',

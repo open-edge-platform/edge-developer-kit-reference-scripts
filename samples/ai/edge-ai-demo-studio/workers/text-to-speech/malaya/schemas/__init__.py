@@ -45,9 +45,9 @@ class OpenAISpeechRequest(BaseModel):
         default="Shafiqah Idayu",
         description="The voice to use for generation. Available voices: Husein, Shafiqah Idayu, Anwar Ibrahim",
     )
-    response_format: Literal["wav"] = Field(
-        default="wav",
-        description="The format to return audio in. Supported formats: wav",
+    response_format: Literal["mp3", "wav", "flac", "opus", "pcm"] = Field(
+        default="mp3",
+        description="The format to return audio in. Supported formats: mp3, wav, flac, opus, pcm",
     )
     stream: bool = Field(
         default=True,

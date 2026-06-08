@@ -3,6 +3,20 @@
 
 import type { TranscriptEntry } from './types'
 
+export function formatTimestamp(date: Date): string {
+  return date
+    .toLocaleString('en-GB', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true,
+    })
+    .toLowerCase()
+}
+
 /**
  * Aligns full transcription text with diarization segments by distributing
  * words proportionally based on segment duration.
@@ -46,4 +60,11 @@ export async function parseResponse<T>(
     throw new Error(text || fallback)
   }
   return res.json() as Promise<T>
+}
+
+export function formatDuration(seconds: number): string {
+  const floored = Math.floor(seconds)
+  const mins = Math.floor(floored / 60)
+  const secs = floored % 60
+  return `${mins}:${secs.toString().padStart(2, '0')}`
 }

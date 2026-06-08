@@ -194,6 +194,7 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
   	\`hf_token\` text DEFAULT '',
   	\`startup_timeout\` numeric DEFAULT 600,
   	\`theme\` text DEFAULT 'system',
+  	\`proxy_timeout\` numeric DEFAULT 30,
   	\`updated_at\` text,
   	\`created_at\` text
   );

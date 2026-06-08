@@ -45,5 +45,12 @@ export const AppSettings: GlobalConfig = {
       ],
       defaultValue: 'system',
     },
+    {
+      name: 'proxyTimeout',
+      label: 'Proxy Timeout (seconds)',
+      type: 'number',
+      defaultValue: 30,
+      min: 30,
+    },
   ],
 }

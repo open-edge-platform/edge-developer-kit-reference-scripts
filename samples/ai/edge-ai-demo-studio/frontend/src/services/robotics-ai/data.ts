@@ -13,7 +13,7 @@ export const service: ServiceMeta = {
   longDescription:
     'Robotics AI integrates advanced computer vision and machine learning techniques to enable robots to perceive and interact with their environment. This demo highlights features such as object detection, manipulation, and task execution in real-time.',
   icon: Image,
-  port: 8024,
+  port: 8025,
   supportedOS: ['linux'],
   execution: { mode: 'worker' },
   logSources: [

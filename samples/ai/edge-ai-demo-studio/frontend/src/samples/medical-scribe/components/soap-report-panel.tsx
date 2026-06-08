@@ -4,7 +4,14 @@
 'use client'
 
 import type { UIMessage } from 'ai'
-import { BrainCircuit, Check, ChevronRight, Copy, Loader2 } from 'lucide-react'
+import {
+  BrainCircuit,
+  Check,
+  ChevronRight,
+  Copy,
+  Loader2,
+  Edit,
+} from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Streamdown } from 'streamdown'
 import { Button } from '@/components/ui/button'
@@ -15,6 +22,8 @@ interface SoapReportPanelProps {
   message: UIMessage | undefined
   isGenerating: boolean
   savedReport?: string | null
+  onUpdateReport: (report: string) => void
+  reportCreatedAt: string
 }
 
 function ReasoningBlock({
@@ -79,8 +88,12 @@ export function SoapReportPanel({
   message,
   isGenerating,
   savedReport,
+  onUpdateReport,
+  reportCreatedAt,
 }: SoapReportPanelProps) {
   const [copied, setCopied] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [editedReport, setEditedReport] = useState<string | null>(null)
 
   const liveTextContent = message?.parts
     .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
@@ -100,77 +113,132 @@ export function SoapReportPanel({
     }
   }, [copyText])
 
+  const handleEdit = useCallback(() => {
+    setEditing(true)
+    setEditedReport(copyText)
+  }, [copyText])
+
+  const handleCancelEdit = useCallback(() => {
+    setEditing(false)
+    setEditedReport(null)
+  }, [])
+
   const hasContent = message && message.parts.length > 0
 
   return (
     <div className="flex h-full min-h-0 flex-col border-l">
       <div className="flex items-center justify-between border-b px-4 py-2">
         <h3 className="text-sm font-semibold">Clinical Report</h3>
-        {copyText && (
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-7 w-7"
-            onClick={handleCopy}
-          >
-            {copied ? (
-              <Check className="h-3.5 w-3.5 text-green-500" />
-            ) : (
-              <Copy className="h-3.5 w-3.5" />
-            )}
-          </Button>
-        )}
+        <span className="flex items-center gap-2">
+          {copyText && !isGenerating && (
+            <Button
+              className="h-7 w-7"
+              size="sm"
+              onClick={handleEdit}
+              disabled={editing}
+            >
+              <Edit className="h-3.5 w-3.5" />
+            </Button>
+          )}
+          {copyText && (
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-7 w-7"
+              onClick={handleCopy}
+              disabled={editing}
+            >
+              {copied ? (
+                <Check className="h-3.5 w-3.5 text-green-500" />
+              ) : (
+                <Copy className="h-3.5 w-3.5" />
+              )}
+            </Button>
+          )}
+        </span>
       </div>
 
-      <ScrollArea className="min-h-0 flex-1 p-4">
-        {isGenerating && !hasContent && (
-          <div className="flex flex-col items-center gap-2 py-8">
-            <Loader2 className="text-muted-foreground h-6 w-6 animate-spin" />
-            <p className="text-muted-foreground text-sm">
-              Generating SOAP note…
+      {editing ? (
+        <textarea
+          className="min-h-0 flex-1 p-4"
+          value={editedReport ?? copyText}
+          onChange={(e) => setEditedReport(e.target.value)}
+        />
+      ) : (
+        <ScrollArea className="min-h-0 flex-1 p-4">
+          {isGenerating && !hasContent && (
+            <div className="flex flex-col items-center gap-2 py-8">
+              <Loader2 className="text-muted-foreground h-6 w-6 animate-spin" />
+              <p className="text-muted-foreground text-sm">
+                Generating SOAP note…
+              </p>
+            </div>
+          )}
+          {!isGenerating && !hasContent && savedReport && (
+            <div className="prose prose-sm dark:prose-invert max-w-none">
+              <Streamdown animated={false}>{savedReport}</Streamdown>
+            </div>
+          )}
+          {!isGenerating && !hasContent && !savedReport && (
+            <p className="text-muted-foreground py-8 text-center text-sm">
+              Process a recording and click &quot;Generate Report&quot; to
+              create a SOAP note
             </p>
-          </div>
-        )}
-        {!isGenerating && !hasContent && savedReport && (
-          <div className="prose prose-sm dark:prose-invert max-w-none">
-            <Streamdown animated={false}>{savedReport}</Streamdown>
-          </div>
-        )}
-        {!isGenerating && !hasContent && !savedReport && (
-          <p className="text-muted-foreground py-8 text-center text-sm">
-            Process a recording and click &quot;Generate Report&quot; to create
-            a SOAP note
-          </p>
-        )}
-        {hasContent && (
-          <div className="space-y-3">
-            {message.parts.map((part, i) => {
-              if (part.type === 'reasoning') {
-                return (
-                  <ReasoningBlock
-                    key={`r-${i}`}
-                    text={part.text}
-                    isStreaming={isGenerating && part.state === 'streaming'}
-                  />
-                )
-              }
-              if (part.type === 'text' && part.text.trim()) {
-                return (
-                  <div
-                    key={`t-${i}`}
-                    className="prose prose-sm dark:prose-invert max-w-none"
-                  >
-                    <Streamdown animated isAnimating={isGenerating}>
-                      {part.text}
-                    </Streamdown>
-                  </div>
-                )
-              }
-              return null
-            })}
-          </div>
-        )}
-      </ScrollArea>
+          )}
+          {hasContent && !editing && (
+            <div className="space-y-3">
+              {message.parts.map((part, i) => {
+                if (part.type === 'reasoning') {
+                  return (
+                    <ReasoningBlock
+                      key={`r-${i}`}
+                      text={part.text}
+                      isStreaming={isGenerating && part.state === 'streaming'}
+                    />
+                  )
+                }
+                if (part.type === 'text' && part.text.trim()) {
+                  return (
+                    <div
+                      key={`t-${i}`}
+                      className="prose prose-sm dark:prose-invert max-w-none"
+                    >
+                      <Streamdown animated isAnimating={isGenerating}>
+                        {part.text}
+                      </Streamdown>
+                    </div>
+                  )
+                }
+                return null
+              })}
+            </div>
+          )}
+        </ScrollArea>
+      )}
+
+      {reportCreatedAt && !editing && (
+        <div className="text-muted-foreground border-t p-4 text-xs">
+          Updated {reportCreatedAt}
+        </div>
+      )}
+      {editing && (
+        <div className="ml-2 flex items-center gap-2 border-t p-2">
+          <Button
+            size="sm"
+            onClick={() => {
+              onUpdateReport(editedReport ?? copyText)
+              setEditing(false)
+              setEditedReport(null)
+            }}
+          >
+            <Check className="mr-1 h-3.5 w-3.5" />
+            Update
+          </Button>
+          <Button size="sm" variant="outline" onClick={handleCancelEdit}>
+            Cancel
+          </Button>
+        </div>
+      )}
     </div>
   )
 }

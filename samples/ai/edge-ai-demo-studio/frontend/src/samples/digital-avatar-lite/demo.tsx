@@ -94,7 +94,8 @@ export function DigitalAvatarLiteDemo({ sample }: { sample: Sample }) {
           input: nextSentence,
           voice: tts.values.voice,
           speed: tts.values.speed,
-          responseFormat: 'mp3',
+          responseFormat: tts.values.format,
+          volumeMultiplier: tts.values.volume,
         },
         {
           onSuccess: (blob) => {
@@ -134,6 +135,8 @@ export function DigitalAvatarLiteDemo({ sample }: { sample: Sample }) {
     synthesizeSpeech,
     tts.values.voice,
     tts.values.speed,
+    tts.values.format,
+    tts.values.volume,
     stopSpeaking,
     updateAvatarState,
   ])

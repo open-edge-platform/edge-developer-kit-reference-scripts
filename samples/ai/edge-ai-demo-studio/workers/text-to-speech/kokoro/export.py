@@ -8,6 +8,7 @@ Usage:
     python export.py --model_dir /path/to/model/dir [--source huggingface|modelscope] [--npu]
 """
 
+import os
 import argparse
 import json
 import logging
@@ -25,6 +26,11 @@ logger = logging.getLogger(__name__)
 
 REPO_ID = "hexgrad/Kokoro-82M"
 STATIC_SHAPE = {"input_ids": [1, 512], "ref_s": [1, 256], "speed": [1]}
+
+
+def is_windows():
+    """Check if the current operating system is Windows."""
+    return os.name == "nt"
 
 
 def download_file(
@@ -83,6 +89,11 @@ def export_to_openvino(
 
     model = None
     try:
+        if not is_windows():
+            os.environ["PHONEMIZER_ESPEAK_PATH"] = "/usr/bin"
+            os.environ["PHONEMIZER_ESPEAK_DATA"] = "/usr/share/espeak-ng-data"
+            os.environ["ESPEAK_DATA_PATH"] = "/usr/share/espeak-ng-data"
+
         logger.info("Loading PyTorch model for conversion ...")
         model = KModel(repo_id=repo_id, config=config, model=kokoro_weights).eval()
         pipeline = KPipeline(lang_code="a", repo_id=repo_id, model=model)

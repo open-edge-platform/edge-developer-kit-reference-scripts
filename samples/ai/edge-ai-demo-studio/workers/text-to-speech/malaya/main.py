@@ -11,8 +11,13 @@ import torch
 import os
 import json
 import time
+import tempfile
 import argparse
 import psutil
+
+import numpy as np
+import soundfile as sf
+from pydub import AudioSegment
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse, Response, StreamingResponse
@@ -20,7 +25,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import socket
 import io
-import numpy as np
 from schemas import OpenAISpeechRequest
 from modelscope import snapshot_download as ms_snapshot_download
 
@@ -312,6 +316,68 @@ def get_local_ip():
     return best[2]
 
 
+def _convert_audio_format(audio_np: np.ndarray, sample_rate: int, format_type: str) -> bytes:
+    """Convert a float32 numpy audio array to the requested audio format bytes."""
+    audio_np = audio_np.squeeze().astype(np.float32)
+
+    if format_type.lower() == "pcm":
+        audio_int16 = (audio_np * 32767).clip(-32768, 32767).astype(np.int16)
+        return audio_int16.tobytes()
+
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    temp_dir = os.path.join(script_dir, "temp")
+    os.makedirs(temp_dir, exist_ok=True)
+
+    tmp_wav_fd, tmp_wav_path = tempfile.mkstemp(suffix=".wav", dir=temp_dir)
+    try:
+        os.close(tmp_wav_fd)
+    except Exception:
+        pass
+
+    tmp_out_fd = None
+    tmp_out_path = None
+
+    try:
+        sf.write(tmp_wav_path, audio_np, sample_rate, subtype="PCM_16")
+
+        if format_type.lower() == "wav":
+            with open(tmp_wav_path, "rb") as f:
+                return f.read()
+
+        tmp_out_fd, tmp_out_path = tempfile.mkstemp(
+            suffix=f".{format_type}", dir=temp_dir
+        )
+        try:
+            os.close(tmp_out_fd)
+        except Exception:
+            pass
+
+        audio_seg = AudioSegment.from_wav(tmp_wav_path)
+        audio_seg.export(tmp_out_path, format=format_type)
+
+        with open(tmp_out_path, "rb") as f:
+            return f.read()
+    finally:
+        for p in (tmp_wav_path, tmp_out_path):
+            try:
+                if p and os.path.exists(p):
+                    os.unlink(p)
+            except Exception:
+                pass
+
+
+def _get_media_type(format_type: str) -> str:
+    """Return the MIME type for a given audio format."""
+    format_map = {
+        "mp3": "audio/mpeg",
+        "wav": "audio/wav",
+        "flac": "audio/flac",
+        "opus": "audio/opus",
+        "pcm": "audio/pcm",
+    }
+    return format_map.get(format_type.lower(), "audio/mpeg")
+
+
 def setup_routes(app: FastAPI):
     """Setup FastAPI routes for TTS endpoints"""
 
@@ -353,35 +419,11 @@ def setup_routes(app: FastAPI):
                 model, hps, request.input, request.voice, device, request.speed
             )
 
-            # Convert numpy array to bytes
-            audio_data = audio_data.squeeze().astype(np.float32)
-
-            # Convert to appropriate format
-            if request.response_format == "wav":
-                # Create WAV format bytes
-                import wave
-
-                buffer = io.BytesIO()
-                with wave.open(buffer, "wb") as wav_file:
-                    wav_file.setnchannels(1)  # Mono
-                    wav_file.setsampwidth(2)  # 16-bit
-                    wav_file.setframerate(hps.data.sampling_rate)
-                    # Convert float32 to int16
-                    audio_int16 = (audio_data * 32767).astype(np.int16)
-                    wav_file.writeframes(audio_int16.tobytes())
-
-                audio_bytes = buffer.getvalue()
-                content_type = "audio/wav"
-
-            else:
-                raise HTTPException(
-                    status_code=400,
-                    detail={
-                        "error": "invalid_format",
-                        "message": f"Unsupported format: {request.response_format}. Supported formats: wav",
-                        "type": "invalid_request_error",
-                    },
-                )
+            # Convert audio to the requested format
+            audio_bytes = _convert_audio_format(
+                audio_data, hps.data.sampling_rate, request.response_format
+            )
+            content_type = _get_media_type(request.response_format)
 
             # Log statistics
             audio_duration = len(audio_data) / hps.data.sampling_rate
@@ -452,6 +494,14 @@ def setup_routes(app: FastAPI):
         return JSONResponse({"status": "ok"})
 
 
+def setup_environment():
+    """Setup environment variables (e.g., add bundled ffmpeg to PATH)."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
+    ffmpeg_path = os.path.join(project_root, "thirdparty", "ffmpeg", "bin")
+    os.environ["PATH"] = ffmpeg_path + os.pathsep + os.environ.get("PATH", "")
+
+
 def create_app(device="auto", use_fp16=None):
     """Create and configure FastAPI application."""
     app = FastAPI(lifespan=lifespan)
@@ -493,6 +543,9 @@ def main():
     # Parse arguments
     args = parse_arguments()
     CONFIG["source"] = args.source
+
+    # Setup environment (ffmpeg PATH, etc.)
+    setup_environment()
 
     # Get device from args
     device = args.device
