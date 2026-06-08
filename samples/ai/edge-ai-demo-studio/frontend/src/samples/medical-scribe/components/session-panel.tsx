@@ -91,6 +91,7 @@ export function SessionPanel({
   }, [
     sessionName,
     selectedDoctorId,
+
     selectedLanguage,
     onCreateSession,
     onSelectSession,
@@ -111,7 +112,9 @@ export function SessionPanel({
           <div className="flex gap-2">
             <Select
               value={selectedDoctorId}
-              onValueChange={setSelectedDoctorId}
+              onValueChange={(id) => {
+                setSelectedDoctorId(id)
+              }}
             >
               <SelectTrigger className="h-8 text-sm">
                 <SelectValue placeholder="Select doctor" />
@@ -183,7 +186,15 @@ export function SessionPanel({
                   statusColor(session.status),
                 )}
               />
-              <span className="flex-1 truncate">{session.name}</span>
+              <div className="flex-1">
+                <span className="block truncate">{session.name}</span>
+                <small className="text-muted-foreground block truncate text-[10px]">
+                  {session.doctorProfileId
+                    ? `Dr. ${session.doctorProfileName ?? 'Unknown'}`
+                    : 'No Doctor'}{' '}
+                  · {session.sessionCreatedAt}
+                </small>
+              </div>
               <Button
                 size="icon"
                 variant="ghost"

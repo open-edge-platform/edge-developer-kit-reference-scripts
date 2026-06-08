@@ -5,7 +5,7 @@ description = "AI-powered PowerPoint translation service"
 readme = "README.md"
 requires-python = ">=3.12, <3.13"
 dependencies = [
-    "fastapi[all]==0.128.0",
+    "fastapi[all]>=0.128.0",
     "python-pptx>=0.6.21",
     "requests>=2.25.1",
     "uvicorn==0.32.1",

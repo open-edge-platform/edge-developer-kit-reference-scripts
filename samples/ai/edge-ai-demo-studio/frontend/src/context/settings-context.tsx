@@ -17,6 +17,8 @@ export type Theme = 'light' | 'dark' | 'system'
 export interface Settings {
   theme: Theme
   hfToken: string
+  proxyTimeout: number
+  activeProxyTimeout?: number
 }
 
 interface SettingsContextValue {
@@ -28,6 +30,7 @@ interface SettingsContextValue {
 const defaultSettings: Settings = {
   theme: 'system',
   hfToken: '',
+  proxyTimeout: 30,
 }
 
 const SettingsContext = createContext<SettingsContextValue | null>(null)
@@ -41,13 +44,27 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       fetch('/api/settings/theme').then((r) => r.json()),
   })
 
+  const { data: proxyTimeoutData } = useQuery({
+    queryKey: ['settings', 'proxyTimeout'],
+    queryFn: (): Promise<{
+      proxyTimeout: number
+      activeProxyTimeout: number
+    }> => fetch('/api/settings/proxy-timeout').then((r) => r.json()),
+  })
+
   const settings = useMemo<Settings>(
     () => ({
       ...defaultSettings,
       ...(themeData?.theme && { theme: themeData.theme }),
+      ...(proxyTimeoutData?.proxyTimeout && {
+        proxyTimeout: proxyTimeoutData.proxyTimeout,
+      }),
+      ...(proxyTimeoutData?.activeProxyTimeout !== undefined && {
+        activeProxyTimeout: proxyTimeoutData.activeProxyTimeout,
+      }),
       ...userOverrides,
     }),
-    [themeData, userOverrides],
+    [themeData, proxyTimeoutData, userOverrides],
   )
 
   const { mutate: saveTheme } = useMutation({
@@ -59,16 +76,29 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       }).then((r) => r.json()),
   })
 
+  const { mutate: saveProxyTimeout } = useMutation({
+    mutationFn: (proxyTimeout: number) =>
+      fetch('/api/settings/proxy-timeout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ proxyTimeout }),
+      }).then((r) => r.json()),
+  })
+
   const updateSettings = (partial: Partial<Settings>) => {
     setUserOverrides((prev) => ({ ...prev, ...partial }))
     if (partial.theme !== undefined) {
       saveTheme(partial.theme)
+    }
+    if (partial.proxyTimeout !== undefined) {
+      saveProxyTimeout(partial.proxyTimeout)
     }
   }
 
   const resetSettings = () => {
     setUserOverrides({})
     saveTheme(defaultSettings.theme)
+    saveProxyTimeout(defaultSettings.proxyTimeout)
   }
 
   return (

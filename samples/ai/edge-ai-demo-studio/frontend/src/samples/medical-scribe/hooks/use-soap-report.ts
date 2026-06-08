@@ -29,6 +29,7 @@ interface SoapReportOptions {
   temperature?: number
   maxTokens?: number
   systemPrompt?: string
+  disableReasoning?: boolean
   onFinish?: (text: string) => void
 }
 
@@ -81,11 +82,19 @@ export function useSoapReport(options: SoapReportOptions = {}) {
             systemPrompt: options.systemPrompt || SOAP_SYSTEM_PROMPT,
             temperature,
             maxTokens,
+            disableReasoning: options.disableReasoning,
           },
         },
       )
     },
-    [sendMessage, setMessages, temperature, maxTokens, options.systemPrompt],
+    [
+      sendMessage,
+      setMessages,
+      temperature,
+      maxTokens,
+      options.systemPrompt,
+      options.disableReasoning,
+    ],
   )
 
   const reset = useCallback(() => {

@@ -19,10 +19,14 @@ export interface Session {
   id: string
   name: string
   doctorProfileId: string | null
+  doctorProfileName: string | null
   language: string
+  sessionCreatedAt: string
   status: SessionStatus
   transcripts: TranscriptEntry[]
+  dialogueCreatedAt: string | null
   soapReport: string | null
+  reportCreatedAt: string | null
   audioBlob: Blob | null
   errorMessage?: string
 }

@@ -39,6 +39,7 @@ torch = { index = "pytorch" }
 torchaudio = { index = "pytorch" }
 torchvision = { index = "pytorch" }
 pytorch-triton-xpu = { index = "pytorch" }
+diffusers = { git = "https://github.com/huggingface/diffusers.git" }
 
 [[tool.uv.index]]
 name = "pytorch"

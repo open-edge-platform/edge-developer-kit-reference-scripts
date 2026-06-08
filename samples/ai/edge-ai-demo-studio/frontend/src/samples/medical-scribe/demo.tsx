@@ -23,7 +23,8 @@ import {
   useSessions,
   useSoapReport,
 } from './hooks'
-import { alignTranscriptWithSegments } from './utils'
+import { alignTranscriptWithSegments, formatTimestamp } from './utils'
+import { logger } from '@/lib/logger'
 
 export function MedicalScribeDemo({ sample: _sample }: { sample: Sample }) {
   const textGen = useTextGenerationParams()
@@ -40,6 +41,13 @@ export function MedicalScribeDemo({ sample: _sample }: { sample: Sample }) {
   const { sessions, isFetched, createSession, updateSession, deleteSession } =
     useSessions()
   const { isRecording, startRecording, stopRecording } = useRecording()
+  const [recordingDuration, setRecordingDuration] = useState<number | null>(
+    null,
+  )
+  const recordingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  )
+  const [audioDuration, setAudioDuration] = useState<number | null>(null)
   const [selectedSessionIdState, setSelectedSessionId] = useState<
     string | null
   >(null)
@@ -55,9 +63,13 @@ export function MedicalScribeDemo({ sample: _sample }: { sample: Sample }) {
     temperature: textGen.values.temperature,
     maxTokens: textGen.values.maxTokens,
     systemPrompt: textGen.values.systemPrompt || undefined,
+    disableReasoning: textGen.values.disableReasoning,
     onFinish: (text) => {
       if (generatingSessionIdRef.current) {
-        updateSession(generatingSessionIdRef.current, { soapReport: text })
+        updateSession(generatingSessionIdRef.current, {
+          soapReport: text,
+          reportCreatedAt: formatTimestamp(new Date()),
+        })
       }
     },
   })
@@ -65,16 +77,34 @@ export function MedicalScribeDemo({ sample: _sample }: { sample: Sample }) {
   const selectedSession = sessions.find((s) => s.id === selectedSessionId)
 
   const processAudioRef = useRef<
-    (sessionId: string, audio: Blob) => Promise<void>
+    (sessionId: string, audio: Blob, knownDuration?: number) => Promise<void>
   >(() => Promise.resolve())
 
   const processAudio = useCallback(
-    async (sessionId: string, audio: Blob) => {
+    async (sessionId: string, audio: Blob, knownDuration?: number) => {
       const session = sessions.find((s) => s.id === sessionId)
       if (!session) return
 
       setIsProcessing(true)
+      setAudioDuration(null)
       updateSession(sessionId, { status: 'processing', audioBlob: audio })
+
+      if (knownDuration != null) {
+        setAudioDuration(knownDuration)
+      } else {
+        try {
+          const url = URL.createObjectURL(audio)
+          const audioEl = new Audio(url)
+          await new Promise<void>((resolve) => {
+            audioEl.onloadedmetadata = () => resolve()
+            audioEl.onerror = () => resolve()
+          })
+          if (isFinite(audioEl.duration)) setAudioDuration(audioEl.duration)
+          URL.revokeObjectURL(url)
+        } catch {
+          logger.warn('Could not read audio duration')
+        }
+      }
 
       try {
         const doctorProfile = profiles.find(
@@ -85,7 +115,7 @@ export function MedicalScribeDemo({ sample: _sample }: { sample: Sample }) {
           transcribe.mutateAsync({
             file: audio,
             language: session.language,
-            useDenoise: true,
+            useDenoise: false,
           }),
           diarizationGroup.enabled
             ? diarize.mutateAsync({
@@ -120,6 +150,7 @@ export function MedicalScribeDemo({ sample: _sample }: { sample: Sample }) {
         updateSession(sessionId, {
           status: 'completed',
           transcripts,
+          dialogueCreatedAt: formatTimestamp(new Date()),
         })
         toast.success('Audio processed successfully')
       } catch {
@@ -130,6 +161,7 @@ export function MedicalScribeDemo({ sample: _sample }: { sample: Sample }) {
         toast.error('Failed to process audio')
       } finally {
         setIsProcessing(false)
+        setAudioDuration(null)
       }
     },
     [
@@ -152,6 +184,12 @@ export function MedicalScribeDemo({ sample: _sample }: { sample: Sample }) {
     try {
       updateSession(sessionId, { status: 'recording' })
       await startRecording()
+      setRecordingDuration(0)
+      if (recordingIntervalRef.current)
+        clearInterval(recordingIntervalRef.current)
+      recordingIntervalRef.current = setInterval(() => {
+        setRecordingDuration((prev) => (prev !== null ? prev + 1 : 0))
+      }, 1000)
     } catch {
       updateSession(sessionId, { status: 'idle' })
       toast.error('Failed to access microphone')
@@ -159,18 +197,25 @@ export function MedicalScribeDemo({ sample: _sample }: { sample: Sample }) {
   }, [selectedSessionId, startRecording, updateSession])
 
   const handleStopRecording = useCallback(async () => {
+    if (recordingIntervalRef.current) {
+      clearInterval(recordingIntervalRef.current)
+      recordingIntervalRef.current = null
+    }
+    const duration = recordingDuration
+    setRecordingDuration(null)
     const blob = await stopRecording()
     if (!selectedSessionId) return
     if (blob.size > 0) {
-      processAudioRef.current(selectedSessionId, blob)
+      processAudioRef.current(selectedSessionId, blob, duration ?? undefined)
     } else {
       updateSession(selectedSessionId, { status: 'idle' })
     }
-  }, [stopRecording, selectedSessionId, updateSession])
+  }, [stopRecording, selectedSessionId, recordingDuration, updateSession])
 
   const handleUploadAudio = useCallback(
     (file: File) => {
       if (!selectedSessionId) return
+      setRecordingDuration(null)
       processAudioRef.current(selectedSessionId, file)
     },
     [selectedSessionId],
@@ -196,6 +241,17 @@ export function MedicalScribeDemo({ sample: _sample }: { sample: Sample }) {
       setSelectedSessionId(id)
     },
     [soapReport],
+  )
+
+  const handleUpdateReport = useCallback(
+    (report: string) => {
+      if (!selectedSessionId) return
+      updateSession(selectedSessionId, {
+        soapReport: report,
+        reportCreatedAt: formatTimestamp(new Date()),
+      })
+    },
+    [selectedSessionId, updateSession],
   )
 
   return (
@@ -229,14 +285,19 @@ export function MedicalScribeDemo({ sample: _sample }: { sample: Sample }) {
 
         <DialoguePanel
           transcripts={selectedSession?.transcripts ?? []}
+          dialogueCreatedAt={selectedSession?.dialogueCreatedAt ?? ''}
           isRecording={isRecording}
           isProcessing={isProcessing}
+          audioDuration={audioDuration ?? undefined}
+          recordingDuration={recordingDuration ?? undefined}
         />
 
         <SoapReportPanel
           message={soapReport.message}
           isGenerating={soapReport.isGenerating}
           savedReport={selectedSession?.soapReport}
+          onUpdateReport={handleUpdateReport}
+          reportCreatedAt={selectedSession?.reportCreatedAt ?? ''}
         />
       </div>
     </div>

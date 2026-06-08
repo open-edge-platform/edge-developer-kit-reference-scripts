@@ -907,6 +907,14 @@
           "autoincrement": false,
           "default": "'system'"
         },
+        "proxy_timeout": {
+          "name": "proxy_timeout",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false,
+          "default": 30
+        },
         "updated_at": {
           "name": "updated_at",
           "type": "text",
@@ -938,6 +946,6 @@
   "internal": {
     "indexes": {}
   },
-  "id": "0a243b22-3c9a-40e7-b2f2-d15c4115da5d",
+  "id": "84a14505-ec13-43d3-a4f2-b049f9458933",
   "prevId": "00000000-0000-0000-0000-000000000000"
 }

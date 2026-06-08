@@ -27,9 +27,20 @@ def build_session_response(
                 else None
             ),
         ),
+        "doctorProfileName": state.get(
+            "doctorProfileName",
+            (
+                (database.get_doctor_profile(state.get("doctorProfileId") or session.get("doctor_profile_id")) or {}).get("name")
+                if session.get("doctor_profile_id")
+                else None
+            ),
+        ),
         "language": state.get("language", "en"),
+        "sessionCreatedAt": state.get("sessionCreatedAt", ""),
         "status": state.get("status", session.get("status") or "idle"),
         "transcripts": state.get("transcripts", []),
+        "dialogueCreatedAt": state.get("dialogueCreatedAt"),
+        "reportCreatedAt": state.get("reportCreatedAt"),
         "soapReport": state.get("soapReport", report_content),
         "audioBlob": None,
         "errorMessage": state.get("errorMessage"),

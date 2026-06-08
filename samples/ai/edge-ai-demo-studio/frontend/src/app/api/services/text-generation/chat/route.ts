@@ -213,24 +213,29 @@ export async function POST(req: Request) {
     },
   })
 
+  let mcpTools: Awaited<ReturnType<typeof buildMcpTools>> | undefined
+  logger.info('MCP Server IDs:', mcpServerIds)
+  if (mcpServerIds && mcpServerIds.length > 0) {
+    mcpTools = await buildMcpTools(mcpServerIds)
+  }
+
+  const hasTools = mcpTools != null && Object.keys(mcpTools.tools).length > 0
+
   const baseModel = provider(model)
   const wrappedModel = disableReasoning
     ? wrapLanguageModel({
         model: baseModel,
-        middleware: [hermesToolMiddleware],
+        middleware: hasTools ? [hermesToolMiddleware] : [],
       })
     : wrapLanguageModel({
         model: baseModel,
-        middleware: [
-          hermesToolMiddleware,
-          extractReasoningMiddleware({ tagName: 'think' }),
-        ],
+        middleware: hasTools
+          ? [
+              hermesToolMiddleware,
+              extractReasoningMiddleware({ tagName: 'think' }),
+            ]
+          : [extractReasoningMiddleware({ tagName: 'think' })],
       })
-
-  let mcpTools: Awaited<ReturnType<typeof buildMcpTools>> | undefined
-  if (mcpServerIds && mcpServerIds.length > 0) {
-    mcpTools = await buildMcpTools(mcpServerIds)
-  }
   const stream = createUIMessageStream({
     execute: async ({ writer }) => {
       const modelMessages = await convertToModelMessages(

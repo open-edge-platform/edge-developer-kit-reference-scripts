@@ -11,7 +11,7 @@ import {
   Send,
   Volume2,
 } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -27,6 +27,7 @@ import {
   useGetService,
   useServiceStatus,
 } from '@/context/service-status-context'
+import { getVoicesForModel } from '@/services/text-to-speech/config'
 import { useTtsVoiceStatus } from '@/services/text-to-speech/hooks/use-voice-status'
 import { useLipsyncChat } from '../hooks'
 
@@ -36,7 +37,6 @@ export interface ChatTabProps {
 
 export function ChatTab({ sessionId }: ChatTabProps) {
   const [chatText, setChatText] = useState('Hello, welcome to the demo!')
-  const [voice, setVoice] = useState('af_heart')
   const [speed, setSpeed] = useState('1.0')
 
   const chatMutation = useLipsyncChat()
@@ -45,6 +45,25 @@ export function ChatTab({ sessionId }: ChatTabProps) {
   const ttsStatus = statusMap['text-to-speech'] ?? 'offline'
   const isTtsOnline = ttsStatus === 'online'
   const ttsService = useGetService('text-to-speech')
+  const currentModel =
+    ttsService?.currentModel ?? ttsService?.defaultModel?.name ?? 'kokoro'
+  const voiceOptions = useMemo(() => {
+    return getVoicesForModel(currentModel).map((v) => ({
+      value: v.id,
+      label: `${v.language} (${v.label})`,
+    }))
+  }, [currentModel])
+  const [voice, setVoice] = useState(() => voiceOptions[0]?.value ?? '')
+
+  // Reset selected voice when model changes or current selection is no longer valid
+  const [prevModel, setPrevModel] = useState(currentModel)
+  if (prevModel !== currentModel) {
+    setPrevModel(currentModel)
+    setVoice(voiceOptions[0]?.value ?? '')
+  } else if (voice && !voiceOptions.some((v) => v.value === voice)) {
+    setVoice(voiceOptions[0]?.value ?? '')
+  }
+
   const { isVoiceDownloaded } = useTtsVoiceStatus()
 
   const isConnected = sessionId !== null
@@ -166,11 +185,7 @@ export function ChatTab({ sessionId }: ChatTabProps) {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {[
-                { value: 'af_heart', label: 'English (af_heart)' },
-                { value: 'zf_xiaoxiao', label: 'Chinese (zf_xiaoxiao)' },
-                { value: 'jf_nezumi', label: 'Japanese (jf_nezumi)' },
-              ].map((v) => (
+              {voiceOptions.map((v) => (
                 <SelectItem key={v.value} value={v.value} className="text-xs">
                   <span className="flex items-center gap-1.5">
                     {isTtsOnline &&

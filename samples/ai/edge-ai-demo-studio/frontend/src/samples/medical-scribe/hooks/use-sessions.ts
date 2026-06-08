@@ -6,7 +6,7 @@
 import { useCallback } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { Session } from '../types'
-import { parseResponse } from '../utils'
+import { formatTimestamp, parseResponse } from '../utils'
 
 const QUERY_KEY = ['medical-scribe', 'sessions'] as const
 const API_BASE = '/api/medical-scribe-database/v1/sessions'
@@ -37,6 +37,7 @@ export function useSessions() {
           name: session.name,
           doctorProfileId: session.doctorProfileId,
           language: session.language,
+          sessionCreatedAt: session.sessionCreatedAt,
         }),
       })
       return parseResponse<Session>(res, 'Failed to create session')
@@ -88,7 +89,11 @@ export function useSessions() {
         id: crypto.randomUUID(),
         name,
         doctorProfileId,
+        doctorProfileName: null,
         language,
+        sessionCreatedAt: formatTimestamp(new Date()),
+        dialogueCreatedAt: null,
+        reportCreatedAt: null,
         status: 'idle',
         transcripts: [],
         soapReport: null,
@@ -100,9 +105,18 @@ export function useSessions() {
         ...prev,
       ])
 
-      createSessionMutation.mutateAsync(session).catch(() => {
-        queryClient.invalidateQueries({ queryKey: QUERY_KEY })
-      })
+      createSessionMutation
+        .mutateAsync(session)
+        .then((serverSession) => {
+          queryClient.setQueryData<Session[]>(QUERY_KEY, (prev = []) =>
+            prev.map((s) =>
+              s.id === serverSession.id ? { ...s, ...serverSession } : s,
+            ),
+          )
+        })
+        .catch(() => {
+          queryClient.invalidateQueries({ queryKey: QUERY_KEY })
+        })
 
       return session
     },

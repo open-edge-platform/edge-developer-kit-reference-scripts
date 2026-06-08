@@ -14,7 +14,7 @@ export const service: ServiceMeta = {
   longDescription:
     'Neural text-to-speech engine producing natural, expressive speech. Supports Kokoro (English, OpenVINO) and Malaya (Malay, VITS) models with multiple voices, adjustable speed, streaming audio output, and multiple audio formats.',
   icon: Volume2,
-  port: 8019,
+  port: 8020,
   supportedOS: ['linux', 'windows'],
   execution: { mode: 'worker' },
   defaultModel: {

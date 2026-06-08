@@ -13,7 +13,7 @@ export const service: ServiceMeta = {
   longDescription:
     'Loads a local Geti code deployment and exposes image classification inference endpoints. Supports feedback submission to a Geti server for continuous model improvement, automatic model hot-swap when a newer version is trained, and background auto-sync polling.',
   icon: Sparkles,
-  port: 8027,
+  port: 8028,
   supportedOS: ['linux', 'windows'],
   execution: { mode: 'worker' },
   logSources: [

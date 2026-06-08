@@ -19,6 +19,7 @@ class SessionCreateRequest(BaseModel):
     name: str
     doctorProfileId: Optional[str] = None
     language: str = "en"
+    sessionCreatedAt: Optional[str] = None
 
 
 class SessionUpdateRequest(BaseModel):
@@ -29,3 +30,5 @@ class SessionUpdateRequest(BaseModel):
     transcripts: Optional[List[Dict[str, Any]]] = None
     soapReport: Optional[str] = None
     errorMessage: Optional[str] = None
+    dialogueCreatedAt: Optional[str] = None
+    reportCreatedAt: Optional[str] = None

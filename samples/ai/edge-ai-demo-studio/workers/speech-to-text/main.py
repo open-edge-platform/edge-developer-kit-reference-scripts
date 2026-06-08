@@ -207,7 +207,6 @@ async def transcription(
                 DENOISE_COMPILED_MODEL = initialize_denoise_model()
 
             logger.info("Denoising audio...")
-            start_time = time.time()
             denoised_audio = denoise(DENOISE_COMPILED_MODEL, file_path)
             with open(file_path, "wb") as f:
                 f.write(denoised_audio)
@@ -216,7 +215,6 @@ async def transcription(
             logger.warning("Language is not set. Default to english.")
             language = "english"
 
-        start_time = time.time()
         text = transcribe(pipeline=STT_PIPELINE, audio=file_path, language=language)
 
     except Exception as error:

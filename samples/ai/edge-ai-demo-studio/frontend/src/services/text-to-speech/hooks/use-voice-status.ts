@@ -4,8 +4,11 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
-import { useServiceLiveStatus } from '@/context/service-status-context'
-import { KOKORO_LANGUAGES, KOKORO_VOICES } from '../config'
+import {
+  useGetService,
+  useServiceLiveStatus,
+} from '@/context/service-status-context'
+import { getLanguagesForModel, getVoicesForModel } from '../config'
 
 /** Per-language download status derived from individual voice files. */
 export interface LanguageDownloadStatus {
@@ -24,9 +27,12 @@ export interface LanguageDownloadStatus {
 export function useTtsVoiceStatus() {
   const ttsStatus = useServiceLiveStatus('text-to-speech')
   const isOnline = ttsStatus === 'online'
+  const ttsService = useGetService('text-to-speech')
+  const currentModel =
+    ttsService?.currentModel ?? ttsService?.defaultModel?.name ?? 'kokoro'
 
   const { data: voiceMap } = useQuery<Record<string, boolean>>({
-    queryKey: ['tts-voice-status'],
+    queryKey: ['tts-voice-status', currentModel],
     queryFn: async () => {
       const res = await fetch('/api/text-to-speech/v1/audio/voices')
       if (!res.ok) throw new Error('Failed to fetch voice status')
@@ -41,11 +47,13 @@ export function useTtsVoiceStatus() {
     return { voiceMap: null, languages: null, isVoiceDownloaded: () => false }
   }
 
-  const languages: LanguageDownloadStatus[] = KOKORO_LANGUAGES.map((lang) => {
-    const langVoices = KOKORO_VOICES.filter((v) => v.language === lang.label)
+  const modelLanguages = getLanguagesForModel(currentModel)
+  const modelVoices = getVoicesForModel(currentModel)
+  const languages: LanguageDownloadStatus[] = modelLanguages.map((lang) => {
+    const langVoices = modelVoices.filter((v) => v.language === lang.label)
     const downloaded = langVoices.filter((v) => voiceMap[v.id] === true).length
     return {
-      code: lang.code,
+      code: lang.value,
       label: lang.label,
       downloaded,
       total: langVoices.length,

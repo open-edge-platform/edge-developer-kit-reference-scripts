@@ -14,7 +14,7 @@ export const service: ServiceMeta = {
   longDescription:
     'Speaker diarization service using pyannote.audio to detect and segment speakers in audio recordings. Supports voice enrollment for named speaker identification, cosine-similarity matching, and multi-speaker timeline generation.',
   icon: Users,
-  port: 8025,
+  port: 8026,
   supportedOS: ['linux', 'windows'],
   execution: { mode: 'worker' },
   defaultModel: {

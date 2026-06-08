@@ -7,6 +7,7 @@ import json
 import os
 import argparse
 import logging
+import tempfile
 import uuid
 from typing import Optional
 from contextlib import asynccontextmanager
@@ -21,7 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 logger = logging.getLogger("uvicorn.error")
 
 CONFIG = {
-    "port": 8025,
+    "port": 8026,
     "device": "cpu",
     "source": "huggingface",
 }
@@ -53,19 +54,45 @@ def get_local_ffmpeg_path() -> str | None:
     return None
 
 
+def get_local_ffprobe_path() -> str | None:
+    """Return the path to the bundled ffprobe binary, or None if not found."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.abspath(os.path.join(script_dir, "..", ".."))
+    thirdparty_dir = os.path.join(project_root, "thirdparty")
+    for name in ("ffprobe.exe", "ffprobe"):
+        path = os.path.join(thirdparty_dir, "ffmpeg", "bin", name)
+        if os.path.exists(path):
+            return path
+    return None
+
+
 def _load_audio_via_pydub(audio_bytes: bytes) -> tuple[np.ndarray, int]:
     """Decode audio bytes using pydub (requires ffmpeg for WebM/Opus/etc.)."""
     from pydub import AudioSegment
+    import pydub.utils
 
     local_ffmpeg = get_local_ffmpeg_path()
+    local_ffprobe = get_local_ffprobe_path()
+
     if local_ffmpeg:
         AudioSegment.converter = local_ffmpeg
+    if local_ffprobe:
+        pydub.utils.get_prober_name = lambda: local_ffprobe
 
-    audio = AudioSegment.from_file(io.BytesIO(audio_bytes))
-    wav_io = io.BytesIO()
-    audio.export(wav_io, format="wav")
-    wav_io.seek(0)
-    return sf.read(wav_io, dtype="float32", always_2d=False)
+    # Write to a temp file so ffmpeg can seek it
+    with tempfile.NamedTemporaryFile(suffix=".audio", delete=False) as tmp:
+        tmp.write(audio_bytes)
+        tmp_path = tmp.name
+
+    try:
+        audio = AudioSegment.from_file(tmp_path)
+        wav_io = io.BytesIO()
+        audio.export(wav_io, format="wav")
+        wav_io.seek(0)
+        return sf.read(wav_io, dtype="float32", always_2d=False)
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
 
 
 def load_audio_to_array(audio_bytes: bytes) -> tuple[np.ndarray, int]:
@@ -547,8 +574,10 @@ def _compute_diarization(
                 used_speakers.add(spk_id)
                 used_profiles.add(pi)
 
-        for seg in segments:
-            seg["speaker"] = assigned_labels.get(seg["speaker_id"], unknown_label)
+        all_spk_ids = {seg["speaker_id"] for seg in segments}
+        speaker_map = {
+            sid: assigned_labels.get(sid, unknown_label) for sid in all_spk_ids
+        }
 
     # ── Legacy single-reference matching ────────────────────────────────
     elif has_legacy_ref and speaker_embeddings:
@@ -582,18 +611,23 @@ def _compute_diarization(
             else:
                 speaker_role[spk_id] = other_label
 
-        for seg in segments:
-            seg["speaker"] = speaker_role.get(seg["speaker_id"], seg["speaker_id"])
+        speaker_map = speaker_role
 
     # ── No references — use raw speaker IDs ─────────────────────────────
     else:
-        for seg in segments:
-            seg["speaker"] = seg["speaker_id"]
+        speaker_map = {}
 
+    # Apply speaker labels, merge consecutive same-speaker segments, strip internal IDs
+    merged = []
     for seg in segments:
-        seg.pop("speaker_id", None)
+        spk_id = seg.pop("speaker_id")
+        seg["speaker"] = speaker_map.get(spk_id, spk_id)
+        if merged and merged[-1]["speaker"] == seg["speaker"]:
+            merged[-1]["end"] = seg["end"]
+        else:
+            merged.append(seg)
 
-    return {"segments": segments}
+    return {"segments": merged}
 
 
 def parse_args():
@@ -601,7 +635,7 @@ def parse_args():
     parser.add_argument(
         "--port",
         type=int,
-        default=8025,
+        default=8026,
         help="Port for the worker to listen on",
     )
     parser.add_argument(

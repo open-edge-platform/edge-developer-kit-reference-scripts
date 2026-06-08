@@ -13,7 +13,7 @@ export const service: ServiceMeta = {
   longDescription:
     'Lightweight vector database service providing CRUD operations for knowledge bases, document ingestion with automatic chunking, and similarity search. Supports both text-based embedding (via external embedding services) and direct pre-computed vector storage. Built on FAISS for fast nearest-neighbor retrieval.',
   icon: Database,
-  port: 8016,
+  port: 8017,
   supportedOS: ['linux', 'windows'],
   execution: { mode: 'worker' },
   logSources: [{ type: 'service', label: 'vectordb', target: 'vectordb' }],

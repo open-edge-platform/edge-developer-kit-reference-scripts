@@ -4,6 +4,7 @@
 """
 FastAPI server for PPT Translation worker
 """
+
 import uuid
 import logging
 import os
@@ -30,19 +31,25 @@ current_dir = Path(__file__).parent
 
 try:
     from ppt_translator import LlamaPPTTranslator
-    from config import LLAMA_CONFIG, TRANSLATION_CONFIG, MODEL_PRESETS, FONT_SIZE_ADJUSTMENT
+    from config import (
+        LLAMA_CONFIG,
+        TRANSLATION_CONFIG,
+        MODEL_PRESETS,
+        FONT_SIZE_ADJUSTMENT,
+    )
 except ImportError as e:
     logger.error(f"Failed to import required modules: {e}")
     raise
 
 # ── Directory setup ──────────────────────────────────────────────────────────
 WORKER_DIR = current_dir
-FILE_BASE_DIR = WORKER_DIR / 'file'
-UPLOAD_DIR = FILE_BASE_DIR / 'uploads'
-OUTPUT_DIR = FILE_BASE_DIR / 'outputs'
+FILE_BASE_DIR = WORKER_DIR / "file"
+UPLOAD_DIR = FILE_BASE_DIR / "uploads"
+OUTPUT_DIR = FILE_BASE_DIR / "outputs"
 
 # ── In-memory job storage ────────────────────────────────────────────────────
 translation_jobs: dict[str, dict] = {}
+
 
 # ── Pydantic models ──────────────────────────────────────────────────────────
 class JobStatus(BaseModel):
@@ -54,6 +61,7 @@ class JobStatus(BaseModel):
     completed_at: Optional[str] = None
     error: Optional[str] = None
 
+
 # ── Lifespan ──────────────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
@@ -62,6 +70,7 @@ async def lifespan(_app: FastAPI):
     logger.info("PPT Translator service started")
     yield
     logger.info("PPT Translator service shutting down")
+
 
 # ── App setup ─────────────────────────────────────────────────────────────────
 app = FastAPI(title="PPT Translator", lifespan=lifespan)
@@ -72,6 +81,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # ── Path validation ───────────────────────────────────────────────────────────
 def validate_file_path(file_path: str, base_dir: Path, description: str) -> str:
@@ -84,7 +94,7 @@ def validate_file_path(file_path: str, base_dir: Path, description: str) -> str:
         logger.info(f"Base directory: {base_dir}")
 
         # Step 1: Check for path traversal sequences before any processing
-        if '..' in file_path:
+        if ".." in file_path:
             raise ValueError(f"{description} contains path traversal sequence")
 
         # Step 2: Check if it's an absolute path - if so, verify it's within base_dir
@@ -100,7 +110,7 @@ def validate_file_path(file_path: str, base_dir: Path, description: str) -> str:
                 raise ValueError(f"{description} is outside allowed directory")
 
         # Step 3: Allowlist validation - only allow safe characters
-        safe_pattern = re.compile(r'^[a-zA-Z0-9_\-. ()\[\]/\\]+$')
+        safe_pattern = re.compile(r"^[a-zA-Z0-9_\-. ()\[\]/\\]+$")
         if not safe_pattern.match(file_path):
             raise ValueError(f"{description} contains invalid characters: {file_path}")
 
@@ -130,6 +140,7 @@ def validate_file_path(file_path: str, base_dir: Path, description: str) -> str:
         logger.error(f"System error validating {description}: {e}")
         raise ValueError(f"Invalid {description}: {e}")
 
+
 # ── Background translation task ───────────────────────────────────────────────
 async def process_translation_job(job_id: str) -> None:
     job = translation_jobs.get(job_id)
@@ -137,13 +148,13 @@ async def process_translation_job(job_id: str) -> None:
         return
 
     try:
-        job['status'] = 'processing'
-        job['progress'] = 0.0
-        job['message'] = 'Starting translation...'
+        job["status"] = "processing"
+        job["progress"] = 0.0
+        job["message"] = "Starting translation..."
 
-        input_file = job['input_file']
-        output_file = job['output_file']
-        config = job['config']
+        input_file = job["input_file"]
+        output_file = job["output_file"]
+        config = job["config"]
 
         # Merge translation config with defaults
         merged_config = TRANSLATION_CONFIG.copy()
@@ -151,9 +162,9 @@ async def process_translation_job(job_id: str) -> None:
 
         translator = LlamaPPTTranslator(
             base_url=LLAMA_CONFIG["base_url"],
-            model_preset=merged_config.get('model', 'qwen_balanced'),
-            target_language=merged_config.get('target_language', 'Simplified Chinese'),
-            source_language=merged_config.get('source_language', 'English'),
+            model_preset=merged_config.get("model", "qwen_balanced"),
+            target_language=merged_config.get("target_language", "Simplified Chinese"),
+            source_language=merged_config.get("source_language", "English"),
             llama_config=LLAMA_CONFIG,
             translation_config=merged_config,
             file_config={
@@ -167,8 +178,8 @@ async def process_translation_job(job_id: str) -> None:
 
         def progress_callback(current: int, total: int, message: str = "") -> None:
             progress = current / total if total > 0 else 0
-            job['progress'] = progress
-            job['message'] = message or f"Processing slide {current}/{total}"
+            job["progress"] = progress
+            job["message"] = message or f"Processing slide {current}/{total}"
             logger.info(f"Progress: {progress * 100:.1f}% - {job['message']}")
 
         # Run blocking translation in thread pool to avoid blocking event loop
@@ -185,22 +196,24 @@ async def process_translation_job(job_id: str) -> None:
         if not os.path.exists(output_file):
             raise FileNotFoundError(f"Output file was not created: {output_file}")
 
-        job['status'] = 'completed'
-        job['progress'] = 1.0
-        job['message'] = 'Translation completed successfully'
-        job['completed_at'] = datetime.now(timezone.utc).isoformat()
+        job["status"] = "completed"
+        job["progress"] = 1.0
+        job["message"] = "Translation completed successfully"
+        job["completed_at"] = datetime.now(timezone.utc).isoformat()
 
     except Exception as e:
         logger.error(f"Translation failed for job {job_id}: {e}", exc_info=True)
-        job['status'] = 'failed'
-        job['message'] = 'Translation failed'
-        job['error'] = str(e)
-        job['completed_at'] = datetime.now(timezone.utc).isoformat()
+        job["status"] = "failed"
+        job["message"] = "Translation failed"
+        job["error"] = str(e)
+        job["completed_at"] = datetime.now(timezone.utc).isoformat()
+
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 @app.get("/healthcheck", status_code=200)
 def get_healthcheck():
-     return {"status": "ok"}
+    return {"status": "ok"}
+
 
 @app.post("/translate")
 async def translate(
@@ -216,7 +229,7 @@ async def translate(
 ):
     # Validate file type
     if not file.filename or not (
-        file.filename.endswith('.pptx') or file.filename.endswith('.ppt')
+        file.filename.endswith(".pptx") or file.filename.endswith(".ppt")
     ):
         raise HTTPException(
             status_code=400,
@@ -238,7 +251,7 @@ async def translate(
     output_path = validate_file_path(output_path, FILE_BASE_DIR, "Output file")
 
     # Save uploaded file
-    with open(input_path, 'wb') as f:
+    with open(input_path, "wb") as f:
         f.write(contents)
 
     # Create job entry
@@ -273,6 +286,7 @@ async def translate(
         }
     )
 
+
 @app.get("/status/{job_id}", response_model=JobStatus)
 async def get_status(job_id: str):
     job = translation_jobs.get(job_id)
@@ -280,14 +294,15 @@ async def get_status(job_id: str):
         raise HTTPException(status_code=404, detail="Job not found")
 
     return JobStatus(
-        job_id=job['job_id'],
-        status=job['status'],
-        progress=job['progress'],
-        message=job['message'],
-        created_at=job['created_at'],
-        completed_at=job.get('completed_at'),
-        error=job.get('error'),
+        job_id=job["job_id"],
+        status=job["status"],
+        progress=job["progress"],
+        message=job["message"],
+        created_at=job["created_at"],
+        completed_at=job.get("completed_at"),
+        error=job.get("error"),
     )
+
 
 @app.get("/download/{job_id}")
 async def download(job_id: str):
@@ -295,21 +310,22 @@ async def download(job_id: str):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    if job['status'] != 'completed':
+    if job["status"] != "completed":
         raise HTTPException(
             status_code=400,
             detail=f"Translation not completed. Current status: {job['status']}",
         )
 
-    output_file = job.get('output_file')
+    output_file = job.get("output_file")
     if not output_file or not os.path.exists(output_file):
         raise HTTPException(status_code=404, detail="Output file not found")
 
     return FileResponse(
         path=output_file,
-        media_type='application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
         filename=f"translated_{job_id}.pptx",
     )
+
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 def parse_args():
@@ -317,10 +333,11 @@ def parse_args():
     parser.add_argument(
         "--port",
         type=int,
-        default=8023,
-        help="Port for the worker to listen on (default: 8023)",
+        default=8024,
+        help="Port for the worker to listen on (default: 8024)",
     )
     return parser.parse_args()
+
 
 def main():
     args = parse_args()
@@ -330,6 +347,7 @@ def main():
         host=os.environ.get("SERVER_HOST", "127.0.0.1"),
         port=int(os.environ.get("SERVER_PORT", args.port)),
     )
+
 
 if __name__ == "__main__":
     main()

@@ -13,7 +13,7 @@ export const service: ServiceMeta = {
   longDescription:
     'A dedicated medical scribe database service that stores and manages data for Medical Scribe. Ensures data integrity, supports concurrent access, and provides efficient querying capabilities.',
   icon: FileText,
-  port: 8026,
+  port: 8027,
   supportedOS: ['linux', 'windows'],
   execution: { mode: 'worker' },
   logSources: [

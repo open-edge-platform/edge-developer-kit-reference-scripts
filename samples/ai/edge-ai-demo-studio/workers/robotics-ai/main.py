@@ -31,7 +31,7 @@ from utils.platform import SO101
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("mcp-server")
 
-DEFAULT_PORT = 8024
+DEFAULT_PORT = 8025
 SERVER_HOST = "127.0.0.1"
 SERVER_PORT = DEFAULT_PORT
 
@@ -59,14 +59,10 @@ ASSETS_DIR.mkdir(parents=True, exist_ok=True)
 ROBOT_FRAME = CONFIG.get("robot", {}).get("frame", [0, 0, 0])
 AVAILABLE_ROBOT_TYPES = ["SO-ARM101"]
 ROBOT_TYPE_MAP = {"SO-ARM101": "SO-ARM101"}
-DEFAULT_PICK_HEIGHT_MM = CONFIG.get(
-    "robot", {}).get("default_pick_height_mm", 30)
-OFFSET_X = CONFIG.get(
-    "robot", {}).get("offset_x", 0)
-OFFSET_Y = CONFIG.get(
-    "robot", {}).get("offset_y", 0)
-OFFSET_Z = CONFIG.get(
-    "robot", {}).get("offset_z", 0)
+DEFAULT_PICK_HEIGHT_MM = CONFIG.get("robot", {}).get("default_pick_height_mm", 30)
+OFFSET_X = CONFIG.get("robot", {}).get("offset_x", 0)
+OFFSET_Y = CONFIG.get("robot", {}).get("offset_y", 0)
+OFFSET_Z = CONFIG.get("robot", {}).get("offset_z", 0)
 FIXED_WRIST_ROLL = 12
 
 
@@ -184,7 +180,9 @@ def initialize_robot_arm_client():
             ROBOT_ARM_CLIENT = SO101(
                 port=CONFIG.get("robot", {}).get("port", "/dev/ttyACM0"),
                 gripper_threshold=[
-                    CONFIG["robot"]["gripper_open"], CONFIG["robot"]["gripper_close"]],
+                    CONFIG["robot"]["gripper_open"],
+                    CONFIG["robot"]["gripper_close"],
+                ],
             )
             logger.info("SO101 robot arm client initialized successfully")
         else:
@@ -217,10 +215,8 @@ def calculate_arm_to_obj(
 ):
     base_robot_arm_frame = [0, 0, 0]
     relative_position_to_arm = robot_frame
-    base_x_offset = base_robot_arm_frame[0] if len(
-        base_robot_arm_frame) >= 1 else 0
-    base_y_offset = base_robot_arm_frame[1] if len(
-        base_robot_arm_frame) >= 2 else 0
+    base_x_offset = base_robot_arm_frame[0] if len(base_robot_arm_frame) >= 1 else 0
+    base_y_offset = base_robot_arm_frame[1] if len(base_robot_arm_frame) >= 2 else 0
     w, h = intrinsics.width, intrinsics.height
     logger.debug(f"Intrinsic width, height: {w}, {h}")
     object_points = rs.rs2_deproject_pixel_to_point(
@@ -228,27 +224,22 @@ def calculate_arm_to_obj(
     )
     logger.info(f"Deprojection result: {object_points}")
 
-    base_z_offset = base_robot_arm_frame[2] if len(
-        base_robot_arm_frame) >= 3 else 0
-    robot_z_offset = relative_position_to_arm[2] if len(
-        relative_position_to_arm) >= 3 else 0
-    robot_x_offset = relative_position_to_arm[0] if len(
-        relative_position_to_arm) >= 1 else 0
-    robot_y_offset = relative_position_to_arm[1] if len(
-        relative_position_to_arm) >= 2 else 0
-    obj_final_x = (
-        base_x_offset
-        + robot_x_offset
-        + object_points[1] * 1000
+    base_z_offset = base_robot_arm_frame[2] if len(base_robot_arm_frame) >= 3 else 0
+    robot_z_offset = (
+        relative_position_to_arm[2] if len(relative_position_to_arm) >= 3 else 0
     )
-    obj_final_y = (
-        base_y_offset
-        + robot_y_offset
-        - object_points[0] * 1000
+    robot_x_offset = (
+        relative_position_to_arm[0] if len(relative_position_to_arm) >= 1 else 0
     )
+    robot_y_offset = (
+        relative_position_to_arm[1] if len(relative_position_to_arm) >= 2 else 0
+    )
+    obj_final_x = base_x_offset + robot_x_offset + object_points[1] * 1000
+    obj_final_y = base_y_offset + robot_y_offset - object_points[0] * 1000
     camera_depth_mm = centroid_depth * 1000.0
-    point_depth_mm = object_points[2] * \
-        1000 if len(object_points) >= 3 else camera_depth_mm
+    point_depth_mm = (
+        object_points[2] * 1000 if len(object_points) >= 3 else camera_depth_mm
+    )
     obj_final_z = base_z_offset + robot_z_offset + point_depth_mm
     if z is None:
         z = obj_final_z if camera_depth_mm > 0 else DEFAULT_PICK_HEIGHT_MM
@@ -322,14 +313,22 @@ async def generate_mjpeg_stream():
                 font_scale = max(0.6, w / 1280)
                 thickness = max(1, int(font_scale * 2))
                 for i, line in enumerate([msg, msg2]):
-                    (tw, th), _ = cv2.getTextSize(
-                        line, font, font_scale, thickness)
+                    (tw, th), _ = cv2.getTextSize(line, font, font_scale, thickness)
                     x = (w - tw) // 2
                     y = h // 2 + i * int(th * 2)
-                    cv2.putText(placeholder, line, (x, y), font,
-                                font_scale, (200, 200, 200), thickness, cv2.LINE_AA)
-                _, buffer = cv2.imencode(".jpg", placeholder, [
-                                         cv2.IMWRITE_JPEG_QUALITY, 70])
+                    cv2.putText(
+                        placeholder,
+                        line,
+                        (x, y),
+                        font,
+                        font_scale,
+                        (200, 200, 200),
+                        thickness,
+                        cv2.LINE_AA,
+                    )
+                _, buffer = cv2.imencode(
+                    ".jpg", placeholder, [cv2.IMWRITE_JPEG_QUALITY, 70]
+                )
                 frame_bytes = buffer.tobytes()
                 yield (
                     b"--" + boundary.encode() + b"\r\n"
@@ -346,8 +345,7 @@ async def generate_mjpeg_stream():
             # Draw a red bounding box with the configured inference bbox if available
             bbox = CONFIG["inference"].get("bbox", [0, 0, 100, 100])
             cv2.rectangle(
-                color_frame, (bbox[0], bbox[1]), (bbox[2],
-                                                  bbox[3]), (0, 0, 255), 2
+                color_frame, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (0, 0, 255), 2
             )
 
             if color_frame is not None:
@@ -400,7 +398,7 @@ async def analyze_object_single(detection_results, requested_object):
         conversation = [
             {
                 "role": "system",
-                "content": "You are a helpful and precise assistant. When asked to verify an image, respond concisely and only as instructed. Analyze the color correctly."
+                "content": "You are a helpful and precise assistant. When asked to verify an image, respond concisely and only as instructed. Analyze the color correctly.",
             },
             {
                 "role": "user",
@@ -414,14 +412,14 @@ async def analyze_object_single(detection_results, requested_object):
                         "text": f"Is this a {requested_object}? Reply in one word: Yes or No.",
                     },
                 ],
-            }
+            },
         ]
         response = await run_blocking(
             OPENAI_CLIENT.create_chat_completion,
             model=MODEL_ID,
             messages=conversation,
             stream=False,
-            extra_body={"chat_template_kwargs": {"enable_thinking": False}}
+            extra_body={"chat_template_kwargs": {"enable_thinking": False}},
         )
         analysis_result = response.choices[0].message.content
         analysis_results[f"object_{i}"] = {
@@ -445,19 +443,21 @@ async def analyze_object_batch(detection_results, requested_object, batch_size=8
         cropped_bgr = result["image"].copy()
         _, buffer = cv2.imencode(".png", cropped_bgr)
         cropped_b64 = base64.b64encode(buffer).decode("utf-8")
-        batch_conversations.append({
-            "role": "user",
-            "content": [
-                {
-                    "type": "image_url",
-                    "image_url": {"url": f"data:image/jpeg;base64,{cropped_b64}"},
-                },
-                {
-                    "type": "text",
-                    "text": f"Is this a {requested_object}? Reply in one word: Yes or No.",
-                },
-            ],
-        })
+        batch_conversations.append(
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{cropped_b64}"},
+                    },
+                    {
+                        "type": "text",
+                        "text": f"Is this a {requested_object}? Reply in one word: Yes or No.",
+                    },
+                ],
+            }
+        )
         images.append(cropped_bgr)
 
     responses = []
@@ -467,7 +467,7 @@ async def analyze_object_batch(detection_results, requested_object, batch_size=8
             model=MODEL_ID,
             messages=[conversation],
             stream=False,
-            extra_body={"chat_template_kwargs": {"enable_thinking": False}}
+            extra_body={"chat_template_kwargs": {"enable_thinking": False}},
         )
         responses.append(response)
     for i, response in enumerate(responses):
@@ -491,13 +491,11 @@ async def combined_lifespan(app: FastAPI):
         async with mcp_app.lifespan(mcp_app):
             yield
 
+
 allowed_cors = json.loads(
-    os.getenv("ALLOWED_CORS", '["http://localhost", "http://127.0.0.1"]'))
-app = FastAPI(
-    title="Robotics-API-Server",
-    version="1.0.0",
-    lifespan=combined_lifespan
+    os.getenv("ALLOWED_CORS", '["http://localhost", "http://127.0.0.1"]')
 )
+app = FastAPI(title="Robotics-API-Server", version="1.0.0", lifespan=combined_lifespan)
 app.mount("/apps", mcp_app)
 app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
 app.add_middleware(
@@ -550,8 +548,7 @@ async def mcp_agent(request: Request):
     color_frame, _, _ = get_current_frame_for_inference()
     image_content: list[dict] = []
     if color_frame is not None:
-        _, buffer = cv2.imencode(".jpg", color_frame, [
-                                 cv2.IMWRITE_JPEG_QUALITY, 70])
+        _, buffer = cv2.imencode(".jpg", color_frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
         frame_b64 = base64.b64encode(buffer).decode("utf-8")
         image_content = [
             {
@@ -584,8 +581,7 @@ async def mcp_agent(request: Request):
             # Use MCP tool calling flow via the FastMCP client
             available_tools = await mcp._list_tools()
             if tool_id:
-                available_tools = [
-                    t for t in available_tools if t.name == tool_id]
+                available_tools = [t for t in available_tools if t.name == tool_id]
 
             tools_spec = [
                 {
@@ -593,7 +589,9 @@ async def mcp_agent(request: Request):
                     "function": {
                         "name": t.name,
                         "description": t.description or "",
-                        "parameters": t.input_schema if hasattr(t, "input_schema") else {},
+                        "parameters": (
+                            t.input_schema if hasattr(t, "input_schema") else {}
+                        ),
                     },
                 }
                 for t in available_tools
@@ -617,10 +615,11 @@ async def mcp_agent(request: Request):
                         fn_args = json.loads(tc.function.arguments or "{}")
                     except json.JSONDecodeError:
                         fn_args = {}
-                    logger.info(
-                        f"Calling MCP tool: {fn_name} with args: {fn_args}")
+                    logger.info(f"Calling MCP tool: {fn_name} with args: {fn_args}")
                     tool_result = await mcp._call_tool(fn_name, fn_args)
-                    result_text = tool_result.content[0].text if tool_result.content else ""
+                    result_text = (
+                        tool_result.content[0].text if tool_result.content else ""
+                    )
                     tool_results.append(
                         {
                             "tool_call_id": tc.id,
@@ -671,12 +670,11 @@ async def get_camera_status():
 async def get_snapshot():
     """Return the current camera frame as a single JPEG image."""
     from fastapi.responses import Response as FastAPIResponse
+
     color_frame, _, _ = get_current_frame_for_inference()
     if color_frame is None:
-        raise HTTPException(
-            status_code=503, detail="No camera frame available")
-    _, buffer = cv2.imencode(".jpg", color_frame, [
-                             cv2.IMWRITE_JPEG_QUALITY, 70])
+        raise HTTPException(status_code=503, detail="No camera frame available")
+    _, buffer = cv2.imencode(".jpg", color_frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
     return FastAPIResponse(content=buffer.tobytes(), media_type="image/jpeg")
 
 
@@ -697,8 +695,7 @@ async def reload_camera():
         initialize_camera()
     except Exception as exc:
         logger.exception("Failed to reload camera")
-        raise HTTPException(
-            status_code=500, detail="Failed to reload camera")
+        raise HTTPException(status_code=500, detail="Failed to reload camera")
 
     return {"status": True, "message": "Camera reloaded successfully"}
 
@@ -736,8 +733,7 @@ async def get_scene_description():
 
     color_frame, depth_frame, _ = get_current_frame_for_inference()
     if color_frame is None:
-        raise HTTPException(
-            status_code=503, detail="No camera frame available")
+        raise HTTPException(status_code=503, detail="No camera frame available")
     _, buffer = cv2.imencode(".png", color_frame)
     color_frame_b64 = base64.b64encode(buffer).decode("utf-8")
 
@@ -802,8 +798,7 @@ async def set_robot_type(body: dict):
         try:
             await run_blocking(ROBOT_ARM_CLIENT.disconnect)
         except Exception as exc:
-            logger.warning(
-                f"Could not disconnect robot arm before type change: {exc}")
+            logger.warning(f"Could not disconnect robot arm before type change: {exc}")
         ROBOT_ARM_CLIENT = None
 
     try:
@@ -814,7 +809,11 @@ async def set_robot_type(body: dict):
         )
         ROBOT_ARM_CLIENT = None
 
-    return {"status": True, "type": requested, "message": f"Robot type set to '{requested}'"}
+    return {
+        "status": True,
+        "type": requested,
+        "message": f"Robot type set to '{requested}'",
+    }
 
 
 @app.get("/robot/calibrate/status")
@@ -834,8 +833,7 @@ async def start_calibration():
     global CALIBRATION_STATE, ROBOT_ARM_CLIENT, CONFIG
 
     if ROBOT_ARM_CLIENT is None:
-        raise HTTPException(
-            status_code=503, detail="Robot arm is not connected")
+        raise HTTPException(status_code=503, detail="Robot arm is not connected")
 
     if CALIBRATION_STATE != "idle":
         raise HTTPException(
@@ -849,7 +847,9 @@ async def start_calibration():
     offset_z = CONFIG.get("robot", {}).get("offset_z", 0)
 
     try:
-        await run_blocking(ROBOT_ARM_CLIENT.calibrate_start, offset_x, offset_y, offset_z)
+        await run_blocking(
+            ROBOT_ARM_CLIENT.calibrate_start, offset_x, offset_y, offset_z
+        )
     except Exception as exc:
         logger.exception("Calibration start failed")
         raise HTTPException(status_code=500, detail=str(exc))
@@ -859,7 +859,7 @@ async def start_calibration():
         "status": True,
         "state": CALIBRATION_STATE,
         "message": "Arm moved to pick calibration position. "
-                   "Verify alignment, then call POST /robot/calibrate/confirm to complete.",
+        "Verify alignment, then call POST /robot/calibrate/confirm to complete.",
     }
 
 
@@ -872,8 +872,7 @@ async def confirm_calibration():
     global CALIBRATION_STATE, ROBOT_ARM_CLIENT
 
     if ROBOT_ARM_CLIENT is None:
-        raise HTTPException(
-            status_code=503, detail="Robot arm is not connected")
+        raise HTTPException(status_code=503, detail="Robot arm is not connected")
 
     if CALIBRATION_STATE != "awaiting_confirmation":
         raise HTTPException(
@@ -951,8 +950,7 @@ async def set_gripper_config(body: dict):
     try:
         initialize_robot_arm_client()
     except Exception as exc:
-        logger.warning(
-            f"Robot arm reinit after gripper config change failed: {exc}")
+        logger.warning(f"Robot arm reinit after gripper config change failed: {exc}")
         ROBOT_ARM_CLIENT = None
 
     return {
@@ -982,9 +980,7 @@ def _detect_aruco_bbox(color_frame: np.ndarray):
     frame_cy = frame_h // 2
 
     aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
-    detector = cv2.aruco.ArucoDetector(
-        aruco_dict, cv2.aruco.DetectorParameters()
-    )
+    detector = cv2.aruco.ArucoDetector(aruco_dict, cv2.aruco.DetectorParameters())
     corners, ids, _ = detector.detectMarkers(color_frame)
 
     base = {
@@ -996,20 +992,29 @@ def _detect_aruco_bbox(color_frame: np.ndarray):
     }
 
     if ids is None:
-        return {**base, "detected": False, "bbox": None,
-                "marker0_center": None, "marker1_center": None,
-                "message": "No ArUco markers detected in the current frame."}
+        return {
+            **base,
+            "detected": False,
+            "bbox": None,
+            "marker0_center": None,
+            "marker1_center": None,
+            "message": "No ArUco markers detected in the current frame.",
+        }
 
     id_map = {
-        int(id_val[0]): corner.reshape(-1, 2)
-        for corner, id_val in zip(corners, ids)
+        int(id_val[0]): corner.reshape(-1, 2) for corner, id_val in zip(corners, ids)
     }
 
     if 0 not in id_map or 1 not in id_map:
         found = sorted(id_map.keys())
-        return {**base, "detected": False, "bbox": None,
-                "marker0_center": None, "marker1_center": None,
-                "message": f"Need markers 0 and 1; found: {found}."}
+        return {
+            **base,
+            "detected": False,
+            "bbox": None,
+            "marker0_center": None,
+            "marker1_center": None,
+            "message": f"Need markers 0 and 1; found: {found}.",
+        }
 
     def _center(pts):
         return pts.mean(axis=0).tolist()
@@ -1060,8 +1065,7 @@ async def aruco_detect():
     """
     color_frame, _, _ = get_current_frame_for_inference()
     if color_frame is None:
-        raise HTTPException(
-            status_code=503, detail="No camera frame available.")
+        raise HTTPException(status_code=503, detail="No camera frame available.")
 
     result = await run_blocking(_detect_aruco_bbox, color_frame)
     return result
@@ -1076,8 +1080,7 @@ async def aruco_calibrate():
 
     color_frame, _, _ = get_current_frame_for_inference()
     if color_frame is None:
-        raise HTTPException(
-            status_code=503, detail="No camera frame available.")
+        raise HTTPException(status_code=503, detail="No camera frame available.")
 
     result = await run_blocking(_detect_aruco_bbox, color_frame)
 
@@ -1156,7 +1159,11 @@ async def start_motor_calibration():
     """
     global MOTOR_CALIBRATION_STATE, MOTOR_CALIBRATION_PROCESS, MOTOR_CALIBRATION_OUTPUT, ROBOT_ARM_CLIENT, CONFIG
 
-    if MOTOR_CALIBRATION_STATE in ("awaiting_calibration_choice", "awaiting_middle_position", "awaiting_range_motion"):
+    if MOTOR_CALIBRATION_STATE in (
+        "awaiting_calibration_choice",
+        "awaiting_middle_position",
+        "awaiting_range_motion",
+    ):
         raise HTTPException(
             status_code=409,
             detail=f"Motor calibration already in progress (state: '{MOTOR_CALIBRATION_STATE}'). "
@@ -1219,7 +1226,7 @@ async def start_motor_calibration():
         "status": True,
         "state": MOTOR_CALIBRATION_STATE,
         "message": "Motor calibration started. Choose whether to use the existing "
-                   "calibration file or run a new calibration.",
+        "calibration file or run a new calibration.",
     }
 
 
@@ -1254,7 +1261,10 @@ async def next_motor_calibration_step(request: Request):
             "Call POST /robot/motor-calibrate/start first.",
         )
 
-    if MOTOR_CALIBRATION_PROCESS is None or MOTOR_CALIBRATION_PROCESS.poll() is not None:
+    if (
+        MOTOR_CALIBRATION_PROCESS is None
+        or MOTOR_CALIBRATION_PROCESS.poll() is not None
+    ):
         MOTOR_CALIBRATION_STATE = "error"
         raise HTTPException(
             status_code=500,
@@ -1272,8 +1282,7 @@ async def next_motor_calibration_step(request: Request):
         if choice == "run":
             # Type 'c' + Enter to start a new calibration
             try:
-                MOTOR_CALIBRATION_PROCESS.stdin.write(
-                    "c\n")  # type: ignore[union-attr]
+                MOTOR_CALIBRATION_PROCESS.stdin.write("c\n")  # type: ignore[union-attr]
                 # type: ignore[union-attr]
                 MOTOR_CALIBRATION_PROCESS.stdin.flush()
             except Exception as exc:
@@ -1287,8 +1296,7 @@ async def next_motor_calibration_step(request: Request):
         else:
             # Press Enter to use the existing calibration file
             try:
-                MOTOR_CALIBRATION_PROCESS.stdin.write(
-                    "\n")  # type: ignore[union-attr]
+                MOTOR_CALIBRATION_PROCESS.stdin.write("\n")  # type: ignore[union-attr]
                 # type: ignore[union-attr]
                 MOTOR_CALIBRATION_PROCESS.stdin.flush()
             except Exception as exc:
@@ -1303,19 +1311,18 @@ async def next_motor_calibration_step(request: Request):
             # Reconnect the robot arm now that the serial port is free again
             try:
                 initialize_robot_arm_client()
-                logger.info(
-                    "Robot arm reconnected after using existing calibration.")
+                logger.info("Robot arm reconnected after using existing calibration.")
             except Exception as exc:
                 logger.warning(
-                    f"Robot arm reconnection after calibration failed: {exc}")
+                    f"Robot arm reconnection after calibration failed: {exc}"
+                )
             message = (
                 "Existing calibration file applied. "
                 "Robot arm reconnected automatically."
             )
     elif MOTOR_CALIBRATION_STATE == "awaiting_middle_position":
         try:
-            MOTOR_CALIBRATION_PROCESS.stdin.write(
-                "\n")  # type: ignore[union-attr]
+            MOTOR_CALIBRATION_PROCESS.stdin.write("\n")  # type: ignore[union-attr]
             MOTOR_CALIBRATION_PROCESS.stdin.flush()  # type: ignore[union-attr]
         except Exception as exc:
             MOTOR_CALIBRATION_STATE = "error"
@@ -1327,8 +1334,7 @@ async def next_motor_calibration_step(request: Request):
         )
     else:  # awaiting_range_motion
         try:
-            MOTOR_CALIBRATION_PROCESS.stdin.write(
-                "\n")  # type: ignore[union-attr]
+            MOTOR_CALIBRATION_PROCESS.stdin.write("\n")  # type: ignore[union-attr]
             MOTOR_CALIBRATION_PROCESS.stdin.flush()  # type: ignore[union-attr]
         except Exception as exc:
             MOTOR_CALIBRATION_STATE = "error"
@@ -1344,8 +1350,7 @@ async def next_motor_calibration_step(request: Request):
             initialize_robot_arm_client()
             logger.info("Robot arm reconnected after motor calibration.")
         except Exception as exc:
-            logger.warning(
-                f"Robot arm reconnection after calibration failed: {exc}")
+            logger.warning(f"Robot arm reconnection after calibration failed: {exc}")
         message = (
             "Range of motion confirmed. Calibration files written and "
             "robot arm reconnected automatically."
@@ -1374,12 +1379,13 @@ async def pickup_object(requested_object: str, ctx: Context) -> str:
         bboxes=[CONFIG["inference"]["bbox"]],
         debug=False,
     )
-    logger.info(
-        f"Object segmentation and filtering time(secs): {time.time() - st:.2f}")
+    logger.info(f"Object segmentation and filtering time(secs): {time.time() - st:.2f}")
 
     st = time.time()
     # analysis_results = await analyze_object_single(detection_results, requested_object)
-    analysis_results = await analyze_object_batch(detection_results, requested_object, batch_size=8)
+    analysis_results = await analyze_object_batch(
+        detection_results, requested_object, batch_size=8
+    )
     logger.info(f"Object analysis time(secs): {time.time() - st:.2f}")
 
     # return a string for the object that is confirmed as Yes
@@ -1395,8 +1401,7 @@ async def pickup_object(requested_object: str, ctx: Context) -> str:
                 f"Picking up {requested_object} with id {obj_id}, asset at {asset_url}"
             )
             print("BBox: ", result["box"])
-            obj_xmin, obj_ymin, obj_xmax, obj_ymax = map(
-                int, result["box"])
+            obj_xmin, obj_ymin, obj_xmax, obj_ymax = map(int, result["box"])
 
             # Default fallback to bbox center
             cx = int((obj_xmin + obj_xmax) / 2)
@@ -1409,7 +1414,7 @@ async def pickup_object(requested_object: str, ctx: Context) -> str:
             if mask is not None:
                 try:
                     # Ensure mask is numpy array
-                    if hasattr(mask, 'cpu'):
+                    if hasattr(mask, "cpu"):
                         mask = mask.cpu().numpy()
                     if mask.dtype != np.uint8:
                         mask = (mask * 255).astype(np.uint8)
@@ -1422,8 +1427,7 @@ async def pickup_object(requested_object: str, ctx: Context) -> str:
                             valid_mask_centroid = True
                             logger.info(f"Using mask centroid: {cx}, {cy}")
                 except Exception as e:
-                    logger.warning(
-                        f"Failed to calculate mask moments: {e}")
+                    logger.warning(f"Failed to calculate mask moments: {e}")
 
             # Calculate depth - use median of mask if available, else center point
             depth = 0.0
@@ -1439,17 +1443,16 @@ async def pickup_object(requested_object: str, ctx: Context) -> str:
                         if valid_depths.size > 0:
                             depth_mm = np.median(valid_depths)
                             depth = depth_mm / 1000.0
-                            logger.info(
-                                f"Using median depth from mask: {depth:.4f}m")
+                            logger.info(f"Using median depth from mask: {depth:.4f}m")
                         else:
                             depth = depth_frame.get_distance(cx, cy)
                     else:
                         logger.warning(
-                            f"Mask shape {mask.shape} != Depth shape {depth_image.shape}")
+                            f"Mask shape {mask.shape} != Depth shape {depth_image.shape}"
+                        )
                         depth = depth_frame.get_distance(cx, cy)
                 except Exception as e:
-                    logger.error(
-                        f"Error calculating mask median depth: {e}")
+                    logger.error(f"Error calculating mask median depth: {e}")
                     depth = depth_frame.get_distance(cx, cy)
             else:
                 depth = depth_frame.get_distance(cx, cy)
@@ -1463,22 +1466,22 @@ async def pickup_object(requested_object: str, ctx: Context) -> str:
             if not object_pose:
                 return f"Unable to get the location of {requested_object}. Please try again."
 
-            logger.info(
-                f"Object pose for {requested_object}: {object_pose}")
+            logger.info(f"Object pose for {requested_object}: {object_pose}")
             if not ROBOT_ARM_CLIENT:
                 return "Robot arm client is not online. Please check the connection. Retry again after verifying the connection."
 
             # Translate object pose with offsets to arm
-            offset_x = CONFIG["robot"]["offset_x"]/1000.0
-            offset_y = CONFIG["robot"]["offset_y"]/1000.0
-            offset_z = CONFIG["robot"]["offset_z"]/1000.0
+            offset_x = CONFIG["robot"]["offset_x"] / 1000.0
+            offset_y = CONFIG["robot"]["offset_y"] / 1000.0
+            offset_z = CONFIG["robot"]["offset_z"] / 1000.0
 
-            target_pose_x = -object_pose['x']/1000.0
-            target_pose_y = -object_pose['y']/1000.0
-            target_pose_z = object_pose['z']/1000.0
+            target_pose_x = -object_pose["x"] / 1000.0
+            target_pose_y = -object_pose["y"] / 1000.0
+            target_pose_z = object_pose["z"] / 1000.0
 
             logger.info(
-                f"Translated target_pose_x: {target_pose_x}, target_pose_y: {target_pose_y}")
+                f"Translated target_pose_x: {target_pose_x}, target_pose_y: {target_pose_y}"
+            )
 
             if target_pose_y > 0:
                 fixed_wrist_roll = -FIXED_WRIST_ROLL
@@ -1496,7 +1499,9 @@ async def pickup_object(requested_object: str, ctx: Context) -> str:
                 target_z = current_pos[2]
 
                 # Move to ready pose
-                await run_blocking(ROBOT_ARM_CLIENT.move_to_coordinate, target_x, target_y, target_z)
+                await run_blocking(
+                    ROBOT_ARM_CLIENT.move_to_coordinate, target_x, target_y, target_z
+                )
                 await run_blocking(ROBOT_ARM_CLIENT.set_gripper_state, open=True)
 
                 # Move to object pose
@@ -1505,7 +1510,13 @@ async def pickup_object(requested_object: str, ctx: Context) -> str:
                 target_x = current_pos[0] + (target_pose_x) - 0.03
                 target_y = current_pos[1] + (target_pose_y)
                 target_z = current_pos[2]
-                await run_blocking(ROBOT_ARM_CLIENT.move_to_coordinate, target_x, target_y, target_z, fixed_wrist_roll)
+                await run_blocking(
+                    ROBOT_ARM_CLIENT.move_to_coordinate,
+                    target_x,
+                    target_y,
+                    target_z,
+                    fixed_wrist_roll,
+                )
 
                 # Move down to pick height
                 T_current = await run_blocking(ROBOT_ARM_CLIENT.arm.get_current_ee_pose)
@@ -1513,7 +1524,13 @@ async def pickup_object(requested_object: str, ctx: Context) -> str:
                 target_x = current_pos[0]
                 target_y = current_pos[1]
                 target_z = offset_z
-                await run_blocking(ROBOT_ARM_CLIENT.move_to_coordinate, target_x, target_y, target_z, fixed_wrist_roll)
+                await run_blocking(
+                    ROBOT_ARM_CLIENT.move_to_coordinate,
+                    target_x,
+                    target_y,
+                    target_z,
+                    fixed_wrist_roll,
+                )
 
                 # Close gripper to pick object
                 await run_blocking(ROBOT_ARM_CLIENT.set_gripper_state, open=False)

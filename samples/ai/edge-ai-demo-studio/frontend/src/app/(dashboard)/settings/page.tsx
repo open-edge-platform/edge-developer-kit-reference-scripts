@@ -4,7 +4,16 @@
 'use client'
 
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { Eye, EyeOff, Monitor, Moon, Save, Sun, Timer } from 'lucide-react'
+import {
+  Eye,
+  EyeOff,
+  Monitor,
+  Moon,
+  Save,
+  Sun,
+  Timer,
+  TriangleAlert,
+} from 'lucide-react'
 import { useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -185,6 +194,74 @@ function ServiceHealthSection({
   )
 }
 
+function ProxyConfigSection({
+  activeProxyTimeout,
+  proxyTimeout,
+  onTimeoutChange,
+}: {
+  activeProxyTimeout: number | undefined
+  proxyTimeout: number
+  onTimeoutChange: (value: number) => void
+}) {
+  return (
+    <SettingsSection
+      title="Proxy Configuration"
+      description="Configure proxy settings."
+      stagger={3}
+    >
+      <div className="space-y-2">
+        <Label htmlFor="proxy-timeout">
+          <span className="flex items-center gap-1.5">
+            <Timer className="h-3.5 w-3.5" />
+            Proxy Timeout
+          </span>
+        </Label>
+        <div className="flex items-center gap-3">
+          <Input
+            id="proxy-timeout"
+            type="number"
+            min={30}
+            value={proxyTimeout}
+            onChange={(e) =>
+              onTimeoutChange(Math.max(30, Number(e.target.value) || 30))
+            }
+            className="bg-muted/30 w-32"
+          />
+          <span className="text-muted-foreground text-sm">
+            seconds ({formatTimeout(proxyTimeout)})
+          </span>
+        </div>
+
+        {activeProxyTimeout !== undefined &&
+          proxyTimeout !== activeProxyTimeout && (
+            <p className="text-muted-foreground text-xs">
+              Currently active:{' '}
+              <span className="text-foreground font-medium">
+                {activeProxyTimeout}s ({formatTimeout(activeProxyTimeout)})
+              </span>
+            </p>
+          )}
+        <p className="text-muted-foreground text-xs">
+          Maximum time a request can take before being terminated. Default is 30
+          seconds. Adjust this if you encounter frequent timeouts with
+          long-running requests, but be cautious as setting it too high may
+          cause resource exhaustion.
+        </p>
+
+        {activeProxyTimeout !== undefined &&
+          proxyTimeout !== activeProxyTimeout && (
+            <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-2.5 dark:border-amber-900 dark:bg-amber-950">
+              <TriangleAlert className="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+              <p className="text-[11px] text-amber-800 dark:text-amber-200">
+                Restart the application to apply this change.
+              </p>
+            </div>
+          )}
+      </div>
+    </SettingsSection>
+  )
+}
+
 function ActionsBar({ saved, onSave }: { saved: boolean; onSave: () => void }) {
   return (
     <div className="flex items-center justify-end">
@@ -274,6 +351,12 @@ export default function SettingsPage() {
       <ServiceHealthSection
         startupTimeout={startupTimeout}
         onTimeoutChange={setStartupTimeout}
+      />
+
+      <ProxyConfigSection
+        activeProxyTimeout={settings.activeProxyTimeout}
+        proxyTimeout={settings.proxyTimeout}
+        onTimeoutChange={(proxyTimeout) => updateSettings({ proxyTimeout })}
       />
 
       <ActionsBar saved={saved} onSave={handleSave} />
