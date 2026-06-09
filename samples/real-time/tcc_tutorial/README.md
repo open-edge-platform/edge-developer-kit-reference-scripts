@@ -68,7 +68,7 @@ Please follow the steps described in [Install the Docker Compose standalone](htt
 ```bash
 git clone https://github.com/intel/edge-developer-kit-reference-scripts.git .
 
-cd edge-developer-kit-reference-scripts/usecases/real-time/tcc_tutorial/docker/docker-compose
+cd edge-developer-kit-reference-scripts/samples/real-time/tcc_tutorial/docker/docker-compose
 
 docker-compose up -d 
 
@@ -97,14 +97,14 @@ You should see a similar dashboard like the screenshot above. If the dashboard i
 To build the Docker image, run the following command in the directory containing your Dockerfile:
 
 ```bash
-cd edge-developer-kit-reference-scripts/usecases/real-time/tcc_tutorial/
+cd edge-developer-kit-reference-scripts/samples/real-time/tcc_tutorial/
 docker build -t rt_linux_tutorial_image -f docker/Dockerfile.rt .
 ```
 Run the Docker container in interactive mode, to start the rt_linux_tutorial app:
 ```bash
  docker run -it --privileged --rm --network docker-compose_stats rt_linux_tutorial_image
 
-./rt_linux_tutorial -i 1000 -s 1
+sudo ./rt_linux_tutorial -i 1000 -s 1
 
  ```
  -----
@@ -112,7 +112,7 @@ Run the Docker container in interactive mode, to start the rt_linux_tutorial app
 To build the Docker image, run the following command in the directory containing your Dockerfile:
 
 ```bash
-cd edge-developer-kit-reference-scripts/usecases/real-time/tcc_tutorial/
+cd edge-developer-kit-reference-scripts/samples/real-time/tcc_tutorial/
 docker build -t ai_obj_class_demo_image -f docker/Dockerfile.ai .
 ```
 Run the Docker container in interactive mode, to start the classification_demo app:
