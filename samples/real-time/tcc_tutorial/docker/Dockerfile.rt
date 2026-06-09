@@ -69,7 +69,7 @@ WORKDIR /home/rtuser
 RUN git clone https://github.com/intel/edge-developer-kit-reference-scripts.git
 
 # Set the working directory for the non-root user
-WORKDIR /home/rtuser/edge-developer-kit-reference-scripts/usecases/real-time/tcc_tutorial
+WORKDIR /home/rtuser/edge-developer-kit-reference-scripts/samples/real-time/tcc_tutorial
 
 # Build the project
 RUN make
@@ -79,9 +79,9 @@ RUN chmod +x rt_linux_tutorial
 
 # Allow root privilige to app and scripts
 USER root
-RUN echo "rtuser ALL=(ALL) NOPASSWD: /home/rtuser/edge-developer-kit-reference-scripts/usecases/real-time/tcc_tutorial/rt_linux_tutorial" >> /etc/sudoers
-RUN echo "rtuser ALL=(ALL) NOPASSWD: /home/rtuser/edge-developer-kit-reference-scripts/usecases/real-time/tcc_tutorial/setCacheAllocation.sh" >> /etc/sudoers
-RUN echo "rtuser ALL=(ALL) NOPASSWD: /home/rtuser/edge-developer-kit-reference-scripts/usecases/real-time/tcc_tutorial/setCoreFrequency.sh" >> /etc/sudoers
+RUN echo "rtuser ALL=(ALL) NOPASSWD: /home/rtuser/edge-developer-kit-reference-scripts/samples/real-time/tcc_tutorial/rt_linux_tutorial" >> /etc/sudoers
+RUN echo "rtuser ALL=(ALL) NOPASSWD: /home/rtuser/edge-developer-kit-reference-scripts/samples/real-time/tcc_tutorial/setCacheAllocation.sh" >> /etc/sudoers
+RUN echo "rtuser ALL=(ALL) NOPASSWD: /home/rtuser/edge-developer-kit-reference-scripts/samples/real-time/tcc_tutorial/setCoreFrequency.sh" >> /etc/sudoers
 USER rtuser
 
 # Healthcheck
