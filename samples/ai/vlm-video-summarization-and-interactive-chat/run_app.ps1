@@ -86,8 +86,8 @@ try {
     
     # Download first sample video
     if (-not (Test-Path "assets\traffic-intersection.mp4")) {
-        $video_url1 = "https://github.com/intel/metro-ai-suite/raw/refs/heads/videos/videos/1122south.ts"
-        $download_path1 = "assets\1122south.ts"
+        $video_url1 = "https://github.com/open-edge-platform/edge-ai-resources/raw/refs/heads/main/videos/1122south_h264.ts"
+        $download_path1 = "assets\1122south_h264.ts"
         
         Write-Host "Downloading first sample video..." -ForegroundColor Yellow
         if (Download-File $video_url1 $download_path1) {
@@ -97,10 +97,10 @@ try {
             if ($ffmpegInstalled) {
                 Write-Host "Converting and cutting first video (4:31 to 6:31) to MP4 format..." -ForegroundColor Yellow
                 try {
-                    ffmpeg -i "assets\1122south.ts" -ss 00:04:31 -t 00:02:00 -c copy "assets\traffic-intersection.mp4" -y
+                    ffmpeg -i "assets\1122south_h264.ts" -ss 00:04:31 -t 00:02:00 -c copy "assets\traffic-intersection.mp4" -y
                     if ($LASTEXITCODE -eq 0) {
                         Write-Host "First video converted and cut successfully to MP4" -ForegroundColor Green
-                        Remove-Item "assets\1122south.ts" -Force
+                        Remove-Item "assets\1122south_h264.ts" -Force
                         Write-Host "Cleaned up temporary TS file" -ForegroundColor Green
                     } else {
                         Write-Host "Failed to convert and cut first video" -ForegroundColor Red
