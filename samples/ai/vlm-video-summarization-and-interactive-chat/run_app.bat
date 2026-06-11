@@ -65,8 +65,8 @@ if not exist "assets" (
 
 :: Download first sample video
 if not exist "assets\traffic-intersection.mp4" (
-    set "VIDEO_URL1=https://github.com/intel/metro-ai-suite/raw/refs/heads/videos/videos/1122south.ts"
-    set "DOWNLOAD_PATH1=assets\1122south.ts"
+    set "VIDEO_URL1=https://github.com/open-edge-platform/edge-ai-resources/raw/refs/heads/main/videos/1122south_h264.ts"
+    set "DOWNLOAD_PATH1=assets\1122south_h264.ts"
     
     echo Downloading first sample video...
     powershell -Command "try { Invoke-WebRequest -Uri '!VIDEO_URL1!' -OutFile '!DOWNLOAD_PATH1!' -UseBasicParsing; exit 0 } catch { exit 1 }"
@@ -77,10 +77,10 @@ if not exist "assets\traffic-intersection.mp4" (
         ffmpeg -version >nul 2>&1
         if %errorlevel% equ 0 (
             echo Converting and cutting first video from 4:31 to 6:31 to MP4 format...
-            ffmpeg -i "assets\1122south.ts" -ss 00:04:31 -t 00:02:00 -c copy "assets\traffic-intersection.mp4" -y
+            ffmpeg -i "assets\1122south_h264.ts" -ss 00:04:31 -t 00:02:00 -c copy "assets\traffic-intersection.mp4" -y
             if %errorlevel% equ 0 (
                 echo First video converted and cut successfully to MP4
-                del "assets\1122south.ts"
+                del "assets\1122south_h264.ts"
                 echo Cleaned up temporary TS file
             ) else (
                 echo Failed to convert and cut first video

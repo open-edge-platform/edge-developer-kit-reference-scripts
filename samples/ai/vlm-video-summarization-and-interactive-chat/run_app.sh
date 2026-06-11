@@ -97,8 +97,8 @@ setup_sample_video() {
         print_status "First sample video already exists, skipping download"
     else
         # Download first sample video file
-        local video_url1="https://github.com/intel/metro-ai-suite/raw/refs/heads/videos/videos/1122south.ts"
-        local download_path1="assets/1122south.ts"
+        local video_url1="https://github.com/open-edge-platform/edge-ai-resources/raw/refs/heads/main/videos/1122south_h264.ts"
+        local download_path1="assets/1122south_h264.ts"
         
         print_status "Downloading first sample video*..."
         if download_file "$video_url1" "$download_path1"; then
@@ -107,9 +107,9 @@ setup_sample_video() {
             # Convert and cut first video if FFmpeg is available
             if command_exists ffmpeg; then
                 print_status "Converting and cutting first video (4:31 to 6:31)..."
-                if ffmpeg -i "assets/1122south.ts" -ss 00:04:31 -t 00:02:00 -c copy "assets/traffic-intersection.mp4"; then
+                if ffmpeg -i "assets/1122south_h264.ts" -ss 00:04:31 -t 00:02:00 -c copy "assets/traffic-intersection.mp4"; then
                     print_status "First video converted and cut successfully to MP4"
-                    rm "assets/1122south.ts"
+                    rm "assets/1122south_h264.ts"
                     print_status "Cleaned up temporary TS file"
                 else
                     print_error "Failed to convert and cut first video"
@@ -167,8 +167,8 @@ setup_sample_video() {
     if ! command_exists ffmpeg; then
         print_error "FFmpeg not found. Please install FFmpeg for video processing capabilities"
         print_status "Install FFmpeg: sudo apt install ffmpeg (Ubuntu*/Debian*)"
-        if [ -f "assets/1122south.ts" ]; then
-            print_status "After installing FFmpeg, run: ffmpeg -i assets/1122south.ts -c copy assets/traffic-intersection.mp4"
+        if [ -f "assets/1122south_h264.ts" ]; then
+            print_status "After installing FFmpeg, run: ffmpeg -i assets/1122south_h264.ts -c copy assets/traffic-intersection.mp4"
         fi
     fi
 }
