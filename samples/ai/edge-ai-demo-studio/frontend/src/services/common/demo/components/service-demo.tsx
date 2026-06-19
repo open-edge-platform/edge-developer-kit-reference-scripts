@@ -120,7 +120,8 @@ export function ServiceDemo({ service }: { service: Service }) {
               </h3>
               <p className="text-muted-foreground mt-2 max-w-md text-sm">
                 The service is loading the model and preparing to accept
-                requests. This may take a moment.
+                requests. First startup may take several minutes while required
+                packages are installed.
               </p>
             </>
           ) : (
@@ -134,7 +135,8 @@ export function ServiceDemo({ service }: { service: Service }) {
               <p className="text-muted-foreground mt-2 max-w-md text-sm">
                 Start this service to access the interactive demo. The service
                 will load the required model and begin accepting inference
-                requests.
+                requests. First startup may take several minutes while required
+                packages are installed.
               </p>
             </>
           )}

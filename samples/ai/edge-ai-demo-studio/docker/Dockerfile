@@ -50,6 +50,9 @@ WORKDIR /home/ubuntu
 USER ${USER}
 
 RUN ./setup.sh --verbose
+RUN mkdir -p /home/ubuntu/models
+RUN mkdir -p /home/ubuntu/logs
+RUN mkdir -p /home/ubuntu/data
 
 # Basic healthcheck: ensure the start script is present and executable
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \

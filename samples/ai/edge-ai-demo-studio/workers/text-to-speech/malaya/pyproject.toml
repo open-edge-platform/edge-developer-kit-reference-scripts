@@ -13,11 +13,11 @@ dependencies = [
     "psutil>=7.1.0",
     "pydub>=0.25.1",
     "pysastrawi>=1.2.0",
-    "pytorch-triton-xpu>=3.5.0 ; sys_platform == 'win32' or sys_platform == 'linux'",
+    "triton-xpu>=3.5.0 ; sys_platform == 'win32' or sys_platform == 'linux'",
     "soundfile>=0.12.1",
-    "torch==2.9.1",
-    "torchaudio==2.9.1",
-    "torchvision==0.24.1",
+    "torch==2.11.0",
+    "torchaudio==2.11.0",
+    "torchvision==0.26.0",
 ]
 
 [tool.uv.sources]
@@ -32,7 +32,7 @@ torchvision = [
 torchaudio = [
   { index = "pytorch-xpu", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
-pytorch-triton-xpu = [
+triton-xpu = [
   { index = "pytorch-xpu", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 

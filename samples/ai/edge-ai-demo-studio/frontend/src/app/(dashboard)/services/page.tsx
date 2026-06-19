@@ -41,7 +41,8 @@ export default function ServicesPage() {
           </div>
           <p className="text-muted-foreground mt-2 max-w-lg text-sm leading-relaxed">
             Manage your AI microservices. Toggle services on and off, view
-            configurations, and monitor performance.
+            configurations, and monitor performance. First startup may take
+            several minutes while required packages are installed.
           </p>
         </div>
 

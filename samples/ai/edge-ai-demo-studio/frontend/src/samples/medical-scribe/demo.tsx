@@ -116,6 +116,7 @@ export function MedicalScribeDemo({ sample: _sample }: { sample: Sample }) {
             file: audio,
             language: session.language,
             useDenoise: false,
+            returnTimestamps: true,
           }),
           diarizationGroup.enabled
             ? diarize.mutateAsync({
@@ -137,13 +138,14 @@ export function MedicalScribeDemo({ sample: _sample }: { sample: Sample }) {
           ? alignTranscriptWithSegments(
               transcriptResult.text,
               diarizeResult.segments,
+              transcriptResult.segments,
             )
           : [
               {
                 speaker: 'Speaker',
                 text: transcriptResult.text,
-                start: 0,
-                end: 0,
+                start: transcriptResult.segments?.[0]?.start ?? 0,
+                end: transcriptResult.segments?.at(-1)?.end ?? 0,
               },
             ]
 

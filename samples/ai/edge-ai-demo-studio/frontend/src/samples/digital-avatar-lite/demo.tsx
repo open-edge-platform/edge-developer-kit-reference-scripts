@@ -3,22 +3,19 @@
 
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { useGetService } from '@/context/service-status-context'
-import {
-  useOptionalServiceGroup,
-  useRagChatSetup,
-  useSentenceSpeech,
-  useTextGenerationParams,
-  useTtsParams,
-  useWakeWordStt,
-} from '@/samples/common/hooks'
-import { useTextGenChat } from '@/services/text-generation/hooks'
-import { useSynthesizeSpeech } from '@/services/text-to-speech/hooks'
+import { useOptionalServiceGroup } from '@/samples/common/hooks/use-optional-service-group'
+import { useRagChatSetup } from '@/samples/common/hooks/use-rag-chat-setup'
+import { useTextGenerationParams } from '@/samples/common/hooks/use-text-generation-params'
+import { useTtsParams } from '@/samples/common/hooks/use-tts-params'
+import { useWakeWordStt } from '@/samples/common/hooks/use-wake-word-stt'
+import { useTextGenChat } from '@/services/text-generation/hooks/use-chat'
 import type { Sample } from '../types'
 import { AvatarSection } from './components/avatar-section'
 import { ChatPanel } from './components/chat-panel'
+import { useAvatarSpeechQueue } from './hooks/use-avatar-speech-queue'
 import { SampleParamsSlot } from '../common/sample-params-slot'
 
 function useUpdateAvatarState() {
@@ -51,7 +48,6 @@ export function DigitalAvatarLiteDemo({ sample }: { sample: Sample }) {
   const textGenService = useGetService('text-generation')
   const isMultimodal = textGenService?.currentModelType === 'multimodal'
 
-  const [isSpeaking, setIsSpeaking] = useState(false)
   const updateAvatarState = useUpdateAvatarState()
 
   const chat = useTextGenChat({ textGenValues: textGen.values, extraBody })
@@ -67,132 +63,22 @@ export function DigitalAvatarLiteDemo({ sample }: { sample: Sample }) {
     ),
   })
 
-  const synthesizeSpeech = useSynthesizeSpeech()
-  const audioQueueRef = useRef<string[]>([])
-  const isPlayingRef = useRef(false)
-  const audioRef = useRef<HTMLAudioElement | null>(null)
-  const currentUrlRef = useRef<string | null>(null)
-  const processNextRef = useRef<() => void>(() => {})
+  const onAvatarStateChange = useCallback(
+    (state: 'idle' | 'talking') => {
+      updateAvatarState.mutate({ state })
+    },
+    [updateAvatarState],
+  )
 
-  const stopSpeaking = useCallback(() => {
-    isPlayingRef.current = false
-    setIsSpeaking(false)
-    updateAvatarState.mutate({ state: 'idle' })
-  }, [updateAvatarState])
-
-  // Keep the processor in a ref so audio callbacks always call the latest version
-  useEffect(() => {
-    processNextRef.current = () => {
-      const nextSentence = audioQueueRef.current.shift()
-      if (!nextSentence) {
-        stopSpeaking()
-        return
-      }
-
-      synthesizeSpeech.mutate(
-        {
-          input: nextSentence,
-          voice: tts.values.voice,
-          speed: tts.values.speed,
-          responseFormat: tts.values.format,
-          volumeMultiplier: tts.values.volume,
-        },
-        {
-          onSuccess: (blob) => {
-            const url = URL.createObjectURL(blob)
-            currentUrlRef.current = url
-            const audio = new Audio(url)
-            audioRef.current = audio
-
-            let handled = false
-            const cleanup = () => {
-              if (handled) return
-              handled = true
-              URL.revokeObjectURL(url)
-              currentUrlRef.current = null
-              audioRef.current = null
-              processNextRef.current()
-            }
-
-            audio.onended = cleanup
-            audio.onerror = cleanup
-
-            audio
-              .play()
-              .then(() => {
-                setIsSpeaking(true)
-                updateAvatarState.mutate({ state: 'talking' })
-              })
-              .catch(cleanup)
-          },
-          onError: () => {
-            processNextRef.current()
-          },
-        },
-      )
-    }
-  }, [
-    synthesizeSpeech,
-    tts.values.voice,
-    tts.values.speed,
-    tts.values.format,
-    tts.values.volume,
-    stopSpeaking,
-    updateAvatarState,
-  ])
-
-  const onSentence = useCallback((sentence: string) => {
-    audioQueueRef.current.push(sentence)
-    if (!isPlayingRef.current) {
-      isPlayingRef.current = true
-      processNextRef.current()
-    }
-  }, [])
-
-  const { reset: resetSentenceSpeech } = useSentenceSpeech({
+  const { isSpeaking, forceStop } = useAvatarSpeechQueue({
     messages: chat.messages,
     status: chat.status,
-    onSentence,
     enabled: tts.online,
+    voice: tts.values.voice,
+    speed: tts.values.speed,
+    onStopStream: chat.handleStop,
+    onAvatarStateChange,
   })
-
-  const forceStop = useCallback(() => {
-    // Stop current audio and revoke its blob URL
-    if (audioRef.current) {
-      audioRef.current.onended = null
-      audioRef.current.onerror = null
-      audioRef.current.pause()
-      audioRef.current = null
-    }
-    if (currentUrlRef.current) {
-      URL.revokeObjectURL(currentUrlRef.current)
-      currentUrlRef.current = null
-    }
-    // Clear pending queue
-    audioQueueRef.current = []
-    isPlayingRef.current = false
-    // Reset sentence processor
-    resetSentenceSpeech()
-    // Stop LLM streaming if in progress
-    chat.handleStop()
-    // Reset avatar state
-    setIsSpeaking(false)
-    updateAvatarState.mutate({ state: 'idle' })
-  }, [resetSentenceSpeech, chat, updateAvatarState])
-
-  // Cleanup audio on unmount
-  useEffect(() => {
-    return () => {
-      if (audioRef.current) {
-        audioRef.current.pause()
-        audioRef.current = null
-      }
-      if (currentUrlRef.current) {
-        URL.revokeObjectURL(currentUrlRef.current)
-        currentUrlRef.current = null
-      }
-    }
-  }, [])
 
   return (
     <div className="space-y-4">

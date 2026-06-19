@@ -21,13 +21,13 @@ dependencies = [
     "openai==1.83.0",
     "opencv-python==4.11.0.86",
     "python-multipart>=0.0.22",
-    "pytorch-triton-xpu==3.4.0",
+    "triton-xpu>=3.7.0",
     "requests>=2.32.5",
     "resampy==0.4.3",
     "rich==14.0.0",
-    "torch>=2.8.0",
-    "torchaudio>=2.8.0",
-    "torchvision>=0.23.0",
+    "torch>=2.11.0",
+    "torchaudio>=2.11.0",
+    "torchvision>=0.26.0",
     "tqdm==4.67.1",
     "transformers>=5.0.0",
     "uvicorn==0.34.3",
@@ -38,7 +38,7 @@ dependencies = [
 torch = { index = "pytorch" }
 torchaudio = { index = "pytorch" }
 torchvision = { index = "pytorch" }
-pytorch-triton-xpu = { index = "pytorch" }
+triton-xpu = { index = "pytorch" }
 diffusers = { git = "https://github.com/huggingface/diffusers.git" }
 
 [[tool.uv.index]]

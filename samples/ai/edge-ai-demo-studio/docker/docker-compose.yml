@@ -1,14 +1,25 @@
 services:
-  edge-ai-studio:
+  edge-ai-demo-studio:
     build:
       context: ../
       dockerfile: docker/Dockerfile
-    image: edge-ai-studio:v1.0.0
-    container_name: edge-ai-studio
+    image: edge-ai-demo-studio:v1.0.0
+    container_name: edge-ai-demo-studio
     # devices: # Uncomment if you have a GPU/NPU
-      # - "/dev/dri:/dev/dri" # Uncomment if you have a GPU
-      # - "/dev/accel:/dev/accel" # Uncomment if you have an NPU
+    #   - "/dev/dri:/dev/dri" # Uncomment if you have a GPU
+    #   - "/dev/accel:/dev/accel" # Uncomment if you have an NPU
     # group_add: # Uncomment if you have a GPU/NPU
-      # - ${RENDER_GROUP_ID:-992} # Uncomment if you have a GPU/NPU (render group)
+    #   - ${RENDER_GROUP_ID:-992} # Uncomment if you have a GPU/NPU (render group)
     ports:
       - "8080:8080"
+    environment:
+      - DATABASE_URL=file:/home/ubuntu/data/db.sqlite
+    volumes:
+      - models:/home/ubuntu/models
+      - logs:/home/ubuntu/logs
+      - db:/home/ubuntu/data
+
+volumes:
+  models:
+  logs:
+  db:

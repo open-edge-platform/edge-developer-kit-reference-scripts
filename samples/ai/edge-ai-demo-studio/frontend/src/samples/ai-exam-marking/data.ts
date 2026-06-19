@@ -11,7 +11,7 @@ export const sample: Sample = {
     'AI-powered exam marking using OCR and LLM to automatically grade test papers from images',
   longDescription:
     'AI Exam Marking leverages OCR and LLM technologies to automatically grade test papers from images. This project demonstrates the integration of AI models for efficient and accurate exam evaluation, reducing manual grading efforts and improving consistency.',
-  category: 'Education',
+  category: ['Education'],
   dependencies: [
     {
       serviceId: 'wake-word-detection',

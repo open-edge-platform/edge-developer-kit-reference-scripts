@@ -74,6 +74,8 @@ export function ServiceConfigurePanel({
           <SheetTitle className="text-base">Runtime Settings</SheetTitle>
           <SheetDescription className="text-xs">
             Configure model, device, and startup parameters for {serviceName}.
+            First startup may take several minutes while required packages are
+            installed.
           </SheetDescription>
         </SheetHeader>
 

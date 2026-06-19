@@ -81,66 +81,6 @@ download_file() {
 }
 
 # --- Installation Functions ---
-
-# Check and setup Mesa drivers (kisak-mesa)
-check_mesa_drivers() {
-    print_step "0. Mesa Drivers Check"
-
-    # Only relevant for Debian/Ubuntu (apt)
-    if ! command_exists apt-get; then
-        print_warning "Not on a Debian/Ubuntu-based system. Skipping Mesa driver check."
-        return 0
-    fi
-
-    # Check if PPA is already added
-    if grep -r "kisak/kisak-mesa" /etc/apt/sources.list /etc/apt/sources.list.d/ >/dev/null 2>&1; then
-        print_success "kisak-mesa PPA is already configured."
-        return 0
-    fi
-
-    echo "kisak-mesa PPA not found."
-    
-    # Ask user for permission to proceed with sudo
-    echo "Attempting to add 'ppa:kisak/kisak-mesa' to your system."
-    echo "This operation requires 'sudo' privileges."
-    read -p "Do you want to proceed? [y/N] " -n 1 -r
-    echo "" # move to a new line
-    
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        print_warning "Skipping automatic setup by user request."
-        echo "To install manually, run:"
-        echo "    sudo add-apt-repository ppa:kisak/kisak-mesa"
-        echo "    sudo apt update"
-        return 0
-    fi
-
-    # Install software-properties-common if missing (needed for add-apt-repository)
-    if ! command_exists add-apt-repository; then
-        echo "Installing software-properties-common..."
-        if ! sudo apt-get update && sudo apt-get install -y software-properties-common; then
-            print_error "Failed to install software-properties-common."
-            return 1
-        fi
-    fi
-
-    # Add PPA and update
-    echo "Adding PPA: ppa:kisak/kisak-mesa..."
-    if ! sudo add-apt-repository -y ppa:kisak/kisak-mesa; then
-        print_error "Failed to add kisak-mesa PPA."
-        return 1
-    fi
-
-    echo "Updating package lists..."
-    if ! sudo apt-get update; then
-        print_error "Failed to update package lists."
-        return 1
-    fi
-
-    print_success "kisak-mesa PPA added and apt updated."
-    print_warning "To upgrade to the latest Mesa drivers, please run: sudo apt upgrade"
-    return 0
-}
-
 # Install uv package manager
 install_uv() {
     print_step "1. uv Installation"
@@ -474,7 +414,6 @@ main() {
     echo ""
     
     # Install components
-    # check_mesa_drivers || exit 1
     install_uv || exit 1
     install_llamacpp || exit 1
     install_xpu_smi || exit 1

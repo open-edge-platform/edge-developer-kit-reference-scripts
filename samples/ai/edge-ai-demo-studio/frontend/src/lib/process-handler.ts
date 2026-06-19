@@ -352,6 +352,78 @@ async function spawnProcess(
   return proc
 }
 
+async function runProcessCommand(
+  name: string,
+  args: Array<string> = [],
+  options: {
+    cwd: string
+    command: string
+    env?: Record<string, string | undefined>
+  },
+): Promise<boolean> {
+  await writeToLog(
+    name,
+    createLogEntry(
+      'info',
+      `Running process command: ${options.command} ${args.join(' ')}`,
+      name,
+    ),
+  )
+
+  const hfToken = await getHfToken()
+  const proc = spawn(options.command, args, {
+    env: {
+      ...process.env,
+      ...(hfToken ? { HF_TOKEN: hfToken } : {}),
+      ...options.env,
+    },
+    cwd: options.cwd,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+
+  proc.stdout?.on('data', async (data) => {
+    await writeToLog(
+      name,
+      createLogEntry('out', data.toString(), name, proc.pid),
+    )
+  })
+
+  proc.stderr?.on('data', async (data) => {
+    await writeToLog(
+      name,
+      createLogEntry('error', data.toString(), name, proc.pid),
+    )
+  })
+
+  return new Promise((resolve) => {
+    proc.on('exit', async (code) => {
+      await writeToLog(
+        name,
+        createLogEntry(
+          code === 0 ? 'out' : 'error',
+          `Process command exited with code ${code}`,
+          name,
+          proc.pid,
+        ),
+      )
+      resolve(code === 0)
+    })
+
+    proc.on('error', async (err) => {
+      await writeToLog(
+        name,
+        createLogEntry(
+          'error',
+          `Process command failed: ${err.message}`,
+          name,
+          proc.pid,
+        ),
+      )
+      resolve(false)
+    })
+  })
+}
+
 function getStatus(name: string) {
   const entry = processes.get(name)
   if (!entry) return null
@@ -492,6 +564,7 @@ function removeDeadProcess(name: string): boolean {
 
 export {
   spawnProcess,
+  runProcessCommand,
   getStatus,
   stopProcess,
   listProcesses,

@@ -30,6 +30,15 @@ export function ServiceConfigureDispatch({
   const service = useGetService(serviceId)
   if (!service) return null
 
+  // Service-specific panels are registered explicitly and take priority,
+  // regardless of whether the service has config.availableModels.
+  if (hasExecutionMode(service.execution, 'worker')) {
+    const Panel = configurePanelRegistry[service.id]
+    if (Panel) {
+      return <Panel service={service} />
+    }
+  }
+
   if (!service.config?.availableModels?.length) {
     return null
   }
@@ -39,10 +48,6 @@ export function ServiceConfigureDispatch({
   }
 
   if (hasExecutionMode(service.execution, 'worker')) {
-    const ServiceConfigurePanel = configurePanelRegistry[service.id]
-    if (ServiceConfigurePanel) {
-      return <ServiceConfigurePanel service={service} />
-    }
     return <WorkerConfigurePanel service={service} />
   }
 

@@ -11,7 +11,7 @@ export const sample: Sample = {
     'Automatically transcribe and diarize doctor-patient conversations, then generate structured SOAP notes.',
   longDescription:
     'An AI-powered medical scribe that records doctor-patient conversations, transcribes them using speech-to-text, identifies speakers via diarization with doctor voice enrollment, and generates comprehensive SOAP (Subjective, Objective, Assessment, Plan) clinical notes using a language model.',
-  category: 'Conversational AI',
+  category: ['Conversational AI'],
   dependencies: [
     { serviceId: 'medical-scribe-database', role: 'required' },
     { serviceId: 'speech-to-text', role: 'required' },

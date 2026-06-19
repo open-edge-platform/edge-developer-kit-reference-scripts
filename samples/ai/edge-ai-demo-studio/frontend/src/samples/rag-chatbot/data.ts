@@ -11,7 +11,7 @@ export const sample: Sample = {
     'Upload documents and chat with an AI that retrieves relevant context to answer your questions.',
   longDescription:
     'A retrieval-augmented generation chatbot that ingests documents, embeds them into a vector store for semantic search, and uses an LLM to generate grounded answers with source citations. Optionally supports voice input via STT and voice output via TTS for hands-free interaction.',
-  category: 'Conversational AI',
+  category: ['Conversational AI'],
   dependencies: [
     { serviceId: 'text-generation', role: 'required', defaultDevice: 'GPU.1' },
     { serviceId: 'embeddings', role: 'required' },

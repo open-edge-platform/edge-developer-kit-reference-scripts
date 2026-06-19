@@ -12,7 +12,7 @@ export const sample: Sample = {
     'Interact with an AI-powered avatar that combines real-time video with intelligent conversation.',
   longDescription:
     'A digital avatar experience powered by real-time lip-syncing with Wav2Lip, streamed over WebRTC. Combines text generation, text-to-speech, and lipsync services for a lifelike conversational AI avatar. Optionally supports voice input via STT, knowledge retrieval via RAG, MCP tool integrations, and wake word detection for hands-free interaction.',
-  category: 'Conversational AI',
+  category: ['Conversational AI'],
   dependencies: [
     {
       serviceId: 'wake-word-detection',

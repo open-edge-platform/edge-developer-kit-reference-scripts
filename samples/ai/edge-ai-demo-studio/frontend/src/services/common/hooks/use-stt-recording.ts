@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getMicErrorMessage } from '@/lib/media-utils'
-import { useTranscribe } from '@/services/speech-to-text/hooks'
+import { useTranscribe } from '@/services/speech-to-text/hooks/use-transcribe'
 
 interface UseSttRecordingOptions {
   onTranscription: (text: string) => void

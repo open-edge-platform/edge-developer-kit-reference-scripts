@@ -1025,7 +1025,7 @@ function ImageCard({
       <div className="flex items-center justify-between gap-2 p-4">
         <div className="flex min-w-0 flex-col">
           <span className="text-muted-foreground block truncate font-mono text-[10px]">
-            ID: {img.url.split('/').pop()}
+            ID: {img.url ? img.url.split('/').pop() : img.id}
           </span>
           <span className="text-muted-foreground text-[10px]">
             {new Date(img.timestamp).toLocaleTimeString()}

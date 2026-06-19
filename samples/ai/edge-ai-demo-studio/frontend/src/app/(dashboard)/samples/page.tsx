@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button'
 import { useSystemInfo } from '@/context/system-info-context'
 import { getOSLabel } from '@/services/registry'
 import {
+  hasCategory,
   getMissingSampleDevices,
   isSampleSupportedOnDevices,
   isSampleSupportedOnOS,
@@ -70,7 +71,7 @@ export default function SamplesPage() {
     }
 
     if (selectedCategory) {
-      result = result.filter((s) => s.category === selectedCategory)
+      result = result.filter((s) => hasCategory(s, selectedCategory))
     }
 
     if (selectedReadiness !== 'all') {

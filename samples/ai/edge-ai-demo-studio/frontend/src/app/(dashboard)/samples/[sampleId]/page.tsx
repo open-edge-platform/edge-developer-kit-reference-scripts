@@ -4,6 +4,8 @@
 import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import { readFile } from 'node:fs/promises'
+import path from 'node:path'
 import { samples } from '@/samples/registry'
 import { SampleOSGuard } from '@/components/dashboard/samples/samples-os-guard'
 import { SampleDetailContent } from '@/components/dashboard/samples/samples-detail-context'
@@ -24,6 +26,16 @@ export default async function SampleDetailPage({
     notFound()
   }
 
+  let docsMarkdown = sample.docs?.markdown
+  if (!docsMarkdown && sample.docs?.filePath) {
+    const docsPath = path.resolve(process.cwd(), sample.docs.filePath)
+    try {
+      docsMarkdown = await readFile(docsPath, 'utf-8')
+    } catch {
+      docsMarkdown = undefined
+    }
+  }
+
   return (
     <SampleOSGuard sample={sample}>
       <div className="page-enter space-y-6">
@@ -34,7 +46,7 @@ export default async function SampleDetailPage({
           <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
           Back to Samples
         </Link>
-        <SampleDetailContent sampleId={sampleId} />
+        <SampleDetailContent sample={sample} docsMarkdown={docsMarkdown} />
       </div>
     </SampleOSGuard>
   )

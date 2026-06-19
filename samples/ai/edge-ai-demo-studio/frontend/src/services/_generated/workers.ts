@@ -7,6 +7,7 @@ import type { WorkerConfig } from '../types'
 
 import { worker as diarizationWorker } from '../diarization/data'
 import { worker as getiClassifierWorker } from '../geti-classifier/data'
+import { worker as imageBasedVideoSearchWorker } from '../suites/metro-ai-suite/image-based-video-search/data'
 import { worker as imageGenerationWorker } from '../image-generation/data'
 import { worker as lipsyncWorker } from '../lipsync/data'
 import { worker as medicalScribeDatabaseWorker } from '../medical-scribe-database/data'
@@ -22,6 +23,7 @@ import { worker as wakeWordDetectionWorker } from '../wake-word-detection/data'
 export const workerRegistry: Partial<Record<Service['type'], WorkerConfig>> = {
   diarization: diarizationWorker,
   'geti-classifier': getiClassifierWorker,
+  'image-based-video-search': imageBasedVideoSearchWorker,
   'image-generation': imageGenerationWorker,
   lipsync: lipsyncWorker,
   'medical-scribe-database': medicalScribeDatabaseWorker,

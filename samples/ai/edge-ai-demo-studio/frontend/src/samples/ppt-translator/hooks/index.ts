@@ -3,16 +3,18 @@
 
 export {
   usePptTranslatorParams,
-  useTranslate,
-  useTranslationStatus,
-  useDownload,
   SUPPORTED_LANGUAGES,
-} from '@/services/ppt-translator/hooks'
+} from '@/services/ppt-translator/hooks/use-params'
+export { useTranslate } from '@/services/ppt-translator/hooks/use-translate'
+export { useTranslationStatus } from '@/services/ppt-translator/hooks/use-translation-status'
+export { useDownload } from '@/services/ppt-translator/hooks/use-download'
 
 export type {
   PptTranslatorParamValues,
   SupportedLanguage,
+} from '@/services/ppt-translator/hooks/use-params'
+export type {
   TranslatePayload,
   TranslateResult,
-  TranslationJob,
-} from '@/services/ppt-translator/hooks'
+} from '@/services/ppt-translator/hooks/use-translate'
+export type { TranslationJob } from '@/services/ppt-translator/hooks/use-translation-status'

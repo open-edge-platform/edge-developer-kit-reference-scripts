@@ -5,14 +5,12 @@
 
 import { useMemo } from 'react'
 import { useGetService } from '@/context/service-status-context'
-import {
-  useMcpParams,
-  useOptionalServiceGroup,
-  useRagParams,
-  useTextGenerationParams,
-  useTtsParams,
-} from '@/samples/common/hooks'
-import { useTextGenChat } from '@/services/text-generation/hooks'
+import { useMcpParams } from '@/samples/common/hooks/use-mcp-params'
+import { useOptionalServiceGroup } from '@/samples/common/hooks/use-optional-service-group'
+import { useRagParams } from '@/samples/common/hooks/use-rag-params'
+import { useTextGenerationParams } from '@/samples/common/hooks/use-text-generation-params'
+import { useTtsParams } from '@/samples/common/hooks/use-tts-params'
+import { useTextGenChat } from '@/services/text-generation/hooks/use-chat'
 import type { Sample } from '../types'
 import { ChatArea } from './components/chat-area'
 import { KnowledgeBasePanel } from './components/knowledge-base-panel'

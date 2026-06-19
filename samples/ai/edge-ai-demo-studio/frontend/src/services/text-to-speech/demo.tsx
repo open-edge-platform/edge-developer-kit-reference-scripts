@@ -10,7 +10,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { DemoParameterSidebar } from '@/services/common/demo/components/demo-parameter-sidebar'
 import type { Service } from '@/services/types'
-import { useSynthesizeSpeech } from './hooks'
+import { useSynthesizeSpeech } from './hooks/use-synthesize-speech'
 import { useTtsParams } from './hooks/use-params'
 import { useTtsVoiceStatus } from './hooks/use-voice-status'
 

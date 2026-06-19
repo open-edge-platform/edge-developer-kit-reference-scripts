@@ -6,34 +6,25 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "clip",
-    "fastapi[all]>=0.135.3",
-    "fastmcp>=2.12.4",
+    "cmeel-urdfdom>=4,<5",
+    "fastapi[all]>=0.137.0",
+    "fastmcp>=3.4.2",
     "feetech-servo-sdk>=1.0.0",
-    "lerobot>=0.5.1",
-    "openai>=2.31.0",
-    "openvino>=2026.1.0",
-    "placo>=0.9.16",
-    "pyrealsense2>=2.57.7.10387",
-    "sse-starlette>=3.3.4",
-    "supervision>=0.27.0.post2",
-    "torch==2.9.1",
-    "torchaudio==2.9.1",
-    "torchvision==0.24.1",
-    "pytorch-triton-xpu>=3.4.0",
-    "ultralytics>=8.4.36",
+    "lerobot[kinematics]>=0.5.1",
+    "openai>=2.41.1",
+    "openvino>=2026.2.0",
+    "placo<0.9.16",
+    "pyrealsense2>=2.58.2.10647",
+    "sse-starlette>=3.4.4",
+    "supervision>=0.28.0",
+    "ultralytics>=8.4.67",
 ]
 
 [tool.uv.sources]
 clip = { git = "https://github.com/openai/CLIP.git" }
-torch = { index = "pytorch" }
-torchaudio = { index = "pytorch" }
-torchvision = { index = "pytorch" }
-pytorch-triton-xpu = { index = "pytorch" }
-
-[[tool.uv.index]]
-name = "pytorch"
-url = "https://download.pytorch.org/whl/xpu"
-explicit = true
 
 [tool.uv]
-override-dependencies = ["diffusers==0.38.0", "safetensors>=0.8.0rc0"]
+index-strategy = "unsafe-best-match"
+
+[[tool.uv.index]]
+url = "https://download.pytorch.org/whl/xpu"

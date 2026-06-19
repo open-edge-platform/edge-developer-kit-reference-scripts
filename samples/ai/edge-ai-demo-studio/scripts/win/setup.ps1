@@ -442,6 +442,26 @@ try {
     $hasIntelGPU = Test-IntelGPU
     $hasIntelNPU = Test-IntelNPU
     Write-Output-With-Logging "" "White"
+
+    if (-not $SkipFrontend) {
+        # Install Visual C++ Redistributable (required by libsql)
+        Write-Output-With-Logging "Checking Visual C++ Redistributable..." "Yellow"
+        $vcRedistScript = Join-Path $SCRIPT_DIR "install_visual_cpp_redistributable.ps1"
+        $vcProcess = Start-Process -FilePath "powershell.exe" `
+            -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$vcRedistScript`"" `
+            -Wait -PassThru
+        if ($vcProcess.ExitCode -ne 0) {
+            Write-Output-With-Logging "❌ Visual C++ Redistributable installation/check failed (exit code: $($vcProcess.ExitCode)). Frontend build may fail until it is installed." "Red"
+            if (-not $ContinueOnError) {
+                throw "Visual C++ Redistributable installation/check failed with exit code $($vcProcess.ExitCode)"
+            }
+        } else {
+            Write-Output-With-Logging "✅ Visual C++ Redistributable check completed." "Green"
+        }
+        if (-not $Verbose -and $script:MainLogFile) {
+            "Visual C++ Redistributable check exit code: $($vcProcess.ExitCode)" | Out-File -FilePath $script:MainLogFile -Append -Encoding utf8
+        }
+    }
     
     # Install Node.js first using shared setup_thirdparty.ps1 function
     Write-Output-With-Logging "=== Setting up thirdparty dependencies ===" "Cyan"

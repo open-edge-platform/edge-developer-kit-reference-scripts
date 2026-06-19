@@ -11,7 +11,7 @@ export const sample: Sample = {
     'A demo showcasing the capabilities of Robotics AI, including real-time object detection and manipulation.',
   longDescription:
     'Robotics AI integrates advanced computer vision and machine learning techniques to enable robots to perceive and interact with their environment. This demo highlights features such as object detection, manipulation, and task execution in real-time.',
-  category: 'Creative',
+  category: ['Creative'],
   dependencies: [
     {
       serviceId: 'robotics-ai',

@@ -6,17 +6,17 @@ readme = "README.md"
 requires-python = ">=3.13, <3.14"
 dependencies = [
     "openvino>=2025.4.1",
-    "torch>=2.8.0",
-    "torchaudio>=2.8.0",
-    "torchvision>=0.23.0",
-    "pytorch-triton-xpu==3.4.0",
+    "torch>=2.11.0",
+    "torchaudio>=2.11.0",
+    "torchvision>=0.26.0",
+    "triton-xpu==3.7.0",
 ]
 
 [tool.uv.sources]
 torch = { index = "pytorch" }
 torchaudio = { index = "pytorch" }
 torchvision = { index = "pytorch" }
-pytorch-triton-xpu = { index = "pytorch" }
+triton-xpu = { index = "pytorch" }
 
 [[tool.uv.index]]
 name = "pytorch"

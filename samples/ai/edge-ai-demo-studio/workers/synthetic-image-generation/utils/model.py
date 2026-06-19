@@ -50,7 +50,7 @@ class ImageGen:
             raise NotImplementedError("Only local mode is supported currently.")
 
     def _load_flux2_model_pipeline(
-        self, use_quantized: bool = True, optimize_decoder: bool = True
+        self, use_quantized: bool = True, optimize_decoder: bool = False
     ):
         logger.info(
             f"Loading model pipeline from {self.model_id} on device {self.device} with dtype {self.dtype}"

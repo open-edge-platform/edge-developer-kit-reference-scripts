@@ -11,7 +11,7 @@ export const sample: Sample = {
     'Translate PowerPoint presentations while preserving formatting using AI.',
   longDescription:
     'Upload a PowerPoint file and translate it to another language while preserving all slide formatting, fonts, and layout. Supports 15 languages, speaker notes translation, proper noun preservation, and automatic font size adjustment for translated text.',
-  category: 'Productivity',
+  category: ['Productivity'],
   dependencies: [
     { serviceId: 'ppt-translator', role: 'required' },
     { serviceId: 'text-generation', role: 'required', defaultDevice: 'GPU.1' },
