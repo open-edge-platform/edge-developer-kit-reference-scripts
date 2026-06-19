@@ -4,6 +4,7 @@
 'use client'
 
 import { Monitor, Search, SlidersHorizontal } from 'lucide-react'
+import { useMemo } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -15,7 +16,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import type { OS } from '@/types/common'
-import { categories } from '@/samples/registry'
+import { categories, getCategoryLabels, samples } from '@/samples/registry'
 
 export type SortOption = 'name' | 'services' | 'readiness'
 export type ReadinessFilter = 'all' | 'ready' | 'partial' | 'blocked'
@@ -67,6 +68,22 @@ export function SampleFilters({
   clearFilters: () => void
   hasFilters: boolean
 }) {
+  const categoryOptions = useMemo(() => {
+    const seen = new Set<string>(categories)
+    const options: string[] = [...categories]
+
+    for (const sample of samples) {
+      for (const label of getCategoryLabels(sample)) {
+        if (!seen.has(label)) {
+          seen.add(label)
+          options.push(label)
+        }
+      }
+    }
+
+    return options
+  }, [])
+
   return (
     <div className="glass-card rounded-xl p-4">
       <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-center md:gap-4">
@@ -89,7 +106,7 @@ export function SampleFilters({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Categories</SelectItem>
-            {categories.map((cat) => (
+            {categoryOptions.map((cat) => (
               <SelectItem key={cat} value={cat}>
                 {cat}
               </SelectItem>

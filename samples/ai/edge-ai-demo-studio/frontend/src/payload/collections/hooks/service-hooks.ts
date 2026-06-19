@@ -11,8 +11,13 @@ import type {
 import { engineHandlers } from '@/engines/_generated/engines'
 import { cancelMultiserveStart } from '@/engines/multiserve/process-handler'
 import { WORKER_DIR } from '@/lib/constants'
+import { assertDockerAvailable } from '@/lib/docker'
 import { logger } from '@/lib/logger'
-import { spawnProcess, stopProcess } from '@/lib/process-handler'
+import {
+  runProcessCommand,
+  spawnProcess,
+  stopProcess,
+} from '@/lib/process-handler'
 import type { Service } from '@/payload-types'
 import { metaMap } from '@/services/_generated/meta'
 import { getExecutionModes } from '@/services/types'
@@ -22,6 +27,46 @@ const getProcessName = (doc: Service) => {
   return `${doc.type}`
 }
 
+const isWindows = process.platform === 'win32'
+
+const runWorkerStopScript = async (service: Service) => {
+  const workerConfig = getWorkerConfig(service.type)
+  if (!workerConfig?.stopScript) return
+
+  const processName = getProcessName(service)
+  const workerDir = resolveWorkerDir(service)
+  const scriptName = isWindows ? 'stop.ps1' : 'stop.sh'
+  const scriptPath = path.join(workerDir, scriptName)
+
+  if (!fs.existsSync(scriptPath)) {
+    logger.warn(
+      `Stop script not found for service ${service.type}: ${scriptPath}`,
+    )
+    return
+  }
+
+  const success = await runProcessCommand(
+    processName,
+    isWindows
+      ? ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath]
+      : [scriptPath],
+    {
+      command: isWindows ? 'powershell' : 'bash',
+      cwd: workerDir,
+    },
+  )
+
+  if (!success) {
+    logger.error(`Stop script failed for service ${service.type}`)
+  }
+}
+
+const stopWorkerProcess = async (service: Service) => {
+  const processName = getProcessName(service)
+  await stopProcess(processName)
+  await runWorkerStopScript(service)
+}
+
 export const deleteServiceAfterDelete: CollectionAfterDeleteHook<
   Service
 > = async ({ doc }) => {
@@ -29,7 +74,7 @@ export const deleteServiceAfterDelete: CollectionAfterDeleteHook<
 
   try {
     cancelMultiserveStart(doc.type)
-    await stopProcess(processName)
+    await stopWorkerProcess(doc)
   } catch (error) {
     logger.error(`Error stopping process for service ${processName}:`, error)
   }
@@ -79,6 +124,10 @@ const startWorkerProcess = async (service: Service) => {
     throw new Error(
       `Worker directory not found for service ${service.type}: ${workerDir}`,
     )
+  }
+
+  if (workerConfig?.requiresDocker) {
+    await assertDockerAvailable()
   }
 
   logger.info(`Starting worker for ${processName} with args: ${args.join(' ')}`)
@@ -152,16 +201,14 @@ export const afterServiceChange: CollectionAfterChangeHook<Service> = async ({
 
   if (previousDoc.status === doc.status) return
 
-  const processName = getProcessName(doc)
-
   switch (doc.status) {
     case 'inactive':
       cancelMultiserveStart(doc.type)
-      await stopProcess(processName)
+      await stopWorkerProcess(doc)
       return
     case 'restart':
       cancelMultiserveStart(doc.type)
-      await stopProcess(processName)
+      await stopWorkerProcess(doc)
       await updateServiceStatus(payload, doc.id, 'prepare')
       return
     case 'prepare':

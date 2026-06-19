@@ -11,7 +11,7 @@ export const sample: Sample = {
     'Generate and edit synthetic images from base images in real-time for dataset augmentation.',
   longDescription:
     'A project-based synthetic image generation pipeline for creating training datasets. Upload a base image and generate variations including good samples, missing component scenarios, and custom modifications. Supports project management with asset organization, export, and deletion. Uses diffusion models for high-quality synthetic data generation.',
-  category: 'Creative',
+  category: ['Creative'],
   dependencies: [
     {
       serviceId: 'synthetic-image-generation',

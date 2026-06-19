@@ -36,3 +36,15 @@ export interface DoctorProfile {
   name: string
   embedding: number[] | null
 }
+
+export type DiarizationSeg = {
+  speaker: string
+  start: number
+  end: number
+}
+
+export type WhisperSeg = {
+  start: number
+  end: number
+  text: string
+}

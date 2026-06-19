@@ -4,7 +4,7 @@
 'use client'
 
 import { useCallback } from 'react'
-import { useSttRecording } from './use-stt-recording'
+import { useSttRecording } from '@/services/common/hooks/use-stt-recording'
 import { useWakeWordTrigger } from './use-wake-word-trigger'
 
 export function useWakeWordStt({

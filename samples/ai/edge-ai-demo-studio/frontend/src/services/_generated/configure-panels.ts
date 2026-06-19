@@ -5,6 +5,7 @@
 import type { ComponentType } from 'react'
 import type { Service } from '../types'
 
+import { IbvsConfigurePanel } from '../suites/metro-ai-suite/image-based-video-search/components/configure-panel'
 import { LipsyncConfigurePanel } from '../lipsync/components/configure-panel'
 import { TtsConfigurePanel } from '../text-to-speech/components/configure-panel'
 
@@ -16,6 +17,7 @@ export type ServiceConfigurePanelComponent = ComponentType<{
 export const configurePanelRegistry: Partial<
   Record<string, ServiceConfigurePanelComponent>
 > = {
+  'image-based-video-search': IbvsConfigurePanel,
   lipsync: LipsyncConfigurePanel,
   'text-to-speech': TtsConfigurePanel,
 }

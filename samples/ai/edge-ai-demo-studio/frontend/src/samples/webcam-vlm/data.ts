@@ -11,7 +11,7 @@ export const sample: Sample = {
     'Demonstrate the integration of webcam capture and Visual Language Model (VLM) for enhanced interaction.',
   longDescription:
     'Combines live webcam capture with a Visual Language Model (VLM) for multimodal conversational AI. Capture images from your webcam and discuss them with an AI that understands visual context. Optionally supports voice input via STT, voice output via TTS, knowledge retrieval via RAG, MCP tool integrations, and wake word detection.',
-  category: 'Vision',
+  category: ['Vision'],
   dependencies: [
     {
       serviceId: 'wake-word-detection',

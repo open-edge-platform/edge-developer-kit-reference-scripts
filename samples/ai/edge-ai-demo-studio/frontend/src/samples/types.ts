@@ -12,6 +12,7 @@ export type SampleCategory =
   | 'Productivity'
   | 'Creative'
   | 'Education'
+  | 'Suite'
 
 export type DependencyRole = 'required' | 'optional'
 
@@ -40,7 +41,7 @@ export interface Sample {
   title: string
   description: string
   longDescription: string
-  category: SampleCategory
+  category: string[]
   dependencies: ServiceDependency[]
   tags: string[]
   image?: string | StaticImageData
@@ -48,6 +49,10 @@ export interface Sample {
   supportedOS?: OS[]
   requiredDevices?: string[]
   pipeline?: PipelineStep[]
+  docs?: {
+    markdown?: string
+    filePath?: string
+  }
 }
 
 export function getRequiredDeps(s: Sample): ServiceDependency[] {
@@ -89,6 +94,16 @@ function resolveDevice(requested: string, availableDevices?: string[]): string {
   return cpu ?? availableDevices[0] ?? requested
 }
 
+export function getCategoryLabels(s: Sample): string[] {
+  return Array.from(
+    new Set(s.category.map((label) => label.trim()).filter(Boolean)),
+  )
+}
+
+export function hasCategory(s: Sample, category: string): boolean {
+  return getCategoryLabels(s).includes(category)
+}
+
 export type ReadinessStatus = 'ready' | 'partial' | 'blocked'
 
 export function getReadinessLabel(status: ReadinessStatus): string {
@@ -107,5 +122,6 @@ export const categories: SampleCategory[] = [
   'Vision',
   'Productivity',
   'Creative',
+  'Suite',
   'Education',
 ]

@@ -4,7 +4,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useSynthesizeSpeech } from '@/services/text-to-speech/hooks'
+import { useSynthesizeSpeech } from '@/services/text-to-speech/hooks/use-synthesize-speech'
 
 interface UseTtsPlaybackOptions {
   voice?: string

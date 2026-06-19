@@ -108,9 +108,13 @@ export function LipsyncConfigurePanel({ service }: LipsyncConfigurePanelProps) {
     [availableDevices, backendDevices, resolvedBackend],
   )
 
-  const selectedDeviceOption = deviceOptions.find((d) =>
-    isDeviceMatch(draftDevice, d.value, resolvedBackend),
-  )
+  const selectedDeviceOption =
+    deviceOptions.find(
+      (d) => d.value.toLowerCase() === draftDevice.toLowerCase(),
+    ) ??
+    deviceOptions.find((d) =>
+      isDeviceMatch(draftDevice, d.value, resolvedBackend),
+    )
   const selectedDeviceValue = selectedDeviceOption?.value ?? draftDevice
 
   const resolvedModel =

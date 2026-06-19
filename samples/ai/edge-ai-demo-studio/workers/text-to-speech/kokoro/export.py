@@ -18,6 +18,7 @@ import torch
 import openvino as ov
 from huggingface_hub import hf_hub_download
 from modelscope.hub.file_download import model_file_download as ms_hub_download
+from misaki.espeak import EspeakWrapper
 
 from kokoro import KPipeline, KModel
 
@@ -90,6 +91,9 @@ def export_to_openvino(
     model = None
     try:
         if not is_windows():
+            # Disable espeakng-loader, use system wide espeak (should be installed)
+            EspeakWrapper.set_library(None)
+            EspeakWrapper.set_data_path(None)
             os.environ["PHONEMIZER_ESPEAK_PATH"] = "/usr/bin"
             os.environ["PHONEMIZER_ESPEAK_DATA"] = "/usr/share/espeak-ng-data"
             os.environ["ESPEAK_DATA_PATH"] = "/usr/share/espeak-ng-data"

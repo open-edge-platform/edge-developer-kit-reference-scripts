@@ -6,7 +6,8 @@
 import { DemoParameterSidebar } from '@/services/common/demo/components/demo-parameter-sidebar'
 import type { Service } from '@/services/types'
 import { VlmChatPanel } from './components/vlm-chat-panel'
-import { useTextGenChat, useTextGenParams } from './hooks'
+import { useTextGenChat } from './hooks/use-chat'
+import { useTextGenParams } from './hooks/use-params'
 
 export function TextGenerationDemo({ service }: { service: Service }) {
   const isMultimodal = service.currentModelType === 'multimodal'

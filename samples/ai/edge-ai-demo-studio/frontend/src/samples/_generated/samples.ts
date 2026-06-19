@@ -8,6 +8,7 @@ import { sample as aiExamMarking } from '../ai-exam-marking/data'
 import { sample as digitalAvatar } from '../digital-avatar/data'
 import { sample as digitalAvatarLite } from '../digital-avatar-lite/data'
 import { sample as getiClassifier } from '../geti-classifier/data'
+import { sample as imageBasedVideoSearch } from '../suites/metro-ai-suite/image-based-video-search/data'
 import { sample as medicalScribe } from '../medical-scribe/data'
 import { sample as pptTranslator } from '../ppt-translator/data'
 import { sample as ragChatbot } from '../rag-chatbot/data'
@@ -21,6 +22,7 @@ export const sampleMap: Record<string, Sample> = {
   'digital-avatar': digitalAvatar,
   'digital-avatar-lite': digitalAvatarLite,
   'geti-classifier': getiClassifier,
+  'image-based-video-search': imageBasedVideoSearch,
   'medical-scribe': medicalScribe,
   'ppt-translator': pptTranslator,
   'rag-chatbot': ragChatbot,

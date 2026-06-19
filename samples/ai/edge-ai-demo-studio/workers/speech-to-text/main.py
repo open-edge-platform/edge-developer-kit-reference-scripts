@@ -176,6 +176,7 @@ async def transcription(
     file: UploadFile = File(...),
     language: Optional[str] = Form("en"),
     use_denoise: Optional[bool] = Form(False),
+    return_timestamps: Optional[bool] = Form(False),
 ):
     global STT_PIPELINE, DENOISE_COMPILED_MODEL
     try:
@@ -215,7 +216,16 @@ async def transcription(
             logger.warning("Language is not set. Default to english.")
             language = "english"
 
-        text = transcribe(pipeline=STT_PIPELINE, audio=file_path, language=language)
+        if return_timestamps:
+            text, segments = transcribe(
+                pipeline=STT_PIPELINE,
+                audio=file_path,
+                language=language,
+                return_timestamps=True,
+            )
+        else:
+            text = transcribe(pipeline=STT_PIPELINE, audio=file_path, language=language)
+            segments = None
 
     except Exception as error:
         logger.error(f"Error in STT transcriptions: {str(error)}")
@@ -232,6 +242,8 @@ async def transcription(
         if os.path.exists(orig_path):
             os.remove(orig_path)
 
+    if return_timestamps:
+        return {"text": text, "status": True, "segments": segments}
     return {"text": text, "status": True}
 
 

@@ -5,6 +5,7 @@
 import { service as diarizationMeta } from '../diarization/data'
 import { service as embeddingsMeta } from '../embeddings/data'
 import { service as getiClassifierMeta } from '../geti-classifier/data'
+import { service as imageBasedVideoSearchMeta } from '../suites/metro-ai-suite/image-based-video-search/data'
 import { service as imageGenerationMeta } from '../image-generation/data'
 import { service as lipsyncMeta } from '../lipsync/data'
 import { service as mcpMeta } from '../mcp/data'
@@ -24,6 +25,7 @@ export const metaMap = {
   diarization: diarizationMeta,
   embeddings: embeddingsMeta,
   'geti-classifier': getiClassifierMeta,
+  'image-based-video-search': imageBasedVideoSearchMeta,
   'image-generation': imageGenerationMeta,
   lipsync: lipsyncMeta,
   mcp: mcpMeta,

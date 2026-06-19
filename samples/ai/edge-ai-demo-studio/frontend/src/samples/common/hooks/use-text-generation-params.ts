@@ -8,7 +8,7 @@ import { useServiceLiveStatus } from '@/context/service-status-context'
 import {
   type TextGenParamValues,
   useTextGenParams,
-} from '@/services/text-generation/hooks'
+} from '@/services/text-generation/hooks/use-params'
 import { ServiceParamGroup } from '../components/demo-config-sheet'
 
 export type { TextGenParamValues as TextGenerationParams }

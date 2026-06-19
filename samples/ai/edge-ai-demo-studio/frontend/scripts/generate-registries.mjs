@@ -43,6 +43,8 @@ const srcDir = join(_dirname, '..', 'src')
 // ─── Common helpers ───────────────────────────────────────────────
 
 const SKIP = new Set(['common', '_generated'])
+
+const GROUP_FOLDERS = new Set(['suites'])
 const HEADER = [
   '// THIS FILE IS AUTO-GENERATED. DO NOT EDIT MANUALLY.',
   '// Source of truth: scripts/generate-registries.mjs',
@@ -132,6 +134,51 @@ function ensureDir(dir) {
   mkdirSync(dir, { recursive: true })
 }
 
+function discoverLeafFolders(parentDir) {
+  const found = []
+  const seen = new Map()
+
+  const pushLeaf = (name, importPath, dir) => {
+    if (seen.has(name)) {
+      throw new Error(
+        `Duplicate folder key "${name}" found at ${importPath} and ${seen.get(name)}. ` +
+          'Leaf folder names must be unique across services/samples.',
+      )
+    }
+    seen.set(name, importPath)
+    found.push({ key: name, importPath, dir })
+  }
+
+  for (const name of readdirSync(parentDir)) {
+    if (SKIP.has(name)) continue
+    const dir = join(parentDir, name)
+    if (!statSync(dir).isDirectory()) continue
+
+    if (GROUP_FOLDERS.has(name)) {
+      // Descend exactly one level: <parent>/<group>/<suite>/<id>/data.ts
+      for (const suite of readdirSync(dir)) {
+        if (SKIP.has(suite)) continue
+        const suiteDir = join(dir, suite)
+        if (!statSync(suiteDir).isDirectory()) continue
+        for (const leaf of readdirSync(suiteDir)) {
+          if (SKIP.has(leaf)) continue
+          const leafDir = join(suiteDir, leaf)
+          if (!statSync(leafDir).isDirectory()) continue
+          if (!existsSync(join(leafDir, 'data.ts'))) continue
+          pushLeaf(leaf, `${name}/${suite}/${leaf}`, leafDir)
+        }
+      }
+      continue
+    }
+
+    if (existsSync(join(dir, 'data.ts'))) {
+      pushLeaf(name, name, dir)
+    }
+  }
+
+  return found.sort((a, b) => a.key.localeCompare(b.key))
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // ─── Services ─────────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════
@@ -167,12 +214,12 @@ function resolveDemoPath(serviceDir) {
  *  - <service>/components/configure-panel.tsx
  *  - <service>/demo/components/configure-panel.tsx
  */
-function resolveConfigurePanel(serviceDir, folder) {
+function resolveConfigurePanel(serviceDir, importPath) {
   const flat = join(serviceDir, 'configure-panel.tsx')
   if (existsSync(flat)) {
     return {
       filePath: flat,
-      importPath: `../${folder}/configure-panel`,
+      importPath: `../${importPath}/configure-panel`,
     }
   }
 
@@ -180,7 +227,7 @@ function resolveConfigurePanel(serviceDir, folder) {
   if (existsSync(components)) {
     return {
       filePath: components,
-      importPath: `../${folder}/components/configure-panel`,
+      importPath: `../${importPath}/components/configure-panel`,
     }
   }
 
@@ -193,40 +240,35 @@ function resolveConfigurePanel(serviceDir, folder) {
   if (existsSync(demoComponents)) {
     return {
       filePath: demoComponents,
-      importPath: `../${folder}/demo/components/configure-panel`,
+      importPath: `../${importPath}/demo/components/configure-panel`,
     }
   }
 
   return null
 }
 
-// Scan for subdirectories that contain data.ts
-const services = readdirSync(servicesDir)
-  .filter((name) => {
-    if (SKIP.has(name)) return false
-    const dir = join(servicesDir, name)
-    return statSync(dir).isDirectory() && existsSync(join(dir, 'data.ts'))
-  })
-  .map((folder) => {
-    const dataPath = join(servicesDir, folder, 'data.ts')
-    const serviceDir = join(servicesDir, folder)
+// Scan for subdirectories that contain data.ts (supports nested suites/* layout)
+const services = discoverLeafFolders(servicesDir).map(
+  ({ key: folderKey, importPath, dir: serviceDir }) => {
+    const dataPath = join(serviceDir, 'data.ts')
     const demoPath = resolveDemoPath(serviceDir)
-    const configurePanel = resolveConfigurePanel(serviceDir, folder)
+    const configurePanel = resolveConfigurePanel(serviceDir, importPath)
 
     return {
-      folder,
-      dataAlias: toAlias(folder),
+      key: folderKey,
+      importPath,
+      dir: serviceDir,
+      dataAlias: toAlias(folderKey),
       demoExport: demoPath ? parseDemoExport(demoPath) : null,
       configurePanelExport: configurePanel
         ? parseDemoExport(configurePanel.filePath)
         : null,
       configurePanelImportPath: configurePanel?.importPath ?? null,
       hasWorker: hasExport(dataPath, 'worker'),
-      hasDocs: existsSync(join(servicesDir, folder, 'docs.ts')),
+      hasDocs: existsSync(join(serviceDir, 'docs.ts')),
     }
-  })
-  // Sort for deterministic output
-  .sort((a, b) => a.folder.localeCompare(b.folder))
+  },
+)
 
 // ─── Service code generation ──────────────────────────────────────
 
@@ -234,13 +276,13 @@ const services = readdirSync(servicesDir)
 const metaLines = [
   ...HEADER,
   ...services.map(
-    ({ folder, dataAlias }) =>
-      `import { service as ${dataAlias} } from "../${folder}/data";`,
+    ({ importPath, dataAlias }) =>
+      `import { service as ${dataAlias} } from "../${importPath}/data";`,
   ),
   '',
   '/** Metadata-only map — safe to import in non-React/config contexts. */',
   'export const metaMap = {',
-  ...services.map(({ folder, dataAlias }) => `  ${key(folder)}: ${dataAlias},`),
+  ...services.map(({ key: k, dataAlias }) => `  ${key(k)}: ${dataAlias},`),
   '};',
   '',
 ]
@@ -254,24 +296,24 @@ const lines = [
   '',
   '// Data imports',
   ...services.map(
-    ({ folder, dataAlias }) =>
-      `import { service as ${dataAlias} } from "../${folder}/data";`,
+    ({ importPath, dataAlias }) =>
+      `import { service as ${dataAlias} } from "../${importPath}/data";`,
   ),
   '',
   '// Demo imports',
   ...services
     .filter((s) => s.demoExport)
     .map(
-      ({ folder, demoExport }) =>
-        `import { ${demoExport} } from "../${folder}/demo";`,
+      ({ importPath, demoExport }) =>
+        `import { ${demoExport} } from "../${importPath}/demo";`,
     ),
   '',
   'import type { Service } from "../types";',
   '',
   '/** Full service map including React demo components. */',
   'export const serviceMap: Record<ServiceType["type"], Service> = {',
-  ...services.flatMap(({ folder, dataAlias, demoExport }) => [
-    `  ${key(folder)}: {`,
+  ...services.flatMap(({ key: k, dataAlias, demoExport }) => [
+    `  ${key(k)}: {`,
     `    ...${dataAlias},`,
     '    status: "offline",',
     ...(demoExport ? [`    demo: ${demoExport},`] : []),
@@ -305,8 +347,8 @@ const configurePanelLines = [
   '/** Optional service-specific configure panel keyed by service ID. */',
   'export const configurePanelRegistry: Partial<Record<string, ServiceConfigurePanelComponent>> = {',
   ...configurePanelServices.map(
-    ({ folder, configurePanelExport }) =>
-      `  ${key(folder)}: ${configurePanelExport},`,
+    ({ key: k, configurePanelExport }) =>
+      `  ${key(k)}: ${configurePanelExport},`,
   ),
   '};',
   '',
@@ -338,15 +380,13 @@ const workerLines = [
   'import type { WorkerConfig } from "../types";',
   '',
   ...workerServices.map(
-    ({ folder }) =>
-      `import { worker as ${toWorkerAlias(folder)} } from "../${folder}/data";`,
+    ({ key: k, importPath }) =>
+      `import { worker as ${toWorkerAlias(k)} } from "../${importPath}/data";`,
   ),
   '',
   '/** Worker configuration registry keyed by Payload service type. */',
   'export const workerRegistry: Partial<Record<Service["type"], WorkerConfig>> = {',
-  ...workerServices.map(
-    ({ folder }) => `  ${key(folder)}: ${toWorkerAlias(folder)},`,
-  ),
+  ...workerServices.map(({ key: k }) => `  ${key(k)}: ${toWorkerAlias(k)},`),
   '};',
   '',
   'export function getWorkerConfig(',
@@ -374,15 +414,13 @@ const docsLines = [
   'export type DocsFactory = (opts: { host: string }) => ServiceDocsData;',
   '',
   ...docsServices.map(
-    ({ folder }) =>
-      `import { getDocsData as ${toDocsAlias(folder)} } from "../${folder}/docs";`,
+    ({ key: k, importPath }) =>
+      `import { getDocsData as ${toDocsAlias(k)} } from "../${importPath}/docs";`,
   ),
   '',
   '/** Registry of docs factory functions keyed by service ID. */',
   'export const docsRegistry: Record<string, DocsFactory> = {',
-  ...docsServices.map(
-    ({ folder }) => `  ${key(folder)}: ${toDocsAlias(folder)},`,
-  ),
+  ...docsServices.map(({ key: k }) => `  ${key(k)}: ${toDocsAlias(k)},`),
   '};',
   '',
 ]
@@ -399,27 +437,21 @@ ensureDir(samplesGenDir)
 
 const samplesOutputPath = join(samplesGenDir, 'samples.ts')
 
-// Scan for subdirectories that contain data.ts
-const sampleFolders = readdirSync(samplesDir)
-  .filter((name) => {
-    if (SKIP.has(name)) return false
-    const dir = join(samplesDir, name)
-    return statSync(dir).isDirectory() && existsSync(join(dir, 'data.ts'))
-  })
-  .sort()
+// Scan for subdirectories that contain data.ts (supports nested suites/* layout)
+const sampleFolders = discoverLeafFolders(samplesDir)
 
 const sampleLines = [
   ...HEADER,
   'import type { Sample } from "../types";',
   '',
   ...sampleFolders.map(
-    (folder) =>
-      `import { sample as ${toCamel(folder)} } from "../${folder}/data";`,
+    ({ key: k, importPath }) =>
+      `import { sample as ${toCamel(k)} } from "../${importPath}/data";`,
   ),
   '',
   '/** Auto-discovered sample map. */',
   'export const sampleMap: Record<string, Sample> = {',
-  ...sampleFolders.map((folder) => `  ${key(folder)}: ${toCamel(folder)},`),
+  ...sampleFolders.map(({ key: k }) => `  ${key(k)}: ${toCamel(k)},`),
   '};',
   '',
 ]
@@ -550,23 +582,23 @@ function extractReservedPorts(filePath) {
 const portEntries = []
 const allPorts = new Set()
 
-for (const { folder } of services) {
-  const dataPath = join(servicesDir, folder, 'data.ts')
+for (const { key: folderKey, dir: serviceDir } of services) {
+  const dataPath = join(serviceDir, 'data.ts')
   const port = extractPort(dataPath)
   if (port !== null) {
-    portEntries.push({ port, owner: folder })
+    portEntries.push({ port, owner: folderKey })
     allPorts.add(port)
   }
   for (const rp of extractReservedPorts(dataPath)) {
-    portEntries.push({ port: rp, owner: `${folder} (reserved)` })
+    portEntries.push({ port: rp, owner: `${folderKey} (reserved)` })
     allPorts.add(rp)
   }
 }
 
-for (const folder of sampleFolders) {
-  const dataPath = join(samplesDir, folder, 'data.ts')
+for (const { key: folderKey, dir: sampleDir } of sampleFolders) {
+  const dataPath = join(sampleDir, 'data.ts')
   for (const rp of extractReservedPorts(dataPath)) {
-    portEntries.push({ port: rp, owner: `sample:${folder} (reserved)` })
+    portEntries.push({ port: rp, owner: `sample:${folderKey} (reserved)` })
     allPorts.add(rp)
   }
 }

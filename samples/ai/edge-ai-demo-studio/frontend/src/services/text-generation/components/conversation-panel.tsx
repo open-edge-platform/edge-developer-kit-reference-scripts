@@ -22,7 +22,8 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-import { useSttRecording, useTtsPlayback } from '@/services/common/hooks'
+import { useSttRecording } from '@/services/common/hooks/use-stt-recording'
+import { useTtsPlayback } from '@/services/common/hooks/use-tts-playback'
 import {
   type ChatMsg,
   type ChatStatus,

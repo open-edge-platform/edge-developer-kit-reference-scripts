@@ -7,6 +7,8 @@ import shutil
 import tempfile
 import argparse
 import multiprocessing
+import threading
+import uuid
 from io import BytesIO
 from PIL import Image
 from datetime import datetime
@@ -24,8 +26,13 @@ from utils.model import ImageGen, ImageGenPrompt, ImageSegmentation
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-DEFAULT_PORT = 5010
+DEFAULT_PORT = 8021
 APP_WORKFLOW = None
+
+# In-memory job store for async generation
+_jobs: dict[str, dict] = {}
+# Serialize inference — the pipeline is not thread-safe
+_generation_lock = threading.Lock()
 
 
 def remove_temp_dir(path: str):
@@ -153,6 +160,103 @@ def create_app() -> FastAPI:
             logger.error(f"File not found for deletion: {safe_path}")
             return {"error": "File not found."}
 
+    def _run_generation_job(
+        job_id: str,
+        image_bytes: bytes,
+        reference_bytes: Optional[bytes],
+        generation_type: GenerationType,
+        objective: str,
+        custom_prompt: str,
+        custom_type: str,
+        project_name: str,
+    ):
+        """Background worker for image generation."""
+        with _generation_lock:
+            try:
+                if generation_type == GenerationType.SYNTHETIC:
+                    prompt = ImageGenPrompt.SYNTHETIC_PROMPT
+                elif generation_type == GenerationType.MISSING_COMPONENT:
+                    prompt = ImageGenPrompt.MISSING_COMPONENT_PROMPT
+                elif generation_type == GenerationType.CUSTOM:
+                    prompt = custom_prompt
+                else:
+                    _jobs[job_id] = {**_jobs[job_id], "status": "error", "error": "Invalid generation type."}
+                    return
+
+                image = Image.open(BytesIO(image_bytes)).convert("RGB")
+                preprocessed_image = APP_WORKFLOW.preprocess_image(image)
+
+                if generation_type == GenerationType.CUSTOM and reference_bytes is not None:
+                    reference_image = Image.open(BytesIO(reference_bytes)).convert("RGB")
+                    preprocessed_reference = APP_WORKFLOW.preprocess_image(reference_image)
+                    preprocessed_image = [preprocessed_image, preprocessed_reference]
+                    prompt = (
+                        prompt
+                        + " Incorporate the visual style, color palette, texture, and lighting characteristics of the provided reference image."
+                    )
+
+                selected_mask_image = None
+                selected_bbox_image = None
+                if generation_type == GenerationType.MISSING_COMPONENT:
+                    base_image_for_seg = (
+                        preprocessed_image[0]
+                        if isinstance(preprocessed_image, list)
+                        else preprocessed_image
+                    )
+                    image_seg = ImageSegmentation()
+                    results = image_seg.inference(image_path=base_image_for_seg)
+                    masked_image_list = image_seg.get_mask_results(
+                        ori_image=base_image_for_seg,
+                        results=results,
+                        min_area=1000,
+                        max_area=10000,
+                        save_results=False,
+                    )
+                    if len(masked_image_list) > 0:
+                        selected = secrets.choice(masked_image_list)
+                        selected_mask_image, selected_bbox_image = selected
+                        if isinstance(preprocessed_image, list):
+                            preprocessed_image = [selected_mask_image] + preprocessed_image[1:]
+                        else:
+                            preprocessed_image = selected_mask_image
+                    else:
+                        _jobs[job_id] = {
+                            **_jobs[job_id],
+                            "status": "error",
+                            "error": "No valid segmentation masks found for missing component generation.",
+                        }
+                        return
+
+                gen_type_str = generation_type.value
+                if generation_type == GenerationType.CUSTOM and custom_type:
+                    gen_type_str = f"{generation_type.value}_{custom_type}"
+
+                image_path = APP_WORKFLOW.generate_image(
+                    image=preprocessed_image,
+                    prompt=prompt,
+                    generation_type=gen_type_str,
+                    project_name=project_name,
+                )
+
+                mask_path = None
+                if selected_mask_image is not None:
+                    base, ext = os.path.splitext(image_path)
+                    mask_relative_path = f"{base}-mask{ext}"
+                    mask_save_path = os.path.join("outputs", mask_relative_path)
+                    selected_bbox_image.save(mask_save_path)
+                    mask_path = mask_relative_path
+
+                result = {"image": image_path}
+                if mask_path:
+                    result["mask_image"] = mask_path
+
+                _jobs[job_id] = {**_jobs[job_id], "status": "completed", "result": result}
+                logger.info(f"Job {job_id} completed successfully.")
+
+            except Exception as e:
+                logger.error(f"Job {job_id} failed: {e}")
+                _jobs[job_id] = {**_jobs[job_id], "status": "error", "error": str(e)}
+
     @app.post("/image-gen/generate")
     def upload_image_and_generate(
         file: Annotated[bytes, File()],
@@ -163,91 +267,48 @@ def create_app() -> FastAPI:
         project_name: Annotated[str, Form()] = "default",
         reference_file: Annotated[Optional[bytes], File()] = None,
     ):
+        job_id = str(uuid.uuid4())
+        _jobs[job_id] = {"status": "pending"}
 
-        if generation_type == GenerationType.SYNTHETIC:
-            prompt = ImageGenPrompt.SYNTHETIC_PROMPT
-        elif generation_type == GenerationType.MISSING_COMPONENT:
-            prompt = ImageGenPrompt.MISSING_COMPONENT_PROMPT
-        elif generation_type == GenerationType.CUSTOM:
-            prompt = custom_prompt
-        else:
-            return {"error": "Invalid generation type."}
-
-        # read the image bytes and load to PIL image
-        image = Image.open(BytesIO(file)).convert("RGB")
-        preprocessed_image = APP_WORKFLOW.preprocess_image(image)
-
-        # Reference image is only supported in CUSTOM mode
-        if generation_type == GenerationType.CUSTOM and reference_file is not None:
-            reference_image = Image.open(BytesIO(reference_file)).convert("RGB")
-            preprocessed_reference = APP_WORKFLOW.preprocess_image(reference_image)
-            preprocessed_image = [preprocessed_image, preprocessed_reference]
-            prompt = (
-                prompt
-                + " Incorporate the visual style, color palette, texture, and lighting characteristics of the provided reference image."
-            )
-
-        selected_mask_image = None
-        selected_bbox_image = None
-        if generation_type == GenerationType.MISSING_COMPONENT:
-            # Segmentation always operates on the base image only
-            base_image_for_seg = (
-                preprocessed_image[0]
-                if isinstance(preprocessed_image, list)
-                else preprocessed_image
-            )
-            image_seg = ImageSegmentation()
-            results = image_seg.inference(
-                image_path=base_image_for_seg,
-            )
-            masked_image_list = image_seg.get_mask_results(
-                ori_image=base_image_for_seg,
-                results=results,
-                min_area=1000,
-                max_area=10000,
-                save_results=False,
-            )
-            if len(masked_image_list) > 0:
-                selected = secrets.choice(masked_image_list)
-                selected_mask_image, selected_bbox_image = selected
-                # Replace the base image with the masked version, keep reference if present
-                if isinstance(preprocessed_image, list):
-                    preprocessed_image = [selected_mask_image] + preprocessed_image[1:]
-                else:
-                    preprocessed_image = selected_mask_image
-            else:
-                # raise HTTPException if no valid masks found
-                return {
-                    "error": "No valid segmentation masks found for missing component generation."
-                }
-
-        gen_type_str = generation_type.value
-        if generation_type == GenerationType.CUSTOM and custom_type:
-            gen_type_str = f"{generation_type.value}_{custom_type}"
-
-        image_path = APP_WORKFLOW.generate_image(
-            image=preprocessed_image,
-            prompt=prompt,
-            generation_type=gen_type_str,
-            project_name=project_name,
+        thread = threading.Thread(
+            target=_run_generation_job,
+            args=(
+                job_id,
+                file,
+                reference_file,
+                generation_type,
+                objective,
+                custom_prompt,
+                custom_type,
+                project_name,
+            ),
+            daemon=True,
         )
+        thread.start()
 
-        mask_path = None
-        if selected_mask_image is not None:
-            # Save the bounding box image alongside the generated image
-            base, ext = os.path.splitext(image_path)
-            mask_relative_path = f"{base}-mask{ext}"
-            mask_save_path = os.path.join("outputs", mask_relative_path)
-            selected_bbox_image.save(mask_save_path)
-            mask_path = mask_relative_path
+        return {"job_id": job_id}
 
-        response_data = {
-            "message": "Image generated successfully.",
-            "image": image_path,
-        }
-        if mask_path:
-            response_data["mask_image"] = mask_path
-        return response_data
+    @app.get("/image-gen/job/{job_id}")
+    def get_job_status(job_id: str):
+        job = _jobs.get(job_id)
+        if job is None:
+            return JSONResponse({"error": "Job not found"}, status_code=404)
+
+        if job["status"] == "pending":
+            return {"status": "pending"}
+        elif job["status"] == "completed":
+            result = job["result"]
+            # Clean up completed job from memory
+            del _jobs[job_id]
+            return {
+                "status": "completed",
+                "message": "Image generated successfully.",
+                **result,
+            }
+        elif job["status"] == "error":
+            error = job.get("error", "Unknown error")
+            del _jobs[job_id]
+            return {"status": "error", "error": error}
 
     @app.get("/projects")
     def list_projects():

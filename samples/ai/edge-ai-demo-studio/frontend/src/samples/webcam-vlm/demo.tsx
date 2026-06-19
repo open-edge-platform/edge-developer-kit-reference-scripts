@@ -8,12 +8,10 @@ import { DefaultChatTransport } from 'ai'
 import { AlertTriangle } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { useGetServices } from '@/context/service-status-context'
-import {
-  useMcpParams,
-  useOptionalServiceGroup,
-  useTextGenerationParams,
-  useTtsParams,
-} from '@/samples/common/hooks'
+import { useMcpParams } from '@/samples/common/hooks/use-mcp-params'
+import { useOptionalServiceGroup } from '@/samples/common/hooks/use-optional-service-group'
+import { useTextGenerationParams } from '@/samples/common/hooks/use-text-generation-params'
+import { useTtsParams } from '@/samples/common/hooks/use-tts-params'
 import type { Sample } from '../types'
 import { ChatArea } from './components/chat-area'
 import { WebcamStream } from '@/samples/common/components/webcam-stream'

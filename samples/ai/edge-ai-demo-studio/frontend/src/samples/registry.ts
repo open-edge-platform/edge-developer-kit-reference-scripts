@@ -14,7 +14,9 @@ export type {
 
 export {
   categories,
+  getCategoryLabels,
   getDeviceMap,
+  hasCategory,
   getOptionalDeps,
   getReadinessLabel,
   getRequiredDeps,

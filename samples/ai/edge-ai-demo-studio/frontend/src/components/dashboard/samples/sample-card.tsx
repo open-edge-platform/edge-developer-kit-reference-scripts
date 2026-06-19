@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils'
 import type { OS } from '@/types/common'
 import { getReadinessLabel } from '@/samples/registry'
 import type { Sample } from '@/samples/types'
-import { getRequiredDeps } from '@/samples/types'
+import { getCategoryLabels, getRequiredDeps } from '@/samples/types'
 import { computeSampleReadiness } from '@/samples/common/util'
 import { useServiceStatus } from '@/context/service-status-context'
 
@@ -50,6 +50,8 @@ export function SampleCard({
   const readiness = computeSampleReadiness(sample, services)
   const readinessLabel = getReadinessLabel(readiness)
   const rs = readinessStyle[readiness]
+  const categoryLabels = getCategoryLabels(sample)
+  const displayTags = sample.tags.filter((tag) => !categoryLabels.includes(tag))
 
   const requiredServiceDetails = getRequiredDeps(sample)
     .map((dep) => services.find((s) => s.id === dep.serviceId))
@@ -85,7 +87,7 @@ export function SampleCard({
             <div className="flex flex-col items-center gap-2">
               <ImageIcon className="text-muted-foreground/40 h-8 w-8" />
               <span className="text-muted-foreground/60 text-xs font-medium">
-                {sample.category}
+                {categoryLabels.join(' • ')}
               </span>
             </div>
           </div>
@@ -145,9 +147,16 @@ export function SampleCard({
         )}
 
         <div className="mt-3 flex items-center gap-1.5">
-          <Badge variant="secondary" className="text-[11px]">
-            {sample.category}
-          </Badge>
+          {categoryLabels.map((label) => (
+            <Badge key={label} variant="secondary" className="text-[11px]">
+              {label}
+            </Badge>
+          ))}
+          {displayTags.map((tag) => (
+            <Badge key={tag} variant="outline" className="text-[11px]">
+              {tag}
+            </Badge>
+          ))}
           {sample.demo.type === 'external' && (
             <Badge
               variant="outline"

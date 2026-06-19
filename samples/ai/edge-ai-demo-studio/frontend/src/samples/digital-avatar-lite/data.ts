@@ -11,7 +11,7 @@ export const sample: Sample = {
     'A lightweight animated robot avatar that brings conversations to life with responsive movements and expressions.',
   longDescription:
     'A lightweight digital avatar experience using MJPEG image streaming instead of WebRTC. Combines text generation and text-to-speech for an animated conversational avatar with responsive movements and expressions. Optionally supports voice input via STT, knowledge retrieval via RAG, MCP tool integrations, and wake word detection.',
-  category: 'Conversational AI',
+  category: ['Conversational AI'],
   dependencies: [
     {
       serviceId: 'wake-word-detection',

@@ -6,14 +6,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useGetService } from '@/context/service-status-context'
-import {
-  useOptionalServiceGroup,
-  useRagChatSetup,
-  useTextGenerationParams,
-  useTtsParams,
-  useWakeWordStt,
-} from '@/samples/common/hooks'
-import { useTextGenChat } from '@/services/text-generation/hooks'
+import { useOptionalServiceGroup } from '@/samples/common/hooks/use-optional-service-group'
+import { useRagChatSetup } from '@/samples/common/hooks/use-rag-chat-setup'
+import { useTextGenerationParams } from '@/samples/common/hooks/use-text-generation-params'
+import { useTtsParams } from '@/samples/common/hooks/use-tts-params'
+import { useWakeWordStt } from '@/samples/common/hooks/use-wake-word-stt'
+import { useTextGenChat } from '@/services/text-generation/hooks/use-chat'
 import { AvatarStream } from '@/services/lipsync/components/avatar-stream'
 import { buildIceConfig, useLipsyncOffer } from '@/services/lipsync/hooks'
 import type { Sample } from '../types'

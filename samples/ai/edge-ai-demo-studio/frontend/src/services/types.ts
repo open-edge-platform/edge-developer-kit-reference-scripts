@@ -47,6 +47,8 @@ export interface WorkerConfig {
   buildArgs: (doc: PayloadService) => string[]
   workerSubDir?: string | ((doc: PayloadService) => string)
   modelDirectories?: string[]
+  requiresDocker?: boolean
+  stopScript?: boolean
 }
 
 export type ServiceStatus = 'online' | 'offline' | 'error' | 'starting'

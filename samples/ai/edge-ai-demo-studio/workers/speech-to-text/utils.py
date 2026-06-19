@@ -645,23 +645,39 @@ def language_mapping(language):
     return iso_639_1_mapping.get(language_code, "<|en|>")
 
 
-def transcribe(pipeline, audio, language="english"):
+def transcribe(pipeline, audio, language="english", return_timestamps=False):
     config = pipeline.get_generation_config()
     if config.is_multilingual:
         config.language = language_mapping(language)
         config.task = "transcribe"
 
     data, fs = sf.read(audio)
+    audio_duration = len(data) / fs
     resampled_audio = resample(
         audio=data, src_sample_rate=fs, dst_sample_rate=16000
     ).astype(np.float32)
 
-    results = pipeline.generate(resampled_audio, config)
-    if results.texts and len(results.texts) > 0:
-        return results.texts[0]
+    if return_timestamps:
+        results = pipeline.generate(resampled_audio, config, return_timestamps=True)
+        text = results.texts[0] if results.texts and len(results.texts) > 0 else ""
+        segments = []
+        if hasattr(results, "chunks") and results.chunks:
+            for chunk in results.chunks:
+                segments.append({
+                    "start": float(chunk.start_ts),
+                    "end": float(chunk.end_ts),
+                    "text": str(chunk.text),
+                })
+        if not segments:
+            segments = [{"start": 0.0, "end": float(audio_duration), "text": text}]
+        return text, segments
     else:
-        logger.error("No transcription results.")
-        return ""
+        results = pipeline.generate(resampled_audio, config)
+        if results.texts and len(results.texts) > 0:
+            return results.texts[0]
+        else:
+            logger.error("No transcription results.")
+            return ""
 
 
 def translate(pipeline, audio, source_language="english"):

@@ -45,24 +45,15 @@ async function inactivateServices(payload: BasePayload) {
   return result
 }
 
-/**
- * Ensure every service in the static registry has a corresponding
- * PayloadCMS record. Creates missing records with sensible defaults
- * so the UI can start/stop them without manual setup.
- */
 async function ensureServicesExist(payload: BasePayload) {
   const existing = await payload.find({
     collection: 'services',
     limit: 100,
   })
-  const existingTypes = new Set(existing.docs.map((d) => d.type))
+  const existingMap = new Map(existing.docs.map((d) => [d.type, d]))
   const serverOS = os.platform() === 'win32' ? 'windows' : 'linux'
 
   for (const [serviceType, meta] of Object.entries(metaMap)) {
-    if (existingTypes.has(serviceType as (typeof existing.docs)[0]['type'])) {
-      continue
-    }
-
     if (meta.execution.mode === 'none' || !meta.port) {
       logger.log(
         `ℹ️  Skipping auto-creation of ${meta.name} with 'none' execution mode or missing port:`,
@@ -117,18 +108,54 @@ async function ensureServicesExist(payload: BasePayload) {
         healthCheck = meta.healthCheck
       }
     }
+
+    const newData = {
+      name: meta.name,
+      type: serviceType as (typeof existing.docs)[0]['type'],
+      port: meta.port,
+      engine,
+      models,
+      healthCheck,
+      status: 'inactive' as const,
+    }
+
+    const existingService = existingMap.get(
+      serviceType as (typeof existing.docs)[0]['type'],
+    )
+
+    if (existingService) {
+      const fieldsToCheck = ['port', 'engine', 'models', 'healthCheck'] as const
+      const needsUpdate = fieldsToCheck.some(
+        (field) =>
+          JSON.stringify(existingService[field]) !==
+          JSON.stringify(newData[field]),
+      )
+
+      if (needsUpdate) {
+        try {
+          await payload.update({
+            collection: 'services',
+            id: existingService.id,
+            data: newData,
+          })
+          logger.log(
+            `🔄 Updated service record: ${meta.name} (${serviceType}) — config changed`,
+          )
+        } catch (error) {
+          logger.log(meta)
+          logger.error(
+            `Failed to update service record for ${meta.name} (${serviceType}):`,
+            error,
+          )
+        }
+      }
+      continue
+    }
+
     try {
       await payload.create({
         collection: 'services',
-        data: {
-          name: meta.name,
-          type: serviceType as (typeof existing.docs)[0]['type'],
-          port: meta.port,
-          engine,
-          models,
-          healthCheck,
-          status: 'inactive',
-        },
+        data: newData,
       })
       logger.log(
         `📦 Auto-created service record: ${meta.name} (${serviceType})`,
@@ -143,8 +170,6 @@ async function ensureServicesExist(payload: BasePayload) {
   }
 }
 
-// Persists across Next.js hot-module reloads so shutdown only runs once
-// and signal handlers are not registered multiple times.
 declare global {
   var _appShuttingDown: boolean | undefined
   var _appSignalHandlersRegistered: boolean | undefined

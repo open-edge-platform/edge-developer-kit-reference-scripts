@@ -11,8 +11,8 @@ import { getMicErrorMessage } from '@/lib/media-utils'
 import { cn } from '@/lib/utils'
 import { DemoParameterSidebar } from '@/services/common/demo/components/demo-parameter-sidebar'
 import type { Service } from '@/services/types'
-import { useTranscribe } from './hooks'
 import { useSttParams } from './hooks/use-params'
+import { useTranscribe } from './hooks/use-transcribe'
 
 const PROCESSING_BAR_HEIGHTS = [
   6, 10, 14, 18, 22, 18, 14, 10, 8, 12, 16, 20, 16, 12, 8, 6, 10, 14, 18, 14,

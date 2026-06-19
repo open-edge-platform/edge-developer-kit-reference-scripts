@@ -159,6 +159,7 @@ export interface Service {
     | 'diarization'
     | 'embeddings'
     | 'geti-classifier'
+    | 'image-based-video-search'
     | 'image-generation'
     | 'lipsync'
     | 'mcp'
