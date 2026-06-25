@@ -1,4 +1,4 @@
-# Camera Samples
+# Camera
 
 This directory contains setup scripts and guides for Intel IPU-based camera support on Ubuntu*, covering two connection types: **GMSL** (long-distance automotive) and **MIPI** (direct short-distance).
 
