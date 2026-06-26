@@ -8,15 +8,23 @@ import { DefaultChatTransport } from 'ai'
 import { AlertTriangle } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { useGetServices } from '@/context/service-status-context'
-import { useMcpParams } from '@/samples/common/hooks/use-mcp-params'
-import { useOptionalServiceGroup } from '@/samples/common/hooks/use-optional-service-group'
+import { useFeatureCollector } from '@/context/feature-collector'
+import {
+  FeatureContexts,
+  sttOnlineFromExports,
+  ttsOnlineFromExports,
+} from '@/samples/common/feature-providers/feature-contexts'
+import { useFeatureProviders } from '@/samples/common/feature-providers/use-feature-providers'
 import { useTextGenerationParams } from '@/samples/common/hooks/use-text-generation-params'
-import { useTtsParams } from '@/samples/common/hooks/use-tts-params'
 import type { Sample } from '../types'
-import { ChatArea } from './components/chat-area'
-import { WebcamStream } from '@/samples/common/components/webcam-stream'
-import { useWebcamStream } from '@/samples/common/hooks/use-webcam-stream'
+import { ChatPanel } from './components/chat-panel'
+import { WebcamStream } from '@/components/common/webcam-stream'
+import { useWebcamStream } from '@/hooks/use-webcam-stream'
 import { SampleParamsSlot } from '../common/sample-params-slot'
+
+// Optional-service feature integrations this sample wires (explicit opt-in).
+// Order = Configure-sheet group order. See docs/OPTIONAL-SERVICES.md.
+const FEATURE_SERVICES = ['text-to-speech', 'speech-to-text', 'mcp']
 
 function dataUrlToFile(dataUrl: string, filename: string): File {
   const [header, base64] = dataUrl.split(',')
@@ -31,16 +39,11 @@ function dataUrlToFile(dataUrl: string, filename: string): File {
 
 export function WebcamVlmDemo({ sample }: { sample: Sample }) {
   const textGen = useTextGenerationParams()
-  const tts = useTtsParams(sample.id)
 
-  const stt = useOptionalServiceGroup({
-    serviceId: 'speech-to-text',
-    serviceLabel: 'Speech to Text',
-    offlineMessage:
-      'Enable STT for voice input. Start the service from the services page.',
-  })
-
-  const mcp = useMcpParams()
+  const featureProviders = useFeatureProviders(FEATURE_SERVICES)
+  const collector = useFeatureCollector(FEATURE_SERVICES)
+  const sttOnline = sttOnlineFromExports(collector.exports)
+  const ttsOnline = ttsOnlineFromExports(collector.exports)
 
   const { 'text-generation': textGenService } = useGetServices([
     'text-generation',
@@ -142,39 +145,47 @@ export function WebcamVlmDemo({ sample }: { sample: Sample }) {
         </div>
       )}
 
-      <SampleParamsSlot
-        groups={[textGen.group, tts.group, stt.group, mcp.group]}
-      />
+      <collector.Provider>
+        {featureProviders.map(({ serviceId, Provider }) => (
+          <Provider
+            key={serviceId}
+            onTranscription={setInput}
+            sampleId={sample.id}
+          />
+        ))}
+      </collector.Provider>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[2fr_1fr]">
-        <WebcamStream
-          videoRef={videoRef}
-          isReady={webcamReady}
-          error={webcamError}
-          startCamera={startCamera}
-          stopCamera={stopCamera}
-          devices={devices}
-          selectedDeviceId={selectedDeviceId}
-          listDevices={listDevices}
-        />
-        <ChatArea
-          messages={messages}
-          status={status}
-          input={input}
-          onInputChange={setInput}
-          onSend={handleSend}
-          onReset={handleReset}
-          disabled={!webcamReady}
-          captureImage={captureImage}
-          webcamReady={webcamReady}
-          capturedPreview={capturedPreview}
-          onCapturedPreviewChange={setCapturedPreview}
-          sttOnline={stt.enabled}
-          ttsOnline={tts.online}
-          ttsVoice={tts.values.voice}
-          ttsSpeed={tts.values.speed}
-        />
-      </div>
+      <SampleParamsSlot groups={[textGen.group, ...collector.groups]} />
+
+      <FeatureContexts exports={collector.exports}>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[2fr_1fr]">
+          <WebcamStream
+            videoRef={videoRef}
+            isReady={webcamReady}
+            error={webcamError}
+            startCamera={startCamera}
+            stopCamera={stopCamera}
+            devices={devices}
+            selectedDeviceId={selectedDeviceId}
+            listDevices={listDevices}
+          />
+          <ChatPanel
+            messages={messages}
+            status={status}
+            input={input}
+            onInputChange={setInput}
+            onSend={handleSend}
+            onReset={handleReset}
+            disabled={!webcamReady}
+            captureImage={captureImage}
+            webcamReady={webcamReady}
+            capturedPreview={capturedPreview}
+            onCapturedPreviewChange={setCapturedPreview}
+            sttOnline={sttOnline}
+            ttsOnline={ttsOnline}
+          />
+        </div>
+      </FeatureContexts>
     </div>
   )
 }

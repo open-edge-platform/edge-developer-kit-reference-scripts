@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import path from 'node:path'
-import type { Device, OS } from '@/types/common'
+import type { Device } from '@/types/common'
 
 const WORKER_DIR = path.resolve(path.dirname(''), '../workers')
 const MODELS_DIR = path.resolve(path.dirname(''), '../models')
@@ -11,16 +11,6 @@ const UV_PATH = path.join(
   WORKER_DIR,
   `thirdparty/uv/${process.platform === 'win32' ? 'uv.exe' : 'uv'}`,
 )
-const UINT32_RANGE = 2 ** 32
-const ALL_OPERATING_SYSTEMS: OS[] = ['linux', 'windows']
 const ALL_DEVICE_TYPES: Device[] = ['cpu', 'gpu', 'xpu', 'npu']
 
-export {
-  LOGS_DIR,
-  UINT32_RANGE,
-  WORKER_DIR,
-  MODELS_DIR,
-  UV_PATH,
-  ALL_DEVICE_TYPES,
-  ALL_OPERATING_SYSTEMS,
-}
+export { LOGS_DIR, WORKER_DIR, MODELS_DIR, UV_PATH, ALL_DEVICE_TYPES }

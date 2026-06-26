@@ -10,22 +10,21 @@ import { SampleCard } from '@/components/dashboard/samples/sample-card'
 import { ServiceCard } from '@/components/dashboard/service-card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useServiceStatus } from '@/context/service-status-context'
-import { visibleServices } from '@/services/registry'
 import { samples } from '@/samples/registry'
 
 export default function DashboardPage() {
-  const { statusMap, loading } = useServiceStatus()
+  const { services, loading } = useServiceStatus()
+
+  const visibleServices = services.filter((s) => !s.hidden)
 
   const onlineCount = loading
     ? 0
-    : visibleServices.filter((s) => (statusMap[s.id] ?? s.status) === 'online')
-        .length
+    : visibleServices.filter((s) => s.status === 'online').length
   const offlineCount = loading
     ? 0
-    : visibleServices.filter((s) => {
-        const st = statusMap[s.id] ?? s.status
-        return st === 'offline' || st === 'starting'
-      }).length
+    : visibleServices.filter(
+        (s) => s.status === 'offline' || s.status === 'starting',
+      ).length
   const featuredSamples = samples.slice(0, 3)
 
   return (
@@ -134,11 +133,11 @@ export default function DashboardPage() {
               </Link>
             </div>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {visibleServices
+              {[...visibleServices]
                 .sort(
                   (a, b) =>
-                    ((statusMap[b.id] ?? b.status) === 'online' ? 1 : 0) -
-                    ((statusMap[a.id] ?? a.status) === 'online' ? 1 : 0),
+                    (b.status === 'online' ? 1 : 0) -
+                    (a.status === 'online' ? 1 : 0),
                 )
                 .slice(0, 3)
                 .map((service, i) => (

@@ -3,6 +3,7 @@
 
 import type { Sample } from '../types'
 import { GetiImageClassificationDemo } from './demo'
+import sampleImage from './image.png'
 
 export const sample: Sample = {
   id: 'geti-classifier',
@@ -22,6 +23,7 @@ export const sample: Sample = {
     'OpenVINO',
   ],
   supportedOS: ['linux'],
+  image: sampleImage,
   demo: {
     type: 'component',
     component: GetiImageClassificationDemo,

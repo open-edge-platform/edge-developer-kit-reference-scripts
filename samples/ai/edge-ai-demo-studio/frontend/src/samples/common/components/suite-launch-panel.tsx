@@ -3,6 +3,7 @@
 
 'use client'
 
+import type { ReactNode } from 'react'
 import Link from 'next/link'
 import {
   ExternalLink,
@@ -24,6 +25,7 @@ interface SuiteLaunchPanelProps {
   suiteName: string
   launchUrl?: string
   popupHint?: string
+  extraActions?: ReactNode
 }
 
 export function SuiteLaunchPanel({
@@ -31,6 +33,7 @@ export function SuiteLaunchPanel({
   suiteName,
   launchUrl,
   popupHint,
+  extraActions,
 }: SuiteLaunchPanelProps) {
   const service = useGetService(serviceId)
   const status = service?.status ?? 'offline'
@@ -50,6 +53,7 @@ export function SuiteLaunchPanel({
             suiteName={suiteName}
             launchUrl={launchUrl}
             popupHint={popupHint}
+            extraActions={extraActions}
           />
         ) : (
           <InactiveBody serviceId={serviceId} status={status} />
@@ -91,11 +95,13 @@ function ActiveBody({
   suiteName,
   launchUrl,
   popupHint,
+  extraActions,
 }: {
   serviceId: string
   suiteName: string
   launchUrl?: string
   popupHint?: string
+  extraActions?: ReactNode
 }) {
   const { stopService, isActionPending } = useServiceStatus()
   const pending = isActionPending(serviceId)
@@ -134,6 +140,7 @@ function ActiveBody({
           <code className="bg-muted rounded px-2 py-1 text-xs">
             {launchUrl}
           </code>
+          {extraActions}
           {stopButton}
         </div>
       </div>
@@ -146,7 +153,10 @@ function ActiveBody({
         {popupHint ??
           `${suiteName} is running. It opens its own window — check your desktop or display.`}
       </p>
-      {stopButton}
+      <div className="flex flex-wrap items-center gap-2">
+        {extraActions}
+        {stopButton}
+      </div>
     </div>
   )
 }

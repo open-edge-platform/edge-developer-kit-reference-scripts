@@ -3,6 +3,7 @@
 
 import type { Sample } from '../types'
 import { DigitalAvatarLiteDemo } from './demo'
+import sampleImage from './image.png'
 
 export const sample: Sample = {
   id: 'digital-avatar-lite',
@@ -61,6 +62,7 @@ export const sample: Sample = {
     'mcp',
     'text-to-speech',
   ],
+  image: sampleImage,
   demo: {
     type: 'component',
     component: DigitalAvatarLiteDemo,

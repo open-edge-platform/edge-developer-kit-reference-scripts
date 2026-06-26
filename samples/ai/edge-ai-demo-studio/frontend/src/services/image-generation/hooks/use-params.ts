@@ -6,7 +6,7 @@
 import { useState } from 'react'
 import type { DemoParam } from '@/types/demo-params'
 
-export const IMAGE_GEN_DEFAULTS = {
+const IMAGE_GEN_DEFAULTS = {
   steps: 30,
   cfgScale: 7.5,
   resolution: '512x512',

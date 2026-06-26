@@ -3,6 +3,7 @@
 
 import type { Sample } from '../types'
 import { RagChatbotDemo } from './demo'
+import sampleImage from './image.png'
 
 export const sample: Sample = {
   id: 'rag-chatbot',
@@ -50,6 +51,7 @@ export const sample: Sample = {
     'text-to-speech',
     'mcp',
   ],
+  image: sampleImage,
   demo: {
     type: 'component',
     component: RagChatbotDemo,

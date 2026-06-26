@@ -6,7 +6,7 @@
 import { useState } from 'react'
 import type { DemoParam } from '@/types/demo-params'
 
-export const RERANK_DEFAULTS = {
+const RERANK_DEFAULTS = {
   topN: 5,
 }
 

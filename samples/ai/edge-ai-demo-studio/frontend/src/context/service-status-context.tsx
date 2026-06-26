@@ -26,7 +26,6 @@ import type { Service, ServiceStatus } from '@/services/types'
 import { hasExecutionMode } from '@/services/types'
 
 interface ServiceStatusContextValue {
-  statusMap: Record<string, ServiceStatus>
   serviceInfoMap: Record<string, PayloadServiceInfo>
   services: Service[]
   serviceById: Map<string, Service>
@@ -46,7 +45,7 @@ const ServiceStatusContext = createContext<ServiceStatusContextValue | null>(
 )
 
 export function ServiceStatusProvider({ children }: { children: ReactNode }) {
-  const { statusMap, serviceInfoMap, isLoading } = useServicesQuery()
+  const { serviceInfoMap, isLoading } = useServicesQuery()
   const { mutate, isActionPending } = useServiceAction()
   const enrichedServices = useMemo(
     () =>
@@ -60,7 +59,7 @@ export function ServiceStatusProvider({ children }: { children: ReactNode }) {
             : []
         return {
           ...s,
-          status: isNone ? ('online' as const) : (statusMap[s.id] ?? s.status),
+          status: isNone ? ('online' as const) : (info?.status ?? s.status),
           ...(info && {
             dbId: info.id,
             engine: info.engine,
@@ -75,20 +74,12 @@ export function ServiceStatusProvider({ children }: { children: ReactNode }) {
           }),
         }
       }),
-    [statusMap, serviceInfoMap],
+    [serviceInfoMap],
   )
 
-  // Derive statusMap from enrichedServices so that overrides (e.g. mode:'none')
-  // are reflected everywhere statusMap is consumed.
-  const enrichedStatusMap = useMemo(() => {
-    const map: Record<string, ServiceStatus> = {}
-    for (const s of enrichedServices) {
-      map[s.id] = s.status
-    }
-    return map
-  }, [enrichedServices])
-
-  // Pre-built lookup map for O(1) service lookups by ID
+  // Pre-built lookup map for O(1) service lookups by ID. Status lives on each
+  // enriched Service (the single source of truth) — read it via serviceById,
+  // useGetService(s), or useServiceLiveStatus rather than a parallel status map.
   const serviceById = useMemo(
     () => new Map<string, Service>(enrichedServices.map((s) => [s.id, s])),
     [enrichedServices],
@@ -189,7 +180,6 @@ export function ServiceStatusProvider({ children }: { children: ReactNode }) {
   return (
     <ServiceStatusContext.Provider
       value={{
-        statusMap: enrichedStatusMap,
         serviceInfoMap,
         services: enrichedServices,
         serviceById,
@@ -242,15 +232,16 @@ export function useGetServices<T extends string>(
 }
 
 /**
- * Get the live status for a specific service type.
- * Falls back to the static status from the registry if no PayloadCMS service exists.
+ * Get the live status for a specific service type. Reads the enriched service's
+ * status (the single source of truth) and falls back to `fallbackStatus` when no
+ * such service exists.
  */
 export function useServiceLiveStatus(
   serviceType: string,
   fallbackStatus: ServiceStatus = 'offline',
 ): ServiceStatus {
-  const { statusMap } = useServiceStatus()
-  return statusMap[serviceType] ?? fallbackStatus
+  const { serviceById } = useServiceStatus()
+  return serviceById.get(serviceType)?.status ?? fallbackStatus
 }
 
 export type { PayloadServiceInfo } from '@/hooks/use-services'

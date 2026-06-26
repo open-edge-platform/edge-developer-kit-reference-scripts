@@ -1,6 +1,8 @@
 // Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import jsonata from 'jsonata'
 import type { BasePayload } from 'payload'
 import { getServicesPortMap } from '@/services/config-registry'
@@ -8,10 +10,63 @@ import type { Service } from '../payload-types'
 import { logger } from './logger'
 import { listProcesses, removeDeadProcess } from './process-handler'
 
+const execFileAsync = promisify(execFile)
+
 const HEALTHCHECK_TIMEOUT = 3000
 const HEALTHCHECK_INTERVAL = 10000
 const DEFAULT_STARTUP_TIMEOUT = 600 // seconds (10 minutes)
 const WORKLOAD_COLLECTION = 'services'
+
+// Validates a Docker container name to prevent command injection (OWASP A03).
+// Docker compose auto-names containers as <project>-<service>-<index>.
+const CONTAINER_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/
+
+// Checks whether a named Docker container is healthy.
+// If the container image defines a HEALTHCHECK, uses .State.Health.Status.
+// Falls back to .State.Status === "running" when no HEALTHCHECK is defined.
+const performDockerHealthCheck = async (
+  containerName: string,
+): Promise<boolean> => {
+  if (!CONTAINER_NAME_PATTERN.test(containerName)) {
+    logger.log(
+      `Docker health check skipped: invalid container name '${containerName}'`,
+    )
+    return false
+  }
+
+  try {
+    const { stdout } = await execFileAsync(
+      'docker',
+      ['inspect', '--format', '{{json .State}}', containerName],
+      { timeout: HEALTHCHECK_TIMEOUT },
+    )
+
+    const state = JSON.parse(stdout.trim()) as {
+      Status: string
+      Health?: { Status: string } | null
+    }
+
+    if (state.Health?.Status) {
+      const healthy = state.Health.Status === 'healthy'
+      logger.log(
+        `Docker health check for '${containerName}': ${state.Health.Status} → ${healthy ? 'healthy' : 'unhealthy'}`,
+      )
+      return healthy
+    }
+
+    // Container has no HEALTHCHECK — treat 'running' as healthy
+    const running = state.Status === 'running'
+    logger.log(
+      `Docker health check for '${containerName}' (no HEALTHCHECK): state=${state.Status} → ${running ? 'healthy' : 'unhealthy'}`,
+    )
+    return running
+  } catch (error) {
+    logger.log(
+      `Docker health check failed for '${containerName}': ${getErrorMessage(error)}`,
+    )
+    return false
+  }
+}
 
 enum ServiceStatus {
   PREPARE = 'prepare',
@@ -346,7 +401,7 @@ const determineCustomServiceStatus = async (
   }
 
   switch (process.status) {
-    case ProcessStatus.ACTIVE:
+    case ProcessStatus.ACTIVE: {
       if (healthCheck?.url && port) {
         const healthy = await performHealthCheck(service, port)
         // Keep process running even if unhealthy — only update health flag
@@ -358,10 +413,27 @@ const determineCustomServiceStatus = async (
           newIsHealthy: healthy,
         }
       }
-      if (!healthCheck?.url && status !== ServiceStatus.ACTIVE) {
+      const hcType = healthCheck?.['type']
+      const hcContainer = healthCheck?.['container']
+      if (hcType === 'docker' && typeof hcContainer === 'string') {
+        const healthy = await performDockerHealthCheck(hcContainer)
+        return {
+          newStatus:
+            healthy && status !== ServiceStatus.ACTIVE
+              ? ServiceStatus.ACTIVE
+              : null,
+          newIsHealthy: healthy,
+        }
+      }
+      if (
+        !healthCheck?.url &&
+        hcType !== 'docker' &&
+        status !== ServiceStatus.ACTIVE
+      ) {
         return { newStatus: ServiceStatus.ACTIVE, newIsHealthy: true }
       }
       return { newStatus: null, newIsHealthy: null }
+    }
 
     case ProcessStatus.STOPPED:
       return { newStatus: ServiceStatus.INACTIVE, newIsHealthy: false }
@@ -432,6 +504,25 @@ const handlePrepareStatus = async (
     }
 
     logger.log(`Service ${id} still preparing, will retry next interval`)
+    return { newStatus: null, newIsHealthy: false }
+  }
+
+  const hcType = healthCheck?.['type']
+  const hcContainer = healthCheck?.['container']
+  if (hcType === 'docker' && typeof hcContainer === 'string') {
+    logger.log(
+      `Service ${id} in prepare status, checking docker container '${hcContainer}'...`,
+    )
+    const healthy = await performDockerHealthCheck(hcContainer)
+    if (healthy) {
+      logger.log(
+        `Service ${id} docker container healthy, transitioning prepare → active`,
+      )
+      return { newStatus: ServiceStatus.ACTIVE, newIsHealthy: true }
+    }
+    logger.log(
+      `Service ${id} docker container not yet healthy, will retry next interval`,
+    )
     return { newStatus: null, newIsHealthy: false }
   }
 
@@ -600,5 +691,3 @@ export const stopHealthCheckService = (): void => {
     logger.log('Stopped service health check service')
   }
 }
-
-export { retryWithBackoff, isPidAlive, validateHealthUrl, sanitizeString }

@@ -3,6 +3,7 @@
 
 import type { Sample } from '../types'
 import { AiExamMarkingDemo } from './demo'
+import sampleImage from './image.png'
 
 export const sample: Sample = {
   id: 'ai-exam-marking',
@@ -67,6 +68,7 @@ export const sample: Sample = {
   ],
   tags: ['VLM', 'OCR', 'LLM', 'Multimodal', 'Education'],
   supportedOS: ['linux', 'windows'],
+  image: sampleImage,
   demo: {
     type: 'component',
     component: AiExamMarkingDemo,

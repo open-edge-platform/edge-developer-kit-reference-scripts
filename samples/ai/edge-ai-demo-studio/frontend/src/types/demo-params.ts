@@ -1,6 +1,8 @@
 // Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
+import type { ReactNode } from 'react'
+
 export interface ParamSlider {
   type: 'slider'
   id: string
@@ -11,6 +13,13 @@ export interface ParamSlider {
   max: number
   step: number
   onChange: (value: number) => void
+  /**
+   * When true the param is untouched and the backend default is used — the
+   * control shows an "Auto" state instead of the seeded value.
+   */
+  unset?: boolean
+  /** Reverts the param to its untouched/default state; renders a reset affordance. */
+  onReset?: () => void
 }
 
 export interface ParamSelect {
@@ -72,3 +81,16 @@ export type DemoParam =
   | ParamInfoList
   | ParamTextarea
   | ParamToggle
+
+export interface ServiceParamGroup {
+  serviceLabel: string
+  serviceId: string
+  online: boolean
+  optional: boolean
+  offlineMessage?: string
+  configHref?: string
+  params: DemoParam[]
+  enabled?: boolean
+  onToggle?: (enabled: boolean) => void
+  children?: ReactNode
+}

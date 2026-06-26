@@ -1,12 +1,7 @@
 // Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-export {
-  useGetiHealth,
-  isPipelineReady,
-  isClsReady,
-  isSegReady,
-} from './use-health'
+export { useGetiHealth } from './use-health'
 export type { GetiHealthResponse } from './use-health'
 
 export {

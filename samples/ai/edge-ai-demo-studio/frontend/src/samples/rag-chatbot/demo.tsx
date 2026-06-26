@@ -5,30 +5,36 @@
 
 import { useMemo } from 'react'
 import { useGetService } from '@/context/service-status-context'
-import { useMcpParams } from '@/samples/common/hooks/use-mcp-params'
-import { useOptionalServiceGroup } from '@/samples/common/hooks/use-optional-service-group'
-import { useRagParams } from '@/samples/common/hooks/use-rag-params'
+import type { ServiceParamGroup } from '@/samples/common/components/demo-config-sheet'
+import { useFeatureCollector } from '@/context/feature-collector'
+import {
+  FeatureContexts,
+  sttOnlineFromExports,
+  ttsOnlineFromExports,
+} from '@/samples/common/feature-providers/feature-contexts'
+import { useFeatureProviders } from '@/samples/common/feature-providers/use-feature-providers'
 import { useTextGenerationParams } from '@/samples/common/hooks/use-text-generation-params'
-import { useTtsParams } from '@/samples/common/hooks/use-tts-params'
+import { useRagParams } from '@/services/vectordb/hooks/use-rag-params'
 import { useTextGenChat } from '@/services/text-generation/hooks/use-chat'
 import type { Sample } from '../types'
-import { ChatArea } from './components/chat-area'
+import { ChatPanel } from './components/chat-panel'
 import { KnowledgeBasePanel } from './components/knowledge-base-panel'
 import { SampleParamsSlot } from '../common/sample-params-slot'
 
+// Optional-service feature integrations this sample wires (explicit opt-in).
+// vectordb + embeddings are REQUIRED here, so RAG stays a direct hook (its
+// KnowledgeBasePanel renders as a column, not in the config sheet).
+// See docs/OPTIONAL-SERVICES.md.
+const FEATURE_SERVICES = ['text-to-speech', 'speech-to-text', 'mcp']
+
 export function RagChatbotDemo({ sample }: { sample: Sample }) {
   const textGen = useTextGenerationParams()
-  const tts = useTtsParams(sample.id)
-
-  const stt = useOptionalServiceGroup({
-    serviceId: 'speech-to-text',
-    serviceLabel: 'Speech to Text',
-    offlineMessage:
-      'Enable STT for voice input. Start the service from the services page.',
-  })
-
-  const mcp = useMcpParams()
   const rag = useRagParams()
+
+  const featureProviders = useFeatureProviders(FEATURE_SERVICES)
+  const collector = useFeatureCollector(FEATURE_SERVICES)
+  const sttOnline = sttOnlineFromExports(collector.exports)
+  const ttsOnline = ttsOnlineFromExports(collector.exports)
 
   const textGenService = useGetService('text-generation')
   const isMultimodal = textGenService?.currentModelType === 'multimodal'
@@ -36,54 +42,70 @@ export function RagChatbotDemo({ sample }: { sample: Sample }) {
   const hasKnowledgeBase = rag.selectedKb != null && rag.vectordbOnline
 
   const extraBody = useMemo(
-    () => ({
-      ...rag.extraBody,
-      ...(mcp.enabled && mcp.selectedServerIds.length > 0
-        ? { mcpServerIds: mcp.selectedServerIds }
-        : {}),
-    }),
-    [rag.extraBody, mcp.enabled, mcp.selectedServerIds],
+    () => ({ ...rag.extraBody, ...collector.extraBody }),
+    [rag.extraBody, collector.extraBody],
   )
 
   const chat = useTextGenChat({
     textGenValues: textGen.values,
+    requestParams: textGen.requestParams,
     extraBody,
   })
 
+  // Preserve the original Configure-sheet order: textGen, tts, stt, then RAG
+  // (vectordb, rerank), then mcp. tts/stt/mcp come from the collector.
+  const collectorGroup = (id: string) =>
+    collector.groups.find((g) => g.serviceId === id)
+  const groups = [
+    textGen.group,
+    collectorGroup('text-to-speech'),
+    collectorGroup('speech-to-text'),
+    ...rag.groups,
+    collectorGroup('mcp'),
+  ].filter((g): g is ServiceParamGroup => g != null)
+
   return (
     <div className="space-y-4">
-      <SampleParamsSlot
-        groups={[textGen.group, tts.group, stt.group, ...rag.groups, mcp.group]}
-      />
+      <collector.Provider>
+        {featureProviders.map(({ serviceId, Provider }) => (
+          <Provider
+            key={serviceId}
+            onTranscription={chat.setInput}
+            sampleId={sample.id}
+          />
+        ))}
+      </collector.Provider>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[280px_1fr]">
-        <KnowledgeBasePanel
-          selectedKb={rag.selectedKb}
-          onSelectKb={rag.onSelectKb}
-          embeddingsOnline={rag.embeddingsOnline}
-          embeddingPort={rag.embeddingPort}
-          embeddingModelName={rag.embeddingModelName}
-          rerankPort={rag.rerankPort}
-          rerankModelName={rag.rerankModelName}
-        />
-        <ChatArea
-          messages={chat.messages}
-          status={chat.status}
-          hasKnowledgeBase={hasKnowledgeBase}
-          input={chat.input}
-          onInputChange={chat.setInput}
-          onSend={chat.handleSend}
-          onReset={chat.handleReset}
-          sttOnline={stt.enabled}
-          ttsOnline={tts.online}
-          ttsVoice={tts.values.voice}
-          ttsSpeed={tts.values.speed}
-          isVlm={isMultimodal}
-          imagePreview={chat.imagePreview}
-          onImageSelect={chat.handleImageSelect}
-          onImageRemove={chat.handleRemoveImage}
-        />
-      </div>
+      <SampleParamsSlot groups={groups} />
+
+      <FeatureContexts exports={collector.exports}>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[280px_1fr]">
+          <KnowledgeBasePanel
+            selectedKb={rag.selectedKb}
+            onSelectKb={rag.onSelectKb}
+            embeddingsOnline={rag.embeddingsOnline}
+            embeddingPort={rag.embeddingPort}
+            embeddingModelName={rag.embeddingModelName}
+            rerankPort={rag.rerankPort}
+            rerankModelName={rag.rerankModelName}
+          />
+          <ChatPanel
+            messages={chat.messages}
+            status={chat.status}
+            hasKnowledgeBase={hasKnowledgeBase}
+            input={chat.input}
+            onInputChange={chat.setInput}
+            onSend={chat.handleSend}
+            onReset={chat.handleReset}
+            sttOnline={sttOnline}
+            ttsOnline={ttsOnline}
+            isVlm={isMultimodal}
+            imagePreview={chat.imagePreview}
+            onImageSelect={chat.handleImageSelect}
+            onImageRemove={chat.handleRemoveImage}
+          />
+        </div>
+      </FeatureContexts>
     </div>
   )
 }

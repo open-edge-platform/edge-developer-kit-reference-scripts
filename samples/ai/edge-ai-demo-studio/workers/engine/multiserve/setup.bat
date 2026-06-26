@@ -38,14 +38,14 @@ set "XPU_SMI_RELEASE_URL=https://github.com/intel/xpumanager/releases/download/v
 set "XPU_SMI_DOWNLOAD_FILE=xpu-win.zip"
 set "XPU_SMI_EXTRACT_DIR=engine\xpu-smi"
 
-set "OVMS_RELEASE_VERSION=v2026.0"
-set "OVMS_RELEASE_URL=https://github.com/openvinotoolkit/model_server/releases/download/%OVMS_RELEASE_VERSION%/ovms_windows_python_on.zip"
+set "OVMS_RELEASE_VERSION=2026.2"
+set "OVMS_RELEASE_URL=https://github.com/openvinotoolkit/model_server/releases/download/v%OVMS_RELEASE_VERSION%/ovms_windows_%OVMS_RELEASE_VERSION%.0_python_on.zip"
 set "OVMS_DOWNLOAD_FILE=ovms.zip"
 set "OVMS_EXTRACT_DIR=engine"
 
 set "UV_HTTP_TIMEOUT=180"
 
-set "OPTIMUM_EXPORT_MODEL_URL=https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/tags/%OVMS_RELEASE_VERSION%/demos/common/export_models"
+set "OPTIMUM_EXPORT_MODEL_URL=https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/tags/v%OVMS_RELEASE_VERSION%/demos/common/export_models"
 set "OPTIMUM_EXPORT_MODEL_SCRIPT=export_model.py"
 set "OPTIMUM_EXPORT_MODEL_REQUIREMENTS_URL=requirements.txt"
 

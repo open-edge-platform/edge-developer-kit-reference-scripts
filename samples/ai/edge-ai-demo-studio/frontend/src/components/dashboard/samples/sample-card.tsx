@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-import { Ban, ExternalLink, ImageIcon, Monitor } from 'lucide-react'
+import { Ban, Check, ExternalLink, ImageIcon, Monitor } from 'lucide-react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
@@ -39,12 +39,19 @@ interface SampleCardProps {
   unsupported?: boolean
   unsupportedReason?: string
   currentOS?: OS
+  /** When true, the card toggles selection instead of navigating. */
+  selectable?: boolean
+  selected?: boolean
+  onToggleSelect?: (id: string) => void
 }
 
 export function SampleCard({
   sample,
   unsupported,
   unsupportedReason,
+  selectable = false,
+  selected = false,
+  onToggleSelect,
 }: SampleCardProps) {
   const { services } = useServiceStatus()
   const readiness = computeSampleReadiness(sample, services)
@@ -60,12 +67,42 @@ export function SampleCard({
   const card = (
     <div
       className={cn(
-        'glass-card group relative flex h-full flex-col overflow-hidden rounded-xl',
-        unsupported
+        'glass-card group relative flex h-full flex-col overflow-hidden rounded-xl transition-shadow',
+        unsupported && !selectable
           ? 'cursor-not-allowed opacity-50'
           : 'card-lift cursor-pointer',
+        selectable && 'cursor-pointer',
+        selected &&
+          'ring-primary ring-offset-background border-primary/60 shadow-primary/10 ring-2 ring-offset-2',
       )}
     >
+      {selectable && (
+        <>
+          <div
+            aria-hidden="true"
+            className={cn(
+              'absolute top-2.5 left-2.5 z-10 flex h-7 w-7 items-center justify-center rounded-md backdrop-blur-sm transition-all duration-200',
+              selected
+                ? 'bg-primary shadow-primary/30 shadow-sm ring-0'
+                : 'bg-black/45 ring-1 ring-white/60 group-hover:bg-black/60',
+            )}
+          >
+            <span
+              className={cn(
+                'flex size-4 items-center justify-center rounded-[4px] border transition-colors',
+                selected
+                  ? 'border-white text-white'
+                  : 'border-white/80 bg-white/15',
+              )}
+            >
+              {selected && <Check className="size-3" strokeWidth={3} />}
+            </span>
+          </div>
+          {selected && (
+            <span className="bg-primary/8 pointer-events-none absolute inset-0 z-[5] rounded-xl" />
+          )}
+        </>
+      )}
       <div className="relative aspect-[16/9] w-full">
         {sample.image ? (
           <Image
@@ -148,7 +185,7 @@ export function SampleCard({
 
         <div className="mt-3 flex items-center gap-1.5">
           {categoryLabels.map((label) => (
-            <Badge key={label} variant="secondary" className="text-[11px]">
+            <Badge key={label} variant="default" className="text-[11px]">
               {label}
             </Badge>
           ))}
@@ -199,6 +236,20 @@ export function SampleCard({
       </div>
     </div>
   )
+
+  if (selectable) {
+    return (
+      <button
+        type="button"
+        onClick={() => onToggleSelect?.(sample.id)}
+        aria-pressed={selected}
+        aria-label={`Select ${sample.title}`}
+        className="block w-full text-left"
+      >
+        {card}
+      </button>
+    )
+  }
 
   if (unsupported) {
     return card

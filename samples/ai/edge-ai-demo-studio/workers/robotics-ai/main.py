@@ -3,10 +3,10 @@ import cv2
 import json
 import time
 import base64
+import shutil
 import asyncio
 import argparse
 import logging
-import subprocess  # nosec - used for subprocess calls to robot arm CLI tools
 import threading
 import multiprocessing
 import numpy as np
@@ -27,6 +27,7 @@ from utils.camera import create_camera_stream
 from utils.model import ObjectDetector
 from utils.client import OpenAIClient
 from utils.platform import SO101
+from motor_calibration import MotorCalibrationSession
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("mcp-server")
@@ -44,18 +45,14 @@ OBJECT_DETECTOR = None
 OPENAI_CLIENT = None
 ROBOT_ARM_CLIENT = None
 CALIBRATION_STATE = "idle"  # "idle" | "awaiting_confirmation"
-# "idle" | "awaiting_middle_position" | "awaiting_range_motion" | "complete" | "error"
-MOTOR_CALIBRATION_STATE = "idle"
-MOTOR_CALIBRATION_PROCESS = None
-MOTOR_CALIBRATION_OUTPUT: list[str] = []
-MOTOR_CALIBRATION_OUTPUT_LOCK = threading.Lock()
+# Motor calibration session (replaces subprocess-based approach)
+MOTOR_CALIBRATION_SESSION = None
 ROBOT_ARM_LOCK = asyncio.Lock()
 LAST_FRAME_TIMESTAMP = 0
 CURRENT_FRAME_LOCK = threading.Lock()
 CONFIG = load_config("config.yaml")
 MODEL_ID = CONFIG["client"]["model_id"]
 ASSETS_DIR = Path("assets")
-ASSETS_DIR.mkdir(parents=True, exist_ok=True)
 ROBOT_FRAME = CONFIG.get("robot", {}).get("frame", [0, 0, 0])
 AVAILABLE_ROBOT_TYPES = ["SO-ARM101"]
 ROBOT_TYPE_MAP = {"SO-ARM101": "SO-ARM101"}
@@ -70,13 +67,14 @@ FIXED_WRIST_ROLL = 12
 async def fastapi_lifespan(app: FastAPI):
     global CAMERA_STREAM, CONFIG
 
-    CONFIG.setdefault("robot", {})["type"] = "none"
-    save_config("config.yaml", CONFIG)
-
+    # Do NOT auto-connect the robot arm on startup. The device port may have
+    # changed between sessions, so the user must explicitly confirm the port
+    # via the robot-setup step in the frontend before we connect.
+    
+    cleanup_assets()
     initialize_camera()
     initialize_object_detector()
     initialize_openai_client()
-    initialize_robot_arm_client()
     asyncio.create_task(frame_updater_task())
 
     yield
@@ -85,10 +83,31 @@ async def fastapi_lifespan(app: FastAPI):
         CAMERA_STREAM.stop()
         logger.info("Camera stream stopped")
 
+def cleanup_assets():
+    """Clean up old assets (e.g. cropped object images) on startup to prevent disk bloat and recreate the assets directory"""
+    global ASSETS_DIR
+    if ASSETS_DIR.exists() and ASSETS_DIR.is_dir():
+        for item in ASSETS_DIR.iterdir():
+            try:
+                if item.is_file():
+                    item.unlink()
+                    logger.info(f"Deleted old asset file: {item}")
+                elif item.is_dir():
+                    shutil.rmtree(item)
+                    logger.info(f"Deleted old asset directory: {item}")
+            except Exception as e:
+                logger.warning(f"Failed to delete asset {item}: {e}")
+                
+    ASSETS_DIR.mkdir(exist_ok=True)
 
 def initialize_camera():
-    """Initialize the RealSense camera stream"""
+    """Initialize the RealSense camera stream.
+
+    Raises RuntimeError if the camera fails to produce frames within a timeout.
+    """
     global CAMERA_STREAM, CONFIG
+
+    startup_timeout = CONFIG.get("camera", {}).get("startup_timeout", 10)
 
     logger.info("Initializing camera stream...")
     try:
@@ -101,10 +120,27 @@ def initialize_camera():
             depth_camera_queue=DEPTH_CAMERA_QUEUE,
         )
         CAMERA_STREAM.start()
-        logger.info("Camera stream initialized successfully")
     except Exception as e:
         logger.error(f"Failed to initialize camera: {e}")
         raise
+
+    # Wait for the first frame to confirm the camera is actually streaming.
+    deadline = time.time() + startup_timeout
+    while COLOR_CAMERA_QUEUE.empty():
+        if not CAMERA_STREAM.is_alive():
+            raise RuntimeError(
+                "Camera stream thread exited unexpectedly. "
+                "Check camera connection and driver availability."
+            )
+        if time.time() >= deadline:
+            CAMERA_STREAM.stop()
+            raise RuntimeError(
+                f"Camera failed to produce frames within {startup_timeout}s. "
+                "Check camera connection and driver availability."
+            )
+        time.sleep(0.1)
+
+    logger.info("Camera stream initialized successfully")
 
 
 def stop_camera_stream():
@@ -170,29 +206,42 @@ def initialize_openai_client():
         raise
 
 
-def initialize_robot_arm_client():
-    """Initialize the Robot Arm client"""
+def initialize_robot_arm_client(retries: int = 3, delay: float = 1.0):
+    """Initialize the Robot Arm client, retrying on transient serial errors."""
     global ROBOT_ARM_CLIENT, CONFIG
 
     logger.info("Initializing Robot Arm client...")
-    try:
-        if CONFIG.get("robot", {}).get("type") == "SO-ARM101":
+    if CONFIG.get("robot", {}).get("type") != "SO-ARM101":
+        ROBOT_ARM_CLIENT = None
+        logger.info(
+            f"Robotic arm type: {CONFIG.get('robot', {}).get('type')} not supported. Skipping initialization."
+        )
+        return
+
+    robot_cfg = CONFIG.get("robot", {})
+    last_exc = None
+    for attempt in range(1, retries + 1):
+        try:
             ROBOT_ARM_CLIENT = SO101(
-                port=CONFIG.get("robot", {}).get("port", "/dev/ttyACM0"),
+                port=robot_cfg.get("port", "/dev/ttyACM0"),
                 gripper_threshold=[
-                    CONFIG["robot"]["gripper_open"],
-                    CONFIG["robot"]["gripper_close"],
+                    robot_cfg.get("gripper_open", 60),
+                    robot_cfg.get("gripper_close", 40),
                 ],
             )
             logger.info("SO101 robot arm client initialized successfully")
-        else:
-            ROBOT_ARM_CLIENT = None
-            logger.info(
-                f"Robotic arm type: {CONFIG.get('robot', {}).get('type')} not supported. Skipping initialization."
-            )
-    except Exception as e:
-        logger.error(f"Failed to initialize Robot Arm client: {e}")
-        raise
+            return
+        except Exception as e:
+            last_exc = e
+            if attempt < retries:
+                logger.warning(
+                    f"Robot arm connection attempt {attempt}/{retries} failed: {e}. "
+                    f"Retrying in {delay}s..."
+                )
+                time.sleep(delay)
+            else:
+                logger.error(f"Failed to initialize Robot Arm client after {retries} attempts: {e}")
+    raise last_exc  # type: ignore[misc]
 
 
 async def run_blocking(func, *args, **kwargs):
@@ -512,6 +561,56 @@ async def healthcheck():
     return {"status": True}
 
 
+@app.get("/system/prerequisites")
+async def check_prerequisites():
+    """Check system prerequisites: dialout group membership and librealsense installation."""
+    import grp
+    import shutil
+
+    # Check dialout group
+    in_dialout = False
+    try:
+        dialout_members = grp.getgrnam("dialout").gr_mem
+        current_user = os.getenv("USER", "")
+        # Also check via os.getgroups() for the primary/supplementary groups
+        try:
+            dialout_gid = grp.getgrnam("dialout").gr_gid
+            in_dialout = current_user in dialout_members or dialout_gid in os.getgroups()
+        except Exception:
+            in_dialout = current_user in dialout_members
+    except KeyError:
+        in_dialout = False
+
+    # Check librealsense
+    librealsense_installed = shutil.which("realsense-viewer") is not None
+
+    return {
+        "dialout": in_dialout,
+        "librealsense": librealsense_installed,
+    }
+
+
+@app.get("/robot/calibration-status")
+async def get_full_calibration_status():
+    """Return whether the robot has been previously calibrated (motor + camera)."""
+    port = CONFIG.get("robot", {}).get("port", "/dev/ttyACM0")
+    robot_id = CONFIG.get("robot", {}).get("id", "SO101Follower")
+
+    # Check if motor calibration file exists
+    calibration_dir = Path.home() / ".cache" / "lerobot" / "calibration" / "so101_follower" / robot_id
+    motor_calibrated = calibration_dir.exists() and any(calibration_dir.glob("*.json"))
+
+    # Check if camera bbox is configured (non-default)
+    bbox = CONFIG.get("inference", {}).get("bbox", None)
+    camera_calibrated = bbox is not None and bbox != [0, 0, 100, 100]
+
+    return {
+        "motor_calibrated": motor_calibrated,
+        "camera_calibrated": camera_calibrated,
+        "calibration_dir": str(calibration_dir),
+    }
+
+
 @app.post("/api/mcp/connect")
 async def mcp_connect():
     """Connect to the MCP server and return available tools."""
@@ -528,133 +627,6 @@ async def mcp_connect():
         return {"message": "Connected to MCP server", "tools": tools_payload}
     except Exception as exc:
         logger.exception("Failed to list MCP tools")
-        raise HTTPException(status_code=500, detail=str(exc))
-
-
-@app.post("/api/mcp/agent")
-async def mcp_agent(request: Request):
-    """Run the MCP agent with the provided conversation."""
-    global OPENAI_CLIENT, MODEL_ID
-
-    body = await request.json()
-    messages = body.get("messages", [])
-    tool_id: str | None = body.get("toolId") or None
-    use_mcp: bool = body.get("useMcp", True)
-    language: str = body.get("language", "english")
-
-    if not messages:
-        raise HTTPException(status_code=400, detail="No messages provided")
-
-    color_frame, _, _ = get_current_frame_for_inference()
-    image_content: list[dict] = []
-    if color_frame is not None:
-        _, buffer = cv2.imencode(".jpg", color_frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
-        frame_b64 = base64.b64encode(buffer).decode("utf-8")
-        image_content = [
-            {
-                "type": "image_url",
-                "image_url": {"url": f"data:image/jpeg;base64,{frame_b64}"},
-            }
-        ]
-
-    # Build the conversation for the LLM, injecting the live camera frame into
-    # the last user message so the model has visual context.
-    llm_messages: list[dict] = []
-    for i, msg in enumerate(messages):
-        role = msg.get("role", "user")
-        content = msg.get("content", "")
-        if role == "user" and i == len(messages) - 1 and image_content:
-            llm_messages.append(
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": content},
-                        *image_content,
-                    ],
-                }
-            )
-        else:
-            llm_messages.append({"role": role, "content": content})
-
-    try:
-        if use_mcp:
-            # Use MCP tool calling flow via the FastMCP client
-            available_tools = await mcp._list_tools()
-            if tool_id:
-                available_tools = [t for t in available_tools if t.name == tool_id]
-
-            tools_spec = [
-                {
-                    "type": "function",
-                    "function": {
-                        "name": t.name,
-                        "description": t.description or "",
-                        "parameters": (
-                            t.input_schema if hasattr(t, "input_schema") else {}
-                        ),
-                    },
-                }
-                for t in available_tools
-            ]
-
-            response = await run_blocking(
-                OPENAI_CLIENT.create_chat_completion,
-                model=MODEL_ID,
-                messages=llm_messages,
-                stream=False,
-                tools=tools_spec if tools_spec else None,
-            )
-
-            choice = response.choices[0]
-            # If the model wants to call a tool, execute it and get the final answer
-            if choice.finish_reason == "tool_calls" and choice.message.tool_calls:
-                tool_results = []
-                for tc in choice.message.tool_calls:
-                    fn_name = tc.function.name
-                    try:
-                        fn_args = json.loads(tc.function.arguments or "{}")
-                    except json.JSONDecodeError:
-                        fn_args = {}
-                    logger.info(f"Calling MCP tool: {fn_name} with args: {fn_args}")
-                    tool_result = await mcp._call_tool(fn_name, fn_args)
-                    result_text = (
-                        tool_result.content[0].text if tool_result.content else ""
-                    )
-                    tool_results.append(
-                        {
-                            "tool_call_id": tc.id,
-                            "role": "tool",
-                            "name": fn_name,
-                            "content": result_text,
-                        }
-                    )
-
-                follow_up_messages = [
-                    *llm_messages,
-                    choice.message,
-                    *tool_results,
-                ]
-                final_response = await run_blocking(
-                    OPENAI_CLIENT.create_chat_completion,
-                    model=MODEL_ID,
-                    messages=follow_up_messages,
-                    stream=False,
-                )
-                output = final_response.choices[0].message.content or ""
-            else:
-                output = choice.message.content or ""
-        else:
-            response = await run_blocking(
-                OPENAI_CLIENT.create_chat_completion,
-                model=MODEL_ID,
-                messages=llm_messages,
-                stream=False,
-            )
-            output = response.choices[0].message.content or ""
-
-        return {"output": output}
-    except Exception as exc:
-        logger.exception("Agent request failed")
         raise HTTPException(status_code=500, detail=str(exc))
 
 
@@ -734,7 +706,7 @@ async def get_scene_description():
     color_frame, depth_frame, _ = get_current_frame_for_inference()
     if color_frame is None:
         raise HTTPException(status_code=503, detail="No camera frame available")
-    _, buffer = cv2.imencode(".png", color_frame)
+    _, buffer = cv2.imencode(".jpg", color_frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
     color_frame_b64 = base64.b64encode(buffer).decode("utf-8")
 
     conversation = [
@@ -754,7 +726,8 @@ async def get_scene_description():
     ]
 
     response = OPENAI_CLIENT.create_chat_completion(
-        model=MODEL_ID, messages=conversation, stream=False
+        model=MODEL_ID, messages=conversation, stream=False,
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
     )
     scene_description = response.choices[0].message.content
 
@@ -766,6 +739,26 @@ async def get_scene_description():
 async def get_robot_types():
     """Return the list of supported robot types."""
     return {"types": AVAILABLE_ROBOT_TYPES}
+
+
+@app.get("/robot/ports")
+async def get_robot_ports():
+    """Return available serial ports that could be robot arms (ACM devices only)."""
+    import serial.tools.list_ports
+
+    ports = []
+    for port_info in serial.tools.list_ports.comports():
+        # Robot arms connect as /dev/ttyACM* devices; skip unrelated ports
+        if "ttyACM" not in port_info.device:
+            continue
+        ports.append(
+            {
+                "device": port_info.device,
+                "description": port_info.description or "",
+                "manufacturer": port_info.manufacturer or "",
+            }
+        )
+    return {"ports": ports}
 
 
 @app.get("/robot/type")
@@ -780,7 +773,12 @@ async def get_robot_type():
 
 @app.post("/robot/type")
 async def set_robot_type(body: dict):
-    """Set the robot type and reinitialize the robot arm client."""
+    """Set the robot type and port configuration (does NOT connect to the arm).
+
+    Connection is deferred until motor calibration completes, avoiding the
+    EOF error that occurs when lerobot detects a calibration mismatch on
+    first connect.
+    """
     global ROBOT_ARM_CLIENT, CONFIG
 
     requested = body.get("type")
@@ -792,8 +790,13 @@ async def set_robot_type(body: dict):
 
     internal_type = ROBOT_TYPE_MAP[requested]
     CONFIG.setdefault("robot", {})["type"] = internal_type
-    await run_blocking(save_config, "config.yaml", CONFIG)
 
+    # Persist port if provided
+    port = body.get("port")
+    if port:
+        CONFIG["robot"]["port"] = port
+
+    # Disconnect any existing client (e.g. if user changes type after calibration)
     if ROBOT_ARM_CLIENT is not None:
         try:
             await run_blocking(ROBOT_ARM_CLIENT.disconnect)
@@ -801,18 +804,28 @@ async def set_robot_type(body: dict):
             logger.warning(f"Could not disconnect robot arm before type change: {exc}")
         ROBOT_ARM_CLIENT = None
 
-    try:
-        initialize_robot_arm_client()
-    except Exception as exc:
-        logger.warning(
-            f"Robot arm initialization failed after type change (hardware may not be connected): {exc}"
-        )
-        ROBOT_ARM_CLIENT = None
+    # Save config without connecting — connection will happen after calibration
+    await run_blocking(save_config, "config.yaml", CONFIG)
+
+    # If motor calibration already exists from a previous session, connect now
+    robot_id = CONFIG.get("robot", {}).get("id", "SO101Follower")
+    calibration_fpath = Path.home() / ".cache" / "huggingface" / "lerobot" / "calibration" / "robots" / "so_follower" / f"{robot_id}.json"
+    motor_calibrated = calibration_fpath.is_file()
+
+    if motor_calibrated:
+        try:
+            initialize_robot_arm_client()
+            logger.info("Robot arm connected (existing calibration found).")
+        except Exception as exc:
+            logger.warning(f"Robot arm connection failed (will need recalibration): {exc}")
+            ROBOT_ARM_CLIENT = None
 
     return {
         "status": True,
         "type": requested,
-        "message": f"Robot type set to '{requested}'",
+        "port": CONFIG["robot"].get("port", "/dev/ttyACM0"),
+        "message": f"Robot type set to '{requested}'."
+        + (" Connected." if ROBOT_ARM_CLIENT else " Run motor calibration to connect."),
     }
 
 
@@ -1103,74 +1116,48 @@ async def aruco_calibrate():
     }
 
 
-# ── Motor calibration (lerobot) ───────────────────────────────────
-
-_MOTOR_CALIBRATION_OUTPUT_MAX = 100  # maximum lines kept in memory
-
-
-def _read_motor_calibration_output(proc: subprocess.Popen) -> None:
-    """Background thread: drain subprocess stdout into MOTOR_CALIBRATION_OUTPUT."""
-    global MOTOR_CALIBRATION_OUTPUT, MOTOR_CALIBRATION_STATE
-    try:
-        for raw_line in proc.stdout:  # type: ignore[union-attr]
-            line = raw_line.rstrip()
-            with MOTOR_CALIBRATION_OUTPUT_LOCK:
-                MOTOR_CALIBRATION_OUTPUT.append(line)
-                if len(MOTOR_CALIBRATION_OUTPUT) > _MOTOR_CALIBRATION_OUTPUT_MAX:
-                    del MOTOR_CALIBRATION_OUTPUT[0]
-        # Process exited – mark complete or error based on return code
-        proc.wait()
-        with MOTOR_CALIBRATION_OUTPUT_LOCK:
-            if MOTOR_CALIBRATION_STATE not in ("idle", "complete"):
-                MOTOR_CALIBRATION_STATE = (
-                    "complete" if proc.returncode == 0 else "error"
-                )
-    except Exception as exc:
-        logger.warning(f"Motor calibration output reader error: {exc}")
+# ── Motor calibration (lerobot Python API) ────────────────────────
 
 
 @app.get("/robot/motor-calibrate/status")
 async def get_motor_calibration_status():
-    """Return the current motor calibration state and the last 20 output lines."""
-    with MOTOR_CALIBRATION_OUTPUT_LOCK:
-        output = MOTOR_CALIBRATION_OUTPUT[-20:]
-        state = MOTOR_CALIBRATION_STATE
-    return {"state": state, "output": output}
+    """Return the current motor calibration state with cached joint readings."""
+    global MOTOR_CALIBRATION_SESSION
+    if MOTOR_CALIBRATION_SESSION is None:
+        return {"state": "idle", "joint_readings": []}
+    return {
+        "state": MOTOR_CALIBRATION_SESSION.state,
+        "joint_readings": MOTOR_CALIBRATION_SESSION.joint_readings,
+    }
 
 
 @app.post("/robot/motor-calibrate/start")
 async def start_motor_calibration():
-    """Start the lerobot motor-calibration process.
+    """Start the motor calibration process using lerobot Python API.
 
-    The robot arm client will be disconnected before calibration so that the
-    serial port is free. After calibration completes and the arm is
-    reconnected via POST /robot/type, the arm will resume normally.
+    This directly interfaces with the Feetech motor bus — no subprocess,
+    no fragile stdin/stdout pipes. The serial port is opened directly and
+    calibration proceeds step-by-step via the /next endpoint.
 
     Phase sequence:
-      0. Call this endpoint – the process starts and asks whether to use an
-         existing calibration file or run a new calibration.
+      0. Call this endpoint – connects to the motor bus.
       1. Call POST /robot/motor-calibrate/next with choice="use_existing" to
-         write the existing calibration file (no physical movement required),
-         or choice="run" to proceed with a full calibration.
-      2. (run only) Call POST /robot/motor-calibrate/next after positioning all
-         joints at the midpoint of their range.
-      3. (run only) Call POST /robot/motor-calibrate/next again after sweeping
-         each joint through its full range to finish calibration.
+         apply the existing calibration, or choice="run" to run fresh.
+      2. (run only) Call /next after positioning joints at midpoint.
+      3. (run only) Call /next after sweeping joints through full range.
     """
-    global MOTOR_CALIBRATION_STATE, MOTOR_CALIBRATION_PROCESS, MOTOR_CALIBRATION_OUTPUT, ROBOT_ARM_CLIENT, CONFIG
+    global MOTOR_CALIBRATION_SESSION, ROBOT_ARM_CLIENT
 
-    if MOTOR_CALIBRATION_STATE in (
-        "awaiting_calibration_choice",
-        "awaiting_middle_position",
-        "awaiting_range_motion",
-    ):
-        raise HTTPException(
-            status_code=409,
-            detail=f"Motor calibration already in progress (state: '{MOTOR_CALIBRATION_STATE}'). "
-            "Call POST /robot/motor-calibrate/next to advance.",
-        )
+    if MOTOR_CALIBRATION_SESSION is not None:
+        current_state = MOTOR_CALIBRATION_SESSION.state
+        if current_state in ("awaiting_calibration_choice", "awaiting_middle_position", "awaiting_range_motion"):
+            raise HTTPException(
+                status_code=409,
+                detail=f"Motor calibration already in progress (state: '{current_state}'). "
+                "Call POST /robot/motor-calibrate/next to advance.",
+            )
 
-    # Release the serial port so lerobot-calibrate can open it
+    # Release the serial port so calibration can open it
     if ROBOT_ARM_CLIENT is not None:
         try:
             await run_blocking(ROBOT_ARM_CLIENT.disconnect)
@@ -1178,53 +1165,26 @@ async def start_motor_calibration():
             logger.warning(f"Could not gracefully disconnect robot arm: {exc}")
         ROBOT_ARM_CLIENT = None
 
-    # Terminate any leftover process and wait for it to release the serial port
-    if MOTOR_CALIBRATION_PROCESS and MOTOR_CALIBRATION_PROCESS.poll() is None:
-        MOTOR_CALIBRATION_PROCESS.terminate()
-        try:
-            MOTOR_CALIBRATION_PROCESS.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            MOTOR_CALIBRATION_PROCESS.kill()
-            MOTOR_CALIBRATION_PROCESS.wait()
+    # Clean up any previous session
+    if MOTOR_CALIBRATION_SESSION is not None:
+        MOTOR_CALIBRATION_SESSION.cleanup()
 
     port = CONFIG.get("robot", {}).get("port", "/dev/ttyACM0")
     robot_id = CONFIG.get("robot", {}).get("id", "SO101Follower")
 
-    with MOTOR_CALIBRATION_OUTPUT_LOCK:
-        MOTOR_CALIBRATION_OUTPUT = []
+    MOTOR_CALIBRATION_SESSION = MotorCalibrationSession(port=port, robot_id=robot_id)
 
     try:
-        proc = subprocess.Popen(
-            [
-                "lerobot-calibrate",
-                "--robot.type=so101_follower",
-                f"--robot.port={port}",
-                f"--robot.id={robot_id}",
-            ],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-        )
-    except FileNotFoundError as exc:
+        await run_blocking(MOTOR_CALIBRATION_SESSION.start)
+    except Exception as exc:
         raise HTTPException(
             status_code=500,
-            detail="lerobot-calibrate not found. Ensure the worker venv is active.",
+            detail=f"Failed to start calibration: {exc}",
         ) from exc
-
-    MOTOR_CALIBRATION_PROCESS = proc
-    MOTOR_CALIBRATION_STATE = "awaiting_calibration_choice"
-
-    threading.Thread(
-        target=_read_motor_calibration_output,
-        args=(proc,),
-        daemon=True,
-    ).start()
 
     return {
         "status": True,
-        "state": MOTOR_CALIBRATION_STATE,
+        "state": MOTOR_CALIBRATION_SESSION.state,
         "message": "Motor calibration started. Choose whether to use the existing "
         "calibration file or run a new calibration.",
     }
@@ -1232,43 +1192,32 @@ async def start_motor_calibration():
 
 @app.post("/robot/motor-calibrate/next")
 async def next_motor_calibration_step(request: Request):
-    """Advance the motor calibration by sending input to the running process.
+    """Advance the motor calibration to the next step.
 
     When state is ``awaiting_calibration_choice``:
-      - Pass ``{"choice": "use_existing"}`` (or omit the body) to write the
-        existing calibration file and complete immediately.
-      - Pass ``{"choice": "run"}`` to start a fresh calibration, transitioning
-        to the ``awaiting_middle_position`` phase.
+      - Pass ``{"choice": "use_existing"}`` to apply existing calibration.
+      - Pass ``{"choice": "run"}`` to start fresh calibration.
 
     When state is ``awaiting_middle_position``:
-      - Call with no body (or any body) to confirm the mid-range position and
-        transition to ``awaiting_range_motion``.
+      - Call to confirm joints are at midpoint.
 
     When state is ``awaiting_range_motion``:
-      - Call with no body (or any body) to confirm the full range sweep and
-        finish calibration.
+      - Call to confirm full range sweep is done.
     """
-    global MOTOR_CALIBRATION_STATE, MOTOR_CALIBRATION_PROCESS
+    global MOTOR_CALIBRATION_SESSION, ROBOT_ARM_CLIENT
 
-    if MOTOR_CALIBRATION_STATE not in (
-        "awaiting_calibration_choice",
-        "awaiting_middle_position",
-        "awaiting_range_motion",
-    ):
+    if MOTOR_CALIBRATION_SESSION is None:
         raise HTTPException(
             status_code=409,
-            detail=f"No motor calibration in progress (state: '{MOTOR_CALIBRATION_STATE}'). "
-            "Call POST /robot/motor-calibrate/start first.",
+            detail="No motor calibration in progress. Call POST /robot/motor-calibrate/start first.",
         )
 
-    if (
-        MOTOR_CALIBRATION_PROCESS is None
-        or MOTOR_CALIBRATION_PROCESS.poll() is not None
-    ):
-        MOTOR_CALIBRATION_STATE = "error"
+    current_state = MOTOR_CALIBRATION_SESSION.state
+    if current_state not in ("awaiting_calibration_choice", "awaiting_middle_position", "awaiting_range_motion"):
         raise HTTPException(
-            status_code=500,
-            detail="Calibration process is no longer running.",
+            status_code=409,
+            detail=f"No motor calibration in progress (state: '{current_state}'). "
+            "Call POST /robot/motor-calibrate/start first.",
         )
 
     body: dict = {}
@@ -1277,86 +1226,23 @@ async def next_motor_calibration_step(request: Request):
     except Exception:
         pass
 
-    if MOTOR_CALIBRATION_STATE == "awaiting_calibration_choice":
-        choice = body.get("choice", "use_existing")
-        if choice == "run":
-            # Type 'c' + Enter to start a new calibration
-            try:
-                MOTOR_CALIBRATION_PROCESS.stdin.write("c\n")  # type: ignore[union-attr]
-                # type: ignore[union-attr]
-                MOTOR_CALIBRATION_PROCESS.stdin.flush()
-            except Exception as exc:
-                MOTOR_CALIBRATION_STATE = "error"
-                raise HTTPException(status_code=500, detail=str(exc)) from exc
-            MOTOR_CALIBRATION_STATE = "awaiting_middle_position"
-            message = (
-                "Running new calibration. Move all joints to the "
-                "middle of their range, then click Confirm."
-            )
-        else:
-            # Press Enter to use the existing calibration file
-            try:
-                MOTOR_CALIBRATION_PROCESS.stdin.write("\n")  # type: ignore[union-attr]
-                # type: ignore[union-attr]
-                MOTOR_CALIBRATION_PROCESS.stdin.flush()
-            except Exception as exc:
-                MOTOR_CALIBRATION_STATE = "error"
-                raise HTTPException(status_code=500, detail=str(exc)) from exc
-            # Wait for the process to finish writing calibration and disconnecting
-            try:
-                await run_blocking(MOTOR_CALIBRATION_PROCESS.wait, timeout=15)
-            except Exception:
-                pass
-            MOTOR_CALIBRATION_STATE = "complete"
-            # Reconnect the robot arm now that the serial port is free again
-            try:
-                initialize_robot_arm_client()
-                logger.info("Robot arm reconnected after using existing calibration.")
-            except Exception as exc:
-                logger.warning(
-                    f"Robot arm reconnection after calibration failed: {exc}"
-                )
-            message = (
-                "Existing calibration file applied. "
-                "Robot arm reconnected automatically."
-            )
-    elif MOTOR_CALIBRATION_STATE == "awaiting_middle_position":
-        try:
-            MOTOR_CALIBRATION_PROCESS.stdin.write("\n")  # type: ignore[union-attr]
-            MOTOR_CALIBRATION_PROCESS.stdin.flush()  # type: ignore[union-attr]
-        except Exception as exc:
-            MOTOR_CALIBRATION_STATE = "error"
-            raise HTTPException(status_code=500, detail=str(exc)) from exc
-        MOTOR_CALIBRATION_STATE = "awaiting_range_motion"
-        message = (
-            "Middle position confirmed. Now move each joint slowly through its "
-            "full range of motion, then call POST /robot/motor-calibrate/next again."
-        )
-    else:  # awaiting_range_motion
-        try:
-            MOTOR_CALIBRATION_PROCESS.stdin.write("\n")  # type: ignore[union-attr]
-            MOTOR_CALIBRATION_PROCESS.stdin.flush()  # type: ignore[union-attr]
-        except Exception as exc:
-            MOTOR_CALIBRATION_STATE = "error"
-            raise HTTPException(status_code=500, detail=str(exc)) from exc
-        MOTOR_CALIBRATION_STATE = "complete"
-        # Wait briefly for the process to finish writing calibration files
-        try:
-            await run_blocking(MOTOR_CALIBRATION_PROCESS.wait, timeout=10)
-        except Exception:
-            pass
-        # Reconnect the robot arm now that the serial port is free again
+    choice = body.get("choice") if current_state == "awaiting_calibration_choice" else None
+
+    try:
+        result = await run_blocking(MOTOR_CALIBRATION_SESSION.advance, choice)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    # If calibration completed, reconnect the robot arm
+    if result["state"] == "complete":
+        await asyncio.sleep(1.0)  # Let OS release serial port
         try:
             initialize_robot_arm_client()
             logger.info("Robot arm reconnected after motor calibration.")
         except Exception as exc:
             logger.warning(f"Robot arm reconnection after calibration failed: {exc}")
-        message = (
-            "Range of motion confirmed. Calibration files written and "
-            "robot arm reconnected automatically."
-        )
 
-    return {"status": True, "state": MOTOR_CALIBRATION_STATE, "message": message}
+    return {"status": True, **result}
 
 
 @mcp.tool
@@ -1495,7 +1381,7 @@ async def pickup_object(requested_object: str, ctx: Context) -> str:
                 T_current = await run_blocking(ROBOT_ARM_CLIENT.arm.get_current_ee_pose)
                 current_pos = T_current[:3, 3]
                 target_x = current_pos[0] + offset_x
-                target_y = current_pos[1] + offset_y
+                target_y = current_pos[1]
                 target_z = current_pos[2]
 
                 # Move to ready pose
@@ -1562,7 +1448,7 @@ async def describe_scene(ctx: Context) -> str:
         return (
             "No frame available for inference; please ensure the camera is streaming."
         )
-    _, buffer = cv2.imencode(".png", color_frame)
+    _, buffer = cv2.imencode(".jpg", color_frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
     color_frame_b64 = base64.b64encode(buffer).decode("utf-8")
 
     conversation = [
@@ -1586,9 +1472,9 @@ async def describe_scene(ctx: Context) -> str:
         model=MODEL_ID,
         messages=conversation,
         stream=False,
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
     )
     scene_description = response.choices[0].message.content
-
     logger.info(f"Scene description response: {scene_description}")
     return scene_description
 

@@ -6,7 +6,7 @@
 import { useState } from 'react'
 import type { DemoParam } from '@/types/demo-params'
 
-export const STT_DEFAULTS = {
+const STT_DEFAULTS = {
   language: 'en',
   useDenoise: 'false',
 }
@@ -20,7 +20,7 @@ export const STT_LANGUAGE_OPTIONS = [
   { value: 'es', label: 'Spanish' },
 ]
 
-export const STT_DENOISE_OPTIONS = [
+const STT_DENOISE_OPTIONS = [
   { value: 'false', label: 'Disabled' },
   { value: 'true', label: 'Enabled' },
 ]

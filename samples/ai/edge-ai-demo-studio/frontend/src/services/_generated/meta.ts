@@ -8,8 +8,11 @@ import { service as getiClassifierMeta } from '../geti-classifier/data'
 import { service as imageBasedVideoSearchMeta } from '../suites/metro-ai-suite/image-based-video-search/data'
 import { service as imageGenerationMeta } from '../image-generation/data'
 import { service as lipsyncMeta } from '../lipsync/data'
+import { service as lossPreventionMeta } from '../suites/retail-ai-suite/loss-prevention/data'
 import { service as mcpMeta } from '../mcp/data'
 import { service as medicalScribeDatabaseMeta } from '../medical-scribe-database/data'
+import { service as ocrMeta } from '../ocr/data'
+import { service as palletDefectDetectionMeta } from '../suites/manufacturing-ai-suite/pallet-defect-detection/data'
 import { service as pptTranslatorMeta } from '../ppt-translator/data'
 import { service as rerankMeta } from '../rerank/data'
 import { service as roboticsAiMeta } from '../robotics-ai/data'
@@ -28,8 +31,11 @@ export const metaMap = {
   'image-based-video-search': imageBasedVideoSearchMeta,
   'image-generation': imageGenerationMeta,
   lipsync: lipsyncMeta,
+  'loss-prevention': lossPreventionMeta,
   mcp: mcpMeta,
   'medical-scribe-database': medicalScribeDatabaseMeta,
+  ocr: ocrMeta,
+  'pallet-defect-detection': palletDefectDetectionMeta,
   'ppt-translator': pptTranslatorMeta,
   rerank: rerankMeta,
   'robotics-ai': roboticsAiMeta,

@@ -3,6 +3,8 @@
 
 import { ArrowUpDown } from 'lucide-react'
 import type { ServiceMeta } from '@/services/types'
+// NOTE: relative path (not the @/ alias) is required — this data.ts is loaded
+// by next.config.ts in a CommonJS context where @/ runtime imports don't resolve.
 import {
   getMultiserveDefaultModel,
   getMultiserveServiceConfig,

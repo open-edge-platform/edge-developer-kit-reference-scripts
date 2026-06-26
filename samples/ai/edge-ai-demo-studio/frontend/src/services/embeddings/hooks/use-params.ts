@@ -6,11 +6,11 @@
 import { useState } from 'react'
 import type { DemoParam } from '@/types/demo-params'
 
-export const EMBEDDINGS_DEFAULTS = {
+const EMBEDDINGS_DEFAULTS = {
   encodingFormat: 'float',
 }
 
-export const ENCODING_FORMAT_OPTIONS = [
+const ENCODING_FORMAT_OPTIONS = [
   { value: 'float', label: 'Float' },
   { value: 'base64', label: 'Base64' },
 ]

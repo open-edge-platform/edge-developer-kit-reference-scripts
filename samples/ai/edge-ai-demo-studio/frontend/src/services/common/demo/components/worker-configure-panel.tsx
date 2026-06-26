@@ -29,7 +29,7 @@ import { ClearModelCacheSection } from './clear-model-cache-section'
 import {
   type ConfigurePanelStatus,
   ServiceConfigurePanel,
-} from './service-configure-panel'
+} from '@/components/common/service-configure-panel'
 
 interface WorkerConfigurePanelProps {
   service: Service

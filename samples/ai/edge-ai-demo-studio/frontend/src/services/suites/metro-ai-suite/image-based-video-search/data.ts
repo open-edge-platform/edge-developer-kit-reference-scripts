@@ -34,16 +34,20 @@ export const service: ServiceMeta = {
 }
 
 export const worker: WorkerConfig = {
-  buildArgs: (doc) => [
-    '--http-port',
-    String(doc.port),
-    '--https-port',
-    String(doc.port + 1),
-    '--rtsp-port',
-    String(doc.port + 2),
-    '--device',
-    doc.models.default.device,
-  ],
+  buildArgs: (doc) => {
+    const port = doc.port
+    if (port == null) throw new Error('Service port is not configured')
+    return [
+      '--http-port',
+      String(port),
+      '--https-port',
+      String(port + 1),
+      '--rtsp-port',
+      String(port + 2),
+      '--device',
+      doc.models.default.device,
+    ]
+  },
   workerSubDir: 'suite/metro-ai-suite/image-based-video-search',
   requiresDocker: true,
   stopScript: true,

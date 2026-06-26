@@ -73,12 +73,12 @@ function Get-ServiceLog {
 $thirdpartyDir = Join-Path $PWD "thirdparty"
 $rootThirdpartyDir = Join-Path (Split-Path $PWD -Parent) "thirdparty"
 $uvZipPath = Join-Path $thirdpartyDir "uv.zip"
-$uvZipUrl = "https://github.com/astral-sh/uv/releases/download/0.8.13/uv-x86_64-pc-windows-msvc.zip"
+$uvZipUrl = "https://releases.astral.sh/github/uv/releases/download/0.11.22/uv-x86_64-pc-windows-msvc.zip"
 $uvDir = Join-Path $thirdpartyDir "uv"
 $uvPath = Join-Path $uvDir "uv.exe"
 
 $ovmsZipPath = Join-Path $thirdpartyDir "ovms_windows.zip"
-$ovmsZipUrl = 'https://github.com/openvinotoolkit/model_server/releases/download/v2025.4.1/ovms_windows_python_on.zip'
+$ovmsZipUrl = 'https://github.com/openvinotoolkit/model_server/releases/download/v2026.2/ovms_windows_2026.2.0_python_on.zip'
 $ovmsDir = Join-Path $thirdpartyDir "ovms"
 $ovmsPath = Join-Path $ovmsDir "ovms.exe"
 

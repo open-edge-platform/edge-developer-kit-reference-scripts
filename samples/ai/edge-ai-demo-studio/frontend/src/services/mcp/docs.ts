@@ -4,10 +4,7 @@
 import type { ServiceDocsData } from '@/services/types'
 
 export const getDocsData = ({ host }: { host: string }): ServiceDocsData => {
-  // MCP endpoints live on the frontend itself, not on a proxied worker
-  const origin = host.includes('/')
-    ? host.substring(0, host.indexOf('/'))
-    : host
+  const origin = host.split('/api/')[0]
 
   return {
     serviceDescription:
@@ -36,7 +33,7 @@ export const getDocsData = ({ host }: { host: string }): ServiceDocsData => {
             name: 'url',
             type: 'string',
             required: true,
-            desc: 'MCP server endpoint URL (e.g., http://localhost:8000/mcp)',
+            desc: 'MCP server endpoint URL (e.g., https://mcp.example.com/mcp)',
           },
           {
             name: 'apiKey',
@@ -105,12 +102,12 @@ export const getDocsData = ({ host }: { host: string }): ServiceDocsData => {
           {
             language: 'Python',
             languageCode: 'python',
-            code: `import requests\n\nresponse = requests.get("http://${origin}/api/mcp-servers")\nservers = response.json()\n\nfor server in servers.get("docs", []):\n    status = "enabled" if not server.get("disabled") else "disabled"\n    print(f"{server['name']} ({server['url']}) - {status}")`,
+            code: `import requests\n\nresponse = requests.get("${origin}/api/mcp-servers")\nservers = response.json()\n\nfor server in servers.get("docs", []):\n    status = "enabled" if not server.get("disabled") else "disabled"\n    print(f"{server['name']} ({server['url']}) - {status}")`,
           },
           {
             language: 'cURL',
             languageCode: 'bash',
-            code: `curl http://${origin}/api/mcp-servers`,
+            code: `curl ${origin}/api/mcp-servers`,
           },
         ],
       },
@@ -120,16 +117,16 @@ export const getDocsData = ({ host }: { host: string }): ServiceDocsData => {
           {
             language: 'Python',
             languageCode: 'python',
-            code: `import requests\n\nresponse = requests.post(\n    "http://${origin}/api/mcp-servers",\n    json={\n        "name": "Weather Tools",\n        "url": "http://localhost:7906/mcp",\n        "disabled": False,\n    },\n)\nprint(response.json())`,
+            code: `import requests\n\nresponse = requests.post(\n    "${origin}/api/mcp-servers",\n    json={\n        "name": "Weather Tools",\n        "url": "https://weather.example.com/mcp",\n        "disabled": False,\n    },\n)\nprint(response.json())`,
           },
           {
             language: 'cURL',
             languageCode: 'bash',
-            code: `curl -X POST http://${origin}/api/mcp-servers \\\n  -H "Content-Type: application/json" \\\n  -d '{"name": "Weather Tools", "url": "http://localhost:7906/mcp"}'`,
+            code: `curl -X POST ${origin}/api/mcp-servers \\\n  -H "Content-Type: application/json" \\\n  -d '{"name": "Weather Tools", "url": "https://weather.example.com/mcp"}'`,
           },
         ],
       },
     ],
-    responseExample: `{\n  "docs": [\n    {\n      "id": 1,\n      "name": "Weather Tools",\n      "url": "http://localhost:7906/mcp",\n      "apiKey": null,\n      "disabled": false,\n      "updatedAt": "2026-01-15T10:30:00.000Z",\n      "createdAt": "2026-01-15T10:30:00.000Z"\n    }\n  ],\n  "totalDocs": 1,\n  "limit": 10,\n  "totalPages": 1,\n  "page": 1,\n  "pagingCounter": 1,\n  "hasPrevPage": false,\n  "hasNextPage": false\n}`,
+    responseExample: `{\n  "docs": [\n    {\n      "id": 1,\n      "name": "Weather Tools",\n      "url": "https://weather.example.com/mcp",\n      "apiKey": null,\n      "disabled": false,\n      "updatedAt": "2026-01-15T10:30:00.000Z",\n      "createdAt": "2026-01-15T10:30:00.000Z"\n    }\n  ],\n  "totalDocs": 1,\n  "limit": 10,\n  "totalPages": 1,\n  "page": 1,\n  "pagingCounter": 1,\n  "hasPrevPage": false,\n  "hasNextPage": false\n}`,
   }
 }

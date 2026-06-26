@@ -21,7 +21,9 @@ import {
 } from 'lucide-react'
 import Image from 'next/image'
 import Link from 'next/link'
+import { useState } from 'react'
 import { Streamdown } from 'streamdown'
+import { ExportSamplesDialog } from '@/components/dashboard/samples/export-samples-dialog'
 import { StartAllServicesButton } from '@/components/dashboard/samples/start-all-services-button'
 import {
   Accordion,
@@ -66,6 +68,7 @@ export function SampleDetailContent({
   const optDeps = getOptionalDeps(sample)
   const { systemInfo } = useSystemInfo()
   const deviceMap = getDeviceMap(sample, systemInfo?.devices)
+  const [exportOpen, setExportOpen] = useState(false)
 
   const allDepIds = sample.dependencies.map((d) => d.serviceId)
   const serviceMap = useGetServices(allDepIds)
@@ -218,6 +221,16 @@ export function SampleDetailContent({
                   </span>
                 </div>
               </div>
+
+              <Button
+                variant="outline"
+                size="lg"
+                className="gap-2"
+                onClick={() => setExportOpen(true)}
+              >
+                <Download className="h-4 w-4" />
+                Export
+              </Button>
 
               {sample.demo.type === 'external' && sample.demo.externalUrl ? (
                 <Button
@@ -674,6 +687,12 @@ export function SampleDetailContent({
           </TabsContent>
         </Tabs>
       </div>
+
+      <ExportSamplesDialog
+        sampleIds={[sample.id]}
+        open={exportOpen}
+        onOpenChange={setExportOpen}
+      />
     </>
   )
 }
@@ -784,13 +803,13 @@ function ServiceRow({
 
 function HiddenServiceActionButton({ service }: { service: Service }) {
   const {
-    statusMap,
+    serviceById,
     startService,
     stopService,
     restartService,
     isActionPending,
   } = useServiceStatus()
-  const liveStatus = statusMap[service.id] ?? service.status
+  const liveStatus = serviceById.get(service.id)?.status ?? service.status
   const pending = isActionPending(service.id)
   const canStop = liveStatus === 'online' || liveStatus === 'starting'
 

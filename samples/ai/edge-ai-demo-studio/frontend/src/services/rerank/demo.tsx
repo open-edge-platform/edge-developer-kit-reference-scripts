@@ -11,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { DemoParameterSidebar } from '@/services/common/demo/components/demo-parameter-sidebar'
 import type { Service } from '@/services/types'
-import { engines } from '@/engines/registry'
+import { getServiceModelName } from '@/services/common/get-service-model'
 import { useRerank } from './hooks'
 import { useRerankParams } from './hooks/use-params'
 
@@ -29,14 +29,7 @@ export function RerankerDemo({ service }: { service: Service }) {
   const [query, setQuery] = useState(DEFAULT_QUERY)
   const [documents, setDocuments] = useState(DEFAULT_DOCUMENTS.join('\n\n'))
 
-  const engine = engines[service.engine ?? 'default']
-  const modelConfig = {
-    name: service.currentModel ?? service.defaultModel?.name ?? '',
-    device: service.currentDevice ?? service.defaultModel?.device ?? '',
-    backend: service.currentBackend ?? service.defaultModel?.backend,
-    quant: service.currentQuant ?? service.defaultModel?.quant,
-  }
-  const model = engine.getModelName(modelConfig, true)
+  const model = getServiceModelName(service, true) ?? ''
 
   const rerankMutation = useRerank(service.id, model)
   const { values: rerankValues, params } = useRerankParams()

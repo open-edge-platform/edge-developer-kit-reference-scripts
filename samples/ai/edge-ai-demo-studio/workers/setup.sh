@@ -12,13 +12,13 @@ TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 THIRDPARTY_DIR="$SCRIPT_DIR/thirdparty"
 ROOT_THIRDPARTY_DIR="$SCRIPT_DIR/../thirdparty"
 UV_ZIP_PATH="$THIRDPARTY_DIR/uv.zip"
-UV_ZIP_URL="https://github.com/astral-sh/uv/releases/download/0.8.13/uv-x86_64-unknown-linux-gnu.tar.gz"
+UV_ZIP_URL="https://releases.astral.sh/github/uv/releases/download/0.11.22/uv-x86_64-unknown-linux-gnu.tar.gz"
 UV_DIR="$THIRDPARTY_DIR/uv"
 UV_PATH="$UV_DIR/uv"
 
 OVMS_ZIP_PATH="$THIRDPARTY_DIR/ovms.tar.gz"
-OVMS_ZIP_URL_UBUNTU22="https://github.com/openvinotoolkit/model_server/releases/download/v2025.3/ovms_ubuntu22_python_on.tar.gz"
-OVMS_ZIP_URL_UBUNTU24="https://github.com/openvinotoolkit/model_server/releases/download/v2025.3/ovms_ubuntu24_python_on.tar.gz"
+OVMS_ZIP_URL_UBUNTU22="https://github.com/openvinotoolkit/model_server/releases/download/v2026.2/ovms_ubuntu22_2026.2.0_python_off.tar.gz"
+OVMS_ZIP_URL_UBUNTU24="https://github.com/openvinotoolkit/model_server/releases/download/v2026.2/ovms_ubuntu24_2026.2.0_python_off.tar.gz"
 OVMS_DIR="$THIRDPARTY_DIR/ovms"
 
 # FFmpeg is installed at project root thirdparty directory

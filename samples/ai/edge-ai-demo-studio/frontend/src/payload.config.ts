@@ -54,9 +54,9 @@ async function ensureServicesExist(payload: BasePayload) {
   const serverOS = os.platform() === 'win32' ? 'windows' : 'linux'
 
   for (const [serviceType, meta] of Object.entries(metaMap)) {
-    if (meta.execution.mode === 'none' || !meta.port) {
+    if (meta.execution.mode === 'none' && !meta.port) {
       logger.log(
-        `ℹ️  Skipping auto-creation of ${meta.name} with 'none' execution mode or missing port:`,
+        `ℹ️  Skipping auto-creation of ${meta.name} with 'none' execution mode and missing port:`,
       )
       continue
     }
@@ -124,19 +124,26 @@ async function ensureServicesExist(payload: BasePayload) {
     )
 
     if (existingService) {
-      const fieldsToCheck = ['port', 'engine', 'models', 'healthCheck'] as const
-      const needsUpdate = fieldsToCheck.some(
-        (field) =>
-          JSON.stringify(existingService[field]) !==
-          JSON.stringify(newData[field]),
-      )
+      const fieldsToCheck = ['port', 'engine', 'healthCheck'] as const
+      const hasModels = Boolean(existingService.models?.default?.name)
+      const needsUpdate =
+        !hasModels ||
+        fieldsToCheck.some(
+          (field) =>
+            JSON.stringify(existingService[field]) !==
+            JSON.stringify(newData[field]),
+        )
 
       if (needsUpdate) {
         try {
           await payload.update({
             collection: 'services',
             id: existingService.id,
-            data: newData,
+            // Preserve the user's saved models when present; otherwise seed
+            // them from the static default.
+            data: hasModels
+              ? { ...newData, models: existingService.models }
+              : newData,
           })
           logger.log(
             `🔄 Updated service record: ${meta.name} (${serviceType}) — config changed`,

@@ -51,16 +51,32 @@ import { useUpdateServiceConfig } from '@/hooks/use-service-config'
 import {
   type ConfigurePanelStatus,
   ServiceConfigurePanel,
-} from '@/services/common/demo/components/service-configure-panel'
+} from '@/components/common/service-configure-panel'
 import { getOSLabel } from '@/lib/utils'
-import type { Service } from '@/services/types'
 import { ModelManager } from '../model-manager'
 import { ConfigSection, LabelWithTooltip } from './config-section'
 import { ExtraParamsSection } from './extra-params-section'
 import { buildInitialDraft, type ConfigDraft } from './types'
 
+interface ConfigurableService {
+  id: string
+  name: string
+  dbId?: number
+  currentModel?: string
+  currentDevice?: string
+  currentBackend?: string
+  currentQuant?: string
+  currentSource?: string
+  defaultModel?: {
+    name: string
+    device: string
+    backend?: string
+    quant?: string
+  }
+}
+
 interface MultiserveConfigurePanelProps {
-  service: Service
+  service: ConfigurableService
 }
 
 export function MultiserveConfigurePanel({

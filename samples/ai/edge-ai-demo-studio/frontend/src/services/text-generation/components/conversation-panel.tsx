@@ -22,8 +22,8 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-import { useSttRecording } from '@/services/common/hooks/use-stt-recording'
-import { useTtsPlayback } from '@/services/common/hooks/use-tts-playback'
+import { useVoiceInput } from '@/context/voice-input-context'
+import { useTtsPlaybackControls } from '@/context/tts-playback-context'
 import {
   type ChatMsg,
   type ChatStatus,
@@ -78,8 +78,6 @@ export function ConversationPanel({
   emptyStateText = 'Start a conversation',
   sttOnline,
   ttsOnline,
-  ttsVoice,
-  ttsSpeed,
   avatarClassName,
   avatarTextClassName,
   toolbarExtra,
@@ -89,9 +87,8 @@ export function ConversationPanel({
 }: ConversationPanelProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const isRunning = status === 'submitted' || status === 'streaming'
-
-  const stt = useSttRecording({ onTranscription: onInputChange })
-  const tts = useTtsPlayback({ voice: ttsVoice, speed: ttsSpeed })
+  const voiceInput = useVoiceInput()
+  const ttsPlayback = useTtsPlaybackControls()
 
   useEffect(() => {
     if (messages.length > 0 || status !== 'ready') {
@@ -108,8 +105,9 @@ export function ConversationPanel({
     return () => clearInterval(id)
   }, [status])
 
+  const showMic = !!sttOnline && voiceInput != null
   const showToolbar =
-    messages.length > 0 || sttOnline || toolbarExtra !== undefined
+    messages.length > 0 || showMic || toolbarExtra !== undefined
 
   return (
     <div
@@ -145,11 +143,11 @@ export function ConversationPanel({
                 }
                 isRunning={isRunning}
                 onSpeak={
-                  ttsOnline
-                    ? (text) => tts.handleSpeak(text, msg.id)
+                  ttsOnline && ttsPlayback
+                    ? (text) => ttsPlayback.handleSpeak(text, msg.id)
                     : undefined
                 }
-                isSpeaking={tts.speakingMsgId === msg.id}
+                isSpeaking={ttsPlayback?.speakingMsgId === msg.id}
                 avatarClassName={avatarClassName}
                 avatarTextClassName={avatarTextClassName}
               />
@@ -181,40 +179,42 @@ export function ConversationPanel({
                 Reset
               </Button>
             )}
-            {sttOnline && (
+            {showMic && voiceInput && (
               <TooltipProvider>
-                <Tooltip open={stt.micError ? undefined : false}>
+                <Tooltip open={voiceInput.micError ? undefined : false}>
                   <TooltipTrigger asChild>
                     <Button
                       onClick={
-                        stt.isRecording ? stt.stopRecording : stt.startRecording
+                        voiceInput.isRecording
+                          ? voiceInput.stopRecording
+                          : voiceInput.startRecording
                       }
                       variant={
-                        stt.isRecording
+                        voiceInput.isRecording
                           ? 'destructive'
-                          : stt.micError
+                          : voiceInput.micError
                             ? 'outline'
                             : 'ghost'
                       }
                       size="sm"
                       className={cn(
                         'h-7 gap-1.5 px-2 text-xs',
-                        !stt.isRecording &&
-                          !stt.micError &&
+                        !voiceInput.isRecording &&
+                          !voiceInput.micError &&
                           'text-muted-foreground hover:text-foreground',
-                        stt.micError &&
+                        voiceInput.micError &&
                           'text-destructive border-destructive/50',
                       )}
-                      disabled={disabled || isRunning || stt.isPending}
+                      disabled={disabled || isRunning || voiceInput.isPending}
                     >
-                      {stt.isPending ? (
+                      {voiceInput.isPending ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : stt.isRecording ? (
+                      ) : voiceInput.isRecording ? (
                         <>
                           <Square className="h-3 w-3" />
                           Stop
                         </>
-                      ) : stt.micError ? (
+                      ) : voiceInput.micError ? (
                         <>
                           <MicOff className="h-3.5 w-3.5" />
                           Voice
@@ -228,7 +228,7 @@ export function ConversationPanel({
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent side="top" className="max-w-56 text-center">
-                    {stt.micError}
+                    {voiceInput.micError}
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>

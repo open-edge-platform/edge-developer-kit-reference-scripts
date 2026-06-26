@@ -11,5 +11,13 @@
     "src/components/ui/**",
     "src/components/ai-elements/**",
     "src/payload/migrations/**"
+  ],
+  "ignoreDependencies": [
+    "@streamdown/.+",
+    "^prettier$",
+    "^prettier-plugin-tailwindcss$",
+    "^eslint-plugin-prettier$",
+    "^libsql$",
+    "^hast-util-to-jsx-runtime$"
   ]
 }

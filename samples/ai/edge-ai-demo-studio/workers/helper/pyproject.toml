@@ -5,11 +5,11 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13, <3.14"
 dependencies = [
-    "openvino>=2025.4.1",
-    "torch>=2.11.0",
+    "openvino>=2026.2",
+    "torch>=2.12.1",
     "torchaudio>=2.11.0",
     "torchvision>=0.26.0",
-    "triton-xpu==3.7.0",
+    "triton-xpu==3.7.1",
 ]
 
 [tool.uv.sources]

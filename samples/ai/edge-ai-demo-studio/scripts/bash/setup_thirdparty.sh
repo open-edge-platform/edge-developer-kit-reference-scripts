@@ -11,8 +11,9 @@ NODE_URL="https://nodejs.org/dist/v22.18.0/node-v22.18.0-linux-x64.tar.xz"
 NODE_DIR="$THIRDPARTY_DIR/node"
 NODE_PATH="$NODE_DIR/bin/node"
 
-FFMPEG_TAR_PATH="$THIRDPARTY_DIR/ffmpeg-release-amd64-static.tar.xz"
-FFMPEG_TAR_URL="https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
+FFMPEG_TAR_PATH="$THIRDPARTY_DIR/ffmpeg-n7.1.4-39-ga5faeca88f-linux64-gpl-7.1.tar.xz"
+# FFMPEG_TAR_URL="https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
+FFMPEG_TAR_URL="https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-06-15-15-03/ffmpeg-n7.1.4-39-ga5faeca88f-linux64-gpl-7.1.tar.xz"
 FFMPEG_DIR="$THIRDPARTY_DIR/ffmpeg"
 FFMPEG_PATH="$FFMPEG_DIR/bin/ffmpeg"
 
@@ -125,9 +126,9 @@ install_ffmpeg() {
     return 1
   fi
   
-  # Copy ffmpeg binaries
-  if ! cp "$EXTRACTED_DIR/ffmpeg" "$FFMPEG_DIR/bin/" || \
-     ! cp "$EXTRACTED_DIR/ffprobe" "$FFMPEG_DIR/bin/"; then
+  # Copy ffmpeg binaries (BtbN builds place binaries under a bin/ subdirectory)
+  if ! cp "$EXTRACTED_DIR/bin/ffmpeg" "$FFMPEG_DIR/bin/" || \
+     ! cp "$EXTRACTED_DIR/bin/ffprobe" "$FFMPEG_DIR/bin/"; then
     echo "❌ ERROR: Failed to copy FFmpeg binaries"
     rm -rf "$EXTRACTED_DIR"
     rm -f "$FFMPEG_TAR_PATH"

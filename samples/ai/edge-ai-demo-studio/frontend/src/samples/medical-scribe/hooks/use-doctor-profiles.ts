@@ -25,7 +25,7 @@ export function useDoctorProfiles() {
     },
   })
 
-  const createProfileMutation = useMutation({
+  const { mutateAsync: createProfileMutate } = useMutation({
     mutationFn: async (profile: DoctorProfile) => {
       const res = await fetch(`${API_BASE}`, {
         method: 'POST',
@@ -39,7 +39,7 @@ export function useDoctorProfiles() {
     },
   })
 
-  const deleteProfileMutation = useMutation({
+  const { mutateAsync: deleteProfileMutate } = useMutation({
     mutationFn: async (id: string) => {
       const res = await fetch(
         new URL(`${API_BASE}/${id}`, window.location.origin),
@@ -54,7 +54,7 @@ export function useDoctorProfiles() {
     },
   })
 
-  const updateEmbeddingMutation = useMutation({
+  const { mutateAsync: updateEmbeddingMutate } = useMutation({
     mutationFn: async ({
       id,
       embedding,
@@ -89,13 +89,13 @@ export function useDoctorProfiles() {
         profile,
       ])
 
-      createProfileMutation.mutateAsync(profile).catch(() => {
+      createProfileMutate(profile).catch(() => {
         queryClient.invalidateQueries({ queryKey: QUERY_KEY })
       })
 
       return profile
     },
-    [createProfileMutation, queryClient],
+    [createProfileMutate, queryClient],
   )
 
   const removeProfile = useCallback(
@@ -104,11 +104,11 @@ export function useDoctorProfiles() {
         prev.filter((p) => p.id !== id),
       )
 
-      deleteProfileMutation.mutateAsync(id).catch(() => {
+      deleteProfileMutate(id).catch(() => {
         queryClient.invalidateQueries({ queryKey: QUERY_KEY })
       })
     },
-    [deleteProfileMutation, queryClient],
+    [deleteProfileMutate, queryClient],
   )
 
   const updateEmbedding = useCallback(
@@ -117,11 +117,11 @@ export function useDoctorProfiles() {
         prev.map((p) => (p.id === id ? { ...p, embedding } : p)),
       )
 
-      updateEmbeddingMutation.mutateAsync({ id, embedding }).catch(() => {
+      updateEmbeddingMutate({ id, embedding }).catch(() => {
         queryClient.invalidateQueries({ queryKey: QUERY_KEY })
       })
     },
-    [queryClient, updateEmbeddingMutation],
+    [queryClient, updateEmbeddingMutate],
   )
 
   return { profiles, addProfile, removeProfile, updateEmbedding }

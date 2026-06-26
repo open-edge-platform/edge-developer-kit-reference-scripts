@@ -16,7 +16,6 @@ fi
 VENV_ACTIVATE_SCRIPT=".venv/bin/activate"
 
 LLAMA_VERSION=b7992
-# LLAMA_RELEASE_URL="https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_VERSION}/llama-b7180-bin-ubuntu-x64.zip"
 LLAMA_RELEASE_URL="https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_VERSION}/llama-${LLAMA_VERSION}-bin-ubuntu-vulkan-x64.tar.gz"
 LLAMA_DOWNLOAD_FILE="llama-ubuntu.tar.gz"
 LLAMA_EXTRACT_DIR="engine/llama.cpp-vulkan"
@@ -29,12 +28,11 @@ GGUF_PARSER_RELEASE_URL="https://github.com/gpustack/gguf-parser-go/releases/dow
 GGUF_PARSER_BINARY_NAME="gguf-parser"
 GGUF_PARSER_INSTALL_DIR="engine"
 
-OVMS_VERSION="v2026.0"
-OVMS_RELEASE_URL="https://github.com/openvinotoolkit/model_server/releases/download/${OVMS_VERSION}/ovms_ubuntu24_python_on.tar.gz"
+OVMS_RELEASE_URL="https://github.com/openvinotoolkit/model_server/releases/download/v2026.2/ovms_ubuntu24_2026.2.0_python_off.tar.gz"
 OVMS_DOWNLOAD_FILE="ovms.tar.gz"
 OVMS_EXTRACT_DIR="engine"
 
-OPTIMUM_EXPORT_MODEL_URL="https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/tags/${OVMS_VERSION}/demos/common/export_models"
+OPTIMUM_EXPORT_MODEL_URL="https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/tags/v2026.2/demos/common/export_models"
 OPTIMUM_EXPORT_MODEL_REQUIREMENTS_URL="requirements.txt"
 
 # --- Utility Functions ---

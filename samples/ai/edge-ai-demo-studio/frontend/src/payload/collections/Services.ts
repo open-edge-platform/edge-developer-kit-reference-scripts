@@ -77,7 +77,7 @@ export const Services: CollectionConfig = {
     {
       name: 'port',
       type: 'number',
-      required: true,
+      required: false,
       unique: true,
     },
     {

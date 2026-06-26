@@ -27,7 +27,7 @@ export function useSessions() {
     },
   })
 
-  const createSessionMutation = useMutation({
+  const { mutateAsync: createSessionMutate } = useMutation({
     mutationFn: async (session: Session) => {
       const res = await fetch(`${API_BASE}`, {
         method: 'POST',
@@ -44,7 +44,7 @@ export function useSessions() {
     },
   })
 
-  const updateSessionMutation = useMutation({
+  const { mutateAsync: updateSessionMutate } = useMutation({
     mutationFn: async ({
       id,
       updates,
@@ -64,7 +64,7 @@ export function useSessions() {
     },
   })
 
-  const deleteSessionMutation = useMutation({
+  const { mutateAsync: deleteSessionMutate } = useMutation({
     mutationFn: async (id: string) => {
       const res = await fetch(
         new URL(`${API_BASE}/${id}`, window.location.origin),
@@ -105,8 +105,7 @@ export function useSessions() {
         ...prev,
       ])
 
-      createSessionMutation
-        .mutateAsync(session)
+      createSessionMutate(session)
         .then((serverSession) => {
           queryClient.setQueryData<Session[]>(QUERY_KEY, (prev = []) =>
             prev.map((s) =>
@@ -120,7 +119,7 @@ export function useSessions() {
 
       return session
     },
-    [createSessionMutation, queryClient],
+    [createSessionMutate, queryClient],
   )
 
   const updateSession = useCallback(
@@ -129,11 +128,11 @@ export function useSessions() {
         prev.map((s) => (s.id === id ? { ...s, ...updates } : s)),
       )
 
-      updateSessionMutation.mutateAsync({ id, updates }).catch(() => {
+      updateSessionMutate({ id, updates }).catch(() => {
         queryClient.invalidateQueries({ queryKey: QUERY_KEY })
       })
     },
-    [queryClient, updateSessionMutation],
+    [queryClient, updateSessionMutate],
   )
 
   const deleteSession = useCallback(
@@ -142,11 +141,11 @@ export function useSessions() {
         prev.filter((s) => s.id !== id),
       )
 
-      deleteSessionMutation.mutateAsync(id).catch(() => {
+      deleteSessionMutate(id).catch(() => {
         queryClient.invalidateQueries({ queryKey: QUERY_KEY })
       })
     },
-    [deleteSessionMutation, queryClient],
+    [deleteSessionMutate, queryClient],
   )
 
   return {

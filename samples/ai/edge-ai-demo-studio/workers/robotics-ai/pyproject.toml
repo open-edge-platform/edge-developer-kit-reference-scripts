@@ -25,6 +25,11 @@ clip = { git = "https://github.com/openai/CLIP.git" }
 
 [tool.uv]
 index-strategy = "unsafe-best-match"
+override-dependencies = [
+    "torch>=2.12.1",
+    "torchvision>=0.27.1",
+    "diffusers>=0.38.0"
+]
 
 [[tool.uv.index]]
 url = "https://download.pytorch.org/whl/xpu"

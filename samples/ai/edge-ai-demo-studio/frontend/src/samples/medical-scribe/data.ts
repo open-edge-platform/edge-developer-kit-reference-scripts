@@ -3,6 +3,7 @@
 
 import type { Sample } from '../types'
 import { MedicalScribeDemo } from './demo'
+import sampleImage from './image.png'
 
 export const sample: Sample = {
   id: 'medical-scribe',
@@ -20,6 +21,7 @@ export const sample: Sample = {
   ],
   tags: ['Medical', 'Scribe', 'SOAP', 'Diarization', 'Transcription'],
   pipeline: ['speech-to-text', 'diarization', 'text-generation'],
+  image: sampleImage,
   demo: {
     type: 'component',
     component: MedicalScribeDemo,

@@ -192,6 +192,7 @@ const outputPath = join(servicesGenDir, 'services.ts')
 const workerRegistryPath = join(servicesGenDir, 'workers.ts')
 const docsRegistryPath = join(servicesGenDir, 'docs.ts')
 const configurePanelRegistryPath = join(servicesGenDir, 'configure-panels.ts')
+const featureProviderRegistryPath = join(servicesGenDir, 'feature-providers.ts')
 
 /** Convert a folder name to a camelCase alias (e.g. "text-generation" → "textGenerationMeta") */
 function toAlias(folder) {
@@ -247,12 +248,40 @@ function resolveConfigurePanel(serviceDir, importPath) {
   return null
 }
 
+/**
+ * Resolve an optional service's "feature provider" — the headless component a
+ * sample mounts to integrate this service as an optional feature. Drives the
+ * featureProviderRegistry so the integration is prunable at export time
+ * (see docs/OPTIONAL-SERVICES.md). Supports:
+ *  - <service>/feature-provider.tsx
+ *  - <service>/components/feature-provider.tsx
+ *  - <service>/demo/components/feature-provider.tsx
+ */
+function resolveFeatureProvider(serviceDir, importPath) {
+  const candidates = [
+    ['feature-provider.tsx'],
+    ['components', 'feature-provider.tsx'],
+    ['demo', 'components', 'feature-provider.tsx'],
+  ]
+  for (const parts of candidates) {
+    const filePath = join(serviceDir, ...parts)
+    if (existsSync(filePath)) {
+      return {
+        filePath,
+        importPath: `../${importPath}/${parts.join('/').replace(/\.tsx$/, '')}`,
+      }
+    }
+  }
+  return null
+}
+
 // Scan for subdirectories that contain data.ts (supports nested suites/* layout)
 const services = discoverLeafFolders(servicesDir).map(
   ({ key: folderKey, importPath, dir: serviceDir }) => {
     const dataPath = join(serviceDir, 'data.ts')
     const demoPath = resolveDemoPath(serviceDir)
     const configurePanel = resolveConfigurePanel(serviceDir, importPath)
+    const featureProvider = resolveFeatureProvider(serviceDir, importPath)
 
     return {
       key: folderKey,
@@ -264,6 +293,10 @@ const services = discoverLeafFolders(servicesDir).map(
         ? parseDemoExport(configurePanel.filePath)
         : null,
       configurePanelImportPath: configurePanel?.importPath ?? null,
+      featureProviderExport: featureProvider
+        ? parseDemoExport(featureProvider.filePath)
+        : null,
+      featureProviderImportPath: featureProvider?.importPath ?? null,
       hasWorker: hasExport(dataPath, 'worker'),
       hasDocs: existsSync(join(serviceDir, 'docs.ts')),
     }
@@ -352,17 +385,55 @@ const configurePanelLines = [
   ),
   '};',
   '',
-  'export function getServiceConfigurePanel(',
-  '  serviceId: string,',
-  '): ServiceConfigurePanelComponent | undefined {',
-  '  return configurePanelRegistry[serviceId];',
-  '}',
-  '',
 ]
 
 writeFileSync(
   configurePanelRegistryPath,
   configurePanelLines.join('\n'),
+  'utf8',
+)
+
+// --- _generated/feature-providers.ts (optional-service feature providers) ---
+// Headless components a sample mounts to integrate an optional service. Keyed
+// by service ID; a pruned service folder simply drops out of the map, so the
+// integration disappears with no static import (see docs/OPTIONAL-SERVICES.md).
+const featureProviderServices = services.filter(
+  (s) => s.featureProviderExport && s.featureProviderImportPath,
+)
+
+const featureProviderLines = [
+  ...HEADER,
+  'import type { ComponentType } from "react";',
+  '',
+  ...featureProviderServices.map(
+    ({ featureProviderExport, featureProviderImportPath }) =>
+      `import { ${featureProviderExport} } from "${featureProviderImportPath}";`,
+  ),
+  '',
+  '/** Props every optional-service feature provider component accepts. */',
+  'export interface FeatureProviderProps {',
+  '  /** Called by speech-driven providers (STT) with recognized text. */',
+  '  onTranscription?: (text: string) => void;',
+  '  /** Host sample id (e.g. for service-specific config links). */',
+  '  sampleId?: string;',
+  '}',
+  '',
+  'export type FeatureProviderComponent = ComponentType<FeatureProviderProps>;',
+  '',
+  '/** Optional-service feature provider keyed by service ID. Looked up by',
+  ' *  `useFeatureProviders`; a pruned service folder drops out automatically. */',
+  'export const featureProviderRegistry: Partial<Record<string, FeatureProviderComponent>> = {',
+  ...featureProviderServices.map(
+    ({ key: k, featureProviderExport }) =>
+      `  ${key(k)}: ${featureProviderExport},`,
+  ),
+  '};',
+  '',
+]
+
+writeFileSync(
+  featureProviderRegistryPath,
+  featureProviderLines.join('\n'),
   'utf8',
 )
 
@@ -385,7 +456,7 @@ const workerLines = [
   ),
   '',
   '/** Worker configuration registry keyed by Payload service type. */',
-  'export const workerRegistry: Partial<Record<Service["type"], WorkerConfig>> = {',
+  'const workerRegistry: Partial<Record<Service["type"], WorkerConfig>> = {',
   ...workerServices.map(({ key: k }) => `  ${key(k)}: ${toWorkerAlias(k)},`),
   '};',
   '',
@@ -411,7 +482,7 @@ const docsLines = [
   ...HEADER,
   'import type { ServiceDocsData } from "../types";',
   '',
-  'export type DocsFactory = (opts: { host: string }) => ServiceDocsData;',
+  'export type DocsFactory = (opts: { host: string; model?: string }) => ServiceDocsData;',
   '',
   ...docsServices.map(
     ({ key: k, importPath }) =>

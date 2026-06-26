@@ -20,6 +20,11 @@ export const sample: Sample = {
       impactText: 'Robotic control will be disabled.',
     },
     {
+      serviceId: 'text-generation',
+      role: 'required',
+      defaultDevice: 'GPU',
+    },
+    {
       serviceId: 'speech-to-text',
       role: 'required',
       capabilityKey: 'voice_input',

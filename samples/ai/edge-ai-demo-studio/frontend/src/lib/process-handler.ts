@@ -490,54 +490,6 @@ function listProcesses() {
   )
 }
 
-async function getProcessLogs(name: string, limit?: number) {
-  const logFile = path.join(LOGS_DIR, `${name}.log`)
-
-  try {
-    await fsPromises.access(logFile)
-  } catch {
-    return []
-  }
-
-  try {
-    const logContent = await fsPromises.readFile(logFile, 'utf-8')
-    return logContent
-      .trim()
-      .split('\n')
-      .filter((line) => line.trim())
-      .map((line) => {
-        try {
-          return JSON.parse(line)
-        } catch {
-          return {
-            timestamp: new Date().toISOString(),
-            process: name,
-            pid: null,
-            type: 'unknown',
-            message: line,
-          }
-        }
-      })
-      .slice(limit ? -limit : undefined)
-  } catch (error) {
-    logger.error(`Failed to read log file ${logFile}:`, error)
-    return []
-  }
-}
-
-async function clearProcessLogs(name: string) {
-  const logFile = path.join(LOGS_DIR, `${name}.log`)
-
-  try {
-    closeLogStream(name)
-    await fsPromises.access(logFile)
-    await fsPromises.writeFile(logFile, '')
-    return true
-  } catch {
-    return false
-  }
-}
-
 async function killAllProcesses() {
   logger.log('Killing all processes...')
   for (const [name] of processes.entries()) {
@@ -568,9 +520,6 @@ export {
   getStatus,
   stopProcess,
   listProcesses,
-  getProcessLogs,
-  clearProcessLogs,
-  closeLogStream,
   init,
   killAllProcesses,
   removeDeadProcess,

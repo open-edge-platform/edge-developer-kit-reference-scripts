@@ -35,7 +35,7 @@ async function fetchDevicesFn(): Promise<DevicesResponse> {
 /**
  * Raw react-query hook — use `useAvailableDevices` in components instead.
  */
-export function useDevices() {
+function useDevices() {
   return useQuery({
     queryKey: ['geti-classifier', 'devices'],
     queryFn: fetchDevicesFn,

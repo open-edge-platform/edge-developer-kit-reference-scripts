@@ -3,11 +3,6 @@
 
 import { useMutation } from '@tanstack/react-query'
 
-export {
-  useEmbeddingsParams,
-  EMBEDDINGS_DEFAULTS,
-  ENCODING_FORMAT_OPTIONS,
-} from './use-params'
 export type { EmbeddingsParamValues } from './use-params'
 
 interface EmbeddingItem {

@@ -7,13 +7,13 @@ import { useMemo, useState } from 'react'
 import type { DemoParam } from '@/types/demo-params'
 import { getLanguagesForModel, getVoicesForModel } from '../config'
 
-export const TTS_DEFAULTS = {
+const TTS_DEFAULTS = {
   speed: 1.0,
   format: 'wav',
   volume: 1.0,
 }
 
-export const TTS_FORMAT_OPTIONS = [
+const TTS_FORMAT_OPTIONS = [
   { value: 'wav', label: 'WAV' },
   { value: 'mp3', label: 'MP3' },
   { value: 'ogg', label: 'OGG' },

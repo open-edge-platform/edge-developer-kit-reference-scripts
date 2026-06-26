@@ -1,0 +1,7 @@
+# Upstream app source is cloned here on first start by ../setup.sh
+/src
+
+# Generated at runtime by start.sh / start.ps1
+/compose.override.yml
+/nginx.conf
+/pipeline-server-config.json

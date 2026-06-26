@@ -44,8 +44,8 @@ import type {
   LLMResultEntry,
   SavedRecord,
 } from '@/lib/ai-exam-marking/types'
-import { WebcamStream } from '@/samples/common/components/webcam-stream'
-import { useWebcamStream } from '@/samples/common/hooks/use-webcam-stream'
+import { WebcamStream } from '@/components/common/webcam-stream'
+import { useWebcamStream } from '@/hooks/use-webcam-stream'
 import { useGrading } from '@/samples/ai-exam-marking/hooks/useGrading'
 import { useOCR } from '@/samples/ai-exam-marking/hooks/useOCR'
 

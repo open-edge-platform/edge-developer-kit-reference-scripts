@@ -22,23 +22,15 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
-import type { DemoParam } from '@/types/demo-params'
+import type { ServiceParamGroup } from '@/types/demo-params'
 import { ParamRenderer } from '@/components/common/param-renderer'
 
-export type { ParamSlider, ParamSelect, DemoParam } from '@/types/demo-params'
-
-export interface ServiceParamGroup {
-  serviceLabel: string
-  serviceId: string
-  online: boolean
-  optional: boolean
-  offlineMessage?: string
-  configHref?: string
-  params: DemoParam[]
-  enabled?: boolean
-  onToggle?: (enabled: boolean) => void
-  children?: ReactNode
-}
+export type {
+  ParamSlider,
+  ParamSelect,
+  DemoParam,
+  ServiceParamGroup,
+} from '@/types/demo-params'
 
 interface DemoConfigSheetProps {
   groups: ServiceParamGroup[]

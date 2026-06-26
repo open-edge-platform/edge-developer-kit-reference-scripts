@@ -310,10 +310,25 @@ def get_local_ffmpeg_path():
     return None
 
 
+def get_local_ffprobe_path():
+    """Get the path to the locally installed ffprobe in thirdparty folder."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    workers_dir = os.path.dirname(script_dir)
+    project_root = os.path.dirname(workers_dir)
+    thirdparty_dir = os.path.join(project_root, "thirdparty")
+
+    for name in ("ffprobe.exe", "ffprobe"):
+        path = os.path.join(thirdparty_dir, "ffmpeg", "bin", name)
+        if os.path.exists(path):
+            return path
+
+    return None
+
+
 def ensure_wav(in_path: str, out_wav: str) -> bool:
     """Convert arbitrary audio file to 16k mono 16-bit WAV.
-    Try pydub first, fall back to ffmpeg if needed.
-    Returns True on success.
+    Tries soundfile first (fast path for WAV/FLAC/OGG/AIFF), then pydub with local ffmpeg,
+    then ffmpeg directly. Returns True on success.
     """
     # Avoid in-place conversion: if paths overlap, rename the input first
     if os.path.abspath(in_path) == os.path.abspath(out_wav):
@@ -322,6 +337,30 @@ def ensure_wav(in_path: str, out_wav: str) -> bool:
             in_path, new_in
         )  # os.replace is atomic and overwrites on all platforms (unlike os.rename on Windows)
         in_path = new_in
+
+    # Fast path: soundfile can natively decode WAV/FLAC/OGG/AIFF without ffmpeg
+    try:
+        data, fs = sf.read(in_path, dtype="float32", always_2d=False)
+        resampled = resample(data, fs, 16000)
+        pcm = (np.clip(resampled, -1.0, 1.0) * 32767).astype(np.int16)
+        with wave.open(out_wav, "wb") as wf:
+            wf.setnchannels(1)
+            wf.setframerate(16000)
+            wf.setsampwidth(2)
+            wf.writeframes(pcm.tobytes())
+        logger.info(f"Converted {in_path} -> {out_wav} using soundfile+scipy")
+        return True
+    except Exception as e:
+        logger.warning(f"soundfile fast path failed for {in_path}: {e}; trying pydub")
+
+    # Point pydub at the bundled thirdparty ffmpeg before trying
+    import pydub.utils as _pydub_utils
+    local_ffmpeg_for_pydub = get_local_ffmpeg_path()
+    local_ffprobe_for_pydub = get_local_ffprobe_path()
+    if local_ffmpeg_for_pydub:
+        AudioSegment.converter = local_ffmpeg_for_pydub
+    if local_ffprobe_for_pydub:
+        _pydub_utils.get_prober_name = lambda: local_ffprobe_for_pydub
 
     try:
         audio = AudioSegment.from_file(in_path)
@@ -428,15 +467,24 @@ def ensure_wav(in_path: str, out_wav: str) -> bool:
     return False
 
 
-def resample(audio, src_sample_rate, dst_sample_rate):
+def resample(audio: np.ndarray, src_sample_rate: int, dst_sample_rate: int) -> np.ndarray:
+    # Downmix multi-channel to mono
+    if audio.ndim > 1:
+        audio = audio.mean(axis=1)
+    audio = audio.astype(np.float32)
     if src_sample_rate == dst_sample_rate:
         return audio
-    duration = audio.shape[0] / src_sample_rate
-    resampled_data = np.zeros(shape=(int(duration * dst_sample_rate)), dtype=np.float32)
-    x_old = np.linspace(0, duration, audio.shape[0], dtype=np.float32)
-    x_new = np.linspace(0, duration, resampled_data.shape[0], dtype=np.float32)
-    resampled_audio = np.interp(x_new, x_old, audio)
-    return resampled_audio.astype(np.float32)
+    try:
+        from math import gcd
+        from scipy.signal import resample_poly
+        g = gcd(int(src_sample_rate), int(dst_sample_rate))
+        return resample_poly(audio, int(dst_sample_rate) // g, int(src_sample_rate) // g).astype(np.float32)
+    except Exception as e:
+        logger.warning(f"scipy resample_poly failed: {e}; falling back to np.interp")
+    duration = len(audio) / src_sample_rate
+    x_old = np.linspace(0, duration, len(audio), dtype=np.float32)
+    x_new = np.linspace(0, duration, int(duration * dst_sample_rate), dtype=np.float32)
+    return np.interp(x_new, x_old, audio).astype(np.float32)
 
 
 def language_mapping(language):
@@ -651,11 +699,9 @@ def transcribe(pipeline, audio, language="english", return_timestamps=False):
         config.language = language_mapping(language)
         config.task = "transcribe"
 
-    data, fs = sf.read(audio)
-    audio_duration = len(data) / fs
-    resampled_audio = resample(
-        audio=data, src_sample_rate=fs, dst_sample_rate=16000
-    ).astype(np.float32)
+    data, fs = sf.read(audio, dtype="float32", always_2d=False)
+    audio_duration = data.shape[0] / fs
+    resampled_audio = resample(audio=data, src_sample_rate=fs, dst_sample_rate=16000)
 
     if return_timestamps:
         results = pipeline.generate(resampled_audio, config, return_timestamps=True)
@@ -689,10 +735,8 @@ def translate(pipeline, audio, source_language="english"):
         config.language = language_mapping(source_language)
         config.task = "translate"
 
-    data, fs = sf.read(audio)
-    resampled_audio = resample(
-        audio=data, src_sample_rate=fs, dst_sample_rate=16000
-    ).astype(np.float32)
+    data, fs = sf.read(audio, dtype="float32", always_2d=False)
+    resampled_audio = resample(audio=data, src_sample_rate=fs, dst_sample_rate=16000)
     results = pipeline.generate(resampled_audio, config)
     if results.texts and len(results.texts) > 0:
         return results.texts[0]

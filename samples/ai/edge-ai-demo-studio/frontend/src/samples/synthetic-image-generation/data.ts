@@ -3,6 +3,7 @@
 
 import type { Sample } from '../types'
 import { SyntheticImageGenerationDemo } from './demo'
+import sampleImage from './image.png'
 
 export const sample: Sample = {
   id: 'synthetic-image-generation',
@@ -21,6 +22,7 @@ export const sample: Sample = {
   tags: ['Image Generation', 'Synthetic Data', 'Dataset', 'Diffusion'],
   supportedOS: ['linux'],
   requiredDevices: ['xpu'],
+  image: sampleImage,
   demo: {
     type: 'component',
     component: SyntheticImageGenerationDemo,

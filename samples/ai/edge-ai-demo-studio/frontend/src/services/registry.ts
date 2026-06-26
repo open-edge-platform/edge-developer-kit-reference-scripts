@@ -20,8 +20,6 @@ import { serviceMap } from './_generated/services'
 import type { Service } from './types'
 
 // ─── Aggregated Exports ───────────────────────────────────────────
-export { serviceMap } from './_generated/services'
-
 export const services: Service[] = Object.values(serviceMap)
 
 /** Services visible in the UI (excludes hidden services) */

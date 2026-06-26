@@ -21,7 +21,7 @@ import { ClearModelCacheSection } from '@/services/common/demo/components/clear-
 import {
   type ConfigurePanelStatus,
   ServiceConfigurePanel,
-} from '@/services/common/demo/components/service-configure-panel'
+} from '@/components/common/service-configure-panel'
 import {
   type Service,
   getBackendForModel,

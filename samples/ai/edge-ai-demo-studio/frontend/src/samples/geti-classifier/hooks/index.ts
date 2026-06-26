@@ -3,10 +3,6 @@
 
 // Re-export service hooks for use within this sample
 export {
-  useGetiHealth,
-  isPipelineReady,
-  isClsReady,
-  isSegReady,
   useClassify,
   getOriginalImageUrl,
   getCroppedImageUrl,
@@ -35,4 +31,4 @@ export type {
 } from '@/services/geti-classifier/hooks'
 
 // Device hooks (local to this sample)
-export { useDevices, useAvailableDevices } from './use-device'
+export { useAvailableDevices } from './use-device'

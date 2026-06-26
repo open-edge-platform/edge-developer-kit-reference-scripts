@@ -306,9 +306,9 @@ requires-dist = [
     { name = "pydub", specifier = ">=0.25.1" },
     { name = "scipy", specifier = ">=1.11.0" },
     { name = "soundfile", specifier = "==0.12.1" },
-    { name = "torch", specifier = "==2.11.0", index = "https://download.pytorch.org/whl/xpu" },
+    { name = "torch", specifier = "==2.12.1", index = "https://download.pytorch.org/whl/xpu" },
     { name = "torchaudio", specifier = "==2.11.0", index = "https://download.pytorch.org/whl/xpu" },
-    { name = "triton-xpu", specifier = "==3.7.0", index = "https://download.pytorch.org/whl/xpu" },
+    { name = "triton-xpu", specifier = "==3.7.1", index = "https://download.pytorch.org/whl/xpu" },
     { name = "uvicorn", specifier = "==0.32.1" },
 ]
 
@@ -550,9 +550,7 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/42/3c/ff890b466eaba2b0f5e6bdfff025f8c75f41b8ffdc3dbc3d24ad261e764a/greenlet-3.5.1-cp311-cp311-macosx_11_0_universal2.whl", hash = "sha256:73f78f9b9f0a5c06e5c946ba1e8e36f5114923b6be109ee618c54f079c3ea14f", size = 284764, upload-time = "2026-05-20T13:09:10.204Z" },
     { url = "https://files.pythonhosted.org/packages/81/0e/5e5457be3d256918f6a4756f073548a3f0190836e2cc94aa6d0d617a940b/greenlet-3.5.1-cp311-cp311-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:a0cbed8bb44e23c5b199f888f4e4ce096b45ad9f25ff74a7ad0213875e936bb2", size = 603479, upload-time = "2026-05-20T14:00:04.757Z" },
     { url = "https://files.pythonhosted.org/packages/6d/e1/f89a21d58d308298e6f275f13a1b472ed96c680b601a371b08be6a725989/greenlet-3.5.1-cp311-cp311-manylinux_2_24_ppc64le.manylinux_2_28_ppc64le.whl", hash = "sha256:a203a8bd0acb0701653d3bbb26e404854a68674139ed5cbb778830f42b09bb33", size = 615495, upload-time = "2026-05-20T14:05:40.87Z" },
-    { url = "https://files.pythonhosted.org/packages/2c/f2/8fd452fd81adb9ec79c8275c1375702ab0fd6bee4952da12eaa09b9508d8/greenlet-3.5.1-cp311-cp311-manylinux_2_24_s390x.manylinux_2_28_s390x.whl", hash = "sha256:6ebeb75c81211f5c702576cf81f315e77e23cfdb2c7c6fcb9dd143e6de35c360", size = 623515, upload-time = "2026-05-20T14:09:07.853Z" },
     { url = "https://files.pythonhosted.org/packages/75/de/af6cef182862d2ccd6975440d21c9058a77c3f9b469abf94e322dfd2e0e3/greenlet-3.5.1-cp311-cp311-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:8a271fcd66c74615cda6a964fda3f304267a12e50a084472218a39bb0376f563", size = 614754, upload-time = "2026-05-20T13:14:24.947Z" },
-    { url = "https://files.pythonhosted.org/packages/ec/bc/c318aa9f3ffc77320fddcee3d892be957b42e2ff947198d9450b004f3a38/greenlet-3.5.1-cp311-cp311-manylinux_2_39_riscv64.whl", hash = "sha256:017a544f0385d441e88714160d089d6900ef46c9eff9d99b6715a5ef2d127747", size = 418439, upload-time = "2026-05-20T14:01:38.446Z" },
     { url = "https://files.pythonhosted.org/packages/1a/c6/50e520283a9f19388a7326b05f9e8637e566003475eacaadad04f558c68d/greenlet-3.5.1-cp311-cp311-musllinux_1_2_aarch64.whl", hash = "sha256:ded7b068c7c31c1a8657d4fd42d886b3e051ae29f88b80c5ff9d502257b0f071", size = 1574097, upload-time = "2026-05-20T14:02:24.003Z" },
     { url = "https://files.pythonhosted.org/packages/21/1c/13abd1f4860d987fa5e1170a01930d6e6cd40d328de487a3c9fdaff0ffd0/greenlet-3.5.1-cp311-cp311-musllinux_1_2_x86_64.whl", hash = "sha256:d0932b81d72f552ded9d810d00021b64d89f2195a91ce115b893f943b7a4ab3c", size = 1641058, upload-time = "2026-05-20T13:14:31.83Z" },
     { url = "https://files.pythonhosted.org/packages/f5/56/5f332b7705545eac2dc01b4e9254d24a793f2656d55d5cc6b94ee59d22ae/greenlet-3.5.1-cp311-cp311-win_amd64.whl", hash = "sha256:88e300d136eac057b2397aa1cfd7328b4c87c7eb66a09c7bc6a1292234db474e", size = 238089, upload-time = "2026-05-20T13:14:03.229Z" },
@@ -1077,8 +1075,8 @@ name = "oneccl"
 version = "2021.17.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "impi-rt" },
-    { name = "intel-sycl-rt" },
+    { name = "impi-rt", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "intel-sycl-rt", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/73/9b/2932b6b128924ba96712ea1c807c1618b9963518eb8ec80cf834ffc3c684/oneccl-2021.17.2-py2.py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:a77c2c56eeba1c78379a530a2ba2bbd33407f6440b44476f83292d1694100373", size = 157647983, upload-time = "2026-01-22T05:34:10.902Z" },
@@ -1089,7 +1087,7 @@ name = "oneccl-devel"
 version = "2021.17.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "oneccl" },
+    { name = "oneccl", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/4a/a1/4fad3108825e2d65d812ba69a9fd3664181cfe8860e49110c92431d1629f/oneccl_devel-2021.17.2-py2.py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:6cdaaf12f04fa8eb7934f3b23c202410fece7ae05dfd3b8cc4219701726f1999", size = 47391093, upload-time = "2026-01-22T05:34:26.3Z" },
@@ -1600,16 +1598,16 @@ wheels = [
 
 [[package]]
 name = "pydantic-settings"
-version = "2.14.1"
+version = "2.14.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
     { name = "python-dotenv" },
     { name = "typing-inspection" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/07/60/1d1e59c9c90d54591469ada7d268251f71c24bdb765f1a8a832cee8c6653/pydantic_settings-2.14.1.tar.gz", hash = "sha256:e874d3bec7e787b0c9958277956ed9b4dd5de6a80e162188fdaff7c5e26fd5fa", size = 235551, upload-time = "2026-05-08T13:40:06.542Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5c/b5/8f48e906c3e0205276e8bd8cb7512217a87b2685304d64be27cad5b3019f/pydantic_settings-2.14.2.tar.gz", hash = "sha256:c19dd64b19097f1de80184f0cc7b0272a13ae6e170cbf240a3e27e381ed14a5f", size = 237700, upload-time = "2026-06-19T13:44:56.324Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ae/8d/f1af3832f5e6eb13ba94ee809e72b8ecb5eef226d27ee0bef7d963d943c7/pydantic_settings-2.14.1-py3-none-any.whl", hash = "sha256:6e3c7edfd8277687cdc598f56e5cff0e9bfff0910a3749deaa8d4401c3a2b9de", size = 60964, upload-time = "2026-05-08T13:40:04.958Z" },
+    { url = "https://files.pythonhosted.org/packages/77/c1/6e422f34e569cf8e18df68d1939c81c099d2b61e4f7d9621c8a77560799c/pydantic_settings-2.14.2-py3-none-any.whl", hash = "sha256:a20c97b37910b6550d5ea50fbcc2d4187defe58cd57070b73863d069419c9440", size = 61715, upload-time = "2026-06-19T13:44:55.02Z" },
 ]
 
 [[package]]
@@ -2016,7 +2014,7 @@ wheels = [
 
 [[package]]
 name = "torch"
-version = "2.11.0+xpu"
+version = "2.12.1+xpu"
 source = { registry = "https://download.pytorch.org/whl/xpu" }
 dependencies = [
     { name = "dpcpp-cpp-rt" },
@@ -2050,8 +2048,8 @@ dependencies = [
     { name = "umf" },
 ]
 wheels = [
-    { url = "https://download-r2.pytorch.org/whl/xpu/torch-2.11.0%2Bxpu-cp311-cp311-linux_x86_64.whl", upload-time = "2026-03-23T15:11:40Z" },
-    { url = "https://download-r2.pytorch.org/whl/xpu/torch-2.11.0%2Bxpu-cp311-cp311-win_amd64.whl", upload-time = "2026-03-23T15:12:00Z" },
+    { url = "https://download-r2.pytorch.org/whl/xpu/torch-2.12.1%2Bxpu-cp311-cp311-linux_x86_64.whl", hash = "sha256:e7a323721ed0868db8cabb35cb4f1e530c4b4da8968b525e5910927283fa2a36", upload-time = "2026-06-18T03:53:04Z" },
+    { url = "https://download-r2.pytorch.org/whl/xpu/torch-2.12.1%2Bxpu-cp311-cp311-win_amd64.whl", hash = "sha256:ddc643d1cd9e22aae058283b98ed66ddbd27859afa904a77708aca47b0612f24", upload-time = "2026-06-18T03:53:44Z" },
 ]
 
 [[package]]
@@ -2133,14 +2131,14 @@ wheels = [
 
 [[package]]
 name = "triton-xpu"
-version = "3.7.0"
+version = "3.7.1"
 source = { registry = "https://download.pytorch.org/whl/xpu" }
 dependencies = [
     { name = "pyelftools" },
 ]
 wheels = [
-    { url = "https://download-r2.pytorch.org/whl/triton_xpu-3.7.0-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:e85378f1fc1ea002271de2a35475b75008fa554b86ef9d3bc55be9c513a63b51", upload-time = "2026-05-12T14:49:45Z" },
-    { url = "https://download-r2.pytorch.org/whl/triton_xpu-3.7.0-cp311-cp311-win_amd64.whl", hash = "sha256:aa7de82f4265089e74f25a2701b7532e5c47d74224d877b61da1d66156e3f0c1", upload-time = "2026-05-12T14:50:10Z" },
+    { url = "https://download-r2.pytorch.org/whl/triton_xpu-3.7.1-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:55574a68d275b85cd4d5cbf185084bae019ebf09c3f43b0bd2831b14935ec8e7", upload-time = "2026-06-17T16:51:05Z" },
+    { url = "https://download-r2.pytorch.org/whl/triton_xpu-3.7.1-cp311-cp311-win_amd64.whl", hash = "sha256:8f4a63de73e3d632098f93c8f0bd77244958a47d7c5f728b8ff35f8a91fdb983", upload-time = "2026-06-17T16:51:42Z" },
 ]
 
 [[package]]
