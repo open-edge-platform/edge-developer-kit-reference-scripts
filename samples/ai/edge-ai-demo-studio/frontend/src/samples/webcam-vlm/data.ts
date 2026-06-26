@@ -3,6 +3,7 @@
 
 import type { Sample } from '../types'
 import { WebcamVlmDemo } from './demo'
+import sampleImage from './image.png'
 
 export const sample: Sample = {
   id: 'webcam-vlm',
@@ -66,6 +67,7 @@ export const sample: Sample = {
     'mcp',
   ],
   tags: ['Webcam', 'VLM', 'Multimodal', 'Vision'],
+  image: sampleImage,
   demo: {
     type: 'component',
     component: WebcamVlmDemo,

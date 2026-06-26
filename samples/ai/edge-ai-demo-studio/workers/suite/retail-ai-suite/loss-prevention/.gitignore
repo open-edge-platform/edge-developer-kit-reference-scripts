@@ -1,0 +1,3 @@
+# Upstream loss-prevention repo is cloned here on first start by ../setup.sh
+/src
+/compose.override.yml

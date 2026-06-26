@@ -9,7 +9,9 @@ import { sample as digitalAvatar } from '../digital-avatar/data'
 import { sample as digitalAvatarLite } from '../digital-avatar-lite/data'
 import { sample as getiClassifier } from '../geti-classifier/data'
 import { sample as imageBasedVideoSearch } from '../suites/metro-ai-suite/image-based-video-search/data'
+import { sample as lossPrevention } from '../suites/retail-ai-suite/loss-prevention/data'
 import { sample as medicalScribe } from '../medical-scribe/data'
+import { sample as palletDefectDetection } from '../suites/manufacturing-ai-suite/pallet-defect-detection/data'
 import { sample as pptTranslator } from '../ppt-translator/data'
 import { sample as ragChatbot } from '../rag-chatbot/data'
 import { sample as roboticsAi } from '../robotics-ai/data'
@@ -23,7 +25,9 @@ export const sampleMap: Record<string, Sample> = {
   'digital-avatar-lite': digitalAvatarLite,
   'geti-classifier': getiClassifier,
   'image-based-video-search': imageBasedVideoSearch,
+  'loss-prevention': lossPrevention,
   'medical-scribe': medicalScribe,
+  'pallet-defect-detection': palletDefectDetection,
   'ppt-translator': pptTranslator,
   'rag-chatbot': ragChatbot,
   'robotics-ai': roboticsAi,

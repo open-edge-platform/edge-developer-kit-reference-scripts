@@ -8,26 +8,26 @@ import { ServiceCard } from '@/components/dashboard/service-card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useServiceStatus } from '@/context/service-status-context'
 import { useSystemInfo } from '@/context/system-info-context'
-import { isServiceSupportedOnOS, visibleServices } from '@/services/registry'
+import { isServiceSupportedOnOS } from '@/services/registry'
 
 export default function ServicesPage() {
   const { systemInfo } = useSystemInfo()
-  const { statusMap, loading } = useServiceStatus()
+  const { services, loading } = useServiceStatus()
+
+  // `services` is the enriched list (live status already merged in), so read
+  // `s.status` directly — no statusMap lookup or registry merge needed.
+  const visible = services.filter((s) => !s.hidden)
 
   const supported = systemInfo
-    ? visibleServices.filter((s) => isServiceSupportedOnOS(s, systemInfo.os))
-    : visibleServices
+    ? visible.filter((s) => isServiceSupportedOnOS(s, systemInfo.os))
+    : visible
 
   const unsupported = systemInfo
-    ? visibleServices.filter((s) => !isServiceSupportedOnOS(s, systemInfo.os))
+    ? visible.filter((s) => !isServiceSupportedOnOS(s, systemInfo.os))
     : []
 
-  const running = supported.filter(
-    (s) => (statusMap[s.id] ?? s.status) === 'online',
-  )
-  const stopped = supported.filter(
-    (s) => (statusMap[s.id] ?? s.status) !== 'online',
-  )
+  const running = supported.filter((s) => s.status === 'online')
+  const stopped = supported.filter((s) => s.status !== 'online')
 
   return (
     <div className="space-y-8">

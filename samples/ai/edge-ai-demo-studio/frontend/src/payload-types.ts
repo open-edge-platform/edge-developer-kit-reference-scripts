@@ -162,8 +162,11 @@ export interface Service {
     | 'image-based-video-search'
     | 'image-generation'
     | 'lipsync'
+    | 'loss-prevention'
     | 'mcp'
     | 'medical-scribe-database'
+    | 'ocr'
+    | 'pallet-defect-detection'
     | 'ppt-translator'
     | 'rerank'
     | 'robotics-ai'
@@ -195,7 +198,7 @@ export interface Service {
       params?: string;
     };
   };
-  port: number;
+  port?: number | null;
   metadata?: {
     /**
      * Client-side ICE server URL (default: STUN)

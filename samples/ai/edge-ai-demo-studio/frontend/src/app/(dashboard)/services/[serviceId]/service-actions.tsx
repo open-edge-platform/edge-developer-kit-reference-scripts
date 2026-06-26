@@ -29,7 +29,7 @@ export function ServiceActionButton({
   service: ServiceIdentifier
 }) {
   const {
-    statusMap,
+    serviceById,
     startService,
     stopService,
     restartService,
@@ -39,7 +39,7 @@ export function ServiceActionButton({
 
   if (loading) return <Skeleton className="h-8 w-28 rounded-md" />
 
-  const liveStatus = statusMap[service.id] ?? service.status
+  const liveStatus = serviceById.get(service.id)?.status ?? service.status
   const pending = isActionPending(service.id)
 
   const handleClick = () => {
@@ -109,9 +109,9 @@ export function ServiceActionButton({
 }
 
 export function ServiceLiveStatus({ service }: { service: ServiceIdentifier }) {
-  const { statusMap, loading } = useServiceStatus()
+  const { serviceById, loading } = useServiceStatus()
   if (loading) return <Skeleton className="h-6 w-16 rounded-full" />
-  const liveStatus = statusMap[service.id] ?? service.status
+  const liveStatus = serviceById.get(service.id)?.status ?? service.status
   return (
     <div data-testid="workload-status">
       <StatusIndicator status={liveStatus} size="md" />
@@ -163,10 +163,10 @@ export function ServiceLiveBadges({
 }
 
 export function ServiceAccentBar({ service }: { service: ServiceIdentifier }) {
-  const { statusMap, loading } = useServiceStatus()
+  const { serviceById, loading } = useServiceStatus()
   const liveStatus = loading
     ? 'offline'
-    : (statusMap[service.id] ?? service.status)
+    : (serviceById.get(service.id)?.status ?? service.status)
   return (
     <div
       className={cn(

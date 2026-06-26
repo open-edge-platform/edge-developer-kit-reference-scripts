@@ -39,12 +39,12 @@ export function ChatTab({ sessionId }: ChatTabProps) {
   const [chatText, setChatText] = useState('Hello, welcome to the demo!')
   const [speed, setSpeed] = useState('1.0')
 
-  const chatMutation = useLipsyncChat()
+  const { mutate: chatMutate, isPending: isChatPending } = useLipsyncChat()
 
-  const { statusMap, startService, isActionPending } = useServiceStatus()
-  const ttsStatus = statusMap['text-to-speech'] ?? 'offline'
-  const isTtsOnline = ttsStatus === 'online'
+  const { startService, isActionPending } = useServiceStatus()
   const ttsService = useGetService('text-to-speech')
+  const ttsStatus = ttsService?.status ?? 'offline'
+  const isTtsOnline = ttsStatus === 'online'
   const currentModel =
     ttsService?.currentModel ?? ttsService?.defaultModel?.name ?? 'kokoro'
   const voiceOptions = useMemo(() => {
@@ -74,7 +74,7 @@ export function ChatTab({ sessionId }: ChatTabProps) {
     const ttsUrl = ttsService
       ? `http://localhost:${ttsService.port}/v1`
       : undefined
-    chatMutation.mutate(
+    chatMutate(
       {
         session_id: sessionId,
         chat_type: 'echo',
@@ -92,7 +92,7 @@ export function ChatTab({ sessionId }: ChatTabProps) {
           toast.error(e instanceof Error ? e.message : 'Failed to send chat'),
       },
     )
-  }, [sessionId, chatText, voice, speed, chatMutation, ttsService])
+  }, [sessionId, chatText, voice, speed, chatMutate, ttsService])
 
   if (!isTtsOnline) {
     return (
@@ -158,13 +158,11 @@ export function ChatTab({ sessionId }: ChatTabProps) {
             </span>
             <Button
               onClick={sendChat}
-              disabled={
-                chatMutation.isPending || !isConnected || !chatText.trim()
-              }
+              disabled={isChatPending || !isConnected || !chatText.trim()}
               size="sm"
               className="bg-primary hover:bg-primary-light text-white"
             >
-              {chatMutation.isPending ? (
+              {isChatPending ? (
                 <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
               ) : (
                 <Send className="mr-1.5 h-3.5 w-3.5" />

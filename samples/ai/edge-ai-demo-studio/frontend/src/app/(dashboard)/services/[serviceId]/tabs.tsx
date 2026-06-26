@@ -11,26 +11,28 @@ import { docsRegistry } from '@/services/_generated/docs'
 import { ServiceDemo } from '@/services/common/demo/components/service-demo'
 import { ServiceDocs } from '@/services/common/documentation/components/doc'
 import { ServiceLogs } from '@/services/common/logs/components/log'
+import { getServiceModelName } from '@/services/common/get-service-model'
 
 const emptySubscribe = () => () => {}
 
 export function ServiceDetailTabs({ serviceId }: { serviceId: string }) {
   const service = useGetService(serviceId)
 
-  const host = useSyncExternalStore(
+  const origin = useSyncExternalStore(
     emptySubscribe,
-    () => window.location.host,
+    () => window.location.origin,
     () => '',
   )
 
   const docs = useMemo(
     () =>
-      service && host
+      service && origin
         ? (docsRegistry[service.id]?.({
-            host: `${host}/${service.id}`,
+            host: `${origin}/api/${service.id}`,
+            model: getServiceModelName(service, true),
           }) ?? null)
         : null,
-    [service, host],
+    [service, origin],
   )
 
   if (!service) return null

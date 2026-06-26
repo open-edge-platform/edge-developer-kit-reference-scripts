@@ -77,9 +77,9 @@
   --primary-foreground: #ffffff;
   --primary-light: #0071c5;
   --primary-dark: #004a86;
-  --secondary: #00c7fd;
-  --secondary-foreground: #003344;
-  --secondary-light: #33d4ff;
+  --secondary: #7d2d98;
+  --secondary-foreground: #ffffff;
+  --secondary-light: #a855c7;
   --muted: #f5f5f5;
   --muted-foreground: #6b7280;
   --accent: #e8f0fe;
@@ -128,9 +128,9 @@
   --primary-foreground: #ffffff;
   --primary-light: #6db5f0;
   --primary-dark: #3578b8;
-  --secondary: #00c7fd;
-  --secondary-foreground: #003344;
-  --secondary-light: #33d4ff;
+  --secondary: #c084fc;
+  --secondary-foreground: #2a0e38;
+  --secondary-light: #d8b4fe;
   --muted: #1a2740;
   --muted-foreground: #8892a4;
   --accent: #1a3458;

@@ -15,11 +15,8 @@ export type {
 export {
   categories,
   getCategoryLabels,
-  getDeviceMap,
   hasCategory,
-  getOptionalDeps,
   getReadinessLabel,
-  getRequiredDeps,
 } from './types'
 
 import { getServiceById } from '@/services/registry'
@@ -29,8 +26,6 @@ import { getDeviceFamily } from '@/lib/utils'
 import { sampleMap } from './_generated/samples'
 import type { Sample } from './types'
 import { getOptionalDeps, getRequiredDeps } from './types'
-
-export { sampleMap } from './_generated/samples'
 
 export const samples: Sample[] = Object.values(sampleMap)
 

@@ -176,7 +176,7 @@ export const getDocsData = ({ host }: { host: string }): ServiceDocsData => ({
 
 # Subscribe a webhook
 requests.post(f"${host}/v1/wake-word-detection/webhooks/subscribe", json={
-    "url": "${host}/api/webhook",
+    "url": "https://your-app.example.com/webhook",
     "name": "My App",
     "threshold": 0.7,
 })
@@ -193,7 +193,7 @@ requests.post(f"${host}/v1/wake-word-detection/stop")`,
           code: `# Subscribe a webhook
 curl -X POST ${host}/v1/wake-word-detection/webhooks/subscribe \\
   -H "Content-Type: application/json" \\
-  -d '{"url": "${host}/api/webhook", "name": "My App", "threshold": 0.7}'
+  -d '{"url": "https://your-app.example.com/webhook", "name": "My App", "threshold": 0.7}'
 
 # Start detection
 curl -X POST ${host}/v1/wake-word-detection/start

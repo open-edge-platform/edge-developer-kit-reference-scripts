@@ -11,9 +11,16 @@ export type MotorCalibrationState =
   | 'complete'
   | 'error'
 
+export interface JointReading {
+  name: string
+  min: number
+  pos: number
+  max: number
+}
+
 interface MotorCalibrationStatusResponse {
   state: MotorCalibrationState
-  output: string[]
+  joint_readings: JointReading[]
 }
 
 interface MotorCalibrationActionResponse {
@@ -36,7 +43,13 @@ export function useMotorCalibrationStatusQuery(
       return response.json()
     },
     enabled,
-    refetchInterval: enabled ? 2500 : false,
+    // Stop polling once the process reaches a terminal state
+    refetchInterval: (query) => {
+      const state = query.state.data?.state
+      if (!enabled) return false
+      if (state === 'error' || state === 'idle') return false
+      return 2500
+    },
   })
 }
 

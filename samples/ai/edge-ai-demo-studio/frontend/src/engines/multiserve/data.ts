@@ -7,9 +7,9 @@ import { LOGS_DIR, MODELS_DIR, WORKER_DIR } from '../../lib/constants'
 import type { Engine } from '../types'
 import { supportedBackends } from './backends'
 
-export const MULTISERVE_MODELS_DIR = path.join(MODELS_DIR, 'multiserve')
+const MULTISERVE_MODELS_DIR = path.join(MODELS_DIR, 'multiserve')
 export const MULTISERVE_REPO_PATH = path.join(WORKER_DIR, 'engine/multiserve')
-export const MULTISERVE_LOGS_DIR = path.join(LOGS_DIR, 'multiserve')
+const MULTISERVE_LOGS_DIR = path.join(LOGS_DIR, 'multiserve')
 
 const getModelsDir = (type?: Service['type']): string => {
   if (!type) {

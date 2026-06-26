@@ -7,7 +7,7 @@ import { useState } from 'react'
 import type { DemoParam } from '@/types/demo-params'
 import type { AudioDevice } from '.'
 
-export const WAKE_WORD_DEFAULTS = {
+const WAKE_WORD_DEFAULTS = {
   detectionThreshold: 0.5,
   deviceId: 'default',
 }

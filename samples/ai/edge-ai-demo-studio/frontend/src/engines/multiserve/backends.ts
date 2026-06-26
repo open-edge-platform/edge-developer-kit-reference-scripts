@@ -15,7 +15,7 @@ export const supportedBackends: EngineBackend[] = [
     models: {
       'text-generation': [
         {
-          name: 'OpenVINO/Qwen3-4B-int8-ov',
+          name: 'OpenVINO/Qwen3.5-4B-int4-ov',
           device: 'CPU',
           backend: 'openvino',
         },

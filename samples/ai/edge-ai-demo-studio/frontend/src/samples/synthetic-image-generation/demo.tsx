@@ -22,6 +22,7 @@ import {
 } from 'lucide-react'
 import { useCallback, useMemo, useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
+import { toast } from 'sonner'
 import { useServiceLiveStatus } from '@/context/service-status-context'
 import type { Sample } from '../types'
 import {
@@ -61,8 +62,9 @@ export function SyntheticImageGenerationDemo({
     useGetSyntheticImageHistory(isServicesReady)
   const projects = useMemo(() => projectsData ?? [], [projectsData])
   const historyUrls = useMemo(() => historyUrlsData ?? [], [historyUrlsData])
-  const generateSyntheticImageMutation = useGenerateSyntheticImage()
-  const deleteAssetMutation = useDeleteSyntheticImageAsset()
+  const { mutateAsync: generateSyntheticImage } = useGenerateSyntheticImage()
+  const { mutateAsync: deleteSyntheticImageAsset } =
+    useDeleteSyntheticImageAsset()
   const createProjectMutation = useCreateSyntheticImageProject()
   const deleteProjectMutation = useDeleteSyntheticImageProject()
   const exportProjectMutation = useExportSyntheticImageProject()
@@ -299,7 +301,7 @@ export function SyntheticImageGenerationDemo({
 
         try {
           const { imageUrls, finalPrompt, maskUrl } =
-            await generateSyntheticImageMutation.mutateAsync({
+            await generateSyntheticImage({
               baseImage64: base64Image,
               referenceImage64: referenceImage
                 ? referenceImage.split(',')[1]
@@ -325,9 +327,14 @@ export function SyntheticImageGenerationDemo({
               return img
             }),
           )
-        } catch {
+        } catch (err) {
           setGeneratedImages((prev) =>
             prev.filter((img) => img.id !== placeholder.id),
+          )
+          toast.error(
+            err instanceof Error
+              ? `Image generation failed: ${err.message}`
+              : 'Image generation failed. Please try again.',
           )
         }
       }
@@ -343,7 +350,7 @@ export function SyntheticImageGenerationDemo({
     objective,
     customPrompt,
     currentProject,
-    generateSyntheticImageMutation,
+    generateSyntheticImage,
     setGeneratedImages,
   ])
 
@@ -386,7 +393,7 @@ export function SyntheticImageGenerationDemo({
       try {
         const filename = url.split('/').slice(-3).join('/')
         if (filename) {
-          await deleteAssetMutation.mutateAsync(filename)
+          await deleteSyntheticImageAsset(filename)
           await new Promise((resolve) =>
             setTimeout(() => resolve(undefined), 500),
           )
@@ -400,7 +407,7 @@ export function SyntheticImageGenerationDemo({
         setProcessingAction(null)
       }
     },
-    [deleteAssetMutation, selectedImage, setGeneratedImages],
+    [deleteSyntheticImageAsset, selectedImage, setGeneratedImages],
   )
 
   return (

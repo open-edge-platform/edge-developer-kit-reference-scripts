@@ -38,25 +38,6 @@ export interface GetiHealthResponse {
   auto_sync_interval_seconds: number
 }
 
-// ── Derived helper ────────────────────────────────────────────────────────────
-
-export function isPipelineReady(
-  health: GetiHealthResponse | undefined,
-): boolean {
-  if (!health) return false
-  return health.pipeline_ready
-}
-
-export function isClsReady(health: GetiHealthResponse | undefined): boolean {
-  if (!health) return false
-  return health.cls_model_loaded
-}
-
-export function isSegReady(health: GetiHealthResponse | undefined): boolean {
-  if (!health) return false
-  return health.seg_model_loaded
-}
-
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
 type GetiHealthErrorResponse = {

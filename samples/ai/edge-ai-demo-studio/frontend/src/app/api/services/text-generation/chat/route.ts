@@ -18,6 +18,24 @@ import { SentenceProcessor } from '@/lib/sentence-processor'
 import { metaMap } from '@/services/_generated/meta'
 import { hermesToolMiddleware } from '@ai-sdk-tool/parser'
 import { getWorkloadModel } from '@/app/api/common/get-workload-model'
+import {
+  type ConcreteReasoningParserId,
+  resolveReasoningParser,
+} from '@/lib/reasoning-parsers'
+
+function createReasoningMiddleware(parser: ConcreteReasoningParserId) {
+  switch (parser) {
+    case 'none':
+      return null
+    case 'qwen3.5':
+      return extractReasoningMiddleware({
+        tagName: 'think',
+        startWithReasoning: true,
+      })
+    case 'default':
+      return extractReasoningMiddleware({ tagName: 'think' })
+  }
+}
 
 const createDefaultSystemPrompt = () => {
   return `You are a human-like conversational AI. 
@@ -150,6 +168,7 @@ export async function POST(req: Request) {
     repetitionPenalty?: number
     knowledgeBaseId?: number
     disableReasoning?: boolean
+    reasoningParser?: string
     mcpServerIds?: number[]
     lipsync?: LipsyncConfig
   }
@@ -170,6 +189,7 @@ export async function POST(req: Request) {
     repetitionPenalty,
     knowledgeBaseId,
     disableReasoning,
+    reasoningParser,
     mcpServerIds,
     lipsync,
   } = body
@@ -195,18 +215,23 @@ export async function POST(req: Request) {
     }
   }
 
-  if (disableReasoning && !systemPrompt.startsWith('/no_think')) {
-    systemPrompt = `/no_think ${systemPrompt}`
-  }
-
   const provider = createOpenAICompatible({
     baseURL: `http://localhost:${textGenerationMeta.port}/v1`,
     name: 'ovms',
     fetch: async (url, options) => {
-      if (options?.body) {
+      if (options?.body && (repetitionPenalty != null || disableReasoning)) {
         const body = JSON.parse(options.body.toString())
-        body.repetition_penalty = repetitionPenalty
-        options.body = JSON.stringify(body)
+        if (repetitionPenalty != null) {
+          body.repetition_penalty = repetitionPenalty
+        }
+
+        if (disableReasoning) {
+          body.chat_template_kwargs = {
+            ...body.chat_template_kwargs,
+            enable_thinking: false,
+          }
+        }
+        options = { ...options, body: JSON.stringify(body) }
       }
       const newURL = new URL(url.toString())
       return fetch(newURL, options)
@@ -222,20 +247,19 @@ export async function POST(req: Request) {
   const hasTools = mcpTools != null && Object.keys(mcpTools.tools).length > 0
 
   const baseModel = provider(model)
-  const wrappedModel = disableReasoning
-    ? wrapLanguageModel({
-        model: baseModel,
-        middleware: hasTools ? [hermesToolMiddleware] : [],
-      })
-    : wrapLanguageModel({
-        model: baseModel,
-        middleware: hasTools
-          ? [
-              hermesToolMiddleware,
-              extractReasoningMiddleware({ tagName: 'think' }),
-            ]
-          : [extractReasoningMiddleware({ tagName: 'think' })],
-      })
+  // Resolve the reasoning parser (user choice, or model-aware default) and
+  // build the middleware stack. Reasoning parsing is skipped entirely when the
+  // user has disabled reasoning.
+  const reasoningMiddleware = disableReasoning
+    ? null
+    : createReasoningMiddleware(resolveReasoningParser(reasoningParser, model))
+  const wrappedModel = wrapLanguageModel({
+    model: baseModel,
+    middleware: [
+      ...(hasTools ? [hermesToolMiddleware] : []),
+      ...(reasoningMiddleware ? [reasoningMiddleware] : []),
+    ],
+  })
   const stream = createUIMessageStream({
     execute: async ({ writer }) => {
       const modelMessages = await convertToModelMessages(

@@ -14,27 +14,21 @@ import type { GradingEntry } from './components/grading-section'
 import { AlertTriangle } from 'lucide-react'
 import type { Sample } from '../types'
 import { useGetServices } from '@/context/service-status-context'
-import {
-  useMcpParams,
-  useOptionalServiceGroup,
-  useTextGenerationParams,
-  useTtsParams,
-} from '@/samples/common/hooks'
+import { useFeatureCollector } from '@/context/feature-collector'
+import { useFeatureProviders } from '@/samples/common/feature-providers/use-feature-providers'
+import { useTextGenerationParams } from '@/samples/common/hooks'
 import { SampleParamsSlot } from '../common/sample-params-slot'
 import { useExamRecords } from './hooks/use-exam-records'
 
+// Optional-service feature integrations this sample wires (explicit opt-in).
+// Order = Configure-sheet group order. See docs/OPTIONAL-SERVICES.md.
+const FEATURE_SERVICES = ['text-to-speech', 'speech-to-text', 'mcp']
+
 export function AiExamMarkingDemo({ sample }: { sample: Sample }) {
   const textGen = useTextGenerationParams()
-  const tts = useTtsParams(sample.id)
 
-  const stt = useOptionalServiceGroup({
-    serviceId: 'speech-to-text',
-    serviceLabel: 'Speech to Text',
-    offlineMessage:
-      'Enable STT for voice input. Start the service from the services page.',
-  })
-
-  const mcp = useMcpParams()
+  const featureProviders = useFeatureProviders(FEATURE_SERVICES)
+  const collector = useFeatureCollector(FEATURE_SERVICES)
 
   const { 'text-generation': textGenService } = useGetServices([
     'text-generation',
@@ -91,9 +85,13 @@ export function AiExamMarkingDemo({ sample }: { sample: Sample }) {
         </div>
       )}
 
-      <SampleParamsSlot
-        groups={[textGen.group, tts.group, stt.group, mcp.group]}
-      />
+      <collector.Provider>
+        {featureProviders.map(({ serviceId, Provider }) => (
+          <Provider key={serviceId} sampleId={sample.id} />
+        ))}
+      </collector.Provider>
+
+      <SampleParamsSlot groups={[textGen.group, ...collector.groups]} />
 
       {/* Main Content */}
       <div className="flex overflow-hidden">

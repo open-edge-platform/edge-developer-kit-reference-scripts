@@ -9,10 +9,7 @@ export { useTranslate } from '@/services/ppt-translator/hooks/use-translate'
 export { useTranslationStatus } from '@/services/ppt-translator/hooks/use-translation-status'
 export { useDownload } from '@/services/ppt-translator/hooks/use-download'
 
-export type {
-  PptTranslatorParamValues,
-  SupportedLanguage,
-} from '@/services/ppt-translator/hooks/use-params'
+export type { PptTranslatorParamValues } from '@/services/ppt-translator/hooks/use-params'
 export type {
   TranslatePayload,
   TranslateResult,

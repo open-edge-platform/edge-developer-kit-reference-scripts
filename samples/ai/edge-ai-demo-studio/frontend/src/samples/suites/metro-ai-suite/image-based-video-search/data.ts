@@ -4,6 +4,7 @@
 import type { Sample } from '@/samples/types'
 import { imageBasedVideoSearchSuite } from './config'
 import { ImageBasedVideoSearchDemo } from './demo'
+import sampleImage from './image.png'
 
 export const sample: Sample = {
   id: 'image-based-video-search',
@@ -22,6 +23,7 @@ export const sample: Sample = {
     'Docker',
   ],
   supportedOS: ['linux'],
+  image: sampleImage,
   demo: {
     type: 'component',
     component: ImageBasedVideoSearchDemo,

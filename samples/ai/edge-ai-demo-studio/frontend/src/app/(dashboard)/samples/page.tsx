@@ -3,8 +3,10 @@
 
 'use client'
 
-import { Sparkles } from 'lucide-react'
+import { CheckSquare, Download, Sparkles, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { ExportSamplesDialog } from '@/components/dashboard/samples/export-samples-dialog'
 import { SampleCard } from '@/components/dashboard/samples/sample-card'
 import {
   type OSFilter,
@@ -13,6 +15,8 @@ import {
   SampleFilters,
 } from '@/components/dashboard/samples/samples-filters'
 import { Button } from '@/components/ui/button'
+import { Separator } from '@/components/ui/separator'
+import { cn } from '@/lib/utils'
 import { useSystemInfo } from '@/context/system-info-context'
 import { getOSLabel } from '@/services/registry'
 import {
@@ -36,6 +40,24 @@ export default function SamplesPage() {
     useState<ReadinessFilter>('all')
   const [selectedOS, setSelectedOS] = useState<OSFilter>('all')
   const [sort, setSort] = useState<SortOption>('readiness')
+
+  // Multi-select export
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [exportOpen, setExportOpen] = useState(false)
+
+  const toggleSelected = (id: string) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+
+  const exitSelectionMode = () => {
+    setSelectionMode(false)
+    setSelectedIds(new Set())
+  }
 
   const { unsupported } = useMemo(() => {
     if (!systemInfo) return { supported: samples, unsupported: [] }
@@ -138,13 +160,39 @@ export default function SamplesPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-foreground text-2xl font-bold">Samples</h1>
-        <p className="text-muted-foreground mt-1 text-sm">
-          Explore interactive demos and sample applications built with Intel
-          Edge AI services.
-        </p>
+    <div className="space-y-6 pb-20">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-foreground text-2xl font-bold">Samples</h1>
+          <p className="text-muted-foreground mt-1 text-sm">
+            Explore interactive demos and sample applications built with Intel
+            Edge AI services.
+          </p>
+        </div>
+        <Button
+          variant={selectionMode ? 'secondary' : 'outline'}
+          size="sm"
+          aria-pressed={selectionMode}
+          className={cn(
+            'gap-2 transition-colors',
+            selectionMode && 'border-primary/40',
+          )}
+          onClick={() =>
+            selectionMode ? exitSelectionMode() : setSelectionMode(true)
+          }
+        >
+          {selectionMode ? (
+            <>
+              <X className="h-4 w-4" />
+              Cancel selection
+            </>
+          ) : (
+            <>
+              <CheckSquare className="text-primary h-4 w-4" />
+              Select to export
+            </>
+          )}
+        </Button>
       </div>
 
       <SampleFilters
@@ -181,6 +229,9 @@ export default function SamplesPage() {
                 unsupported={unsupportedIds.has(s.id)}
                 unsupportedReason={getUnsupportedReason(s.id)}
                 currentOS={systemInfo?.os}
+                selectable={selectionMode}
+                selected={selectedIds.has(s.id)}
+                onToggleSelect={toggleSelected}
               />
             </div>
           ))}
@@ -231,6 +282,61 @@ export default function SamplesPage() {
           </div>
         </div>
       )}
+
+      {/* Selection action bar — portalled to <body> so it stays fixed to the
+          viewport regardless of how long the gallery is. */}
+      {selectionMode &&
+        createPortal(
+          <div className="animate-in slide-in-from-bottom-4 fade-in fixed inset-x-0 bottom-6 z-50 flex justify-center px-4 duration-300">
+            <div className="glass-card flex items-center gap-1.5 rounded-full border py-1.5 pr-1.5 pl-2 shadow-xl">
+              <span className="flex items-center gap-2 px-2.5 text-sm">
+                <span
+                  className={cn(
+                    'flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold tabular-nums transition-colors',
+                    selectedIds.size > 0
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-muted text-muted-foreground',
+                  )}
+                >
+                  {selectedIds.size}
+                </span>
+                <span className="text-muted-foreground hidden sm:inline">
+                  selected
+                </span>
+              </span>
+              {selectedIds.size > 0 && (
+                <>
+                  <Separator orientation="vertical" className="!h-5" />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-muted-foreground hover:text-foreground rounded-full"
+                    onClick={() => setSelectedIds(new Set())}
+                  >
+                    Clear
+                  </Button>
+                </>
+              )}
+              <Button
+                size="sm"
+                className="gap-2 rounded-full"
+                disabled={selectedIds.size === 0}
+                onClick={() => setExportOpen(true)}
+              >
+                <Download className="h-4 w-4" />
+                Export selected
+              </Button>
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      <ExportSamplesDialog
+        sampleIds={[...selectedIds]}
+        open={exportOpen}
+        onOpenChange={setExportOpen}
+        onExported={exitSelectionMode}
+      />
     </div>
   )
 }

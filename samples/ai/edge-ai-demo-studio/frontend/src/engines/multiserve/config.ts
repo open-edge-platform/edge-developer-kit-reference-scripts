@@ -27,7 +27,7 @@ export const OVMS_PIPELINE_TYPES: SelectOption[] = [
   { value: 'VLM_CB', label: 'VLM (Continuous Batching)' },
 ]
 
-export const MODEL_SOURCES: SelectOption[] = [
+const MODEL_SOURCES: SelectOption[] = [
   { value: 'huggingface', label: 'Hugging Face' },
   { value: 'modelscope', label: 'ModelScope' },
   { value: 'custom', label: 'Custom (Local Upload)' },

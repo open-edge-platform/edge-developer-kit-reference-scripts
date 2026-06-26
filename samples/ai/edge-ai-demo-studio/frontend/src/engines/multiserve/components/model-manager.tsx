@@ -112,6 +112,7 @@ export function ModelManager({
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false)
 
   const uploadMutation = useUploadModel(serviceId)
+  const { mutate: uploadModelFiles } = uploadMutation
 
   const models = useMemo(() => {
     if (!data) return []
@@ -239,7 +240,7 @@ export function ModelManager({
       task: string
       files: File[]
     }) => {
-      uploadMutation.mutate(
+      uploadModelFiles(
         {
           backend: params.backend,
           repoId: params.repoId,
@@ -249,7 +250,7 @@ export function ModelManager({
         { onSuccess: () => setUploadDialogOpen(false) },
       )
     },
-    [uploadMutation],
+    [uploadModelFiles],
   )
 
   if (!isEngineUp && !isHealthLoading) {

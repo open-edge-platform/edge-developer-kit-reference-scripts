@@ -19,17 +19,3 @@ export interface OpenVINOExtraParams {
   weightFormat: string
   additionalParams: string
 }
-
-export interface ModelConfigInput {
-  name: string
-  backend: BackendId
-  source: ModelSource
-  weightFormat?: string
-  hasUploadedFile?: boolean
-  modelExistsOnDisk?: boolean
-}
-
-export interface ValidationResult {
-  valid: boolean
-  errors: string[]
-}

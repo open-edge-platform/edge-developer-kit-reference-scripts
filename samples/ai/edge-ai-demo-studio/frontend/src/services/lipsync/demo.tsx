@@ -21,7 +21,8 @@ export function LipsyncDemo({ service }: { service: Service }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const pcRef = useRef<RTCPeerConnection | null>(null)
 
-  const offerMutation = useLipsyncOffer()
+  const { mutateAsync: offerMutateAsync, isPending: isOfferPending } =
+    useLipsyncOffer()
 
   const clientIceServerUrl = (
     service.metadata as { clientIceServerUrl?: string } | undefined
@@ -94,7 +95,7 @@ export function LipsyncDemo({ service }: { service: Service }) {
         }
       })
 
-      const answer = await offerMutation.mutateAsync({
+      const answer = await offerMutateAsync({
         sdp: pc.localDescription?.sdp ?? offer.sdp,
         type: (pc.localDescription?.type ?? offer.type) as RTCSdpType,
       })
@@ -108,7 +109,7 @@ export function LipsyncDemo({ service }: { service: Service }) {
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to connect')
     }
-  }, [offerMutation, clientIceServerUrl])
+  }, [offerMutateAsync, clientIceServerUrl])
 
   const disconnect = useCallback(() => {
     if (disconnectTimeoutRef.current) {
@@ -137,7 +138,7 @@ export function LipsyncDemo({ service }: { service: Service }) {
       <AvatarStream
         videoRef={videoRef}
         isConnected={sessionId !== null}
-        isConnecting={offerMutation.isPending}
+        isConnecting={isOfferPending}
         statusMessage={statusMessage}
         sessionId={sessionId}
         onConnect={connect}

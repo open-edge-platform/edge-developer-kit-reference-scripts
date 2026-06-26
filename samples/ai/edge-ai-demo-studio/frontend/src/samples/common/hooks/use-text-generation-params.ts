@@ -22,7 +22,7 @@ export function useTextGenerationParams(
   options?: UseTextGenerationParamsOptions,
 ) {
   const { initial, optional = false } = options ?? {}
-  const { values, params } = useTextGenParams(initial)
+  const { values, requestParams, params } = useTextGenParams(initial)
   const [enabled, setEnabled] = useState(true)
 
   const online = useServiceLiveStatus('text-generation') === 'online'
@@ -41,5 +41,5 @@ export function useTextGenerationParams(
     params,
   }
 
-  return { values, group }
+  return { values, requestParams, group }
 }

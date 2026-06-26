@@ -3,7 +3,18 @@
 
 import type { ServiceDocsData } from '@/services/types'
 
-export const getDocsData = ({ host }: { host: string }): ServiceDocsData => {
+export const getDocsData = ({
+  host,
+  model,
+}: {
+  host: string
+  model?: string
+}): ServiceDocsData => {
+  const inferModel = model || 'openvino:OpenVINO/Qwen3-8B-int4-ov'
+  const servedModel = inferModel.includes(':')
+    ? inferModel.slice(inferModel.indexOf(':') + 1)
+    : inferModel
+
   return {
     serviceDescription:
       'The Text Generation service leverages the OpenVINO Model Server to provide efficient and scalable deployment of large language models for real-time text generation. It exposes OpenAI-compatible endpoints, enabling seamless use with existing OpenAI client libraries such as the Python openai package or the Node.js openai library — without requiring an internet connection.',
@@ -20,7 +31,7 @@ export const getDocsData = ({ host }: { host: string }): ServiceDocsData => {
             name: 'model',
             type: 'string',
             required: true,
-            desc: 'Name of the model as assigned in the OpenVINO Model Server MediaPipe graph configuration.',
+            desc: 'Model identifier in <provider>:<model_id> format, where provider is "openvino" or "llamacpp" (e.g. "openvino:OpenVINO/Qwen3-8B-int4-ov"). Run GET /v1/models to list the available identifiers.',
           },
           {
             name: 'messages',
@@ -130,7 +141,7 @@ export const getDocsData = ({ host }: { host: string }): ServiceDocsData => {
             name: 'model',
             type: 'string',
             required: true,
-            desc: 'Name of the model as assigned in the OpenVINO Model Server MediaPipe graph configuration.',
+            desc: 'Model identifier in <provider>:<model_id> format, where provider is "openvino" or "llamacpp" (e.g. "openvino:OpenVINO/Qwen3-8B-int4-ov"). Run GET /v1/models to list the available identifiers.',
           },
           {
             name: 'prompt',
@@ -237,7 +248,7 @@ export const getDocsData = ({ host }: { host: string }): ServiceDocsData => {
             code: `from openai import OpenAI
 
 client = OpenAI(base_url="${host}/v1", api_key="unused")
-model = "text_generation"
+model = "${inferModel}"
 
 response = client.chat.completions.create(
     model=model,
@@ -257,7 +268,7 @@ const client = new OpenAI({
   baseURL: '${host}/v1',
   apiKey: 'unused',
 })
-const model = 'text_generation'
+const model = '${inferModel}'
 
 const response = await client.chat.completions.create({
   model,
@@ -275,7 +286,7 @@ console.log(response.choices[0].message.content)`,
             code: `curl ${host}/v1/chat/completions \\
   -H "Content-Type: application/json" \\
   -d '{
-    "model": "text_generation",
+    "model": "${inferModel}",
     "messages": [
       {"role": "system", "content": "You are a helpful assistant."},
       {"role": "user", "content": "Tell me about OpenVINO"}
@@ -294,7 +305,7 @@ console.log(response.choices[0].message.content)`,
             code: `from openai import OpenAI
 
 client = OpenAI(base_url="${host}/v1", api_key="unused")
-model = "text_generation"
+model = "${inferModel}"
 
 response = client.completions.create(
     model=model,
@@ -313,7 +324,7 @@ const client = new OpenAI({
   baseURL: '${host}/v1',
   apiKey: 'unused',
 })
-const model = 'text_generation'
+const model = '${inferModel}'
 
 const response = await client.completions.create({
   model,
@@ -328,7 +339,7 @@ console.log(response.choices[0].text)`,
             code: `curl ${host}/v1/completions \\
   -H "Content-Type: application/json" \\
   -d '{
-    "model": "text_generation",
+    "model": "${inferModel}",
     "prompt": "Tell me about OpenVINO",
     "stream": false
   }'`,
@@ -344,7 +355,7 @@ console.log(response.choices[0].text)`,
             code: `from openai import OpenAI
 
 client = OpenAI(base_url="${host}/v1", api_key="unused")
-model = "text_generation"
+model = "${inferModel}"
 
 response = client.completions.create(
     model=model,
@@ -364,7 +375,7 @@ const client = new OpenAI({
   baseURL: '${host}/v1',
   apiKey: 'unused',
 })
-const model = 'text_generation'
+const model = '${inferModel}'
 
 const response = await client.completions.create({
   model,
@@ -392,7 +403,7 @@ console.log(response.choices[0].text)`,
     }
   ],
   "created": 1716825108,
-  "model": "text_generation",
+  "model": "${servedModel}",
   "object": "chat.completion",
   "usage": {
     "completion_tokens": 38,
@@ -412,7 +423,7 @@ console.log(response.choices[0].text)`,
     }
   ],
   "created": 1716825108,
-  "model": "text_generation",
+  "model": "${servedModel}",
   "object": "text_completion",
   "usage": {
     "completion_tokens": 14,

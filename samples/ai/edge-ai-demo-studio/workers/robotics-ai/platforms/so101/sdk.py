@@ -212,7 +212,11 @@ class SO101FollowerArm:
         )
 
         try:
-            self.robot.connect()
+            # Connect without interactive calibration (which blocks on input()).
+            # Instead, write calibration from file to motor registers ourselves.
+            self.robot.connect(calibrate=False)
+            if self.robot.calibration and not self.robot.bus.is_calibrated:
+                self.robot.bus.write_calibration(self.robot.calibration)
             logger.info("Connected to SO101 Follower robot.")
 
         except Exception as e:

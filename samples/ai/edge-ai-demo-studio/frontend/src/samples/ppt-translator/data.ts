@@ -3,6 +3,7 @@
 
 import type { Sample } from '../types'
 import { PptTranslatorDemo } from './demo'
+import sampleImage from './image.png'
 
 export const sample: Sample = {
   id: 'ppt-translator',
@@ -18,6 +19,7 @@ export const sample: Sample = {
   ],
   tags: ['Translation', 'PowerPoint', 'LLM', 'Document'],
   supportedOS: ['linux', 'windows'],
+  image: sampleImage,
   demo: {
     type: 'component',
     component: PptTranslatorDemo,

@@ -7,6 +7,7 @@ import {
   Download,
   Info,
   RefreshCw,
+  RotateCcw,
   Wrench,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -108,6 +109,7 @@ export function ParamRenderer({ param }: { param: DemoParam }) {
   }
 
   if (param.type === 'slider') {
+    const isUnset = param.unset === true
     return (
       <div className="space-y-2">
         <div className="flex items-center justify-between">
@@ -117,9 +119,27 @@ export function ParamRenderer({ param }: { param: DemoParam }) {
             </Label>
             <ParamTooltip tooltip={param.tooltip} />
           </div>
-          <span className="text-foreground bg-muted/50 rounded px-1.5 py-0.5 font-mono text-xs">
-            {param.value}
-          </span>
+          {isUnset ? (
+            <span className="text-muted-foreground bg-muted/50 rounded px-1.5 py-0.5 text-[10px] font-medium tracking-wide uppercase">
+              Auto
+            </span>
+          ) : (
+            <div className="flex items-center gap-1">
+              <span className="text-foreground bg-muted/50 rounded px-1.5 py-0.5 font-mono text-xs">
+                {param.value}
+              </span>
+              {param.onReset && (
+                <button
+                  type="button"
+                  aria-label={`Reset ${param.label} to default`}
+                  onClick={param.onReset}
+                  className="hover:bg-muted/20 text-muted-foreground flex h-5 w-5 items-center justify-center rounded"
+                >
+                  <RotateCcw className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+          )}
         </div>
         <Slider
           value={[param.value]}
@@ -127,6 +147,7 @@ export function ParamRenderer({ param }: { param: DemoParam }) {
           max={param.max}
           step={param.step}
           onValueChange={([v]) => param.onChange(v)}
+          className={cn(isUnset && 'opacity-50')}
         />
       </div>
     )

@@ -11,9 +11,20 @@ interface RobotTypesResponse {
   types: string[]
 }
 
+interface RobotPort {
+  device: string
+  description: string
+  manufacturer: string
+}
+
+interface RobotPortsResponse {
+  ports: RobotPort[]
+}
+
 interface SetRobotTypeResponse {
   status: boolean
   type: string
+  port: string
   message: string
 }
 
@@ -42,21 +53,39 @@ export function useRobotTypesQuery(workerBaseUrl: string) {
   })
 }
 
+export function useRobotPortsQuery(workerBaseUrl: string) {
+  return useQuery({
+    queryKey: ['robot-ports', workerBaseUrl],
+    queryFn: async (): Promise<RobotPortsResponse> => {
+      const response = await fetch(`${workerBaseUrl}/robot/ports`)
+      if (!response.ok) throw new Error(`Failed with status ${response.status}`)
+      return response.json()
+    },
+    retry: false,
+  })
+}
+
 export function useSetRobotTypeMutation() {
   return useMutation({
     mutationFn: async ({
       workerBaseUrl,
       type,
+      port,
     }: {
       workerBaseUrl: string
       type: string
+      port?: string
     }): Promise<SetRobotTypeResponse> => {
       const response = await fetch(`${workerBaseUrl}/robot/type`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type }),
+        body: JSON.stringify({ type, port }),
       })
-      if (!response.ok) throw new Error(`Failed with status ${response.status}`)
+      if (!response.ok) {
+        const body = await response.json().catch(() => null)
+        const detail = body?.detail ?? `Failed with status ${response.status}`
+        throw new Error(detail)
+      }
       return response.json()
     },
   })

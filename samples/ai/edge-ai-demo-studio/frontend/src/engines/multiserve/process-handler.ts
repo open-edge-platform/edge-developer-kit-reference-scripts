@@ -233,8 +233,13 @@ const startModel = async (
 }
 
 const initializeModel = async (service: Service): Promise<boolean> => {
+  const port = service.port
+  if (port == null) {
+    logger.error(`Service ${service.name} has no port configured`)
+    return false
+  }
   try {
-    const modelStatusURL = `http://localhost:${service.port}/v1/models`
+    const modelStatusURL = `http://localhost:${port}/v1/models`
     const modelStatusResponse = await fetch(new URL(modelStatusURL))
     if (!modelStatusResponse.ok) {
       logger.log(
@@ -263,11 +268,7 @@ const initializeModel = async (service: Service): Promise<boolean> => {
 
       if (!modelInfo || modelInfo.downloaded.length === 0) {
         logger.log(`Downloading model ${serviceModel.name}...`)
-        const downloaded = await downloadModel(
-          typedModel,
-          taskType,
-          service.port,
-        )
+        const downloaded = await downloadModel(typedModel, taskType, port)
         if (!downloaded) {
           logger.error(`Failed to download model ${serviceModel.name}`)
           return false
@@ -275,12 +276,7 @@ const initializeModel = async (service: Service): Promise<boolean> => {
       }
 
       logger.log(`Starting model ${serviceModel.name}...`)
-      const started = await startModel(
-        typedModel,
-        backend,
-        taskType,
-        service.port,
-      )
+      const started = await startModel(typedModel, backend, taskType, port)
       if (!started) {
         logger.error(`Failed to start model ${serviceModel.name}`)
         return false
@@ -298,6 +294,10 @@ const startMultiserveServer = async (service: Service) => {
   const serviceModel = service.models.default
   const device = serviceModel.device
   const port = service.port
+  if (port == null) {
+    logger.error(`Service ${service.name} has no port configured`)
+    return
+  }
   const processName = getMultiserveProcessName(service)
   const processes = listProcesses()
   logger.info(`Existing processes: ${processes.map((p) => p.name).join(', ')}`)
@@ -446,8 +446,14 @@ const ensureMultiserveEngineImpl = async (
 ): Promise<boolean> => {
   const processName = getMultiserveProcessName(service)
 
+  const { port } = service
+  if (port == null) {
+    logger.error(`Service ${service.name} has no port configured`)
+    return false
+  }
+
   if (isMultiserveRunning(service)) {
-    if (await isEngineHealthy(service.port)) {
+    if (await isEngineHealthy(port)) {
       return true
     }
 

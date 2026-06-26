@@ -5,8 +5,8 @@ camera:
   width: 848
 client:
   api_key: '-'
-  base_url: http://127.0.0.1:8025/v3
-  model_id: OpenGVLab/InternVL3-2B
+  base_url: http://127.0.0.1:8080/api/text-generation/v1
+  model_id: openvino:OpenVINO/Qwen3.5-4B-int4-ov
 fastsam:
   device: NPU
   image_size: 1024
@@ -14,10 +14,10 @@ fastsam:
   name: FastSAM-x
 inference:
   bbox:
-  - 198
-  - 70
-  - 662
-  - 416
+  - 189
+  - 78
+  - 643
+  - 414
 robot:
   gripper_close: 40.0
   gripper_open: 60.0

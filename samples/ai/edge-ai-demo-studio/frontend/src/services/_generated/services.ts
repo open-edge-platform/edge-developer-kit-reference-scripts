@@ -11,8 +11,11 @@ import { service as getiClassifierMeta } from '../geti-classifier/data'
 import { service as imageBasedVideoSearchMeta } from '../suites/metro-ai-suite/image-based-video-search/data'
 import { service as imageGenerationMeta } from '../image-generation/data'
 import { service as lipsyncMeta } from '../lipsync/data'
+import { service as lossPreventionMeta } from '../suites/retail-ai-suite/loss-prevention/data'
 import { service as mcpMeta } from '../mcp/data'
 import { service as medicalScribeDatabaseMeta } from '../medical-scribe-database/data'
+import { service as ocrMeta } from '../ocr/data'
+import { service as palletDefectDetectionMeta } from '../suites/manufacturing-ai-suite/pallet-defect-detection/data'
 import { service as pptTranslatorMeta } from '../ppt-translator/data'
 import { service as rerankMeta } from '../rerank/data'
 import { service as roboticsAiMeta } from '../robotics-ai/data'
@@ -26,11 +29,10 @@ import { service as wakeWordDetectionMeta } from '../wake-word-detection/data'
 // Demo imports
 import { DiarizationDemo } from '../diarization/demo'
 import { EmbeddingDemo } from '../embeddings/demo'
-import { GetiClassifierDemo } from '../geti-classifier/demo'
-import { ImageBasedVideoSearchDemo } from '../suites/metro-ai-suite/image-based-video-search/demo'
 import { ImageGenerationDemo } from '../image-generation/demo'
 import { LipsyncDemo } from '../lipsync/demo'
 import { McpDemo } from '../mcp/demo'
+import { OcrDemo } from '../ocr/demo'
 import { RerankerDemo } from '../rerank/demo'
 import { SpeechToTextDemo } from '../speech-to-text/demo'
 import { TextGenerationDemo } from '../text-generation/demo'
@@ -55,12 +57,10 @@ export const serviceMap: Record<ServiceType['type'], Service> = {
   'geti-classifier': {
     ...getiClassifierMeta,
     status: 'offline',
-    demo: GetiClassifierDemo,
   },
   'image-based-video-search': {
     ...imageBasedVideoSearchMeta,
     status: 'offline',
-    demo: ImageBasedVideoSearchDemo,
   },
   'image-generation': {
     ...imageGenerationMeta,
@@ -72,6 +72,10 @@ export const serviceMap: Record<ServiceType['type'], Service> = {
     status: 'offline',
     demo: LipsyncDemo,
   },
+  'loss-prevention': {
+    ...lossPreventionMeta,
+    status: 'offline',
+  },
   mcp: {
     ...mcpMeta,
     status: 'offline',
@@ -79,6 +83,15 @@ export const serviceMap: Record<ServiceType['type'], Service> = {
   },
   'medical-scribe-database': {
     ...medicalScribeDatabaseMeta,
+    status: 'offline',
+  },
+  ocr: {
+    ...ocrMeta,
+    status: 'offline',
+    demo: OcrDemo,
+  },
+  'pallet-defect-detection': {
+    ...palletDefectDetectionMeta,
     status: 'offline',
   },
   'ppt-translator': {

@@ -3,7 +3,7 @@
 
 'use client'
 
-import { createContext, type ReactNode, useContext } from 'react'
+import { createContext, type ReactNode, useContext, useMemo } from 'react'
 import { type SystemInfo, useSystemInfoQuery } from '@/hooks/use-system-info'
 
 interface SystemInfoContextValue {
@@ -18,9 +18,13 @@ const SystemInfoContext = createContext<SystemInfoContextValue>({
 
 export function SystemInfoProvider({ children }: { children: ReactNode }) {
   const { systemInfo, isLoading } = useSystemInfoQuery()
+  const value = useMemo(
+    () => ({ systemInfo, loading: isLoading }),
+    [systemInfo, isLoading],
+  )
 
   return (
-    <SystemInfoContext.Provider value={{ systemInfo, loading: isLoading }}>
+    <SystemInfoContext.Provider value={value}>
       {children}
     </SystemInfoContext.Provider>
   )

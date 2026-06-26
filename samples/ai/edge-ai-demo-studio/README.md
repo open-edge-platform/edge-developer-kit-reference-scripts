@@ -13,18 +13,35 @@ Edge AI Demo Studio is a modern toolkit for deploying, managing, and serving AI 
 - **Web-Based Management:** Manage devices, workloads, and users through a modern web interface.
 - **Edge Optimized:** Built for Intel hardware and edge environments.
 - **AI Services:** AI Services that users can use for their applications
-  - Text Generation (LLM)
-  - Text to Speech (TTS)
-  - Speech to Text (STT)
-  - Embedding 
-  - Lipsync
-  - Image Generation
-  - MCP Manager
-  - Wake Word Detection
-- **Samples:** Samples use cases that implements the ai services
-  - Digital Avatar
-  - RAG Chat
-  - [AI Exam Marking](./frontend/src/samples/ai-exam-marking/README.md)
+  - **Text Generation** — Generate coherent text using large language models optimized for Intel hardware.
+  - **Text to Speech** — Natural-sounding speech synthesis with multiple voice options powered by Kokoro TTS.
+  - **Speech to Text** — Real-time speech recognition with low-latency transcription using Whisper models optimized for Intel hardware.
+  - **Speaker Diarization** — Identify and label speakers in audio recordings using pyannote.audio speaker diarization models.
+  - **Text Embedding** — Generate dense vector embeddings for semantic search and RAG pipelines.
+  - **Reranker** — Rescore and rerank documents by relevance for improved search and RAG pipelines.
+  - **Vector Database** — FAISS-based vector storage for knowledge base management, semantic search, and RAG pipelines.
+  - **Lipsync** — Real-time avatar lip-syncing with Wav2Lip, streamed over WebRTC.
+  - **Image Generation** — Generate images from text prompts using diffusion models accelerated with OpenVINO.
+  - **MCP Manager** — Manage Model Context Protocol servers and their tool integrations.
+  - **Wake Word Detection** — Detect custom wake words from microphone input and send webhook notifications on detection events.
+- **Samples:** Sample use cases that implement the AI services
+  - **Digital Avatar** — Interact with an AI-powered avatar that combines real-time video with intelligent conversation.
+  - **Digital Avatar Lite** — A lightweight animated robot avatar that brings conversations to life with responsive movements and expressions.
+  - **RAG Chatbot** — Upload documents and chat with an AI that retrieves relevant context to answer your questions.
+  - **Medical Scribe** — Automatically transcribe and diarize doctor-patient conversations, then generate structured SOAP notes.
+  - **Webcam Capture with VLM** — Demonstrate the integration of webcam capture and Visual Language Model (VLM) for enhanced interaction.
+  - **[AI Exam Marking](./frontend/src/samples/ai-exam-marking/README.md)** — AI-powered exam marking using OCR and LLM to automatically grade test papers from images.
+  - **PowerPoint Translator** — Translate PowerPoint presentations while preserving formatting using AI.
+  - **[Geti Image Classification](./frontend/src/samples/geti-classifier/README.md)** — Classify images using a local Intel Geti deployment and send feedback for continuous model improvement.
+  - **Synthetic Image Generation** — Generate and edit synthetic images from base images in real-time for dataset augmentation.
+  - **Robotics AI** — A demo showcasing the capabilities of Robotics AI, including real-time object detection and manipulation.
+- **Suites:** Curated industry-specific AI solution packages built on Intel Edge AI Suites
+  - [*Manufacturing AI Suite*](https://github.com/open-edge-platform/edge-ai-suites/tree/main/manufacturing-ai-suite) — A comprehensive toolkit for building, deploying, and scaling AI applications in industrial environments. Enables real-time integration with optimized hardware for production workflow automation, workplace safety, defect detection, and asset tracking.
+    - [**Pallet Defect Detection**](https://github.com/open-edge-platform/edge-ai-suites/tree/main/manufacturing-ai-suite/industrial-edge-insights-vision) — Real-time pallet condition monitoring on warehouse video streams using DL Streamer Pipeline Server, OpenVINO inference, and WebRTC streaming.
+  - [*Metro AI Suite*](https://github.com/open-edge-platform/edge-ai-suites/tree/main/metro-ai-suite) — Accelerates application development for edge AI video safety, security, and smart city use cases. Includes OpenVINO™ toolkit, Deep Learning Streamer, and Intel® oneAPI Toolkit for media analytics and AI performance optimization.
+    - [**Image-Based Video Search**](https://github.com/open-edge-platform/edge-ai-suites/tree/main/metro-ai-suite/image-based-video-search) — Near real-time image-based similarity search over live video streams using YOLOv11 object detection, ResNet-50 feature extraction via DL Streamer, and Milvus vector indexing.
+  - [*Retail AI Suite*](https://github.com/open-edge-platform/edge-ai-suites/tree/main/retail-ai-suite) — Accelerates development of edge AI applications for retail environments, enabling intelligent automation for use cases such as self-checkout, loss prevention, and store analytics with optimized Intel hardware and the OpenVINO™ toolkit.
+    - [**Loss Prevention**](https://github.com/intel-retail/loss-prevention/tree/main) — Real-time self-checkout loss prevention using object detection and analytics to identify mis-scans and suspicious activity at the point of sale.
 
 ## Architecture Diagram
 ![Archictecture Diagram](./docs/Architecture.png)

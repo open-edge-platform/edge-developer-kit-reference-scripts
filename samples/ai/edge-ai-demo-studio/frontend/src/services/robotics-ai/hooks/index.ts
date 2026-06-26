@@ -15,6 +15,11 @@ import { useCameraReloadMutation } from './use-camera-reload'
 import { useCameraStatusQuery } from './use-camera-status'
 import { useMcpConnectMutation } from './use-mcp-connect'
 import {
+  useCalibrationStatusQuery,
+  usePrerequisitesQuery,
+} from './use-prerequisites'
+import {
+  useRobotPortsQuery,
   useRobotTypeQuery,
   useRobotTypesQuery,
   useSetRobotTypeMutation,
@@ -24,6 +29,7 @@ import {
   useCalibrationStartMutation,
 } from './use-calibration'
 import {
+  type JointReading,
   type MotorCalibrationState,
   useMotorCalibrationNextMutation,
   useMotorCalibrationStartMutation,
@@ -40,6 +46,8 @@ import {
 } from './use-aruco-calibration'
 import { useTranscribe } from '@/services/speech-to-text/hooks'
 
+export type { ArucoDetectResult } from './use-aruco-calibration'
+export type { JointReading } from './use-motor-calibration'
 export type { UIMessage as ChatMessage } from 'ai'
 
 export interface ToolOption {
@@ -52,12 +60,12 @@ export interface ToolOption {
 // ── Constants ─────────────────────────────────────────────────────
 
 export const DEFAULT_CHAT_SUGGESTIONS = [
-  'What objects can you detect in the live camera feed right now?',
+  'What can you see right now?',
   'Pickup all the items in the workspace',
   'Pickup the cube',
 ]
 
-export const KNOWN_ROBOT_TYPES = ['SO-ARM101']
+const KNOWN_ROBOT_TYPES = ['SO-ARM101']
 
 // ── Helpers ───────────────────────────────────────────────────────
 
@@ -188,12 +196,25 @@ export interface UseRoboticsAiDemoReturn {
   handleMicStopListening: () => void
   robotTypeReady: boolean
   isRobotTypeLoading: boolean
+  isPrerequisitesLoading: boolean
+  prerequisites: { dialout: boolean; librealsense: boolean } | undefined
+  calibrationStatus:
+    | { motor_calibrated: boolean; camera_calibrated: boolean }
+    | undefined
+  refetchCalibrationStatus: () => void
   availableRobotTypes: string[]
+  availableRobotPorts: {
+    device: string
+    description: string
+    manufacturer: string
+  }[]
   selectedSetupRobotType: string
   setSelectedSetupRobotType: (type: string) => void
+  selectedSetupRobotPort: string
+  setSelectedSetupRobotPort: (port: string) => void
   isSettingRobotType: boolean
   robotTypeSetError: string | null
-  handleConfirmRobotType: () => Promise<void>
+  handleConfirmRobotType: () => Promise<boolean>
   calibrationState: 'idle' | 'awaiting_confirmation'
   isCalibrationStarting: boolean
   isCalibrationConfirming: boolean
@@ -202,7 +223,7 @@ export interface UseRoboticsAiDemoReturn {
   handleCalibrationStart: () => Promise<void>
   handleCalibrationConfirm: () => Promise<void>
   motorCalibrationState: MotorCalibrationState
-  motorCalibrationOutput: string[]
+  motorCalibrationJointReadings: JointReading[]
   isMotorCalibrationStarting: boolean
   isMotorCalibrationNexting: boolean
   motorCalibrationError: string | null
@@ -224,6 +245,8 @@ export interface UseRoboticsAiDemoReturn {
   arucoError: string | null
   arucoMessage: string | null
   handleArucoCalibrate: () => Promise<void>
+  useMcp: boolean
+  setUseMcp: (v: boolean) => void
 }
 
 export function useRoboticsAiDemo(): UseRoboticsAiDemoReturn {
@@ -248,6 +271,7 @@ export function useRoboticsAiDemo(): UseRoboticsAiDemoReturn {
   const [hasMicrophone, setHasMicrophone] = useState(false)
   const [micError, setMicError] = useState<string | null>(null)
   const [selectedSetupRobotTypeState, setSelectedSetupRobotType] = useState('')
+  const [selectedSetupRobotPort, setSelectedSetupRobotPort] = useState('')
   const [robotTypeSetError, setRobotTypeSetError] = useState<string | null>(
     null,
   )
@@ -285,6 +309,10 @@ export function useRoboticsAiDemo(): UseRoboticsAiDemoReturn {
   const [isArucoPolling, setIsArucoPolling] = useState(false)
   const [arucoError, setArucoError] = useState<string | null>(null)
   const [arucoMessage, setArucoMessage] = useState<string | null>(null)
+  const [useMcp, setUseMcp] = useState(true)
+
+  const { data: prerequisitesData, isLoading: isPrerequisitesLoading } =
+    usePrerequisitesQuery(workerBaseUrl)
 
   const {
     data: robotTypeData,
@@ -292,6 +320,7 @@ export function useRoboticsAiDemo(): UseRoboticsAiDemoReturn {
     refetch: refetchRobotType,
   } = useRobotTypeQuery(workerBaseUrl)
   const { data: robotTypesData } = useRobotTypesQuery(workerBaseUrl)
+  const { data: robotPortsData } = useRobotPortsQuery(workerBaseUrl)
   const {
     mutateAsync: setRobotTypeMutateAsync,
     isPending: isSettingRobotType,
@@ -332,6 +361,14 @@ export function useRoboticsAiDemo(): UseRoboticsAiDemoReturn {
     isPending: isArucoCalibrating,
   } = useArucoCalibrateMutation()
 
+  const { data: calibrationStatusData, refetch: refetchCalibrationStatus } =
+    useCalibrationStatusQuery(
+      workerBaseUrl,
+      !isRobotTypeLoading &&
+        !!robotTypeData &&
+        !!(robotTypeData.type && robotTypeData.type.toLowerCase() !== 'none'),
+    )
+
   const {
     messages,
     sendMessage: chatSendMessage,
@@ -358,6 +395,10 @@ export function useRoboticsAiDemo(): UseRoboticsAiDemoReturn {
   const availableRobotTypes = useMemo(
     () => robotTypesData?.types ?? KNOWN_ROBOT_TYPES,
     [robotTypesData],
+  )
+  const availableRobotPorts = useMemo(
+    () => robotPortsData?.ports ?? [],
+    [robotPortsData],
   )
   // robotTypeReady is true only when the query returned a non-null/non-"none" type
   const robotTypeReady =
@@ -426,15 +467,17 @@ export function useRoboticsAiDemo(): UseRoboticsAiDemoReturn {
     )
   }, [micLanguage, micLanguageOptions])
 
-  const handleConfirmRobotType = useCallback(async () => {
-    if (!selectedSetupRobotType || isSettingRobotType) return
+  const handleConfirmRobotType = useCallback(async (): Promise<boolean> => {
+    if (!selectedSetupRobotType || isSettingRobotType) return false
     setRobotTypeSetError(null)
     try {
       await setRobotTypeMutateAsync({
         workerBaseUrl,
         type: selectedSetupRobotType,
+        port: selectedSetupRobotPort || undefined,
       })
       await refetchRobotType()
+      return true
     } catch (error) {
       const msg =
         error instanceof TypeError &&
@@ -444,9 +487,11 @@ export function useRoboticsAiDemo(): UseRoboticsAiDemoReturn {
             ? error.message
             : 'Failed to set robot type.'
       setRobotTypeSetError(msg)
+      return false
     }
   }, [
     selectedSetupRobotType,
+    selectedSetupRobotPort,
     isSettingRobotType,
     workerBaseUrl,
     setRobotTypeMutateAsync,
@@ -493,11 +538,21 @@ export function useRoboticsAiDemo(): UseRoboticsAiDemoReturn {
       setMotorCalibrationState(result.state)
       setMotorCalibrationMessage(result.message)
     } catch (error) {
-      setMotorCalibrationError(
+      const msg =
         error instanceof Error
           ? error.message
-          : 'Failed to start motor calibration.',
-      )
+          : 'Failed to start motor calibration.'
+      // Handle 409 — calibration already in progress. Extract the state and sync.
+      const stateMatch = msg.match(/state:\s*'(\w+)'/)
+      if (stateMatch) {
+        const recoveredState = stateMatch[1] as MotorCalibrationState
+        setMotorCalibrationState(recoveredState)
+        setMotorCalibrationMessage(
+          'Calibration already in progress. Resuming from current step.',
+        )
+      } else {
+        setMotorCalibrationError(msg)
+      }
     }
   }, [workerBaseUrl, motorCalibrationStartMutateAsync])
 
@@ -574,6 +629,7 @@ export function useRoboticsAiDemo(): UseRoboticsAiDemoReturn {
             workerBaseUrl,
             toolId: toolIdForRequest,
             language: mapLanguageToAgentName(micLanguage),
+            useMcp,
           },
         },
       )
@@ -585,6 +641,7 @@ export function useRoboticsAiDemo(): UseRoboticsAiDemoReturn {
       workerBaseUrl,
       chatSendMessage,
       mapLanguageToAgentName,
+      useMcp,
     ],
   )
 
@@ -905,9 +962,16 @@ export function useRoboticsAiDemo(): UseRoboticsAiDemoReturn {
     handleMicStopListening,
     robotTypeReady,
     isRobotTypeLoading,
+    isPrerequisitesLoading,
+    prerequisites: prerequisitesData,
+    calibrationStatus: calibrationStatusData,
+    refetchCalibrationStatus,
     availableRobotTypes,
+    availableRobotPorts,
     selectedSetupRobotType,
     setSelectedSetupRobotType,
+    selectedSetupRobotPort,
+    setSelectedSetupRobotPort,
     isSettingRobotType,
     robotTypeSetError,
     handleConfirmRobotType,
@@ -919,10 +983,15 @@ export function useRoboticsAiDemo(): UseRoboticsAiDemoReturn {
     handleCalibrationStart,
     handleCalibrationConfirm,
     motorCalibrationState,
-    motorCalibrationOutput: motorCalibrationStatusData?.output ?? [],
+    motorCalibrationJointReadings:
+      motorCalibrationStatusData?.joint_readings ?? [],
     isMotorCalibrationStarting,
     isMotorCalibrationNexting,
-    motorCalibrationError,
+    motorCalibrationError:
+      motorCalibrationError ??
+      (motorCalibrationState === 'error' && !motorCalibrationMessage
+        ? 'Motor calibration process exited unexpectedly. Please try again.'
+        : null),
     motorCalibrationMessage,
     handleMotorCalibrationStart,
     handleMotorCalibrationNext,
@@ -941,5 +1010,7 @@ export function useRoboticsAiDemo(): UseRoboticsAiDemoReturn {
     arucoError,
     arucoMessage,
     handleArucoCalibrate,
+    useMcp,
+    setUseMcp,
   }
 }

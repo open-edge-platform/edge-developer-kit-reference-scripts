@@ -11,11 +11,11 @@ import { useTextGenParams } from './hooks/use-params'
 
 export function TextGenerationDemo({ service }: { service: Service }) {
   const isMultimodal = service.currentModelType === 'multimodal'
-  const { values: textGenValues, params } = useTextGenParams()
-  const chat = useTextGenChat({ textGenValues })
+  const { values: textGenValues, requestParams, params } = useTextGenParams()
+  const chat = useTextGenChat({ textGenValues, requestParams })
 
   return (
-    <div className="flex flex-col gap-6 xl:flex-row">
+    <div className="flex flex-col gap-6 xl:flex-row xl:items-start">
       <VlmChatPanel
         messages={chat.messages}
         status={chat.status}
@@ -34,8 +34,7 @@ export function TextGenerationDemo({ service }: { service: Service }) {
             : 'Type a message…'
         }
         emptyStateText="Send a message to start the conversation"
-        messagesClassName="max-h-[480px] min-h-[320px]"
-        className="min-w-0 flex-1"
+        className="h-[480px] min-w-0 flex-1"
       />
       <div className="shrink-0 space-y-4 xl:w-72">
         <DemoParameterSidebar params={params} />

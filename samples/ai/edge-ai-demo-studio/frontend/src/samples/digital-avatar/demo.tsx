@@ -6,11 +6,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useGetService } from '@/context/service-status-context'
-import { useOptionalServiceGroup } from '@/samples/common/hooks/use-optional-service-group'
-import { useRagChatSetup } from '@/samples/common/hooks/use-rag-chat-setup'
+import { useFeatureCollector } from '@/context/feature-collector'
+import {
+  FeatureContexts,
+  sttOnlineFromExports,
+} from '@/samples/common/feature-providers/feature-contexts'
+import { useFeatureProviders } from '@/samples/common/feature-providers/use-feature-providers'
 import { useTextGenerationParams } from '@/samples/common/hooks/use-text-generation-params'
-import { useTtsParams } from '@/samples/common/hooks/use-tts-params'
-import { useWakeWordStt } from '@/samples/common/hooks/use-wake-word-stt'
+import { useTtsParams } from '@/services/text-to-speech/hooks/use-tts-params'
 import { useTextGenChat } from '@/services/text-generation/hooks/use-chat'
 import { AvatarStream } from '@/services/lipsync/components/avatar-stream'
 import { buildIceConfig, useLipsyncOffer } from '@/services/lipsync/hooks'
@@ -18,18 +21,22 @@ import type { Sample } from '../types'
 import { ChatPanel } from './components/chat-panel'
 import { SampleParamsSlot } from '../common/sample-params-slot'
 
+// Optional-service feature integrations this sample wires (explicit opt-in).
+// TTS + lipsync are required (handled directly). See docs/OPTIONAL-SERVICES.md.
+const FEATURE_SERVICES = [
+  'speech-to-text',
+  'wake-word-detection',
+  'vectordb',
+  'mcp',
+]
+
 export function DigitalAvatarDemo({ sample }: { sample: Sample }) {
   const textGen = useTextGenerationParams()
   const tts = useTtsParams(sample.id, { optional: false })
 
-  const stt = useOptionalServiceGroup({
-    serviceId: 'speech-to-text',
-    serviceLabel: 'Speech to Text',
-    offlineMessage:
-      'Enable STT for voice input. Start the service from the services page.',
-  })
-
-  const { mcp, ragGroups, extraBody } = useRagChatSetup()
+  const featureProviders = useFeatureProviders(FEATURE_SERVICES)
+  const collector = useFeatureCollector(FEATURE_SERVICES)
+  const sttOnline = sttOnlineFromExports(collector.exports)
 
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
@@ -40,7 +47,8 @@ export function DigitalAvatarDemo({ sample }: { sample: Sample }) {
     null,
   )
 
-  const offerMutation = useLipsyncOffer()
+  const { mutateAsync: offerMutateAsync, isPending: isOfferPending } =
+    useLipsyncOffer()
   const lipsyncService = useGetService('lipsync')
   const ttsService = useGetService('text-to-speech')
   const textGenService = useGetService('text-generation')
@@ -113,7 +121,7 @@ export function DigitalAvatarDemo({ sample }: { sample: Sample }) {
         }
       })
 
-      const answer = await offerMutation.mutateAsync({
+      const answer = await offerMutateAsync({
         sdp: pc.localDescription?.sdp ?? offer.sdp,
         type: (pc.localDescription?.type ?? offer.type) as RTCSdpType,
       })
@@ -127,7 +135,7 @@ export function DigitalAvatarDemo({ sample }: { sample: Sample }) {
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to connect')
     }
-  }, [offerMutation, clientIceServerUrl])
+  }, [offerMutateAsync, clientIceServerUrl])
 
   const disconnect = useCallback(() => {
     if (disconnectTimeoutRef.current) {
@@ -169,58 +177,54 @@ export function DigitalAvatarDemo({ sample }: { sample: Sample }) {
 
   const chat = useTextGenChat({
     textGenValues: textGen.values,
-    extraBody: { ...extraBody, ...lipsyncExtraBody },
+    requestParams: textGen.requestParams,
+    extraBody: { ...collector.extraBody, ...lipsyncExtraBody },
   })
 
   const isSpeaking = chat.status === 'streaming' && !!sessionId
 
-  const { wakeWord } = useWakeWordStt({
-    onTranscription: useCallback(
-      (text: string) => {
-        chat.setInput(text)
-      },
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-      [],
-    ),
-  })
-
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_minmax(0,400px)]">
-        <AvatarStream
-          videoRef={videoRef}
-          isConnected={sessionId !== null}
-          isConnecting={offerMutation.isPending}
-          statusMessage={statusMessage}
-          isSpeaking={isSpeaking}
-          onConnect={connect}
-          onDisconnect={disconnect}
-        />
-        <SampleParamsSlot
-          groups={[
-            textGen.group,
-            tts.group,
-            stt.group,
-            wakeWord.group,
-            ...ragGroups,
-            mcp.group,
-          ]}
-        />
-        <ChatPanel
-          messages={chat.messages}
-          status={chat.status}
-          input={chat.input}
-          onInputChange={chat.setInput}
-          onSend={chat.handleSend}
-          onReset={chat.handleReset}
-          isConnected={sessionId !== null}
-          sttOnline={stt.enabled}
-          isVlm={isMultimodal}
-          imagePreview={chat.imagePreview}
-          onImageSelect={chat.handleImageSelect}
-          onImageRemove={chat.handleRemoveImage}
-        />
-      </div>
+      <collector.Provider>
+        {featureProviders.map(({ serviceId, Provider }) => (
+          <Provider
+            key={serviceId}
+            onTranscription={chat.setInput}
+            sampleId={sample.id}
+          />
+        ))}
+      </collector.Provider>
+
+      <FeatureContexts exports={collector.exports}>
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_minmax(0,400px)]">
+          <AvatarStream
+            videoRef={videoRef}
+            isConnected={sessionId !== null}
+            isConnecting={isOfferPending}
+            statusMessage={statusMessage}
+            isSpeaking={isSpeaking}
+            onConnect={connect}
+            onDisconnect={disconnect}
+          />
+          <SampleParamsSlot
+            groups={[textGen.group, tts.group, ...collector.groups]}
+          />
+          <ChatPanel
+            messages={chat.messages}
+            status={chat.status}
+            input={chat.input}
+            onInputChange={chat.setInput}
+            onSend={chat.handleSend}
+            onReset={chat.handleReset}
+            isConnected={sessionId !== null}
+            sttOnline={sttOnline}
+            isVlm={isMultimodal}
+            imagePreview={chat.imagePreview}
+            onImageSelect={chat.handleImageSelect}
+            onImageRemove={chat.handleRemoveImage}
+          />
+        </div>
+      </FeatureContexts>
     </div>
   )
 }

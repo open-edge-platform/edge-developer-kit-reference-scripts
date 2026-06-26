@@ -5,17 +5,25 @@
 
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { TextGenParamValues } from './use-params'
 
 interface UseTextGenChatOptions {
   textGenValues: TextGenParamValues
+  /** Numeric sampling params the user has changed; untouched ones are omitted. */
+  requestParams: Partial<
+    Pick<
+      TextGenParamValues,
+      'maxTokens' | 'temperature' | 'topP' | 'topK' | 'repetitionPenalty'
+    >
+  >
   /** Extra body fields merged into every sendMessage call */
   extraBody?: Record<string, unknown>
 }
 
 export function useTextGenChat({
   textGenValues,
+  requestParams,
   extraBody,
 }: UseTextGenChatOptions) {
   const { messages, sendMessage, status, setMessages, stop } = useChat({
@@ -40,9 +48,17 @@ export function useTextGenChat({
   )
 
   const handleRemoveImage = useCallback(() => {
+    // The imagePreview effect cleanup revokes the object URL on change/unmount.
     setImageFile(null)
-    if (imagePreview) URL.revokeObjectURL(imagePreview)
     setImagePreview(null)
+  }, [])
+
+  // Revoke the previous preview object URL when it changes or on unmount,
+  // so selecting a replacement image doesn't leak the prior blob: URL.
+  useEffect(() => {
+    return () => {
+      if (imagePreview) URL.revokeObjectURL(imagePreview)
+    }
   }, [imagePreview])
 
   const handleSend = useCallback(() => {
@@ -60,13 +76,12 @@ export function useTextGenChat({
       },
       {
         body: {
-          maxTokens: textGenValues.maxTokens,
-          temperature: textGenValues.temperature,
-          topK: textGenValues.topK,
+          ...requestParams,
           ...(textGenValues.systemPrompt.trim()
             ? { systemPrompt: textGenValues.systemPrompt.trim() }
             : {}),
           disableReasoning: textGenValues.disableReasoning,
+          reasoningParser: textGenValues.reasoningParser,
           ...extraBody,
         },
       },
@@ -80,6 +95,7 @@ export function useTextGenChat({
     sendMessage,
     handleRemoveImage,
     textGenValues,
+    requestParams,
     extraBody,
   ])
 

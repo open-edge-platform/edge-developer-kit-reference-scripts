@@ -13,7 +13,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { useServiceStatus } from '@/context/service-status-context'
 import { cn } from '@/lib/utils'
 import { getOSLabel } from '@/services/registry'
 import type { Service } from '@/services/types'
@@ -33,11 +32,11 @@ export function ServiceCard({
   index = 0,
 }: ServiceCardProps) {
   const isUnsupported = unsupportedOS
-  const { statusMap, serviceInfoMap } = useServiceStatus()
-  const liveStatus = statusMap[service.id] ?? service.status
-  const liveInfo = serviceInfoMap[service.id]
-  const liveModel = liveInfo?.currentModel ?? service.model
-  const liveDevice = liveInfo?.currentDevice ?? service.hardware
+  // `service` is the enriched record from context — live status and current
+  // model/device are already on it, so no statusMap/serviceInfoMap lookup needed.
+  const liveStatus = service.status
+  const liveModel = service.currentModel ?? service.model
+  const liveDevice = service.currentDevice ?? service.hardware
 
   const card = (
     <div

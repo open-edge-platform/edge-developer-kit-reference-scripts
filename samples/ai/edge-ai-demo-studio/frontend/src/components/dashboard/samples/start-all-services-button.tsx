@@ -21,25 +21,34 @@ export function StartAllServicesButton({
   label = 'Start All Services',
   className,
 }: StartAllServicesButtonProps) {
-  const { statusMap, startService, configureAndStartService, isActionPending } =
-    useServiceStatus()
+  const {
+    serviceById,
+    startService,
+    configureAndStartService,
+    isActionPending,
+  } = useServiceStatus()
+
+  const statusOf = useCallback(
+    (id: string) => serviceById.get(id)?.status,
+    [serviceById],
+  )
 
   const notOnline = useMemo(
-    () => serviceIds.filter((id) => statusMap[id] !== 'online'),
-    [serviceIds, statusMap],
+    () => serviceIds.filter((id) => statusOf(id) !== 'online'),
+    [serviceIds, statusOf],
   )
 
   const actionable = useMemo(
     () =>
       notOnline.filter((id) => {
-        const st = statusMap[id]
+        const st = statusOf(id)
         return st === 'offline' || st === 'error'
       }),
-    [notOnline, statusMap],
+    [notOnline, statusOf],
   )
 
   const anyPending = serviceIds.some((id) => isActionPending(id))
-  const anyStarting = notOnline.some((id) => statusMap[id] === 'starting')
+  const anyStarting = notOnline.some((id) => statusOf(id) === 'starting')
   const isBusy = anyPending || anyStarting
 
   const handleStartAll = useCallback(() => {

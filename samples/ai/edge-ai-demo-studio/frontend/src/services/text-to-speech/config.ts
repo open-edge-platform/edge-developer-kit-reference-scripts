@@ -9,24 +9,7 @@ export interface VoiceInfo {
   language: string
 }
 
-interface VoiceLanguage {
-  code: string
-  label: string
-}
-
-export const KOKORO_LANGUAGES: VoiceLanguage[] = [
-  { code: 'a', label: 'English (American)' },
-  { code: 'b', label: 'English (British)' },
-  { code: 'e', label: 'Spanish' },
-  { code: 'f', label: 'French' },
-  { code: 'h', label: 'Hindi' },
-  { code: 'i', label: 'Italian' },
-  { code: 'j', label: 'Japanese' },
-  { code: 'p', label: 'Portuguese' },
-  { code: 'z', label: 'Chinese' },
-]
-
-export const KOKORO_VOICES: VoiceInfo[] = [
+const KOKORO_VOICES: VoiceInfo[] = [
   // American English — Female
   { id: 'af_heart', label: 'Heart', language: 'English (American)' },
   { id: 'af_alloy', label: 'Alloy', language: 'English (American)' },
@@ -94,7 +77,7 @@ export const KOKORO_VOICES: VoiceInfo[] = [
   { id: 'zm_yunyang', label: 'Yunyang', language: 'Chinese' },
 ]
 
-export const MALAYA_VOICES: VoiceInfo[] = [
+const MALAYA_VOICES: VoiceInfo[] = [
   { id: 'Husein', label: 'Husein', language: 'Malay' },
   { id: 'Shafiqah Idayu', label: 'Shafiqah Idayu', language: 'Malay' },
   { id: 'Anwar Ibrahim', label: 'Anwar Ibrahim', language: 'Malay' },

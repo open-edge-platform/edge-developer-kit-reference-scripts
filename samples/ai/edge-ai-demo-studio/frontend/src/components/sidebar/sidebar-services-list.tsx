@@ -13,11 +13,7 @@ import {
 import { useServiceStatus } from '@/context/service-status-context'
 import { useSystemInfo } from '@/context/system-info-context'
 import { cn } from '@/lib/utils'
-import {
-  getOSLabel,
-  isServiceSupportedOnOS,
-  visibleServices,
-} from '@/services/registry'
+import { getOSLabel, isServiceSupportedOnOS } from '@/services/registry'
 import { hasExecutionMode } from '@/services/types'
 
 function statusDotClass(status: string): string {
@@ -43,7 +39,8 @@ export function SidebarServicesList({
   onNavigate?: () => void
 }) {
   const { systemInfo } = useSystemInfo()
-  const { statusMap } = useServiceStatus()
+  const { services } = useServiceStatus()
+  const visibleServices = services.filter((s) => !s.hidden)
   return (
     <div className="pt-6">
       <div className={cn('mb-3 px-2', collapsed && 'text-center')}>
@@ -74,10 +71,8 @@ export function SidebarServicesList({
               const isUnsupported = systemInfo
                 ? !isServiceSupportedOnOS(service, systemInfo.os)
                 : false
-              const isNoneMode = hasExecutionMode(service.execution, 'none')
-              const liveStatus = isNoneMode
-                ? 'online'
-                : (statusMap[service.id] ?? service.status)
+              // Enriched status already reflects the mode:'none' → online rule.
+              const liveStatus = service.status
 
               const linkContent = (
                 <Link

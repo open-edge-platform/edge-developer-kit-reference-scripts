@@ -17,7 +17,7 @@ import { useUpdateServiceConfig } from '@/hooks/use-service-config'
 import {
   type ConfigurePanelStatus,
   ServiceConfigurePanel,
-} from '@/services/common/demo/components/service-configure-panel'
+} from '@/components/common/service-configure-panel'
 import type { Service } from '@/services/types'
 
 const SUPPORTED_DEVICES = ['CPU', 'GPU', 'NPU']

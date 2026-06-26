@@ -40,6 +40,13 @@ models:
     source: ["huggingface", "modelscope"]
 
 ov_models:
+  OpenVINO/Qwen3.5-4B-int4-ov:
+    task: text_generation
+    tool_parser: hermes3
+    chat_template:
+    quant: [int4]
+    source: ["huggingface", "modelscope"]
+
   OpenVINO/Qwen3-8B-int4-ov:
     task: text_generation
     tool_parser: hermes3

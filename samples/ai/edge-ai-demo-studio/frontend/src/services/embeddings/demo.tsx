@@ -21,9 +21,9 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { engines } from '@/engines/registry'
 import { cn } from '@/lib/utils'
 import { DemoParameterSidebar } from '@/services/common/demo/components/demo-parameter-sidebar'
+import { getServiceModelName } from '@/services/common/get-service-model'
 import { Service } from '../types'
 import { useEmbed } from './hooks'
 import { useEmbeddingsParams } from './hooks/use-params'
@@ -110,14 +110,7 @@ export function EmbeddingDemo({ service }: { service: Service }) {
     string[]
   >([])
   const { values: embeddingsValues, params } = useEmbeddingsParams()
-  const engine = engines[service.engine ?? 'default']
-  const modelConfig = {
-    name: service.currentModel ?? service.defaultModel?.name ?? '',
-    device: service.currentDevice ?? service.defaultModel?.device ?? '',
-    backend: service.currentBackend ?? service.defaultModel?.backend,
-    quant: service.currentQuant ?? service.defaultModel?.quant,
-  }
-  const model = engine.getModelName(modelConfig, true)
+  const model = getServiceModelName(service, true) ?? ''
   const embedMutation = useEmbed(service.id, model)
 
   const embedding = embedMutation.data?.data?.[0]?.embedding

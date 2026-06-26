@@ -3,7 +3,6 @@
 
 import { useMutation } from '@tanstack/react-query'
 
-export { useRerankParams, RERANK_DEFAULTS } from './use-params'
 export type { RerankParamValues } from './use-params'
 
 interface RerankResult {

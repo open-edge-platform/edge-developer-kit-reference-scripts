@@ -26,14 +26,12 @@ import { GatedModelAlert } from './gated-model-alert'
 
 export function ServiceDemo({ service }: { service: Service }) {
   const {
-    statusMap,
     startService,
     stopService,
     restartService,
     isActionPending,
     loading,
   } = useServiceStatus()
-  const liveStatus = statusMap[service.id] ?? service.status
   const pending = isActionPending(service.id)
   const DemoComponent = service.demo
 
@@ -79,6 +77,7 @@ export function ServiceDemo({ service }: { service: Service }) {
 
   // Services with execution mode 'none' always show the demo.
   const isNoneMode = hasExecutionMode(selectedService.execution, 'none')
+  const liveStatus = selectedService.status
   const isOffline = liveStatus !== 'online'
 
   if (isOffline && !isNoneMode) {
@@ -177,7 +176,7 @@ export function ServiceDemo({ service }: { service: Service }) {
 
   // ─── Prerequisite check ─────────────────────────────────────────
   const offlinePrereqs = prereqs.filter(
-    (id) => (statusMap[id] ?? 'offline') !== 'online',
+    (id) => (prereqMap[id]?.status ?? 'offline') !== 'online',
   )
 
   if (offlinePrereqs.length > 0) {

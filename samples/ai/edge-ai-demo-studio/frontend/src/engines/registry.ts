@@ -35,13 +35,6 @@ export function getRecommendedBackendForService(
   )
 }
 
-export function resolveEngineIdForDoc(doc: Service): string | undefined {
-  if (doc.engine in engines) {
-    return doc.engine
-  }
-  return undefined
-}
-
 export function getBackendByValue(value: string): EngineBackend | undefined {
   for (const engine of Object.values(engines)) {
     const found = engine.supportedBackends.find((b) => b.value === value)

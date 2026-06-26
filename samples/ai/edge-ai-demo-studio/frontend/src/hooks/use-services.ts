@@ -85,7 +85,8 @@ function buildServiceInfoMap(
 
 /**
  * Fetches and polls all services from PayloadCMS.
- * Returns serviceInfoMap, statusMap, and query status.
+ * Returns serviceInfoMap and query status. Effective status is derived by the
+ * service-status context (the single owner of the status map).
  */
 export function useServicesQuery() {
   const query = useQuery({
@@ -96,13 +97,9 @@ export function useServicesQuery() {
 
   const serviceInfoMap = query.data ? buildServiceInfoMap(query.data) : {}
 
-  const statusMap: Record<string, ServiceStatus> = {}
-  for (const [type, info] of Object.entries(serviceInfoMap)) {
-    statusMap[type] = info.status
-  }
-
+  // Status is derivable from serviceInfoMap (`info.status`), so we don't build a
+  // separate statusMap here — the context owns the single effective-status map.
   return {
-    statusMap,
     serviceInfoMap,
     isLoading: query.isLoading,
     isError: query.isError,

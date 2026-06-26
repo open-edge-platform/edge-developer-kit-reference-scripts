@@ -164,19 +164,19 @@ export const getDocsData = ({ host }: { host: string }): ServiceDocsData => ({
 
 # 1. Create a knowledge base
 kb = requests.post(
-    "${host}/api/vectordb/v1/kb",
+    "${host}/v1/kb",
     json={"name": "My Documents"}
 ).json()
 
 # 2. Add text chunks (requires embedding service configured)
 requests.post(
-    f"${host}/api/vectordb/v1/kb/{kb['id']}/chunks",
+    f"${host}/v1/kb/{kb['id']}/chunks",
     json={"content": "Intel OpenVINO accelerates AI inference on edge devices."}
 )
 
 # 3. Search
 results = requests.post(
-    f"${host}/api/vectordb/v1/kb/{kb['id']}/search",
+    f"${host}/v1/kb/{kb['id']}/search",
     json={"query": "edge AI inference", "top_k": 5}
 ).json()
 
@@ -187,17 +187,17 @@ for doc in results:
           language: 'cURL',
           languageCode: 'bash',
           code: `# Create a knowledge base
-curl -X POST ${host}/api/vectordb/v1/kb \\
+curl -X POST ${host}/v1/kb \\
   -H "Content-Type: application/json" \\
   -d '{"name": "My Documents"}'
 
 # Add pre-computed vectors (no embedding service needed)
-curl -X POST ${host}/api/vectordb/v1/kb/1/vectors \\
+curl -X POST ${host}/v1/kb/1/vectors \\
   -H "Content-Type: application/json" \\
   -d '{"vectors": [{"embedding": [0.1, 0.2, ...], "content": "sample text"}]}'
 
 # Search by vector
-curl -X POST ${host}/api/vectordb/v1/kb/1/search/vector \\
+curl -X POST ${host}/v1/kb/1/search/vector \\
   -H "Content-Type: application/json" \\
   -d '{"embedding": [0.1, 0.2, ...], "top_k": 5}'`,
         },

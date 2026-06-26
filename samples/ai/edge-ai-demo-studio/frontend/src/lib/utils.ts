@@ -21,13 +21,6 @@ export function getDeviceFamily(deviceId: string): Device {
   return 'cpu'
 }
 
-export function isDeviceInFamilies(
-  deviceId: string,
-  families: Device[],
-): boolean {
-  return families.includes(getDeviceFamily(deviceId))
-}
-
 // Extracts the first meaningful sentence from a description, stripping Args/parameter blocks
 export function getFirstSentence(text: string): string {
   const beforeArgs = text.split(/\n\n/)[0].trim()

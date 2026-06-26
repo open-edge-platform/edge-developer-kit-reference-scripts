@@ -48,11 +48,11 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "openvino", specifier = ">=2025.4.1" },
-    { name = "torch", specifier = ">=2.11.0", index = "https://download.pytorch.org/whl/xpu" },
+    { name = "openvino", specifier = ">=2026.2" },
+    { name = "torch", specifier = ">=2.12.1", index = "https://download.pytorch.org/whl/xpu" },
     { name = "torchaudio", specifier = ">=2.11.0", index = "https://download.pytorch.org/whl/xpu" },
     { name = "torchvision", specifier = ">=0.26.0", index = "https://download.pytorch.org/whl/xpu" },
-    { name = "triton-xpu", specifier = "==3.7.0", index = "https://download.pytorch.org/whl/xpu" },
+    { name = "triton-xpu", specifier = "==3.7.1", index = "https://download.pytorch.org/whl/xpu" },
 ]
 
 [[package]]
@@ -458,7 +458,7 @@ wheels = [
 
 [[package]]
 name = "torch"
-version = "2.11.0+xpu"
+version = "2.12.1+xpu"
 source = { registry = "https://download.pytorch.org/whl/xpu" }
 dependencies = [
     { name = "dpcpp-cpp-rt" },
@@ -492,10 +492,8 @@ dependencies = [
     { name = "umf" },
 ]
 wheels = [
-    { url = "https://download-r2.pytorch.org/whl/xpu/torch-2.11.0%2Bxpu-cp313-cp313-linux_x86_64.whl", upload-time = "2026-03-23T15:12:37Z" },
-    { url = "https://download-r2.pytorch.org/whl/xpu/torch-2.11.0%2Bxpu-cp313-cp313-win_amd64.whl", upload-time = "2026-03-23T15:12:38Z" },
-    { url = "https://download-r2.pytorch.org/whl/xpu/torch-2.11.0%2Bxpu-cp313-cp313t-linux_x86_64.whl", upload-time = "2026-03-23T15:12:52Z" },
-    { url = "https://download-r2.pytorch.org/whl/xpu/torch-2.11.0%2Bxpu-cp313-cp313t-win_amd64.whl", upload-time = "2026-03-23T15:12:55Z" },
+    { url = "https://download-r2.pytorch.org/whl/xpu/torch-2.12.1%2Bxpu-cp313-cp313-linux_x86_64.whl", hash = "sha256:06fdafbebe84e8e27b99941754da65fd8ec7ec2e2bdfe76056a84db3e5ecca50", upload-time = "2026-06-18T03:55:42Z" },
+    { url = "https://download-r2.pytorch.org/whl/xpu/torch-2.12.1%2Bxpu-cp313-cp313-win_amd64.whl", hash = "sha256:e450875eb6314f54cf159f115d0fca0ca4eddae9c5c7786ae770b7b31b7d8b05", upload-time = "2026-06-18T03:56:25Z" },
 ]
 
 [[package]]
@@ -511,7 +509,7 @@ wheels = [
 
 [[package]]
 name = "torchvision"
-version = "0.26.0+xpu"
+version = "0.27.1+xpu"
 source = { registry = "https://download.pytorch.org/whl/xpu" }
 dependencies = [
     { name = "numpy" },
@@ -519,24 +517,22 @@ dependencies = [
     { name = "torch" },
 ]
 wheels = [
-    { url = "https://download-r2.pytorch.org/whl/xpu/torchvision-0.26.0%2Bxpu-cp313-cp313-manylinux_2_28_x86_64.whl", hash = "sha256:f134344006f0989a2d771554b7905fb05bd93d63b195e64626fde3495ec6f287", upload-time = "2026-03-23T15:36:39Z" },
-    { url = "https://download-r2.pytorch.org/whl/xpu/torchvision-0.26.0%2Bxpu-cp313-cp313-win_amd64.whl", hash = "sha256:cb1da1d378ce440f7d1e0ed8cf21bd280d904ab25a55c9453f8377825818df74", upload-time = "2026-03-23T15:36:39Z" },
-    { url = "https://download-r2.pytorch.org/whl/xpu/torchvision-0.26.0%2Bxpu-cp313-cp313t-manylinux_2_28_x86_64.whl", hash = "sha256:7e03f1d4d60e214416b86d376ef99d965eed1ecefae2e905323049262cd2c677", upload-time = "2026-03-23T15:36:40Z" },
-    { url = "https://download-r2.pytorch.org/whl/xpu/torchvision-0.26.0%2Bxpu-cp313-cp313t-win_amd64.whl", hash = "sha256:267bcd4f74978b801230fdceb0fa2374e9835ee5520de833ced0d480e912236d", upload-time = "2026-03-23T15:36:40Z" },
+    { url = "https://download-r2.pytorch.org/whl/xpu/torchvision-0.27.1%2Bxpu-cp313-cp313-manylinux_2_28_x86_64.whl", hash = "sha256:2f7ecea13bc1aa88966e50ee1a4bf5578d585e8b5396ad259590797d796dde64", upload-time = "2026-06-17T15:44:54Z" },
+    { url = "https://download-r2.pytorch.org/whl/xpu/torchvision-0.27.1%2Bxpu-cp313-cp313-win_amd64.whl", hash = "sha256:f9abb2a55b3f7d95422df7bec2deaf53ae2eb363d80a08d3fe4fc491309e6e15", upload-time = "2026-06-17T15:44:54Z" },
 ]
 
 [[package]]
 name = "triton-xpu"
-version = "3.7.0"
+version = "3.7.1"
 source = { registry = "https://download.pytorch.org/whl/xpu" }
 dependencies = [
     { name = "pyelftools" },
 ]
 wheels = [
-    { url = "https://download-r2.pytorch.org/whl/triton_xpu-3.7.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:08c8d43b2831faf9d6799480df2b45dde58102257aebd810d07a2ce18cd4e5df", upload-time = "2026-05-12T14:51:32Z" },
-    { url = "https://download-r2.pytorch.org/whl/triton_xpu-3.7.0-cp313-cp313-win_amd64.whl", hash = "sha256:e8b4caba9b2399ea4c7f9a2777042564dea5d6f9e586a2dcb015a4ce20f000f7", upload-time = "2026-05-12T14:52:00Z" },
-    { url = "https://download-r2.pytorch.org/whl/triton_xpu-3.7.0-cp313-cp313t-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:f0c3ad4f0b1771dc5ef74c3cd994744d3f5cceea1c939c8020edc7ba0d271406", upload-time = "2026-05-12T14:52:33Z" },
-    { url = "https://download-r2.pytorch.org/whl/triton_xpu-3.7.0-cp313-cp313t-win_amd64.whl", hash = "sha256:de55ca5cbb2b356a1640e3ec5af0c42c98b1d3ee925c6a6af590975fe09cc156", upload-time = "2026-05-12T14:53:01Z" },
+    { url = "https://download-r2.pytorch.org/whl/triton_xpu-3.7.1-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:e701a31efa0334775f357c98716f3821775aa944219f7888e13c2dfe2daabe2a", upload-time = "2026-06-17T16:53:46Z" },
+    { url = "https://download-r2.pytorch.org/whl/triton_xpu-3.7.1-cp313-cp313-win_amd64.whl", hash = "sha256:2fdf001a9b0575e8b1827127259bb9b13bf36e659882be74c2dfab46597d3e7a", upload-time = "2026-06-17T16:54:33Z" },
+    { url = "https://download-r2.pytorch.org/whl/triton_xpu-3.7.1-cp313-cp313t-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:c90fc043261382dc35320cf9bdd02a894b10e85cb9b549d3efc00369d0d39e96", upload-time = "2026-06-17T16:55:17Z" },
+    { url = "https://download-r2.pytorch.org/whl/triton_xpu-3.7.1-cp313-cp313t-win_amd64.whl", hash = "sha256:23a33a716b512c7377f66dae980071dfdd7aa9b0fa98a4af5af8231c5336721b", upload-time = "2026-06-17T16:56:03Z" },
 ]
 
 [[package]]
