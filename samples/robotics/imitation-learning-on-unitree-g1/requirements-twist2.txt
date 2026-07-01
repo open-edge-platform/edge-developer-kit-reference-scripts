@@ -1,0 +1,31 @@
+# Copyright (C) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+# TWIST2 environment dependencies
+# Python 3.8
+numpy==1.23.0
+pydelatin
+wandb
+tqdm
+opencv-python
+ipdb
+pyfqmr
+flask
+dill
+gdown
+hydra-core
+imageio[ffmpeg]
+mujoco
+mujoco-python-viewer
+isaacgym-stubs
+pytorch-kinematics
+rich
+termcolor
+zmq
+redis[hiredis]
+pyttsx3
+onnx
+onnxruntime-gpu
+customtkinter
+pybind11
+pybind11-stubgen

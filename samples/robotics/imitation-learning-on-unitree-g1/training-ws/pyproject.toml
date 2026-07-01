@@ -1,0 +1,36 @@
+# Copyright (C) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+[project]
+name = "training-ws"
+version = "0.1.0"
+description = "Training workspace for Unitree G1 imitation learning sample"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "lerobot>=0.5.1",
+    "matplotlib>=3.10.9",
+    "mujoco>=3.9.0",
+    "numpy>=2.2.6",
+    "opencv-python>=4.13.0.92",
+    "pybind11>=3.0.4",
+    "pybind11-stubgen>=2.5.5",
+    "pyyaml>=6.0.0",
+    "pyzmq>=27.1.0",
+]
+
+[tool.uv]
+index-strategy = "unsafe-best-match"
+override-dependencies = [
+    "torch>=2.12.1",
+    "torchvision>=0.27.1",
+    "diffusers>=0.38.0"
+]
+
+[[tool.uv.index]]
+name = "pypi"
+url = "https://pypi.org/simple"
+default = true
+
+[[tool.uv.index]]
+url = "https://download.pytorch.org/whl/xpu"
