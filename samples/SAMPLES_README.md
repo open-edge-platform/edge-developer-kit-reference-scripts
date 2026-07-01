@@ -33,6 +33,8 @@ Refer to below samples to kickstart you own demo or application.
   - [TCC Tutorial](./real-time/tcc_tutorial/README.md)
 - **Patient-Monitoring-Hub Reference Implementation**
   - [Patient-Monitoring-Hub Reference Implementation](./patient-monitoring-hub/README.md)
+- **Robotics**
+  - [Imitation Learning on Unitree G1](./robotics/imitation-learning-on-unitree-g1/README.md)
 
 ### Documentation
 - [Getting Started](../docs/getting-started.md)

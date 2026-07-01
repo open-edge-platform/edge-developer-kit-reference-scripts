@@ -1,0 +1,8 @@
+*-venv
+.venv
+*.log
+thirdparty
+data
+datasets
+
+training-ws/data
