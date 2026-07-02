@@ -4,7 +4,7 @@
 $ErrorActionPreference = "Stop"
 
 $ScriptDir = $PSScriptRoot
-$WorkersDir = Split-Path $ScriptDir -Parent
+$WorkersDir = Split-Path (Split-Path $ScriptDir -Parent) -Parent
 $WorkersThirdPartyDir = Join-Path $WorkersDir "thirdparty"
 
 $UVPath = Join-Path $WorkersThirdPartyDir "uv\uv.exe"
@@ -21,12 +21,14 @@ function Test-UV {
 
 Push-Location $ScriptDir
 try {
-    Write-Host "Starting Wake Word Detection setup..." -ForegroundColor Cyan
+    Write-Host "Starting Piper setup..." -ForegroundColor Cyan
     Test-UV
-    Write-Host "Wake Word Detection setup completed successfully!" -ForegroundColor Green
+    Write-Host "Resolving dependencies ..." -ForegroundColor Cyan
+    & $UVPath sync
+    Write-Host "Piper setup completed successfully!" -ForegroundColor Green
     exit 0
 } catch {
-    Write-Host "Wake Word Detection setup failed: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "Piper setup failed: $($_.Exception.Message)" -ForegroundColor Red
     exit 1
 } finally {
     Pop-Location

@@ -68,6 +68,14 @@ export function TtsConfigurePanel({ service }: TtsConfigurePanelProps) {
   )
   const voices = useMemo(() => getVoicesForModel(draftModel), [draftModel])
 
+  const voicesByLanguage = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const v of voices) {
+      counts.set(v.language, (counts.get(v.language) ?? 0) + 1)
+    }
+    return Array.from(counts, ([language, count]) => ({ language, count }))
+  }, [voices])
+
   const handleOpenChange = useCallback(
     (newOpen: boolean) => {
       if (!newOpen) {
@@ -171,11 +179,20 @@ export function TtsConfigurePanel({ service }: TtsConfigurePanelProps) {
             {voices.length} voice{voices.length !== 1 ? 's' : ''}
           </span>
         </div>
-        <div className="flex flex-wrap gap-1">
-          {languages.map((l) => (
-            <Badge key={l.value} variant="secondary" className="text-[10px]">
-              {l.label}
-            </Badge>
+        <div className="divide-border max-h-44 divide-y overflow-y-auto rounded-md border">
+          {voicesByLanguage.map(({ language, count }) => (
+            <div
+              key={language}
+              className="flex items-center justify-between gap-2 px-2.5 py-1.5"
+            >
+              <span className="truncate text-xs">{language}</span>
+              <Badge
+                variant="secondary"
+                className="shrink-0 text-[10px] tabular-nums"
+              >
+                {count} voice{count !== 1 ? 's' : ''}
+              </Badge>
+            </div>
           ))}
         </div>
       </div>

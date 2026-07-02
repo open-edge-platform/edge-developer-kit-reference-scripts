@@ -603,19 +603,15 @@ for (const wd of workerDirs) {
   copyTrackedFiles(files, outDir)
 }
 
-// Suite workers are nested (workers/suite/<suite>/<leaf>). Like the engine case,
-// workers/setup.sh only discovers the direct child workers/suite — which has its
-// own orchestrator setup.sh that cascades into each suite, and each suite's
-// setup.sh into its app dirs (those with a suite.env). Copy the leaf app dir
-// plus the per-level orchestrator setup scripts so that chain reaches the leaf
-// without pulling in sibling suites/apps.
+// Suite workers are nested (workers/suite/<suite>/<leaf>). Each suite has its
+// own setup.sh/setup.ps1 that the suite's start script invokes on first launch
+// (guarded by a sentinel file). The top-level workers/suite orchestrator setup
+// has been removed; only the per-suite scripts are needed.
 for (const swd of suiteWorkerDirs) {
   copyTrackedFiles(gitTrackedFiles(`workers/${swd}`), outDir)
   const suiteName = swd.split('/')[1]
   copyTrackedFiles(
     [
-      'workers/suite/setup.sh',
-      'workers/suite/setup.ps1',
       `workers/suite/${suiteName}/setup.sh`,
       `workers/suite/${suiteName}/setup.ps1`,
     ],

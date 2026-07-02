@@ -1,5 +1,15 @@
 # Innodisk - Intel® Core™ Ultra Series 3 processors (Panther Lake-U/H) GMSL BIOS Configuration
 
+## Hardware Setup and Connections
+
+1. Power off the system and disconnect AC power.
+2. Install the GMSL AIC into an appropriate MIPI CSI-2 slot.
+3. Connect GMSL cameras to the AIC as recommended in the image below.
+
+![GMSL AIC and camera cabling example](assets/gmslconnections.png)
+
+4. Reconnect power and boot the system.
+
 This page describes the BIOS configuration steps for the Innodisk platform to enable the IPU7 with GMSL cameras.
 
 > Note: BIOS menus and exact settings vary by platform vendor and camera sensor.

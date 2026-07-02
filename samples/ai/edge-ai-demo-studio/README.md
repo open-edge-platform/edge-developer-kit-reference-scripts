@@ -1,6 +1,3 @@
-
-
-
 # Edge AI Demo Studio
 
 Edge AI Demo Studio is a modern toolkit for deploying, managing, and serving AI models on edge platforms. It features a web-based UI for device, workload, and user management, and is optimized for Intel hardware and edge environments.
@@ -24,7 +21,7 @@ Edge AI Demo Studio is a modern toolkit for deploying, managing, and serving AI 
   - **Image Generation** — Generate images from text prompts using diffusion models accelerated with OpenVINO.
   - **MCP Manager** — Manage Model Context Protocol servers and their tool integrations.
   - **Wake Word Detection** — Detect custom wake words from microphone input and send webhook notifications on detection events.
-- **Samples:** Sample use cases that implement the AI services
+- **Samples:** Sample use cases that implement the AI services (see [Exporting Samples](#exporting-samples) to package a subset for standalone deployment)
   - **Digital Avatar** — Interact with an AI-powered avatar that combines real-time video with intelligent conversation.
   - **Digital Avatar Lite** — A lightweight animated robot avatar that brings conversations to life with responsive movements and expressions.
   - **RAG Chatbot** — Upload documents and chat with an AI that retrieves relevant context to answer your questions.
@@ -96,6 +93,35 @@ Once started, access the web UI at [http://localhost:8080](http://localhost:8080
 
 ---
 
+## Exporting Samples
+
+The **Export Samples** feature lets you produce a slim, self-contained copy of Demo Studio that contains only the sample(s) you select, together with the services and workers they depend on. The exported directory includes its own `setup.sh` / `setup_win.bat` and `start.sh` / `start_win.bat` scripts so it can be set up and run independently.
+
+### Via the Launcher Script
+
+Run from the repository root — Node.js is bootstrapped automatically from `thirdparty/` if not already installed. The script lists all available samples, lets you pick one or more by number, then prompts for output directory, optional dependencies, and dry-run preference.
+
+For Linux:
+```bash
+./export.sh
+```
+
+For Windows (PowerShell/Command Prompt):
+```bat
+.\export.bat
+```
+
+### Via the Frontend GUI
+
+1. Open the web UI and navigate to the **Samples** page (`http://localhost:8080/samples`).
+2. Click **Select to export** (top-right area of the page) to enter selection mode.
+3. Check the sample card(s) you want to export.
+4. Click the **Export selected** button (download icon) that appears in the selection toolbar.
+5. Review the resolved export plan in the dialog — it lists the required services, any optional services (toggle **Include optional services** on/off), and the workers that will be bundled.
+6. Click **Export** to download a `.zip` archive of the self-contained project.
+
+---
+
 ### Docker
 
 See [docker/README.md](docker/README.md) for docker guidelines.
@@ -116,13 +142,6 @@ applications.ai.tools.edge-ai-demo-studio/
 ├── setup.sh / setup.ps1     # Project setup scripts
 └── README.md
 ```
-
----
-
-
-## Development
-
-See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for development guidelines.
 
 ---
 

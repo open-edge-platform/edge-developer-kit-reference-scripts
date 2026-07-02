@@ -39,16 +39,6 @@ Scope:
 - GMSL cameras and GMSL Max96724 AIC card
 - Network access to download packages and keys
 
-## Hardware Setup and Connections
-
-1. Power off the system and disconnect AC power.
-2. Install the GMSL AIC into an appropriate MIPI CSI-2 slot.
-3. Connect GMSL cameras to the AIC as recommended in the image below.
-
-![GMSL AIC and camera cabling example](assets/gmslconnections.png)
-
-4. Reconnect power and boot the system.
-
 ## BIOS configuration
 
 > Note: BIOS menus and exact settings vary by platform vendor and camera sensor.
@@ -59,7 +49,7 @@ BIOS options are platform-specific. Configure the platform BIOS to enable the IP
 
 | Platform/Vendor | BIOS Configuration Guide |
 |---|---|
-|  [Innodisk Intel® Core™ Ultra Series 3 Reference Kit](https://www.innodisk.com/en/blog/intel-core-ultra-series3-reference-kit) | [PTL Innodisk Island BIOS Configuration](BIOS_PTL_INNODISK_ISLAND.md) |
+| [Innodisk Intel® Core™ Ultra Series 3 Reference Kit](https://www.innodisk.com/en/blog/intel-core-ultra-series3-reference-kit) | [PTL Innodisk Island BIOS Configuration](GMSL_INNODISK_BIOS_CONFIG.md)<br>[Robinson GMSL BIOS Configuration](GMSL_ROBINSON_BIOS_CONFIG.md) |
 
 
 ## Software QSG

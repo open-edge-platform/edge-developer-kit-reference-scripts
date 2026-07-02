@@ -3,6 +3,24 @@
 
 import type { DiarizationSeg, TranscriptEntry, WhisperSeg } from './types'
 
+/**
+ * Some LLMs (e.g. Ministral) wrap the entire SOAP note in a ```markdown ... ```
+ * code fence. Strip the opening/closing fence so Streamdown renders the note
+ * as formatted Markdown rather than a raw code block.
+ *
+ * Safe to call on partial streaming output: the opening fence line is removed
+ * as soon as it appears; the trailing ``` is removed only when present.
+ * If no opening fence is detected the text is returned unchanged (Qwen3, etc.).
+ */
+export function stripMarkdownFence(text: string): string {
+  const trimmed = text.trimStart()
+  const fenceMatch = trimmed.match(/^```(?:\s*(?:markdown|md))?\s*\r?\n/i)
+  if (!fenceMatch) return text
+  const afterOpening = trimmed.slice(fenceMatch[0].length)
+  // Remove trailing closing fence (``` at end, possibly preceded by whitespace/newline)
+  return afterOpening.replace(/(?:\r?\n)?```\s*$/, '')
+}
+
 export function formatTimestamp(date: Date): string {
   return date
     .toLocaleString('en-GB', {

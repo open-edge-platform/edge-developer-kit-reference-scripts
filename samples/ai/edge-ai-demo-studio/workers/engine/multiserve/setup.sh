@@ -28,9 +28,7 @@ GGUF_PARSER_RELEASE_URL="https://github.com/gpustack/gguf-parser-go/releases/dow
 GGUF_PARSER_BINARY_NAME="gguf-parser"
 GGUF_PARSER_INSTALL_DIR="engine"
 
-OVMS_RELEASE_URL="https://github.com/openvinotoolkit/model_server/releases/download/v2026.2/ovms_ubuntu24_2026.2.0_python_off.tar.gz"
-OVMS_DOWNLOAD_FILE="ovms.tar.gz"
-OVMS_EXTRACT_DIR="engine"
+SHARED_OVMS_DIR="../../thirdparty/ovms"
 
 OPTIMUM_EXPORT_MODEL_URL="https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/tags/v2026.2/demos/common/export_models"
 OPTIMUM_EXPORT_MODEL_REQUIREMENTS_URL="requirements.txt"
@@ -242,44 +240,39 @@ install_gguf_parser() {
     return 0
 }
 
-# Install OVMS (OpenVINO Model Server)
-install_ovms() {
-    print_step "5. OVMS Download and Extraction"
-    
-    if [[ -d "$OVMS_EXTRACT_DIR/ovms" && -f "$OVMS_EXTRACT_DIR/ovms/bin/ovms" ]]; then
-        print_success "$OVMS_EXTRACT_DIR/ovms already exists with binaries. Skipping download and extraction."
-    else
-        echo "Creating directory: $OVMS_EXTRACT_DIR"
-        mkdir -p "$OVMS_EXTRACT_DIR"
-        
-        if ! download_file "$OVMS_RELEASE_URL" "$OVMS_DOWNLOAD_FILE" "OVMS"; then
-            return 1
-        fi
-        
-        echo "Extracting to $OVMS_EXTRACT_DIR..."
-        if ! tar -xzf "$OVMS_DOWNLOAD_FILE" -C "$OVMS_EXTRACT_DIR"; then
-            print_error "Extraction failed."
-            rm -f "$OVMS_DOWNLOAD_FILE"
-            return 1
-        fi
-        
-        rm -f "$OVMS_DOWNLOAD_FILE"
+# Provision OVMS (OpenVINO Model Server) from the shared thirdparty package
+provision_ovms() {
+    print_step "5. OVMS Shared Thirdparty Setup"
 
-        print_success "OVMS extraction complete."
-    fi
-
-    # Install Jinja2/MarkupSafe directly into OVMS's own bin directory.
-    local OVMS_LIB_PYTHON_DIR="$OVMS_EXTRACT_DIR/ovms/lib/python"
-    echo "Installing Jinja2 and MarkupSafe into OVMS lib/python: $OVMS_LIB_PYTHON_DIR"
-    if ! "$UV_EXE" pip install --target "$OVMS_LIB_PYTHON_DIR" "Jinja2==3.1.6" "MarkupSafe==3.0.2"; then
-        print_error "Failed to install Jinja2/MarkupSafe into OVMS lib/python."
+    # Verify the shared OVMS binary is present (installed by workers/setup.sh)
+    if [[ ! -f "$SHARED_OVMS_DIR/bin/ovms" ]]; then
+        print_error "Shared OVMS binary not found at $SHARED_OVMS_DIR/bin/ovms."
+        print_error "Please run workers/setup.sh first to download the shared OVMS package."
         return 1
     fi
+    print_success "Shared OVMS found at $SHARED_OVMS_DIR/bin/ovms"
 
-    OPTIMUM_VENV_DIR="$OVMS_EXTRACT_DIR/ovms/lib/optimum_venv"
+    # Install Jinja2/MarkupSafe into OVMS lib/python (needed for model serving)
+    local OVMS_LIB_PYTHON_DIR="$SHARED_OVMS_DIR/lib/python"
+    if [[ -d "$OVMS_LIB_PYTHON_DIR/jinja2" ]]; then
+        print_success "Jinja2 already installed in OVMS lib/python. Skipping."
+    else
+        echo "Installing Jinja2 and MarkupSafe into OVMS lib/python: $OVMS_LIB_PYTHON_DIR"
+        if ! "$UV_EXE" pip install --target "$OVMS_LIB_PYTHON_DIR" "Jinja2==3.1.6" "MarkupSafe==3.0.2"; then
+            print_error "Failed to install Jinja2/MarkupSafe into OVMS lib/python."
+            return 1
+        fi
+        print_success "Jinja2/MarkupSafe installed into OVMS lib/python."
+    fi
+
+    local OPTIMUM_VENV_DIR="$SHARED_OVMS_DIR/lib/optimum_venv"
+    if [[ -d "$OPTIMUM_VENV_DIR" ]]; then
+        print_success "Optimum virtualenv already exists at $OPTIMUM_VENV_DIR. Skipping."
+        return 0
+    fi
 
     if ! mkdir -p "$OPTIMUM_VENV_DIR"; then
-        print_error "Failed to create directory for optimum in OVMS lib."
+        print_error "Failed to create directory for Optimum venv in OVMS lib."
         return 1
     fi
 
@@ -299,7 +292,7 @@ install_ovms() {
         print_error "Failed to install into Optimum venv."
         return 1
     fi
-    print_success "OVMS setup complete with Optimum export model environment ready at $OVMS_OPTIMUM_LIB/venv"
+    print_success "OVMS setup complete with Optimum export model environment ready at $OPTIMUM_VENV_DIR"
 }
 
 # Sync Python environment with uv
@@ -356,7 +349,7 @@ verify_installations() {
     fi
     
     # Check OVMS
-    if [[ -f "$OVMS_EXTRACT_DIR/ovms/bin/ovms" ]]; then
+    if [[ -f "$SHARED_OVMS_DIR/bin/ovms" ]]; then
         print_success "OVMS: OK"
     else
         print_error "OVMS: FAILED"
@@ -396,7 +389,7 @@ print_final_instructions() {
     echo "**Available Tools:**"
     echo "  • Llama.cpp binaries: $LLAMA_EXTRACT_DIR/"
     echo "  • GGUF Parser: $GGUF_PARSER_INSTALL_DIR/$GGUF_PARSER_BINARY_NAME"
-    echo "  • OVMS: $OVMS_EXTRACT_DIR/ovms/bin/ovms"
+    echo "  • OVMS: $SHARED_OVMS_DIR/bin/ovms"
     if command_exists xpu-smi; then
         echo "  • XPU-SMI: $(which xpu-smi) (system-wide)"
     elif [[ -f "$XPU_SMI_INSTALL_DIR/bin/xpu-smi" ]]; then
@@ -416,7 +409,7 @@ main() {
     install_llamacpp || exit 1
     install_xpu_smi || exit 1
     install_gguf_parser || exit 1
-    install_ovms || exit 1
+    provision_ovms || exit 1
     sync_uv_environment || exit 1
     
     # Verify everything worked

@@ -38,14 +38,11 @@ set "XPU_SMI_RELEASE_URL=https://github.com/intel/xpumanager/releases/download/v
 set "XPU_SMI_DOWNLOAD_FILE=xpu-win.zip"
 set "XPU_SMI_EXTRACT_DIR=engine\xpu-smi"
 
-set "OVMS_RELEASE_VERSION=2026.2"
-set "OVMS_RELEASE_URL=https://github.com/openvinotoolkit/model_server/releases/download/v%OVMS_RELEASE_VERSION%/ovms_windows_%OVMS_RELEASE_VERSION%.0_python_on.zip"
-set "OVMS_DOWNLOAD_FILE=ovms.zip"
-set "OVMS_EXTRACT_DIR=engine"
+set "SHARED_OVMS_DIR=..\..\thirdparty\ovms"
 
 set "UV_HTTP_TIMEOUT=180"
 
-set "OPTIMUM_EXPORT_MODEL_URL=https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/tags/v%OVMS_RELEASE_VERSION%/demos/common/export_models"
+set "OPTIMUM_EXPORT_MODEL_URL=https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/tags/v2026.2/demos/common/export_models"
 set "OPTIMUM_EXPORT_MODEL_SCRIPT=export_model.py"
 set "OPTIMUM_EXPORT_MODEL_REQUIREMENTS_URL=requirements.txt"
 
@@ -138,36 +135,20 @@ del "%LLAMA_SYCL_DOWNLOAD_FILE%"
 :SKIP_LLAMA_SYCL_DOWNLOAD
 echo.
 
-:: --- 3. Download and Extract OVMS ---
-echo ## 3. OVMS Download and Extraction
-if exist "%OVMS_EXTRACT_DIR%\ovms" (
-    echo **SUCCESS:** %OVMS_EXTRACT_DIR%\ovms already exists. Skipping download and extraction.
-    goto :SKIP_OVMS_DOWNLOAD
-)
-
-echo Creating directory: %OVMS_EXTRACT_DIR%
-md "%OVMS_EXTRACT_DIR%" 2>nul
-
-echo Downloading %OVMS_DOWNLOAD_FILE%...
-powershell -NoProfile -Command ^
-    "$ProgressPreference = 'SilentlyContinue'; Invoke-WebRequest -Uri '%OVMS_RELEASE_URL%' -OutFile '%OVMS_DOWNLOAD_FILE%'"
-if errorlevel 1 (
+:: --- 3. Provision OVMS shared thirdparty ---
+echo ## 3. OVMS Shared Thirdparty Setup
+if not exist "%SHARED_OVMS_DIR%\ovms.exe" (
     echo.
-    echo **ERROR:** Download failed. Aborting.
+    echo **ERROR:** Shared OVMS binary not found at %SHARED_OVMS_DIR%\ovms.exe
+    echo Please run workers\setup.ps1 first to download the shared OVMS package.
     exit /b 1
 )
-echo Download complete.
+echo **SUCCESS:** Shared OVMS found at %SHARED_OVMS_DIR%\ovms.exe
 
-echo Extracting to %OVMS_EXTRACT_DIR%...
-powershell -NoProfile -Command ^
-    "$ProgressPreference = 'SilentlyContinue'; Expand-Archive -Path '%OVMS_DOWNLOAD_FILE%' -DestinationPath '%OVMS_EXTRACT_DIR%' -Force"
-if errorlevel 1 (
-    echo.
-    echo **ERROR:** Extraction failed. Aborting script.
-    exit /b 1
+if exist "%SHARED_OVMS_DIR%\python\Lib\site-packages\optimum" (
+    echo **SUCCESS:** Optimum already installed in OVMS bundled Python. Skipping.
+    goto :SKIP_OVMS_PROVISION
 )
-echo Extraction complete.
-del "%OVMS_DOWNLOAD_FILE%"
 
 echo Preparing OVMS Python package installation...
 if defined PYTHONHOME (
@@ -181,7 +162,7 @@ set "PYTHONPATH="
 
 echo Installing OVMS Python requirements using bundled Python...
 setlocal DisableDelayedExpansion
-"%OVMS_EXTRACT_DIR%\ovms\python\python" -m pip install -r %OPTIMUM_EXPORT_MODEL_URL%/%OPTIMUM_EXPORT_MODEL_REQUIREMENTS_URL% "onnx!=1.21.0rc1" --pre
+"%SHARED_OVMS_DIR%\python\python" -m pip install -r %OPTIMUM_EXPORT_MODEL_URL%/%OPTIMUM_EXPORT_MODEL_REQUIREMENTS_URL% "onnx!=1.21.0rc1" --pre
 endlocal
 if errorlevel 1 (
     echo.
@@ -189,7 +170,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-"%OVMS_EXTRACT_DIR%\ovms\python\python" -m pip install datasets "pyarrow<21.0.0"
+"%SHARED_OVMS_DIR%\python\python" -m pip install datasets "pyarrow<21.0.0"
 if errorlevel 1 (
     echo.
     echo **ERROR:** OVMS Python datasets installation failed. Aborting.
@@ -205,7 +186,7 @@ if defined _PRE_OVMS_PYTHONPATH (
     set "_PRE_OVMS_PYTHONPATH="
 )
 
-:SKIP_OVMS_DOWNLOAD
+:SKIP_OVMS_PROVISION
 :: --- 4. Download and Extract GGUF Parser ---
 echo ## 4. GGUF Parser Download
 if exist "%GGUF_PARSER_EXTRACT_DIR%\%GGUF_PARSER_DOWNLOAD_FILE%" (
@@ -263,7 +244,7 @@ echo.
 :: --- 3. Perform uv sync ---
 echo ## 3. uv Sync
 if exist ".venv\pyvenv.cfg" (
-    findstr /i /c:"engine\\ovms\\python" ".venv\pyvenv.cfg" >nul 2>nul
+    findstr /i /c:"ovms\\python" ".venv\pyvenv.cfg" >nul 2>nul
     if not errorlevel 1 (
         echo Found an incompatible virtual environment created from OVMS bundled Python.
         echo Removing .venv so uv can recreate it with a compatible interpreter...
