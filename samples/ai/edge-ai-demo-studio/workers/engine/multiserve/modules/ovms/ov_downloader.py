@@ -19,12 +19,13 @@ from modules.utils import get_resource_path, ModelSource
 
 class OVDownloader:
     IS_WINDOWS = os.name == "nt"
+    _SHARED_OVMS_DIR = str(Path(__file__).resolve().parents[4] / "thirdparty" / "ovms")
     OVMS_EXECUTABLE = (
-        os.path.join(".", "engine", "ovms", "ovms.exe")
+        os.path.join(_SHARED_OVMS_DIR, "ovms.exe")
         if IS_WINDOWS
-        else os.path.join(".", "engine", "ovms", "bin", "ovms")
+        else os.path.join(_SHARED_OVMS_DIR, "bin", "ovms")
     )
-    OPTIMUM_VENV_PATH = os.path.join(".", "engine", "ovms", "lib", "optimum_venv")
+    OPTIMUM_VENV_PATH = os.path.join(_SHARED_OVMS_DIR, "lib", "optimum_venv")
 
     UV_EXECUTABLE = os.environ.get("UV_EXE", "uv")
 

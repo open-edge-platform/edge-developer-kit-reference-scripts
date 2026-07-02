@@ -6,8 +6,9 @@
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
 import { useCallback, useEffect, useRef } from 'react'
+import { stripMarkdownFence } from '../utils'
 
-const SOAP_SYSTEM_PROMPT = `You are a medical scribe AI assistant. Given a doctor-patient dialogue transcript, generate a comprehensive SOAP note.
+export const SOAP_SYSTEM_PROMPT = `You are a medical scribe AI assistant. Given a doctor-patient dialogue transcript, generate a comprehensive SOAP note.
 
 Format the note in Markdown with the following sections:
 
@@ -65,7 +66,7 @@ export function useSoapReport(options: SoapReportOptions = {}) {
           .map((p) => p.text)
           .join('')
         if (text) {
-          onFinishRef.current?.(text)
+          onFinishRef.current?.(stripMarkdownFence(text))
         }
       }
     }

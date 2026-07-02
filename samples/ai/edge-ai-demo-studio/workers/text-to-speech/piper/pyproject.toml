@@ -1,0 +1,16 @@
+[project]
+name = "pipertts"
+version = "0.1.0"
+description = "Piper TTS worker (Multilingual) with OpenVINO acceleration"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi[standard]>=0.120.1",
+    "piper-tts>=1.4.0",
+    "openvino>=2026.0.0",
+    "numpy>=1.26.0",
+    "soundfile>=0.12.1",
+    "pydub>=0.25.1",
+    "modelscope>=1.34.0",
+    "huggingface-hub>=0.20.0",
+]

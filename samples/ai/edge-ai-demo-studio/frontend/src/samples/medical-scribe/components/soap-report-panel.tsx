@@ -17,6 +17,7 @@ import { Streamdown } from 'streamdown'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
+import { stripMarkdownFence } from '../utils'
 
 interface SoapReportPanelProps {
   message: UIMessage | undefined
@@ -100,7 +101,15 @@ export function SoapReportPanel({
     .map((p) => p.text)
     .join('')
 
-  const copyText = liveTextContent || savedReport || ''
+  // While generating, the live stream is the source of truth. Once generation
+  // finishes, savedReport is authoritative — this ensures edits reflect
+  // immediately even if a stale chat message lingers after generation ends.
+  const copyText = stripMarkdownFence(
+    (isGenerating ? liveTextContent : savedReport) ||
+      savedReport ||
+      liveTextContent ||
+      '',
+  )
 
   const handleCopy = useCallback(async () => {
     if (!copyText) return
@@ -170,22 +179,11 @@ export function SoapReportPanel({
             <div className="flex flex-col items-center gap-2 py-8">
               <Loader2 className="text-muted-foreground h-6 w-6 animate-spin" />
               <p className="text-muted-foreground text-sm">
-                Generating SOAP note…
+                Generating clinical report…
               </p>
             </div>
           )}
-          {!isGenerating && !hasContent && savedReport && (
-            <div className="prose prose-sm dark:prose-invert max-w-none">
-              <Streamdown animated={false}>{savedReport}</Streamdown>
-            </div>
-          )}
-          {!isGenerating && !hasContent && !savedReport && (
-            <p className="text-muted-foreground py-8 text-center text-sm">
-              Process a recording and click &quot;Generate Report&quot; to
-              create a SOAP note
-            </p>
-          )}
-          {hasContent && !editing && (
+          {hasContent && (isGenerating || !savedReport) && !editing && (
             <div className="space-y-3">
               {message.parts.map((part, i) => {
                 if (part.type === 'reasoning') {
@@ -204,7 +202,7 @@ export function SoapReportPanel({
                       className="prose prose-sm dark:prose-invert max-w-none"
                     >
                       <Streamdown animated isAnimating={isGenerating}>
-                        {part.text}
+                        {stripMarkdownFence(part.text)}
                       </Streamdown>
                     </div>
                   )
@@ -212,6 +210,21 @@ export function SoapReportPanel({
                 return null
               })}
             </div>
+          )}
+
+          {!isGenerating && savedReport && (
+            <div className="prose prose-sm dark:prose-invert max-w-none">
+              <Streamdown key={reportCreatedAt} animated={false}>
+                {stripMarkdownFence(savedReport)}
+              </Streamdown>
+            </div>
+          )}
+
+          {!isGenerating && !hasContent && !savedReport && (
+            <p className="text-muted-foreground py-8 text-center text-sm">
+              Process a recording and click &quot;Generate Report&quot; to
+              create a SOAP note
+            </p>
           )}
         </ScrollArea>
       )}

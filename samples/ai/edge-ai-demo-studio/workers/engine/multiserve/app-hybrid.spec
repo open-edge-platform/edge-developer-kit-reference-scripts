@@ -11,7 +11,6 @@ hiddenimports += [
 ]
 
 datas = [
-    ('engine/ovms', './engine/ovms'),
     ('engine/llama.cpp-vulkan', './engine/llama.cpp-vulkan'), 
     ('engine/xpu-smi', './engine/xpu-smi'), 
     ('engine/gguf-parser-windows-amd64.exe', './engine/'), 

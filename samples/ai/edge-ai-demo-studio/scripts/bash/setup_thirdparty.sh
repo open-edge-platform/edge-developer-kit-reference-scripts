@@ -11,9 +11,9 @@ NODE_URL="https://nodejs.org/dist/v22.18.0/node-v22.18.0-linux-x64.tar.xz"
 NODE_DIR="$THIRDPARTY_DIR/node"
 NODE_PATH="$NODE_DIR/bin/node"
 
-FFMPEG_TAR_PATH="$THIRDPARTY_DIR/ffmpeg-n7.1.4-39-ga5faeca88f-linux64-gpl-7.1.tar.xz"
+FFMPEG_TAR_PATH="$THIRDPARTY_DIR/ffmpeg-n7.1.5-1-g7d0e842004-linux64-gpl-7.1.tar.xz"
 # FFMPEG_TAR_URL="https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
-FFMPEG_TAR_URL="https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-06-15-15-03/ffmpeg-n7.1.4-39-ga5faeca88f-linux64-gpl-7.1.tar.xz"
+FFMPEG_TAR_URL="https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-06-30-13-34/ffmpeg-n7.1.5-1-g7d0e842004-linux64-gpl-7.1.tar.xz"
 FFMPEG_DIR="$THIRDPARTY_DIR/ffmpeg"
 FFMPEG_PATH="$FFMPEG_DIR/bin/ffmpeg"
 

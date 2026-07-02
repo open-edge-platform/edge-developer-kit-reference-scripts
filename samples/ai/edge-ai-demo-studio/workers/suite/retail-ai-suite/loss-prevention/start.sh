@@ -86,6 +86,25 @@ EOF
   log "  Classification: device=$classify_device  precision=$classify_precision"
 }
 
+# ── Override camera resolution in the upstream camera config ──────
+override_camera_resolution() {
+  local config_file="$1"
+  local width="$2"
+  local height="$3"
+
+  if [ ! -f "$config_file" ]; then
+    log "WARNING: camera config not found at $config_file — skipping resolution override"
+    return 0
+  fi
+
+  sed -i \
+    -e 's/"width":[[:space:]]*[0-9][0-9]*/"width": '"$width"'/g' \
+    -e 's/"height":[[:space:]]*[0-9][0-9]*/"height": '"$height"'/g' \
+    "$config_file"
+
+  log "Camera config resolution overridden to ${width}x${height}: $config_file"
+}
+
 # ── Step 1: Clone upstream loss-prevention repo ───────────────────
 log "Running suite setup ($SETUP_SCRIPT $APP_NAME)"
 bash "$SETUP_SCRIPT" "$APP_NAME"
@@ -107,6 +126,9 @@ CAMERA_STREAM="camera_to_workload_asc_object_detection_classification.json"
 # This must run after suite setup so $SUITE_DIR/configs/ exists.
 generate_workload_config "$SUITE_DIR/configs" "$LP_DETECT_DEVICE" "$LP_CLASSIFY_DEVICE"
 WORKLOAD_DIST="$GENERATED_WORKLOAD_CONFIG_NAME"
+
+# Override camera resolution to 1920×1080 in the upstream camera config.
+override_camera_resolution "$SUITE_DIR/configs/$CAMERA_STREAM" 1920 1080
 
 # Validate DISPLAY for visual mode
 if [ -z "${DISPLAY:-}" ]; then

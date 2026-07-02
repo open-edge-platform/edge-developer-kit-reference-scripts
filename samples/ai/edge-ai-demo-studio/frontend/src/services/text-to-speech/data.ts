@@ -12,7 +12,7 @@ export const service: ServiceMeta = {
   description:
     'Natural-sounding speech synthesis with multiple voice options powered by Kokoro TTS.',
   longDescription:
-    'Neural text-to-speech engine producing natural, expressive speech. Supports Kokoro (English, OpenVINO) and Malaya (Malay, VITS) models with multiple voices, adjustable speed, streaming audio output, and multiple audio formats.',
+    'Neural text-to-speech engine producing natural, expressive speech. Supports Kokoro (Multilingual, OpenVINO), Malaya (Malay, VITS) and Piper (Multilingual, OpenVINO) models with multiple voices, adjustable speed, streaming audio output, and multiple audio formats.',
   icon: Volume2,
   port: 8020,
   supportedOS: ['linux', 'windows'],

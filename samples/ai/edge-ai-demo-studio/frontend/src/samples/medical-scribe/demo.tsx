@@ -25,9 +25,14 @@ import {
 } from './hooks'
 import { alignTranscriptWithSegments, formatTimestamp } from './utils'
 import { logger } from '@/lib/logger'
+import { SOAP_SYSTEM_PROMPT } from './hooks/use-soap-report'
 
 export function MedicalScribeDemo({ sample: _sample }: { sample: Sample }) {
-  const textGen = useTextGenerationParams()
+  const textGen = useTextGenerationParams({
+    initial: {
+      systemPrompt: SOAP_SYSTEM_PROMPT,
+    },
+  })
   const diarizationGroup = useOptionalServiceGroup({
     serviceId: 'diarization',
     serviceLabel: 'Diarization',
