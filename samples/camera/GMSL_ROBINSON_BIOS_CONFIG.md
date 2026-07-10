@@ -1,6 +1,6 @@
-# Innodisk - Intel® Core™ Ultra Series 3 processors (Panther Lake-U/H) GMSL BIOS Configuration
+# CEXD-INTRBL - Intel® Core™ Ultra Series 3 processors (Panther Lake-U/H) GMSL BIOS Configuration
 
-This page describes the BIOS configuration steps for the Innodisk platform to enable the IPU7 with GMSL cameras.
+This page describes the BIOS configuration steps for the Robinson Lake platform to enable the IPU7 with GMSL cameras.
 
 > Note: BIOS menus and exact settings vary by platform vendor and camera sensor.
 
