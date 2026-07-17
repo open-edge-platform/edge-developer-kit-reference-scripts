@@ -17,6 +17,6 @@ dependencies = [
     "pydub>=0.25.1",
     "resampy>=0.4.3",
     "soundfile>=0.13.1",
-    "torch>=2.12.1",
+    "torch>=2.13.0",
     "transformers>=4.56.2",
 ]
