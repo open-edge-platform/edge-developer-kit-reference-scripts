@@ -12,7 +12,7 @@ dependencies = [
     # Use opencv-python (not headless) so it works on Windows desktop too.
     "opencv-python>=4.10",
     "numpy>=1.24,<2.2",
-    "pillow>=10.0",
+    "pillow>=12.3.0",
     "openvino>=2025.2",
     "shapely>=2.0",
     "pyclipper>=1.3",
