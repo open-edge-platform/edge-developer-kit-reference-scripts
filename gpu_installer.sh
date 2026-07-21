@@ -457,6 +457,56 @@ apply_xe_ptl_fix() {
    fi
 }
 
+# DRM render node numbers are assigned in driver probe order, not by PCI
+# address. When xe probes a discrete GPU before i915 probes the integrated one,
+# the dGPU takes renderD128, so OpenVINO and DL Streamer report it as GPU.0 and
+# the device order is reversed. Pinning the module load order makes it
+# deterministic. See issue #922.
+#
+# Only applied when the integrated GPU is actually served by i915. On platforms
+# where it uses xe (Lunar Lake, Panther Lake) both GPUs share one driver, which
+# already probes in PCI order, so there is nothing to pin and loading i915
+# would serve no purpose.
+#
+# Note /dev/dri/by-path/ symlinks are stable regardless; only the renderD*
+# numbering that these frameworks enumerate by is affected.
+configure_drm_node_order() {
+   local conf="/etc/modprobe.d/intel-gpu-order.conf"
+   local displays igpu_driver
+
+   displays=$(lspci -nn 2>/dev/null | grep -Ei 'vga|display')
+
+   # Need an integrated GPU and at least one Intel discrete GPU
+   echo "$displays" | grep -q '^00:02\.0' || return 0
+   echo "$displays" | grep -v '^00:02\.0' | grep -qi '\[8086:' || return 0
+
+   # Only meaningful when the integrated GPU is bound to i915
+   if [ -L /sys/bus/pci/devices/0000:00:02.0/driver ]; then
+      igpu_driver=$(basename "$(readlink -f /sys/bus/pci/devices/0000:00:02.0/driver)")
+   fi
+   if [ "${igpu_driver:-}" != "i915" ]; then
+      log_info "Integrated GPU is on ${igpu_driver:-no driver}, not i915: DRM node order needs no pinning"
+      return 0
+   fi
+
+   if grep -qs '^softdep xe pre: i915' "$conf"; then
+      log_success "DRM node order already pinned in $conf"
+      return 0
+   fi
+
+   printf '%s\n' \
+      '# Load i915 before xe so the integrated GPU keeps DRM renderD128.' \
+      '# Minor numbers follow driver probe order, not PCI address. See issue #922.' \
+      'softdep xe pre: i915' > "$conf"
+
+   # The drivers may load from the initramfs, so the config must be in it too
+   update-initramfs -u >/dev/null 2>&1 || \
+      log_info "Run 'sudo update-initramfs -u' before rebooting"
+
+   log_success "Pinned driver load order in $conf (takes effect after reboot)"
+   ls -l /dev/dri/by-path/*render 2>/dev/null | awk '{print "     " $9 " -> " $11}'
+}
+
 # Main function
 
 main() {
@@ -477,6 +527,7 @@ main() {
    # Apply temporary fixes
    apply_arc_b60_fix
    apply_xe_ptl_fix
+   configure_drm_node_order
 
    install_gpu_drivers || echo "$S_ERROR install_gpu_drivers reported failure"
    if ! verify_drivers; then
