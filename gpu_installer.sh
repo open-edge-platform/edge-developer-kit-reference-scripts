@@ -504,7 +504,14 @@ configure_drm_node_order() {
       log_info "Run 'sudo update-initramfs -u' before rebooting"
 
    log_success "Pinned driver load order in $conf (takes effect after reboot)"
-   ls -l /dev/dri/by-path/*render 2>/dev/null | awk '{print "     " $9 " -> " $11}'
+
+   # Show the current mapping. Iterate the symlinks directly rather than
+   # parsing ls output (ShellCheck SC2012).
+   local link
+   for link in /dev/dri/by-path/*render; do
+      [ -L "$link" ] || continue
+      printf '     %s -> %s\n' "$link" "$(readlink "$link")"
+   done
 }
 
 # Main function
