@@ -5,6 +5,8 @@ Welcome to Intel®'s edge computing ecosystem! This guide will help you get up a
 ## Table of Contents
 
 - [Installation Walkthrough](#installation-walkthrough)
+- [Unattended Installation](#unattended-installation)
+- [Optional: Install DL Streamer](#optional-install-dl-streamer)
 - [Next Steps](#next-steps)
 
 ## Installation Walkthrough
@@ -109,6 +111,78 @@ Log file saved: /var/log/intel-platform-installer.log
 ```
 
 **🎉 Congratulations!** You're now ready to build amazing AI applications with Intel® hardware.
+
+## Unattended Installation
+
+When the kernel needs upgrading, the default flow stops and asks you to reboot and run the installer again. `DEVKIT_AUTO_INSTALL=1` does it in one pass instead:
+
+```bash
+sudo DEVKIT_AUTO_INSTALL=1 ./main_installer.sh
+```
+
+> **This restarts your system** after a ten second countdown. Press Ctrl+C to cancel.
+
+Driver packages are user-space and install fine on the old kernel, so only verification is deferred. It runs automatically on the next boot:
+
+```bash
+sudo tail -40 /var/log/intel-platform-installer.log
+```
+
+In the default flow, the installer instead ends with a summary of what needs a restart and why, shown only when one is actually required.
+
+## Optional: Install DL Streamer
+
+[Intel® Deep Learning Streamer](https://docs.openedgeplatform.intel.com/dev/edge-ai-libraries/dlstreamer/index.html) adds GStreamer elements such as `gvadetect`, `gvaclassify` and `gvawatermark`, letting you build media analytics pipelines on CPU, GPU and NPU.
+
+It is not part of the base install. Run it after the main installer has completed, since it relies on the GPU and NPU drivers already being in place:
+
+```bash
+sudo ./dlstreamer_installer.sh
+```
+
+To install a specific release instead of the latest:
+
+```bash
+sudo DLSTREAMER_VERSION=2026.1.0 ./dlstreamer_installer.sh
+```
+
+List what is available with `apt show -a intel-dlstreamer`.
+
+**About the environment variables**
+
+DL Streamer needs a set of GStreamer variables that the upstream guide asks each user to paste into their own `~/.bashrc`. This installer instead writes `/etc/profile.d/intel-dlstreamer.sh`, which sources the environment script shipped by the package. The variables are then set for every user at login, with nothing to edit per user and no paths duplicated.
+
+It applies at your next login. To use it in the shell you already have open:
+
+```bash
+source /etc/profile.d/intel-dlstreamer.sh
+```
+
+**Verify**
+
+```bash
+gst-inspect-1.0 gvadetect
+```
+
+You should see the element documentation rather than `No such element`. If you do not, log out and back in so the environment is applied.
+
+**Run a sample pipeline**
+
+Download a model, then run a detection pipeline against it:
+
+```bash
+/opt/intel/dlstreamer/samples/download_public_models.sh yolo11s
+
+export MODEL=$MODELS_PATH/public/yolo11s/FP16/yolo11s.xml
+gst-launch-1.0 videotestsrc num-buffers=100 ! video/x-raw,width=640,height=640 ! \
+  videoconvert ! gvadetect model=$MODEL device=CPU ! gvafpscounter ! fakesink
+```
+
+`MODELS_PATH` defaults to `~/models` and is set for you by the profile script. A frames-per-second figure followed by `Got EOS` means inference is working. Swap `device=CPU` for `device=GPU` to exercise the GPU path.
+
+> **Note:** Intel also ships `/opt/intel/dlstreamer/scripts/hello_dlstreamer.sh`. On systems with more than one GPU it fails with `[: too many arguments`, because its GPU detection does not quote the result of `find /dev/dri/ -name "render*"`. The pipeline above avoids it.
+
+> **Note:** `intel-dlstreamer` depends on a specific OpenVINO™ version. If `openvino_installer.sh` has already installed a different one, the installer warns you and prints the commands to remove the conflicting packages.
 
 ### Next Steps
 

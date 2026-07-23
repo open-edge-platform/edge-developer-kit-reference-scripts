@@ -537,13 +537,37 @@ main() {
    configure_drm_node_order
 
    install_gpu_drivers || echo "$S_ERROR install_gpu_drivers reported failure"
+
+   # Record why a restart is needed rather than asking for one in passing.
+   # main_installer.sh collects these and shows one banner at the end. (#987)
+   record_gpu_reboot_reason() {
+      [ -w /run ] 2>/dev/null || return 0
+      echo "*** System restart required ***" > "${REBOOT_REQUIRED_FILE:-/run/reboot-required}" 2>/dev/null || true
+      grep -qxF "Intel GPU drivers installed" \
+         "${REBOOT_REQUIRED_REASONS:-/run/reboot-required.pkgs}" 2>/dev/null || \
+         echo "Intel GPU drivers installed" \
+            >> "${REBOOT_REQUIRED_REASONS:-/run/reboot-required.pkgs}" 2>/dev/null || true
+   }
+
+   # Every GPU package here is user-space; the kernel driver ships inside the
+   # kernel package. They install correctly on any running kernel, but clinfo
+   # cannot enumerate a device until the supported kernel is booted.
+   # main_installer.sh sets this when it has just replaced the kernel. (#986)
+   if [ "${DEVKIT_AUTO_INSTALL:-0}" = "1" ]; then
+      record_gpu_reboot_reason
+      echo -e "\n# $S_WARNING Skipping GPU verification: a kernel change is pending"
+      echo "  Packages installed. They will be verified after the restart."
+      return 0
+   fi
+
    if ! verify_drivers; then
       # Avoid literal \n in output; use printf for portability
       printf "\n%s GPU installation verification failed. See errors above.\n" "$S_ERROR"
       exit 1
    fi
    if [ $DRIVER_INSTALL_OK -eq 1 ] && [ $DRIVER_VERIFY_OK -eq 1 ]; then
-      echo -e "\n# $S_VALID GPU installation completed successfully. Please reboot your system."
+      record_gpu_reboot_reason
+      echo -e "\n# $S_VALID GPU installation completed successfully"
    else
       echo -e "\n# $S_ERROR GPU installation incomplete (install_ok=$DRIVER_INSTALL_OK verify_ok=$DRIVER_VERIFY_OK)."
       exit 1
