@@ -61,15 +61,29 @@ Ensure the GPU drivers are installed using the [`gpu_installer.sh`](https://gith
    source .venv/bin/activate
    ```
 
-3. **Install the Python dependencies:**
+3. **Install the Python dependencies, including PyTorch with Intel XPU support:**
    ```bash
-   pip install -r requirements.txt
+   pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/xpu
    ```
-   
-4. **Install PyTorch and Intel Extension for XPU support:**
+
+   Both indexes are resolved in a single pass, so pip selects a torch build that
+   satisfies every constraint declared by the other packages.
+
+   Do not install torch separately afterwards with
+   `--force-reinstall --index-url`. That resolves torch and its dependencies
+   independently of the rest, which downgrades `numpy` and `networkx` below the
+   bounds `nncf` and `openvino` require, leaves a torch version outside the range
+   `colpali-engine` declares, and installs roughly 3 GB of CUDA libraries that go
+   unused on Intel GPUs. See issue #1012.
+
+4. **Verify the environment:**
    ```bash
-   pip install -U --force-reinstall --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
+   pip check
+   python -c "import torch; print(torch.__version__, torch.xpu.is_available(), torch.xpu.get_device_name())"
    ```
+
+   Expect `No broken requirements found`, a `+xpu` build, `True`, and your Intel
+   GPU reported by name.
 
 5. **Create the config file:**
    Create the `config.py` file by copying the content from `config.py.template` and modify the values to experiment with the tool. Few examples are available in the `./assets/usecases`.

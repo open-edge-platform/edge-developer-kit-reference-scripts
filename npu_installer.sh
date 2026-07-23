@@ -396,8 +396,16 @@ install_npu() {
    print_info ""
    print_success "NPU installation completed"
    print_info ""
-   print_warning "System reboot is recommended for NPU to be fully functional"
-   print_info "After reboot, verify with: ls /dev/accel/accel0"
+   # Record the reason instead of a vague "recommended". main_installer.sh
+   # shows one banner at the end. See issue #987.
+   if [ -w /run ] 2>/dev/null; then
+      echo "*** System restart required ***" > "${REBOOT_REQUIRED_FILE:-/run/reboot-required}" 2>/dev/null || true
+      grep -qxF "Intel NPU driver installed (/dev/accel appears after restart)" \
+         "${REBOOT_REQUIRED_REASONS:-/run/reboot-required.pkgs}" 2>/dev/null || \
+         echo "Intel NPU driver installed (/dev/accel appears after restart)" \
+            >> "${REBOOT_REQUIRED_REASONS:-/run/reboot-required.pkgs}" 2>/dev/null || true
+   fi
+   print_info "After restarting, verify with: ls /dev/accel/accel0"
    print_info "Expected output: crw-rw---- 1 root render 261, 0 <date> /dev/accel/accel0"
    print_info "Also check dmesg for intel_vpu messages: dmesg | grep intel_vpu"
    print_info ""

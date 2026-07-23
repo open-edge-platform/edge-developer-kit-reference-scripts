@@ -33,13 +33,13 @@
 rt_optimized() {
     info
     #define LLC Core Masks
-    wrmsr 0xc90 0xF0 # best effort
-    wrmsr 0xc91 0x0f # real-time
+    wrmsr 0xc90 0x07 # best effort - cache ways 0-2
+    wrmsr 0xc91 0xF8 # real-time - cache ways 3-7
     #define LLC GT Masks
-    wrmsr 0x18b0 0x80
-    wrmsr 0x18b1 0x80
-    wrmsr 0x18b2 0x80
-    wrmsr 0x18b3 0x80
+    wrmsr 0x18b0 0x01 # iGPU - cache way 0
+    wrmsr 0x18b1 0x01
+    wrmsr 0x18b2 0x01
+    wrmsr 0x18b3 0x01
     
     #assign the masks to the cores.
     #This has to match with the core selected in the rt app

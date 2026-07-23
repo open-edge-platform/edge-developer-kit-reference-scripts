@@ -6,9 +6,45 @@
 
 #
 # ----------------------------------------------------------------------------
-# Global reboot/resume state management
+# Restart handling (issues #986 and #987)
 # ----------------------------------------------------------------------------
-# (state management removed)
+# Two related problems, fixed together because they interact.
+#
+# #987: reboot messages were scattered across three scripts in three registers
+# ("required", "recommended", "may be required"), and the closing line printed
+# on every run whether or not anything had changed. Printing it unconditionally
+# teaches users to ignore it. Ubuntu already has a convention for this,
+# /run/reboot-required, which the kernel package creates automatically, with
+# reasons in /run/reboot-required.pkgs. Each installer now records why, and one
+# banner is shown at the end, only when a restart is genuinely needed.
+#
+# #986: a kernel upgrade stopped the installer, so the user had to reboot and
+# run it again. Nothing in the GPU or NPU installers needs the new kernel to be
+# running: every package is user-space, the kernel drivers ship inside the
+# kernel package, and its headers are installed alongside so DKMS builds
+# against the new kernel. Only verification needs it, since clinfo cannot
+# enumerate a device the running kernel does not support.
+#
+# DEVKIT_AUTO_INSTALL=1 therefore installs everything in one pass, defers
+# verification, RESTARTS THE MACHINE, and prints the summary on the next boot.
+# In that mode the #987 banner is suppressed: telling someone to reboot
+# manually and then rebooting for them would be contradictory.
+#
+#   sudo DEVKIT_AUTO_INSTALL=1 ./main_installer.sh
+REBOOT_REQUIRED_FILE="/run/reboot-required"
+REBOOT_REQUIRED_REASONS="/run/reboot-required.pkgs"
+export REBOOT_REQUIRED_FILE REBOOT_REQUIRED_REASONS
+
+DEVKIT_AUTO_INSTALL="${DEVKIT_AUTO_INSTALL:-0}"
+export DEVKIT_AUTO_INSTALL
+
+readonly REBOOT_GRACE_SECONDS=10
+KERNEL_CHANGED=0
+
+SUMMARY_STATE_DIR="/var/lib/intel-devkit"
+SUMMARY_UNIT="intel-devkit-summary.service"
+SUMMARY_UNIT_PATH="/etc/systemd/system/${SUMMARY_UNIT}"
+SUMMARY_WRAPPER="${SUMMARY_STATE_DIR}/summary.sh"
 
 # Fail fast, treat unset variables as errors, and catch pipeline failures
 set -euo pipefail
@@ -82,7 +118,14 @@ usage() {
     echo "Intel Platform Installer"
     echo "========================"
     echo ""
-    echo "Usage: $0"
+    echo "Usage: $0 [options]"
+    echo ""
+    echo "Environment:"
+    echo "  DEVKIT_AUTO_INSTALL=1   Unattended mode. Installs everything in a single"
+    echo "                          pass even when the kernel must be replaced, then"
+    echo "                          RESTARTS THE SYSTEM and prints the verification"
+    echo "                          summary automatically on the next boot."
+    echo "                          Default: off (two reboots, run the script twice)."
     echo ""
 }
 
@@ -264,7 +307,31 @@ verify_ubuntu_24() {
         linux-modules-6.17.0-19-generic \
         linux-modules-extra-6.17.0-19-generic \
         linux-headers-6.17.0-19-generic
-        echo "$S_VALID HWE kernel installed. Please reboot and run this installer again."
+        echo "$S_VALID HWE kernel installed"
+        KERNEL_CHANGED=1
+        flag_reboot_required "Kernel 6.17 installed (currently running $running_kernel)"
+
+        # Unattended: carry on and restart at the end instead of stopping here
+        if [ "$DEVKIT_AUTO_INSTALL" = "1" ]; then
+            echo "$S_WARNING Continuing on the current kernel; verification is deferred"
+            return 0
+        fi
+
+        echo ""
+        echo -e "${YELLOW}########################################################################${NC}"
+        echo -e "${YELLOW}#              RESTART REQUIRED BEFORE SETUP CAN CONTINUE              #${NC}"
+        echo -e "${YELLOW}########################################################################${NC}"
+        echo ""
+        echo "  Kernel 6.17 has been installed but is not running yet."
+        echo "  The GPU and NPU steps cannot verify their devices until it is."
+        echo ""
+        echo -e "  1. Restart:   ${GREEN}sudo reboot${NC}"
+        echo -e "  2. Re-run:    ${GREEN}sudo $0${NC}"
+        echo ""
+        echo "  To do this in one pass instead, without stopping here:"
+        echo -e "     ${GREEN}sudo DEVKIT_AUTO_INSTALL=1 $0${NC}"
+        echo ""
+        echo -e "${YELLOW}########################################################################${NC}"
         exit 0
     fi
 }
@@ -613,6 +680,123 @@ install_build_essentials() {
    fi
 }
 
+
+# Record that a restart is needed, and why. Safe to call repeatedly. (#987)
+flag_reboot_required() {
+    local reason="$1"
+    echo "*** System restart required ***" > "$REBOOT_REQUIRED_FILE" 2>/dev/null || return 0
+    if ! grep -qxF "$reason" "$REBOOT_REQUIRED_REASONS" 2>/dev/null; then
+        echo "$reason" >> "$REBOOT_REQUIRED_REASONS" 2>/dev/null || true
+    fi
+}
+
+# One prominent, conditional banner. Printing nothing when no restart is needed
+# is what makes the banner mean something when it appears. (#987)
+print_reboot_banner() {
+    if [ ! -f "$REBOOT_REQUIRED_FILE" ]; then
+        echo ""
+        echo "$S_VALID No restart required. The platform is ready to use."
+        return 0
+    fi
+
+    echo ""
+    echo -e "${YELLOW}########################################################################${NC}"
+    echo -e "${YELLOW}#                                                                      #${NC}"
+    echo -e "${YELLOW}#                   RESTART REQUIRED TO FINISH SETUP                   #${NC}"
+    echo -e "${YELLOW}#                                                                      #${NC}"
+    echo -e "${YELLOW}########################################################################${NC}"
+    echo ""
+    echo "  The following will not take effect until the system restarts:"
+    echo ""
+    if [ -s "$REBOOT_REQUIRED_REASONS" ]; then
+        sed 's/^/    - /' "$REBOOT_REQUIRED_REASONS"
+    else
+        echo "    - Package updates that require a restart"
+    fi
+    echo ""
+    echo "  Running kernel: $(uname -r)"
+    echo ""
+    echo -e "  Restart now with:   ${GREEN}sudo reboot${NC}"
+    echo ""
+    echo "  After restarting, confirm with:"
+    echo "    sudo $SCRIPT_DIR/print_summary_table.sh"
+    echo ""
+    echo -e "${YELLOW}########################################################################${NC}"
+}
+
+# Remove any summary unit left over from an earlier run (#986)
+disarm_summary() {
+    [ -f "$SUMMARY_UNIT_PATH" ] || return 0
+    systemctl disable "$SUMMARY_UNIT" >/dev/null 2>&1 || true
+    rm -f "$SUMMARY_UNIT_PATH" "$SUMMARY_WRAPPER"
+    systemctl daemon-reload >/dev/null 2>&1 || true
+}
+
+# Print the platform summary automatically on the next boot, so the user does
+# not have to run it by hand. It only reports; it installs nothing. The wrapper
+# disarms itself before doing any work, so a failure cannot repeat. (#986)
+arm_summary_after_reboot() {
+    local summary_script="${SCRIPT_DIR}/print_summary_table.sh"
+    [ -f "$summary_script" ] || return 1
+
+    mkdir -p "$SUMMARY_STATE_DIR"
+
+    cat > "$SUMMARY_WRAPPER" <<WRAPPER_EOF
+#!/bin/bash
+# Disarm first: this must never run twice
+systemctl disable ${SUMMARY_UNIT} >/dev/null 2>&1 || true
+rm -f ${SUMMARY_UNIT_PATH}
+systemctl daemon-reload >/dev/null 2>&1 || true
+
+DEVKIT_LOG=${LOG_FILE:-/var/log/intel-platform-installer.log}
+echo "" >> "\$DEVKIT_LOG"
+echo "===== Post-reboot verification \$(date '+%Y-%m-%d %H:%M:%S') =====" >> "\$DEVKIT_LOG"
+bash ${summary_script} >> "\$DEVKIT_LOG" 2>&1
+WRAPPER_EOF
+    chmod 0755 "$SUMMARY_WRAPPER"
+
+    cat > "$SUMMARY_UNIT_PATH" <<UNIT_EOF
+[Unit]
+Description=Intel devkit post-reboot verification summary
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=${SUMMARY_WRAPPER}
+
+[Install]
+WantedBy=multi-user.target
+UNIT_EOF
+
+    systemctl daemon-reload >/dev/null 2>&1 || true
+    systemctl enable "$SUMMARY_UNIT" >/dev/null 2>&1 || { rm -f "$SUMMARY_UNIT_PATH" "$SUMMARY_WRAPPER"; return 1; }
+    return 0
+}
+
+# Restart the machine, after a short grace period so it can be interrupted (#986)
+auto_reboot() {
+    echo ""
+    echo -e "${YELLOW}########################################################################${NC}"
+    echo -e "${YELLOW}#           THIS SYSTEM WILL RESTART TO FINISH SETUP                   #${NC}"
+    echo -e "${YELLOW}########################################################################${NC}"
+    echo ""
+    if [ -s "$REBOOT_REQUIRED_REASONS" ]; then
+        echo "  Applying:"
+        sed 's/^/    - /' "$REBOOT_REQUIRED_REASONS"
+        echo ""
+    fi
+    echo "  Press Ctrl+C to cancel and restart it yourself later."
+    echo ""
+    local i="$REBOOT_GRACE_SECONDS"
+    while [ "$i" -gt 0 ]; do
+        printf "\r  restarting in %2ds ... " "$i"
+        sleep 1
+        i=$((i - 1))
+    done
+    printf "\r  restarting now       \n"
+    systemctl reboot || reboot
+}
+
 # Main execution flow
 # Telemetry consent function
 ask_telemetry_consent() {
@@ -715,7 +899,9 @@ main() {
 
     check_privileges
     setup_logging "$@"
-    # (resume check removed)
+
+    # Clear anything armed by a previous run
+    disarm_summary
     
     echo "Intel Platform Installer"
     echo "========================"
@@ -796,8 +982,19 @@ main() {
     echo "========================================================================"
     echo "Installation completed: $(date '+%Y-%m-%d %H:%M:%S')"
     echo "Log file saved: $LOG_FILE"
-    echo "Installation completed. Please reboot the system to ensure all changes take effect"
     echo "========================================================================"
+
+    # Unattended mode restarts the machine itself, so the manual banner would
+    # contradict it. Exactly one of these runs.
+    if [ "$KERNEL_CHANGED" = "1" ] && [ "$DEVKIT_AUTO_INSTALL" = "1" ]; then
+        if arm_summary_after_reboot; then
+            echo "Verification runs automatically after the restart and is appended to"
+            echo "${LOG_FILE:-/var/log/intel-platform-installer.log}"
+        fi
+        auto_reboot
+    else
+        print_reboot_banner
+    fi
 }
 
 # Execute main function with all arguments
