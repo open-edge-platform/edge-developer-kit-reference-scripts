@@ -321,11 +321,12 @@ check_intel_arc_gpu() {
         echo "$S_VALID Intel (8086) GPU found - proceeding with Intel GPU driver installation"
         return 0
     else
-        echo "$S_ERROR Non-Intel GPU(s) detected (no PCI vendor 8086 present)"
-        echo "Detected devices:"
-        echo "$lspci_output"
-        echo "$S_ERROR Exiting: this installer supports Intel GPUs only"
-        exit 1
+        # A display device with no Intel vendor is normal on Xeon and other
+        # server platforms, where the BMC provides the only VGA controller.
+        # Skip the GPU step rather than aborting the whole install.
+        echo "$S_WARNING No Intel (8086) GPU found among the detected devices"
+        echo "GPU driver installation will be skipped"
+        return 1
     fi
 }
 
@@ -350,8 +351,8 @@ install_gpu_drivers() {
             exit 1
         fi
     else
-        echo "$S_WARNING Skipping GPU driver installation - no GPU devices detected"
-        echo "This is normal for systems without dedicated or integrated GPUs"
+        echo "$S_WARNING Skipping GPU driver installation - no Intel GPU detected"
+        echo "This is normal on Xeon and other platforms without an Intel GPU"
         return 0  # Not an error condition
     fi
 }
