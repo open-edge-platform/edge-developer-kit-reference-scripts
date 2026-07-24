@@ -73,6 +73,7 @@ trap 'echo "Script interrupted"; exit 130' INT TERM
 # Default values
 export INSTALL_CAMERA=false
 export INSTALL_OPENVINO=false
+export TELEMETRY_CONSENT=""
 
 # Log file configuration
 LOG_FILE="/var/log/intel-platform-installer.log"
@@ -198,78 +199,6 @@ download_scripts() {
         fi
     done
 }
-
-# Telemetry consent function
-ask_telemetry_consent() {
-    echo ""
-    echo "======================================================================"
-    echo "# TELEMETRY DATA COLLECTION"
-    echo "======================================================================"
-    echo "This installer can collect anonymous system information to help improve"
-    echo "Intel®'s development tools and platform support. The collected data includes:"
-    echo ""
-    echo "• System information (OS, CPU, GPU models)"
-    echo "• Motherboard information (manufacturer, product name)"
-    echo "• Geographic location (country/region only)"
-    echo "• Installation date"
-    echo ""
-    echo "No personal information, file contents, or sensitive data is collected."
-    echo "Data transmission is secure and anonymous."
-    echo ""
-    echo "Note: Pressing Enter without typing will default to 'No'."
-    echo ""
-    
-    while true; do
-        echo -n "Do you consent to anonymous telemetry data collection? [y/N]: "
-        read -r response
-        
-        # Default to no if user just presses enter
-        if [ -z "$response" ]; then
-            response="n"
-        fi
-        
-        case "$response" in
-            [Yy]|[Yy][Ee][Ss])
-                export TELEMETRY_CONSENT="yes"
-                echo "$S_VALID Telemetry data collection enabled"
-                echo ""
-                return 0
-                ;;
-            [Nn]|[Nn][Oo])
-                export TELEMETRY_CONSENT="no"
-                echo "$S_VALID Telemetry data collection disabled"
-                echo "$S_WARNING Installation will continue without data collection"
-                echo ""
-                return 0
-                ;;
-            *)
-                echo "Please answer yes (y) or no (n)"
-                ;;
-        esac
-    done
-}
-
-# Send telemetry data if consent was given
-send_telemetry_data() {
-    if [ "$TELEMETRY_CONSENT" = "yes" ]; then
-        echo "$S_VALID Sending anonymous telemetry data..."
-        
-        # Check if Python3 and both required scripts exist
-        if command -v python3 >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/telemetry.py" ] && [ -f "$SCRIPT_DIR/system_info.py" ]; then
-            # Run the telemetry script and capture the result
-            if (cd "$SCRIPT_DIR" && python3 telemetry.py 2>/dev/null); then
-                echo "$S_VALID Telemetry data sent successfully"
-            else
-                echo "$S_WARNING Telemetry transmission failed (network or service issue)"
-            fi
-        else
-            echo "$S_WARNING Telemetry scripts not available, skipping data collection"
-        fi
-    else
-        echo "$S_VALID Skipping telemetry data collection (user declined)"
-    fi
-}
-
 
 # Verify Ubuntu 24.04 LTS with Canonical kernel
 verify_ubuntu_24() {
