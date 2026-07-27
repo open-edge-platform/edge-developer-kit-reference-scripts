@@ -754,14 +754,26 @@ ask_telemetry_consent() {
     echo "No personal information, file contents, or sensitive data is collected."
     echo "Data transmission is secure and anonymous."
     echo ""
-    echo "Note: Pressing Enter without typing will default to 'No'."
+    echo "Note: No response within 5 seconds defaults to 'No' automatically."
     echo ""
     
     while true; do
-        echo -n "Do you consent to anonymous telemetry data collection? [y/N]: "
-        read -r response
-        
-        # Default to no if user just presses enter
+        local secs=5
+        response=""
+        while [ "$secs" -gt 0 ]; do
+            printf "\rDo you consent to anonymous telemetry data collection? [y/N] (auto-No in %ds): " "$secs"
+            if IFS= read -t 1 -r response; then
+                printf "\n"
+                break
+            fi
+            secs=$((secs - 1))
+        done
+        if [ "$secs" -eq 0 ]; then
+            printf "\n"
+            response=""
+        fi
+
+        # Default to no if user just presses enter or timed out
         if [ -z "$response" ]; then
             response="n"
         fi
