@@ -49,6 +49,52 @@ cd edge-developer-kit-reference-scripts
 sudo ./main_installer.sh
 ```
 
+**What the installer sets up:**
+- Kernel and HWE stack verification
+- Intel® GPU drivers, plus NPU drivers on Core Ultra platforms
+- OpenVINO™ runtime
+
+**Optional components**
+
+Docker, qmassa and DL Streamer are available but are not installed by default.
+When the installer runs on a terminal it asks which, if any, you want:
+
+- `docker` Docker Engine, with the Compose and Buildx plugins
+- `qmassa` Terminal Intel GPU usage monitor
+- `dlstreamer` Intel® DL Streamer, GStreamer elements for media analytics
+
+Selecting nothing is a valid answer, and the installation continues without them.
+
+To decide up front and skip the question, which is what scripted and CI runs
+need:
+
+```bash
+sudo ./main_installer.sh --with-extras=docker
+sudo ./main_installer.sh --with-extras=docker,dlstreamer
+sudo ./main_installer.sh --with-extras=all
+sudo ./main_installer.sh --no-extras
+```
+
+A run with no terminal attached installs nothing unless `--with-extras` names a
+component, so unattended installs are unaffected.
+
+Optional components are installed after the drivers, so a problem with any of
+them cannot block the driver setup. Anything you skip is listed at the end of the
+run, and you can add it later by running the installer again with the flag.
+
+If you install Docker, your user is added to the `docker` group, so log out and
+back in, or run `newgrp docker`, before using `docker` without `sudo`. If
+`HTTP_PROXY` and `HTTPS_PROXY` are set in your environment, the installer
+configures Docker to use them for both the daemon and the CLI.
+
+DL Streamer can also be installed on its own after setup, and `DLSTREAMER_VERSION`
+pins the release in either case:
+
+```bash
+sudo DLSTREAMER_VERSION=2026.1.0 ./main_installer.sh --with-extras=dlstreamer
+sudo DLSTREAMER_VERSION=2026.1.0 ./dlstreamer_installer.sh
+```
+
 ### Step 4: Handle Reboot (if prompted)
 
 Some driver installations require a reboot. If prompted:
