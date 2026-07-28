@@ -18,9 +18,9 @@ export async function getActiveProxyTimeout(): Promise<number> {
         slug: 'app-settings',
         overrideAccess: true,
       })
-      g[GLOBAL_KEY] = settings.proxyTimeout ?? 30
+      g[GLOBAL_KEY] = settings.proxyTimeout ?? 300
     } catch {
-      return 30
+      return 300
     }
   }
   return g[GLOBAL_KEY]

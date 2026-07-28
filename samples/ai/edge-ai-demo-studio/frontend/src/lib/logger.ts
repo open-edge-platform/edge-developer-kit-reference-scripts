@@ -1,8 +1,6 @@
 // Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-/* eslint-disable no-console */
-
 const isDevelopment =
   process.env.NODE_ENV !== 'production' || process.env.ENABLE_LOGS === 'true'
 

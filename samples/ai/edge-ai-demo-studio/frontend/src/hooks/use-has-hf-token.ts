@@ -4,7 +4,7 @@
 import { useQuery } from '@tanstack/react-query'
 
 interface HfTokenResponse {
-  hfToken: string
+  hasToken: boolean
 }
 
 export function useHasHfToken(): boolean | undefined {
@@ -19,5 +19,5 @@ export function useHasHfToken(): boolean | undefined {
   })
 
   if (data === undefined) return undefined
-  return data.hfToken !== ''
+  return data.hasToken
 }

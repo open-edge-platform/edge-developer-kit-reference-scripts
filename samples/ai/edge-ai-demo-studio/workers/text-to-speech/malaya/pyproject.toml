@@ -15,7 +15,7 @@ dependencies = [
     "pysastrawi>=1.2.0",
     "triton-xpu>=3.7.1 ; sys_platform == 'win32' or sys_platform == 'linux'",
     "soundfile>=0.12.1",
-    "torch==2.12.1",
+    "torch==2.13.0",
     "torchaudio>=2.11.0",
     "torchvision>=0.26.0",
 ]

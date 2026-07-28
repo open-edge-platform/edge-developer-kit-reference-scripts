@@ -10,8 +10,11 @@ import time
 import numpy as np
 import io
 
-from threading import Thread
+import openvino as ov
+
+from threading import Thread, Lock
 from tqdm import tqdm
+from pathlib import Path
 from queue import Queue
 from glob import glob
 from modules.base.logger import getLogger
@@ -21,6 +24,62 @@ from modules.base.constants import CONSTANTS
 from modules.lipsync.wav2lip.wav2lip256.models import Wav2Lip as Wav2Lip256
 from modules.lipsync.wav2lip.wav2lip256 import audio as audio256
 from modules.texttospeech.kokoro_tts import AudioState
+
+_COMPILED_MODEL_CACHE = {}
+_CACHE_LOCK = Lock()
+
+
+def compile_wav2lip_model(model_path, ov_device, batch_size, image_size):
+    ov_device = ov_device.upper()
+    cache_key = (str(model_path), ov_device, batch_size, image_size)
+    with _CACHE_LOCK:
+        entry = _COMPILED_MODEL_CACHE.get(cache_key)
+        if entry is not None:
+            getLogger(__file__).info(
+                f"Reusing cached OpenVINO Wav2Lip model on {ov_device}."
+            )
+            return entry["model"]
+
+        getLogger(__file__).info(f"Loading OpenVINO Wav2Lip model on {ov_device}...")
+        core = ov.Core()
+        ov_model = core.read_model(model_path)
+        if ov_device == "NPU":
+            ov_model.reshape(
+                {
+                    "audio_sequences": [batch_size, 1, 80, 16],
+                    "face_sequences": [batch_size, 6, image_size, image_size],
+                }
+            )
+        compiled = core.compile_model(ov_model, ov_device)
+        infer_request = compiled.create_infer_request()
+        _warm_up_request(infer_request, batch_size, image_size)
+        _COMPILED_MODEL_CACHE[cache_key] = {
+            "model": compiled,
+            "request": infer_request,
+            "lock": Lock(),
+        }
+        getLogger(__file__).info("OpenVINO Wav2Lip model loaded.")
+        return compiled
+
+
+def get_shared_inference(model_path, ov_device, batch_size, image_size):
+    """Return the (compiled_model, infer_request, lock) triple shared by every
+    session using the same model parameters. All inference must go through this
+    single request under the lock so the NPU only ever sees one inference
+    context, avoiding device-lost hangs."""
+    compile_wav2lip_model(model_path, ov_device, batch_size, image_size)
+    cache_key = (str(model_path), ov_device.upper(), batch_size, image_size)
+    entry = _COMPILED_MODEL_CACHE[cache_key]
+    return entry["model"], entry["request"], entry["lock"]
+
+
+def _warm_up_request(infer_request, batch_size, image_size):
+    """Run a single dummy inference to prime the compiled model. Called once when
+    the model is compiled so the first real connection doesn't pay this cost."""
+    getLogger(__file__).info("Warm up model")
+    img_batch = np.random.rand(batch_size, 6, image_size, image_size).astype(np.float32)
+    mel_batch = np.random.rand(batch_size, 1, 80, 16).astype(np.float32)
+    infer_request.infer({"audio_sequences": mel_batch, "face_sequences": img_batch})
 
 
 class SafeUnpickler(pickle.Unpickler):
@@ -113,30 +172,21 @@ class SafeUnpickler(pickle.Unpickler):
 
 
 def safe_pickle_load(file_path):
-    """
-    Safely load a pickle file using the restricted unpickler.
-
-    Args:
-        file_path (str): Path to the pickle file to load
-
-    Returns:
-        The deserialized object (restricted to safe types only)
-
-    Raises:
-        pickle.UnpicklingError: If the file contains unsafe types
-    """
+    """Safely load a pickle file using the restricted unpickler."""
     with open(file_path, "rb") as f:
         return SafeUnpickler(f).load()
 
 
 class Wav2lipAvatar(Avatar):
-    def __init__(self, avatar_id, configs, device):
+    def __init__(self, avatar_id, configs, device, use_int8=False):
         super().__init__(avatar_id=avatar_id)
 
         self.configs = configs
 
         self.language_code = "en_us"
         self.device = device
+        self.ov_device = device.upper()
+        self.use_int8 = use_int8
         self.batch_size = self.configs.get("batch_size", 16)
         self.image_width = self.configs.get("image", {}).get("width", 868)
         self.image_height = self.configs.get("image", {}).get("height", 1080)
@@ -159,47 +209,99 @@ class Wav2lipAvatar(Avatar):
             "avatar_path", "./data/avatars/wav2lip_avatar1"
         )
         self.image_size = int(self.wav2lip_avatar_path.split("_")[-1])
-        self.checkpoint_path = f"models/wav2lip/checkpoints/wav2lipv2.pth"
+        self.checkpoint_path = "models/wav2lip/checkpoints/wav2lipv2.pth"
+        self.ov_model_path = "models/wav2lip/checkpoints/wav2lipv2_ov/wav2lip.xml"
+        self.int8_model_path = (
+            "models/wav2lip/checkpoints/wav2lipv2_ov_int8/wav2lip.xml"
+        )
 
         self.stop_infer = False
 
-        self.model = self.load_model()
+        self.ov_compiled_model = None
+        self.infer_request = None
+        self.infer_lock = None
+        self.load_model()
+
         self.cv_frames, self.face_frames, self.face_frames_len, self.coords_list = (
             self.load_avatar(self.wav2lip_avatar_path)
         )
 
         assert self.face_frames_len > 0, "No face frames found in the avatar directory."
 
-        self.warm_up()
-
     def unload_models(self):
-        torch.xpu.empty_cache()
+        # Only drop this session's references; the compiled model, its shared
+        # InferRequest and lock stay in the cache so other/future sessions keep
+        # reusing them.
+        self.infer_request = None
+        self.infer_lock = None
+        self.ov_compiled_model = None
 
     def __del__(self):
         getLogger(__file__).info("Avatar deleted")
         self.unload_models()
 
-    def load_model(self):
-        self.model = Wav2Lip256()
+    def _convert_to_openvino(self):
+        """Convert PyTorch checkpoint to OpenVINO IR if not already done."""
+        ov_path = Path(self.ov_model_path)
+        if ov_path.exists():
+            return
 
-        if self.device == "xpu":
-            checkpoint = torch.load(
-                self.checkpoint_path, map_location=self.device, weights_only=True
-            )
-        else:
-            checkpoint = torch.load(
-                self.checkpoint_path, map_location=lambda storage, loc: storage
-            )
+        getLogger(__file__).info("Converting Wav2Lip model to OpenVINO IR...")
+        pt_model = Wav2Lip256()
+        checkpoint = torch.load(
+            self.checkpoint_path,
+            map_location=lambda storage, loc: storage,
+            weights_only=True,
+        )
         state_dict = checkpoint["state_dict"]
-        new_state_dict = {}
-        for k, v in state_dict.items():
-            new_state_dict[k.replace("module.", "")] = v
-        self.model.load_state_dict(new_state_dict)
+        new_state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
+        pt_model.load_state_dict(new_state_dict)
+        pt_model.eval()
 
-        self.model = self.model.to(device=self.device)
-        self.model.eval()
+        mel_dummy = torch.FloatTensor(np.random.rand(self.batch_size, 1, 80, 16))
+        img_dummy = torch.FloatTensor(
+            np.random.rand(self.batch_size, 6, self.image_size, self.image_size)
+        )
+        example_inputs = {
+            "audio_sequences": mel_dummy,
+            "face_sequences": img_dummy,
+        }
 
-        return self.model
+        ov_model = ov.convert_model(pt_model, example_input=example_inputs)
+
+        # Set dynamic batch dimension for flexible inference
+        for input_tensor in ov_model.inputs:
+            shape = input_tensor.get_partial_shape()
+            shape[0] = -1  # dynamic batch
+            input_tensor.get_node().set_partial_shape(shape)
+        ov_model.validate_nodes_and_infer_types()
+
+        ov_path.parent.mkdir(parents=True, exist_ok=True)
+        ov.save_model(ov_model, str(ov_path))
+        getLogger(__file__).info(f"OpenVINO model saved: {ov_path}")
+
+    def load_model(self):
+        self._convert_to_openvino()
+
+        # Prefer the INT8 model when requested and available (e.g. for NPU).
+        model_path = self.ov_model_path
+        precision = "FP16"
+        if self.use_int8:
+            if Path(self.int8_model_path).exists():
+                model_path = self.int8_model_path
+                precision = "INT8"
+            else:
+                getLogger(__file__).warning(
+                    f"INT8 requested but model not found at {self.int8_model_path}; "
+                    "falling back to FP16. Run the worker with --int8 to generate it."
+                )
+
+        getLogger(__file__).info(f"Using OpenVINO Wav2Lip {precision} model.")
+        self.ov_compiled_model, self.infer_request, self.infer_lock = (
+            get_shared_inference(
+                model_path, self.ov_device, self.batch_size, self.image_size
+            )
+        )
 
     def load_avatar(self, avatar_path):
         getLogger(__file__).info("Reading Avatar Images")
@@ -228,33 +330,56 @@ class Wav2lipAvatar(Avatar):
             coords_list,
         )
 
-    @torch.no_grad()
-    def warm_up(self, batch_size=16):
-        getLogger().info("Warm up model")
-        img_batch = torch.ones(batch_size, 6, self.image_size, self.image_size).to(
-            self.device
+    def reload_avatar(self, avatar_path):
+        """Hot-swap the avatar skin on a running session.
+
+        The lip_sync / merge threads keep reading while we swap, so the new
+        lists are assigned in one statement and those threads take local
+        snapshots before indexing (see _run_lipsync_inference /
+        merge_video_audio).
+        """
+        new_size = int(avatar_path.split("_")[-1])
+        if new_size != self.image_size:
+            raise ValueError(
+                f"Avatar size {new_size} does not match loaded model size "
+                f"{self.image_size}; cannot hot-reload."
+            )
+
+        cv_frames, face_frames, face_frames_len, coords_list = self.load_avatar(
+            avatar_path
         )
-        mel_batch = torch.ones(batch_size, 1, 80, 16).to(self.device)
-        self.model(mel_batch, img_batch)
+        if face_frames_len == 0:
+            raise ValueError(f"No face frames found in {avatar_path}")
 
-    @torch.no_grad()
+        self.wav2lip_avatar_path = avatar_path
+        self.cv_frames, self.face_frames, self.face_frames_len, self.coords_list = (
+            cv_frames,
+            face_frames,
+            face_frames_len,
+            coords_list,
+        )
+        getLogger(__file__).info(f"Avatar hot-reloaded from {avatar_path}")
+
     def _run_lipsync_inference(self, mel_batch, start_index, debug=False):
-        """
-        Modularized lipsync inference logic that can be reused for different input types.
+        # The audio pipeline can yield fewer mel chunks than batch_size (e.g.
+        # 14 on the very first talking batch, before the stride leftover
+        # stabilizes). The model concatenates audio and face embeddings, so the
+        # two batches must match — and NPU is compiled for a static batch.
+        # Pad by repeating the last chunk; extra frames still pair with real
+        # audio frames downstream.
+        mel_batch = list(mel_batch)[: self.batch_size]
+        if len(mel_batch) < self.batch_size:
+            mel_batch += [mel_batch[-1]] * (self.batch_size - len(mel_batch))
 
-        Args:
-            mel_batch: Mel-spectrogram batch for audio features
-            start_index: Starting frame index for face selection
-            debug: Whether to enable debug timing logs
+        # Snapshot the frame list so a concurrent reload_avatar can't change
+        # the list length between the reflection() index math and the lookup.
+        face_frames = self.face_frames
+        face_frames_len = len(face_frames)
 
-        Returns:
-            numpy.ndarray: Predicted lip-synced face frames
-        """
-        # Prepare image batch
         img_batch = []
         for i in range(self.batch_size):
-            idx = self.reflection(self.face_frames_len, start_index + i)
-            face = self.face_frames[idx]
+            idx = self.reflection(face_frames_len, start_index + i)
+            face = face_frames[idx]
             img_batch.append(face)
 
         img_batch, mel_batch = np.asarray(img_batch), np.asarray(mel_batch)
@@ -267,46 +392,31 @@ class Wav2lipAvatar(Avatar):
             [len(mel_batch), mel_batch.shape[1], mel_batch.shape[2], 1],
         )
 
-        img_batch = torch.FloatTensor(np.transpose(img_batch, (0, 3, 1, 2))).to(
-            self.device
-        )
-        mel_batch = torch.FloatTensor(np.transpose(mel_batch, (0, 3, 1, 2))).to(
-            self.device
-        )
+        img_np = np.transpose(img_batch, (0, 3, 1, 2)).astype(np.float32)
+        mel_np = np.transpose(mel_batch, (0, 3, 1, 2)).astype(np.float32)
 
-        # Run model and optionally measure inference time when debugging
-        if debug:
-            t_start = time.perf_counter()
-            pred_tensor = self.model(mel_batch, img_batch)
-            t_end = time.perf_counter()
-            inf_time = t_end - t_start
-        else:
-            pred_tensor = self.model(mel_batch, img_batch)
-
-        pred = pred_tensor.cpu().numpy().transpose(0, 2, 3, 1) * 255.0
+        t_start = time.perf_counter() if debug else 0
+        # Serialize NPU access: the shared InferRequest is used by every session,
+        # and its output tensors stay valid only until the next infer() call, so
+        # both the call and the result read must happen under the lock.
+        with self.infer_lock:
+            result = self.infer_request.infer(
+                {"audio_sequences": mel_np, "face_sequences": img_np}
+            )
+            pred = (
+                result[self.ov_compiled_model.output(0)].transpose(0, 2, 3, 1) * 255.0
+            )
+        inf_time = time.perf_counter() - t_start if debug else 0
 
         if debug:
-            try:
-                batch_n = int(pred_tensor.size(0))
-            except Exception:
-                batch_n = pred.shape[0] if hasattr(pred, "shape") else 0
-            avg_per_frame = inf_time / max(batch_n, 1)
+            batch_n = pred.shape[0]
             getLogger(__file__).info(
-                f"Wav2Lip inference: batch_size={batch_n}, total_time={inf_time:.6f}s, avg_per_frame={avg_per_frame:.6f}s"
+                f"Wav2Lip OV inference: batch_size={batch_n}, total_time={inf_time:.6f}s, avg_per_frame={inf_time / max(batch_n, 1):.6f}s"
             )
 
         return pred
 
     def process_audio_to_mel_chunks(self, audio_frames):
-        """
-        Convert audio frames to mel-spectrogram chunks for lipsync inference.
-
-        Args:
-            audio_frames: List of audio frame arrays
-
-        Returns:
-            list: Mel-spectrogram chunks ready for inference
-        """
         if len(audio_frames) <= self.audio_left_stride + self.audio_right_stride:
             return []
 
@@ -330,7 +440,6 @@ class Wav2lipAvatar(Avatar):
 
         return mel_chunks
 
-    @torch.no_grad()
     def text_to_speech(self):
         if self.stop_infer == True:
             for _ in range(self.batch_size * 2):
@@ -362,7 +471,6 @@ class Wav2lipAvatar(Avatar):
                 self.audio_output_queue.put((audio_frame, state, metadata))
                 self.audio_frames.append(audio_frame)
 
-        # Use the helper method to process audio to mel chunks
         mel_chunks = self.process_audio_to_mel_chunks(self.audio_frames)
 
         if mel_chunks:
@@ -371,7 +479,6 @@ class Wav2lipAvatar(Avatar):
                 -(self.audio_left_stride + self.audio_right_stride) :
             ]
 
-    @torch.no_grad()
     def lip_sync(self, signal_event, debug=False):
         index = 0
 
@@ -402,7 +509,6 @@ class Wav2lipAvatar(Avatar):
                     )
                     index = index + 1
             else:
-                # Use modularized lipsync inference
                 pred = self._run_lipsync_inference(mel_batch, index, debug)
 
                 for i, res_frame in enumerate(pred):
@@ -425,12 +531,19 @@ class Wav2lipAvatar(Avatar):
             except:
                 continue
 
+            # Snapshot lists and clamp idx: a hot-reload may have swapped in a
+            # skin with fewer frames than the idx computed at enqueue time.
+            cv_frames = self.cv_frames
+            coords_list = self.coords_list
+            if idx >= len(cv_frames):
+                idx %= len(cv_frames)
+
             first_af, second_af = audio_frame[:2]
             if first_af[1] != AudioState.TALKING and second_af[1] != AudioState.TALKING:
-                combine_frame = self.cv_frames[idx]
+                combine_frame = cv_frames[idx]
             else:
-                bbox = self.coords_list[idx]
-                combine_frame = copy.deepcopy(self.cv_frames[idx])
+                bbox = coords_list[min(idx, len(coords_list) - 1)]
+                combine_frame = copy.deepcopy(cv_frames[idx])
                 y1, y2, x1, x2 = bbox
                 try:
                     res_frame = cv2.resize(
@@ -450,7 +563,6 @@ class Wav2lipAvatar(Avatar):
                         combine_frame, message, language_code, self.image_width
                     )
 
-            # combine_frame = cv2.putText(combine_frame, self.avatar_id, (0, 25), cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 1, cv2.LINE_AA)
             self.combined_frame_queue.put((combine_frame, audio_frame))
 
     def start(self, signal_event):

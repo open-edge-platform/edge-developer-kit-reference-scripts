@@ -51,11 +51,11 @@ Once running, open [http://localhost:5999](http://localhost:5999) in your browse
 
 ### Linux
 
-Before installing Python dependencies, ensure you have Python and FFmpeg installed:
+Before installing Python dependencies, ensure you have Python, curl, and FFmpeg installed:
 
 ```bash
 sudo apt update
-sudo apt install python3 python3-pip python3-venv ffmpeg
+sudo apt install python3 curl ffmpeg
 ```
 
 Run the provided bash script to start the servers and application:
@@ -71,14 +71,15 @@ Choose the appropriate setup method for your operating system:
 
 ### Windows Setup
 
-#### 1. Install Python Dependencies
+#### 1. Set Up Python Environment with uv
 
-Make sure you have Python 3.8 and higher installed. Then, install the required Python packages.
+Make sure you have Python 3.8 and higher installed. Then install `uv`, create a virtual environment, and install the required Python packages.
 
 ```powershell
-python -m venv venv
-.\venv\Scripts\activate
-pip install -r requirements.txt
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+uv venv
+.\.venv\Scripts\activate
+uv pip install -r requirements.txt
 ```
 
 #### 2. Use Pre-compiled Llama.cpp Binaries
@@ -104,19 +105,20 @@ Start the Qwen3-8B server (port 5778) as required. The Qwen2.5-VL server (port 5
 #### 4. Run the Gradio Application
 
 ```powershell
-python app.py
+uv run app.py
 ```
 
 ### Linux Setup
 
-#### 1. Install Python Dependencies
+#### 1. Set Up Python Environment with uv
 
-Make sure you have Python 3.8 and higher installed. Then, install the required Python packages.
+Make sure you have Python 3.8 and higher installed. Then install `uv`, create a virtual environment, and install the required Python packages.
 
 ```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv venv
+source .venv/bin/activate
+uv pip install -r requirements.txt
 ```
 
 #### 2. Prepare llama.cpp 
@@ -185,7 +187,7 @@ ONEAPI_DEVICE_SELECTOR=level_zero:0 ./llama-b7223-bin-ubuntu-vulkan-x64/build/bi
 Once dependencies and the server are ready, run the script:
 
 ```bash
-python3 app.py
+uv run app.py
 ```
 
 Once started, open http://localhost:5999 in your browser.

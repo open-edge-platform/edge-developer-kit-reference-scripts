@@ -5,8 +5,13 @@
 
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { TextGenParamValues } from './use-params'
+
+interface AttachedImage {
+  file: File
+  previewUrl: string
+}
 
 interface UseTextGenChatOptions {
   textGenValues: TextGenParamValues
@@ -34,39 +39,54 @@ export function useTextGenChat({
   const isRunning = status === 'submitted' || status === 'streaming'
 
   const [input, setInput] = useState('')
-  const [imageFile, setImageFile] = useState<File | null>(null)
-  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [images, setImages] = useState<AttachedImage[]>([])
 
   const handleImageSelect = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0]
-      if (!file) return
-      setImageFile(file)
-      setImagePreview(URL.createObjectURL(file))
+      const files = Array.from(e.target.files ?? [])
+      if (files.length === 0) return
+      setImages((prev) => [
+        ...prev,
+        ...files.map((file) => ({
+          file,
+          previewUrl: URL.createObjectURL(file),
+        })),
+      ])
     },
     [],
   )
 
-  const handleRemoveImage = useCallback(() => {
-    // The imagePreview effect cleanup revokes the object URL on change/unmount.
-    setImageFile(null)
-    setImagePreview(null)
+  const handleRemoveImage = useCallback((index: number) => {
+    setImages((prev) => {
+      const removed = prev[index]
+      if (removed) URL.revokeObjectURL(removed.previewUrl)
+      return prev.filter((_, i) => i !== index)
+    })
   }, [])
 
-  // Revoke the previous preview object URL when it changes or on unmount,
-  // so selecting a replacement image doesn't leak the prior blob: URL.
+  const handleClearImages = useCallback(() => {
+    setImages((prev) => {
+      prev.forEach((img) => URL.revokeObjectURL(img.previewUrl))
+      return []
+    })
+  }, [])
+
+  const imagesRef = useRef(images)
+  useEffect(() => {
+    imagesRef.current = images
+  }, [images])
   useEffect(() => {
     return () => {
-      if (imagePreview) URL.revokeObjectURL(imagePreview)
+      imagesRef.current.forEach((img) => URL.revokeObjectURL(img.previewUrl))
     }
-  }, [imagePreview])
+  }, [])
 
   const handleSend = useCallback(() => {
     if (!input.trim() || isRunning) return
     let files: FileList | undefined
-    if (imageFile) {
+    if (images.length > 0) {
       const dt = new DataTransfer()
-      dt.items.add(imageFile)
+      images.forEach((img) => dt.items.add(img.file))
       files = dt.files
     }
     sendMessage(
@@ -87,13 +107,13 @@ export function useTextGenChat({
       },
     )
     setInput('')
-    handleRemoveImage()
+    handleClearImages()
   }, [
     input,
     isRunning,
-    imageFile,
+    images,
     sendMessage,
-    handleRemoveImage,
+    handleClearImages,
     textGenValues,
     requestParams,
     extraBody,
@@ -101,8 +121,8 @@ export function useTextGenChat({
 
   const handleReset = useCallback(() => {
     setMessages([])
-    handleRemoveImage()
-  }, [setMessages, handleRemoveImage])
+    handleClearImages()
+  }, [setMessages, handleClearImages])
 
   return {
     messages,
@@ -110,10 +130,10 @@ export function useTextGenChat({
     isRunning,
     input,
     setInput,
-    imageFile,
-    imagePreview,
+    imagePreviews: images.map((img) => img.previewUrl),
     handleImageSelect,
     handleRemoveImage,
+    handleClearImages,
     handleSend,
     handleReset,
     handleStop: stop,

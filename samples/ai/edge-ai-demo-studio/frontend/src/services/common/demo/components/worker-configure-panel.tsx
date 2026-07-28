@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
+import { useSystemInfo } from '@/context/system-info-context'
 import { cn } from '@/lib/utils'
 import { useDevicesQuery, resolveDeviceOptions } from '@/hooks/use-devices'
 import { useUpdateServiceConfig } from '@/hooks/use-service-config'
@@ -26,6 +27,11 @@ import {
   getDevicesForModel,
 } from '@/services/types'
 import { ClearModelCacheSection } from './clear-model-cache-section'
+import {
+  CpuAffinitySection,
+  isCpuAffinityValid,
+  normalizeCpuAffinity,
+} from '@/components/common/cpu-affinity-section'
 import {
   type ConfigurePanelStatus,
   ServiceConfigurePanel,
@@ -47,9 +53,18 @@ export function WorkerConfigurePanel({ service }: WorkerConfigurePanelProps) {
   const availableSources = service.config?.availableModelSources ?? []
   const supportsCustomModel = service.config?.supportsCustomModel !== false
 
+  const hasConfigurableModel =
+    availableModels.length > 0 || service.config?.supportsCustomModel === true
+
+  const { systemInfo } = useSystemInfo()
+  const isLinux = systemInfo?.os === 'linux'
+
   const currentModel = service.currentModel ?? service.defaultModel?.name ?? ''
   const currentDevice =
     service.currentDevice ?? service.defaultModel?.device ?? ''
+  const currentCpuAffinity =
+    (service.metadata as { cpuAffinity?: string } | undefined)?.cpuAffinity ??
+    ''
 
   const [open, setOpen] = useState(false)
   const [sourceType, setSourceType] = useState<'preset' | 'custom'>('preset')
@@ -58,6 +73,7 @@ export function WorkerConfigurePanel({ service }: WorkerConfigurePanelProps) {
   const [draftDevice, setDraftDevice] = useState(currentDevice)
   const currentSource = service.currentSource ?? 'huggingface'
   const [draftSource, setDraftSource] = useState(currentSource)
+  const [draftCpuAffinity, setDraftCpuAffinity] = useState(currentCpuAffinity)
 
   const availableDevices = useMemo(
     () => getDevicesForModel(service.config, draftModel),
@@ -87,12 +103,14 @@ export function WorkerConfigurePanel({ service }: WorkerConfigurePanelProps) {
       )
       setDraftDevice(currentDevice)
       setDraftSource(currentSource)
+      setDraftCpuAffinity(currentCpuAffinity)
       setOpen(newOpen)
     },
     [
       currentModel,
       currentDevice,
       currentSource,
+      currentCpuAffinity,
       availableModels,
       supportsCustomModel,
     ],
@@ -113,13 +131,23 @@ export function WorkerConfigurePanel({ service }: WorkerConfigurePanelProps) {
   const resolvedModel =
     sourceType === 'custom' ? customModel.trim() : draftModel
 
-  const isDirty =
-    open &&
+  const normalizedDraftAffinity = normalizeCpuAffinity(draftCpuAffinity)
+  const cpuAffinityChanged =
+    normalizedDraftAffinity !== normalizeCpuAffinity(currentCpuAffinity)
+  const cpuAffinityValid = isCpuAffinityValid(draftCpuAffinity)
+
+  const modelChanged =
+    hasConfigurableModel &&
     (resolvedModel !== currentModel ||
       draftDevice.toLowerCase() !== currentDevice.toLowerCase() ||
       draftSource !== currentSource)
 
-  const isValid = resolvedModel.length > 0
+  const isDirty = open && (modelChanged || cpuAffinityChanged)
+
+  // When there are no models to configure, only CPU affinity validity matters.
+  const isValid = hasConfigurableModel
+    ? resolvedModel.length > 0 && cpuAffinityValid
+    : cpuAffinityValid
 
   const handleCancel = useCallback(() => {
     const isCustom =
@@ -132,10 +160,12 @@ export function WorkerConfigurePanel({ service }: WorkerConfigurePanelProps) {
     )
     setDraftDevice(currentDevice)
     setDraftSource(currentSource)
+    setDraftCpuAffinity(currentCpuAffinity)
   }, [
     currentModel,
     currentDevice,
     currentSource,
+    currentCpuAffinity,
     availableModels,
     supportsCustomModel,
   ])
@@ -148,9 +178,14 @@ export function WorkerConfigurePanel({ service }: WorkerConfigurePanelProps) {
         serviceId: service.dbId,
         serviceType: service.id,
         config: {
-          name: resolvedModel,
-          device: selectedDeviceValue,
-          ...(availableSources.length > 0 ? { source: draftSource } : {}),
+          ...(hasConfigurableModel && {
+            name: resolvedModel,
+            device: selectedDeviceValue,
+            ...(availableSources.length > 0 ? { source: draftSource } : {}),
+          }),
+          ...(cpuAffinityChanged && {
+            metadata: { cpuAffinity: normalizedDraftAffinity },
+          }),
         },
       },
       { onSuccess: () => setOpen(false) },
@@ -158,10 +193,13 @@ export function WorkerConfigurePanel({ service }: WorkerConfigurePanelProps) {
   }, [
     service.dbId,
     service.id,
+    hasConfigurableModel,
     resolvedModel,
     selectedDeviceValue,
     availableSources.length,
     draftSource,
+    cpuAffinityChanged,
+    normalizedDraftAffinity,
     isValid,
     updateConfig,
   ])
@@ -183,169 +221,196 @@ export function WorkerConfigurePanel({ service }: WorkerConfigurePanelProps) {
       open={open}
       onOpenChange={handleOpenChange}
     >
-      <div className="space-y-3 px-2">
-        <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
-          Model
-        </p>
+      {hasConfigurableModel && (
+        <div className="space-y-3 px-2">
+          <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+            Model
+          </p>
 
-        {supportsCustomModel ? (
-          <div className="grid grid-cols-2 gap-2">
-            <Button
-              data-testid="source-preset-button"
-              type="button"
-              size="sm"
-              variant={sourceType === 'preset' ? 'default' : 'outline'}
-              onClick={() => setSourceType('preset')}
-            >
-              Preset
-            </Button>
-            <Button
-              data-testid="source-custom-button"
-              type="button"
-              size="sm"
-              variant={sourceType === 'custom' ? 'default' : 'outline'}
-              onClick={() => setSourceType('custom')}
-            >
-              Custom
-            </Button>
-          </div>
-        ) : null}
-
-        {sourceType === 'preset' && availableModels.length > 0 && (
-          <div className="space-y-2">
-            <Label
-              htmlFor="cfg-model-select"
-              className="text-muted-foreground text-xs"
-            >
-              Model
-            </Label>
-            <Select value={draftModel} onValueChange={setDraftModel}>
-              <SelectTrigger
-                data-testid="cfg-model-select"
-                id="cfg-model-select"
-                className="w-full text-xs"
+          {supportsCustomModel ? (
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                data-testid="source-preset-button"
+                type="button"
+                size="sm"
+                variant={sourceType === 'preset' ? 'default' : 'outline'}
+                onClick={() => setSourceType('preset')}
               >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {availableModels.map((m) => (
-                  <SelectItem key={m.value} value={m.value} className="text-xs">
-                    {m.value}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
+                Preset
+              </Button>
+              <Button
+                data-testid="source-custom-button"
+                type="button"
+                size="sm"
+                variant={sourceType === 'custom' ? 'default' : 'outline'}
+                onClick={() => setSourceType('custom')}
+              >
+                Custom
+              </Button>
+            </div>
+          ) : null}
 
-        {sourceType === 'custom' && (
-          <div className="space-y-2">
-            <Label
-              htmlFor="cfg-custom-model"
-              className="text-muted-foreground text-xs"
-            >
-              <Upload className="mr-1 inline-block h-3 w-3" />
-              Model ID (e.g. org/model-name)
-            </Label>
-            <Input
-              id="cfg-custom-model"
-              data-testid="cfg-custom-model"
-              value={customModel}
-              onChange={(e) => setCustomModel(e.target.value)}
-              placeholder="openai/whisper-large-v3"
-              className="text-xs"
-            />
-          </div>
-        )}
+          {sourceType === 'preset' && availableModels.length > 0 && (
+            <div className="space-y-2">
+              <Label
+                htmlFor="cfg-model-select"
+                className="text-muted-foreground text-xs"
+              >
+                Model
+              </Label>
+              <Select value={draftModel} onValueChange={setDraftModel}>
+                <SelectTrigger
+                  data-testid="cfg-model-select"
+                  id="cfg-model-select"
+                  className="w-full text-xs"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableModels.map((m) => (
+                    <SelectItem
+                      key={m.value}
+                      value={m.value}
+                      className="text-xs"
+                    >
+                      {m.value}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
-        {availableSources.length > 0 && (
-          <div className="space-y-2">
-            <Label
-              htmlFor="cfg-source-select"
-              className="text-muted-foreground text-xs"
-            >
-              Source
-            </Label>
-            <div
-              id="cfg-source-select"
-              data-testid="cfg-source-select"
-              role="group"
-              aria-label="Model source"
-              className="flex flex-wrap gap-1.5"
-            >
-              {availableSources.map((s) => {
-                const isSelected = draftSource === s.value
-                return (
-                  <Button
-                    key={s.value}
-                    type="button"
-                    size="sm"
-                    variant={isSelected ? 'default' : 'outline'}
-                    onClick={() => {
-                      if (isModelSource(s.value)) {
-                        setDraftSource(s.value)
-                      }
-                    }}
-                    className={cn(
-                      'h-7 px-3 text-xs transition-all',
-                      isSelected && 'ring-ring ring-1 ring-offset-0',
-                    )}
-                  >
-                    {s.label}
-                  </Button>
-                )
-              })}
+          {sourceType === 'custom' && (
+            <div className="space-y-2">
+              <Label
+                htmlFor="cfg-custom-model"
+                className="text-muted-foreground text-xs"
+              >
+                <Upload className="mr-1 inline-block h-3 w-3" />
+                Model ID (e.g. org/model-name)
+              </Label>
+              <Input
+                id="cfg-custom-model"
+                data-testid="cfg-custom-model"
+                value={customModel}
+                onChange={(e) => setCustomModel(e.target.value)}
+                placeholder="openai/whisper-large-v3"
+                className="text-xs"
+              />
+            </div>
+          )}
+
+          {availableSources.length > 0 && (
+            <div className="space-y-2">
+              <Label
+                htmlFor="cfg-source-select"
+                className="text-muted-foreground text-xs"
+              >
+                Source
+              </Label>
+              <div
+                id="cfg-source-select"
+                data-testid="cfg-source-select"
+                role="group"
+                aria-label="Model source"
+                className="flex flex-wrap gap-1.5"
+              >
+                {availableSources.map((s) => {
+                  const isSelected = draftSource === s.value
+                  return (
+                    <Button
+                      key={s.value}
+                      type="button"
+                      size="sm"
+                      variant={isSelected ? 'default' : 'outline'}
+                      onClick={() => {
+                        if (isModelSource(s.value)) {
+                          setDraftSource(s.value)
+                        }
+                      }}
+                      className={cn(
+                        'h-7 px-3 text-xs transition-all',
+                        isSelected && 'ring-ring ring-1 ring-offset-0',
+                      )}
+                    >
+                      {s.label}
+                    </Button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {hasConfigurableModel && (
+        <>
+          <Separator />
+
+          <div className="space-y-3 px-2">
+            <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+              Accelerator
+            </p>
+            <div className="space-y-2">
+              <Label
+                htmlFor="cfg-device-select"
+                className="text-muted-foreground text-xs"
+              >
+                <Cpu className="mr-1 inline-block h-3 w-3" />
+                Device
+              </Label>
+              <Select
+                value={selectedDeviceValue}
+                onValueChange={setDraftDevice}
+              >
+                <SelectTrigger
+                  data-testid="cfg-device-select"
+                  id="cfg-device-select"
+                  className="w-full text-xs"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {deviceOptions.map((d) => (
+                    <SelectItem
+                      key={d.value}
+                      value={d.value}
+                      textValue={d.value}
+                      className="text-xs"
+                    >
+                      <span>{d.value}</span>
+                      {d.value !== d.label && (
+                        <span className="text-muted-foreground font-normal">
+                          {d.label}
+                        </span>
+                      )}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
-        )}
-      </div>
+        </>
+      )}
 
-      <Separator />
+      {isLinux && (
+        <>
+          {hasConfigurableModel && <Separator />}
+          <CpuAffinitySection
+            value={draftCpuAffinity}
+            onChange={setDraftCpuAffinity}
+            currentServiceId={service.id}
+          />
+        </>
+      )}
 
-      <div className="space-y-3 px-2">
-        <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
-          Accelerator
-        </p>
-        <div className="space-y-2">
-          <Label
-            htmlFor="cfg-device-select"
-            className="text-muted-foreground text-xs"
-          >
-            <Cpu className="mr-1 inline-block h-3 w-3" />
-            Device
-          </Label>
-          <Select value={selectedDeviceValue} onValueChange={setDraftDevice}>
-            <SelectTrigger
-              data-testid="cfg-device-select"
-              id="cfg-device-select"
-              className="w-full text-xs"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {deviceOptions.map((d) => (
-                <SelectItem
-                  key={d.value}
-                  value={d.value}
-                  textValue={d.value}
-                  className="text-xs"
-                >
-                  <span>{d.value}</span>
-                  {d.value !== d.label && (
-                    <span className="text-muted-foreground font-normal">
-                      {d.label}
-                    </span>
-                  )}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      <Separator />
-
-      <ClearModelCacheSection service={service} />
+      {hasConfigurableModel && (
+        <>
+          <Separator />
+          <ClearModelCacheSection service={service} />
+        </>
+      )}
     </ServiceConfigurePanel>
   )
 }

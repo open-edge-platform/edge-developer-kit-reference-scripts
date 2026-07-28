@@ -49,12 +49,6 @@ export const getDocsData = ({ host }: { host: string }): ServiceDocsData => ({
           required: true,
           desc: 'Audio file (WAV, MP3, FLAC, OGG, WebM)',
         },
-        {
-          name: 'language',
-          type: 'string',
-          required: false,
-          desc: "Source language code (default: 'en')",
-        },
       ],
     },
     {

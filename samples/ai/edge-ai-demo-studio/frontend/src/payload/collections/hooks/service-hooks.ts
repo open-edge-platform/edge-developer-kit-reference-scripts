@@ -132,8 +132,12 @@ const startWorkerProcess = async (service: Service) => {
 
   logger.info(`Starting worker for ${processName} with args: ${args.join(' ')}`)
 
+  const cpuAffinity = (service.metadata as { cpuAffinity?: string } | undefined)
+    ?.cpuAffinity
+
   await spawnProcess(processName, args, {
     cwd: workerDir,
+    cpuAffinity,
   })
 }
 

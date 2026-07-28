@@ -20,7 +20,7 @@ from modules.texttospeech.openaicompatible_tts import OpenAICompatibleTTSModule
 
 
 class WebRTCAvatar(WebRTCStreamer):
-    def __init__(self, avatar_id, configs, device, ws_manager=None):
+    def __init__(self, avatar_id, configs, device, ws_manager=None, use_int8=False):
         super().__init__()
 
         self.configs = configs
@@ -34,7 +34,7 @@ class WebRTCAvatar(WebRTCStreamer):
 
         if self.configs.get("avatar_type", "wav2lip") == "wav2lip":
             self.avatar = Wav2lipAvatar(
-                avatar_id=avatar_id, configs=configs, device=device
+                avatar_id=avatar_id, configs=configs, device=device, use_int8=use_int8
             )
         else:
             getLogger().error("Lipsync model not supported!")

@@ -1,12 +1,15 @@
 'use client'
 
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { installProxyFetchInterceptor } from '@/services/common/proxy-fetch'
 import { QueryProvider } from './query-provider'
 import { ServiceStatusProvider } from './service-status-context'
 import { SettingsProvider } from './settings-context'
 import { SystemInfoProvider } from './system-info-context'
 import { ThemeProvider } from './theme-provider'
 import { CodeLangProvider } from './code-lang'
+
+installProxyFetchInterceptor()
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   return (

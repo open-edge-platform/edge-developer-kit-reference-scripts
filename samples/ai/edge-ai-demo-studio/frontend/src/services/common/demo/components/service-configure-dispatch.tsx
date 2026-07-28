@@ -19,7 +19,10 @@ interface ServiceConfigureDispatchProps {
  * based on the service's execution mode.
  *
  * - `multiserve` engine → MultiserveConfigurePanel (full backend/validation UI)
- * - `worker` mode with config → service-specific panel (if present) or WorkerConfigurePanel
+ * - `worker` mode → service-specific panel (if registered) or WorkerConfigurePanel.
+ *   Worker services without `availableModels` still get a panel so users can
+ *   pin CPU affinity (numactl), clear the model cache, etc.
+ * - `none` mode → no panel (no process to configure)
  *
  * Accepts only a plain `serviceId` string so it can be rendered from
  * a Server Component without serialization issues.
@@ -30,24 +33,15 @@ export function ServiceConfigureDispatch({
   const service = useGetService(serviceId)
   if (!service) return null
 
-  // Service-specific panels are registered explicitly and take priority,
-  // regardless of whether the service has config.availableModels.
-  if (hasExecutionMode(service.execution, 'worker')) {
-    const Panel = configurePanelRegistry[service.id]
-    if (Panel) {
-      return <Panel service={service} />
-    }
-  }
-
-  if (!service.config?.availableModels?.length) {
-    return null
-  }
-
   if (hasExecutionMode(service.execution, 'multiserve')) {
     return <MultiserveConfigurePanel service={service} />
   }
 
   if (hasExecutionMode(service.execution, 'worker')) {
+    const ServiceConfigurePanel = configurePanelRegistry[service.id]
+    if (ServiceConfigurePanel) {
+      return <ServiceConfigurePanel service={service} />
+    }
     return <WorkerConfigurePanel service={service} />
   }
 

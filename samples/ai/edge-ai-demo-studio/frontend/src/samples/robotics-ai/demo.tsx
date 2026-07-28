@@ -702,8 +702,7 @@ function CalibrationStep({
   onProceed,
 }: {
   calibrationStatus:
-    | { motor_calibrated: boolean; camera_calibrated: boolean }
-    | undefined
+    { motor_calibrated: boolean; camera_calibrated: boolean } | undefined
   motorCalibrationState: string
   motorCalibrationJointReadings: JointReading[]
   isMotorCalibrationStarting: boolean
@@ -1235,7 +1234,7 @@ function CalibrationStep({
                     className="bg-muted relative w-full overflow-hidden rounded-lg"
                     style={{ aspectRatio: '16/9' }}
                   >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    {/* eslint-disable-next-line @next/next/no-img-element -- live MJPEG camera stream; next/image would break the multipart stream */}
                     <img
                       className="absolute inset-0 h-full w-full object-contain"
                       src={`${workerBaseUrl}/stream/camera`}
@@ -1631,7 +1630,7 @@ function AppStep({
               className="bg-muted relative w-full overflow-hidden rounded-lg"
               style={{ aspectRatio: '16/9' }}
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
+              {/* eslint-disable-next-line @next/next/no-img-element -- live MJPEG camera stream; next/image would break the multipart stream */}
               <img
                 ref={imgRef}
                 className="absolute inset-0 h-full w-full object-contain"

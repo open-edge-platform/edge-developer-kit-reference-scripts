@@ -15,14 +15,14 @@ export async function GET() {
     overrideAccess: true,
   })
   return NextResponse.json({
-    proxyTimeout: settings.proxyTimeout ?? 30,
+    proxyTimeout: settings.proxyTimeout ?? 300,
     activeProxyTimeout: await getActiveProxyTimeout(),
   })
 }
 
 export async function POST(request: Request) {
   const body = await request.json()
-  const value = typeof body.proxyTimeout === 'number' ? body.proxyTimeout : 30
+  const value = typeof body.proxyTimeout === 'number' ? body.proxyTimeout : 300
   const clamped = Math.max(30, Math.round(value))
   const payload = await getPayload({ config })
   await payload.updateGlobal({

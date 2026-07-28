@@ -18,4 +18,5 @@ check_uv() {
 
 cd "$SCRIPT_DIR"
 check_uv
+export UV_SKIP_WHEEL_FILENAME_CHECK=1
 exec "$UV_CMD" run main.py "$@"

@@ -64,19 +64,31 @@ export async function PATCH(
       }
     }
 
-    if (!modelUpdate.name || !modelUpdate.device) {
-      return NextResponse.json(
-        { error: "Config update requires at least 'name' and 'device'" },
-        { status: 400 },
-      )
-    }
-
     const metadataUpdate =
       body.config.metadata &&
       typeof body.config.metadata === 'object' &&
       !Array.isArray(body.config.metadata)
         ? (body.config.metadata as Record<string, unknown>)
         : undefined
+
+    const hasModelFields = Object.keys(modelUpdate).length > 0
+
+    if (!hasModelFields && !metadataUpdate) {
+      return NextResponse.json(
+        {
+          error:
+            "Config update requires at least one of 'name'+'device' or 'metadata'.",
+        },
+        { status: 400 },
+      )
+    }
+
+    if (hasModelFields && (!modelUpdate.name || !modelUpdate.device)) {
+      return NextResponse.json(
+        { error: "Model config update requires both 'name' and 'device'." },
+        { status: 400 },
+      )
+    }
 
     // If backend changed, update the healthCheck expression to match
     const newBackend =
@@ -92,10 +104,12 @@ export async function PATCH(
       collection: 'services',
       id: numericId,
       data: {
-        models: {
-          ...service.models,
-          default: modelUpdate,
-        },
+        ...(hasModelFields && {
+          models: {
+            ...service.models,
+            default: modelUpdate,
+          },
+        }),
         ...(healthCheckUpdate ? { healthCheck: healthCheckUpdate } : {}),
         ...(metadataUpdate
           ? {
@@ -131,11 +145,7 @@ export async function PATCH(
     id: numericId,
     data: {
       status: newStatus as
-        | 'prepare'
-        | 'active'
-        | 'inactive'
-        | 'restart'
-        | 'error',
+        'prepare' | 'active' | 'inactive' | 'restart' | 'error',
     },
   })
 

@@ -18,7 +18,7 @@ export const service: ServiceMeta = {
   supportedOS: ['linux', 'windows'],
   execution: { mode: 'worker' },
   defaultModel: {
-    name: 'pyannote/speaker-diarization-3.1',
+    name: 'pyannote/speaker-diarization-community-1',
     device: 'CPU',
   },
   config: serviceConfig,
@@ -48,5 +48,5 @@ export const worker: WorkerConfig = {
     return args
   },
   workerSubDir: 'diarization',
-  modelDirectories: ['models/huggingface', 'models/modelscope'],
+  modelDirectories: ['models/diarization'],
 }

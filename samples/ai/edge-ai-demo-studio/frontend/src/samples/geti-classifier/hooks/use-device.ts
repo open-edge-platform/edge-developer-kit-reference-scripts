@@ -4,24 +4,11 @@
 import { useQuery } from '@tanstack/react-query'
 import type { AvailableDevice, DevicesResponse } from '../components/types'
 
-// Shown when the worker is unreachable so the UI never renders empty
 const FALLBACK_DEVICES: AvailableDevice[] = [
   {
     name: 'CPU',
     full_name: 'CPU — worker offline',
     type: 'CPU',
-    supported: true,
-  },
-  {
-    name: 'GPU',
-    full_name: 'GPU — worker offline',
-    type: 'GPU',
-    supported: true,
-  },
-  {
-    name: 'NPU',
-    full_name: 'NPU — worker offline',
-    type: 'NPU',
     supported: true,
   },
 ]
@@ -32,9 +19,6 @@ async function fetchDevicesFn(): Promise<DevicesResponse> {
   return res.json() as Promise<DevicesResponse>
 }
 
-/**
- * Raw react-query hook — use `useAvailableDevices` in components instead.
- */
 function useDevices() {
   return useQuery({
     queryKey: ['geti-classifier', 'devices'],
@@ -46,10 +30,6 @@ function useDevices() {
   })
 }
 
-/**
- * Convenience wrapper that returns a flat, component-friendly shape.
- * Falls back to CPU/GPU/NPU stubs when the worker is offline.
- */
 export function useAvailableDevices() {
   const query = useDevices()
 
@@ -57,8 +37,7 @@ export function useAvailableDevices() {
     query.data?.available_devices.filter((d) => d.supported) ??
     (query.isError ? FALLBACK_DEVICES : [])
 
-  // Default to GPU when the worker hasn't responded yet
-  const currentDevice = query.data?.current_device ?? 'GPU'
+  const currentDevice = query.data?.current_device ?? 'CPU'
 
   return {
     availableDevices,

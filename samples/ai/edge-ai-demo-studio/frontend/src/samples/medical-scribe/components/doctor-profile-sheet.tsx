@@ -4,10 +4,11 @@
 'use client'
 
 import { Mic, Plus, Trash2, Upload, UserRound } from 'lucide-react'
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { UploadButton } from '@/components/common/upload-button'
 import { Input } from '@/components/ui/input'
 import {
   Sheet,
@@ -36,7 +37,6 @@ export function DoctorProfileSheet({
 }: DoctorProfileSheetProps) {
   const [newName, setNewName] = useState('')
   const [enrollingId, setEnrollingId] = useState<string | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const enrollSpeaker = useEnrollSpeaker()
   const { isRecording, startRecording, stopRecording, clearAudio } =
@@ -83,12 +83,15 @@ export function DoctorProfileSheet({
 
   const handleEnrollFromFile = useCallback(
     async (profileId: string, file: File) => {
+      setEnrollingId(profileId)
       try {
         const result = await enrollSpeaker.mutateAsync(file)
         onUpdateEmbedding(profileId, result.embedding)
         toast.success('Voice enrolled successfully')
       } catch {
         toast.error('Voice enrollment failed')
+      } finally {
+        setEnrollingId(null)
       }
     },
     [enrollSpeaker, onUpdateEmbedding],
@@ -179,18 +182,18 @@ export function DoctorProfileSheet({
                       >
                         <Mic className="h-3.5 w-3.5" />
                       </Button>
-                      <Button
-                        size="icon"
+                      <UploadButton
+                        accept="audio/*"
+                        onFiles={(files) =>
+                          handleEnrollFromFile(profile.id, files[0])
+                        }
                         variant="ghost"
+                        size="icon"
                         className="h-7 w-7"
-                        onClick={() => {
-                          setEnrollingId(profile.id)
-                          fileInputRef.current?.click()
-                        }}
                         title="Enroll voice from file"
                       >
                         <Upload className="h-3.5 w-3.5" />
-                      </Button>
+                      </UploadButton>
                     </>
                   )}
                   <Button
@@ -211,21 +214,6 @@ export function DoctorProfileSheet({
             )}
           </div>
         </div>
-
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="audio/*"
-          className="hidden"
-          onChange={(e) => {
-            const file = e.target.files?.[0]
-            if (file && enrollingId) {
-              handleEnrollFromFile(enrollingId, file)
-            }
-            setEnrollingId(null)
-            e.target.value = ''
-          }}
-        />
       </SheetContent>
     </Sheet>
   )

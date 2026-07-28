@@ -7,8 +7,8 @@ import { toast } from 'sonner'
 const SERVICES_QUERY_KEY = ['services'] as const
 
 export interface ServiceConfigUpdate {
-  name: string
-  device: string
+  name?: string
+  device?: string
   backend?: string
   source?: string
   type?: string

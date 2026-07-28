@@ -3,9 +3,20 @@
 
 'use client'
 
-import { Loader2, Mic, Plus, Square, Trash2, Upload } from 'lucide-react'
-import { type ReactNode, useCallback, useRef, useState } from 'react'
+import {
+  Check,
+  Loader2,
+  Mic,
+  Pencil,
+  Plus,
+  Square,
+  Trash2,
+  Upload,
+  X,
+} from 'lucide-react'
+import { type ReactNode, useCallback, useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { UploadButton } from '@/components/common/upload-button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
@@ -29,6 +40,7 @@ interface SessionPanelProps {
     language: string,
   ) => Session
   onDeleteSession: (id: string) => void
+  onUpdateSession: (id: string, updates: Partial<Omit<Session, 'id'>>) => void
   doctorProfiles: DoctorProfile[]
   isRecording: boolean
   onStartRecording: () => void
@@ -37,6 +49,7 @@ interface SessionPanelProps {
   onGenerateReport: () => void
   isProcessing: boolean
   isGeneratingReport: boolean
+  isAnyReportGenerating: boolean
   profileActions?: ReactNode
 }
 
@@ -61,6 +74,7 @@ export function SessionPanel({
   onSelectSession,
   onCreateSession,
   onDeleteSession,
+  onUpdateSession,
   doctorProfiles,
   isRecording,
   onStartRecording,
@@ -69,14 +83,22 @@ export function SessionPanel({
   onGenerateReport,
   isProcessing,
   isGeneratingReport,
+  isAnyReportGenerating,
   profileActions,
 }: SessionPanelProps) {
   const [sessionName, setSessionName] = useState('')
   const [selectedDoctorId, setSelectedDoctorId] = useState<string>('')
   const [selectedLanguage, setSelectedLanguage] = useState('en')
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editDoctorId, setEditDoctorId] = useState<string>('')
+  const [editLanguage, setEditLanguage] = useState('en')
 
   const selectedSession = sessions.find((s) => s.id === selectedSessionId)
+
+  function isStarted(session: Session) {
+    return session.status !== 'idle' || session.transcripts.length > 0
+  }
 
   const handleCreate = useCallback(() => {
     const trimmed = sessionName.trim()
@@ -96,6 +118,47 @@ export function SessionPanel({
     onCreateSession,
     onSelectSession,
   ])
+
+  const handleStartEdit = useCallback((session: Session) => {
+    setEditingSessionId(session.id)
+    setEditName(session.name)
+    setEditDoctorId(session.doctorProfileId ?? '')
+    setEditLanguage(session.language)
+  }, [])
+
+  const handleSaveEdit = useCallback(
+    (id: string) => {
+      // Re-check session state at save time: if the session started recording
+      // or processing after the editor was opened, discard the edit silently.
+      const session = sessions.find((s) => s.id === id)
+      if (!session || isStarted(session)) {
+        setEditingSessionId(null)
+        return
+      }
+      const trimmed = editName.trim()
+      if (!trimmed) return
+      const doctorProfile = doctorProfiles.find((p) => p.id === editDoctorId)
+      onUpdateSession(id, {
+        name: trimmed,
+        doctorProfileId: editDoctorId || null,
+        doctorProfileName: doctorProfile?.name ?? null,
+        language: editLanguage,
+      })
+      setEditingSessionId(null)
+    },
+    [
+      sessions,
+      editName,
+      editDoctorId,
+      editLanguage,
+      doctorProfiles,
+      onUpdateSession,
+    ],
+  )
+
+  const handleCancelEdit = useCallback(() => {
+    setEditingSessionId(null)
+  }, [])
 
   return (
     <div className="flex h-full min-h-0 flex-col border-r">
@@ -161,53 +224,156 @@ export function SessionPanel({
 
       <ScrollArea className="min-h-0 flex-1">
         <div className="space-y-1 p-2">
-          {sessions.map((session) => (
-            <div
-              key={session.id}
-              role="button"
-              tabIndex={0}
-              className={cn(
-                'flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-left text-sm transition-colors',
-                session.id === selectedSessionId
-                  ? 'bg-accent text-accent-foreground'
-                  : 'hover:bg-muted',
-              )}
-              onClick={() => onSelectSession(session.id)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault()
-                  onSelectSession(session.id)
-                }
-              }}
-            >
-              <span
+          {sessions.map((session) => {
+            const started = isStarted(session)
+            const isEditing = editingSessionId === session.id
+
+            if (isEditing) {
+              return (
+                <div
+                  key={session.id}
+                  className={cn(
+                    'rounded-md px-2 py-2 text-sm',
+                    session.id === selectedSessionId
+                      ? 'bg-accent text-accent-foreground'
+                      : 'bg-muted',
+                  )}
+                >
+                  <div className="space-y-1.5">
+                    <Input
+                      autoFocus
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleSaveEdit(session.id)
+                        if (e.key === 'Escape') handleCancelEdit()
+                      }}
+                      className="h-7 text-xs"
+                      placeholder="Session name"
+                    />
+                    <Select
+                      value={editDoctorId}
+                      onValueChange={setEditDoctorId}
+                    >
+                      <SelectTrigger className="h-7 text-xs">
+                        <SelectValue placeholder="Select doctor" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {doctorProfiles.length === 0 && (
+                          <SelectItem value="_empty" disabled>
+                            No profiles — create one first
+                          </SelectItem>
+                        )}
+                        {doctorProfiles.map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.name}
+                            {p.embedding ? '' : ' (no voice)'}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Select
+                      value={editLanguage}
+                      onValueChange={setEditLanguage}
+                    >
+                      <SelectTrigger className="h-7 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {STT_LANGUAGE_OPTIONS.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <div className="flex justify-end gap-1">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-6 w-6"
+                        aria-label="Cancel edit"
+                        onClick={handleCancelEdit}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        className="h-6 w-6"
+                        aria-label="Save edit"
+                        disabled={!editName.trim()}
+                        onClick={() => handleSaveEdit(session.id)}
+                      >
+                        <Check className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )
+            }
+
+            return (
+              <div
+                key={session.id}
+                role="button"
+                tabIndex={0}
                 className={cn(
-                  'h-2 w-2 shrink-0 rounded-full',
-                  statusColor(session.status),
+                  'flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-left text-sm transition-colors',
+                  session.id === selectedSessionId
+                    ? 'bg-accent text-accent-foreground'
+                    : 'hover:bg-muted',
                 )}
-              />
-              <div className="flex-1">
-                <span className="block truncate">{session.name}</span>
-                <small className="text-muted-foreground block truncate text-[10px]">
-                  {session.doctorProfileId
-                    ? `Dr. ${session.doctorProfileName ?? 'Unknown'}`
-                    : 'No Doctor'}{' '}
-                  · {session.sessionCreatedAt}
-                </small>
-              </div>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-6 w-6 shrink-0"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onDeleteSession(session.id)
+                onClick={() => onSelectSession(session.id)}
+                onKeyDown={(e) => {
+                  if (e.currentTarget !== e.target) return
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    onSelectSession(session.id)
+                  }
                 }}
               >
-                <Trash2 className="h-3 w-3" />
-              </Button>
-            </div>
-          ))}
+                <span
+                  className={cn(
+                    'h-2 w-2 shrink-0 rounded-full',
+                    statusColor(session.status),
+                  )}
+                />
+                <div className="flex-1">
+                  <span className="block truncate">{session.name}</span>
+                  <small className="text-muted-foreground block truncate text-[10px]">
+                    {session.doctorProfileId
+                      ? `Dr. ${session.doctorProfileName ?? 'Unknown'}`
+                      : 'No Doctor'}{' '}
+                    · {session.sessionCreatedAt}
+                  </small>
+                </div>
+                {!started && (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-6 w-6 shrink-0"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleStartEdit(session)
+                    }}
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </Button>
+                )}
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-6 w-6 shrink-0"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onDeleteSession(session.id)
+                  }}
+                >
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              </div>
+            )
+          })}
           {sessions.length === 0 && (
             <p className="text-muted-foreground py-8 text-center text-xs">
               Create a session to get started
@@ -236,15 +402,15 @@ export function SessionPanel({
                 Record
               </Button>
             )}
-            <Button
+            <UploadButton
+              accept="audio/*"
+              onFiles={(files) => onUploadAudio(files[0])}
               size="sm"
-              variant="outline"
-              onClick={() => fileInputRef.current?.click()}
               disabled={isRecording || isProcessing}
             >
               <Upload className="mr-1 h-3.5 w-3.5" />
               Upload
-            </Button>
+            </UploadButton>
             <Button
               size="sm"
               variant="outline"
@@ -252,7 +418,7 @@ export function SessionPanel({
               disabled={
                 selectedSession.transcripts.length === 0 ||
                 isProcessing ||
-                isGeneratingReport
+                isAnyReportGenerating
               }
             >
               {isGeneratingReport && (
@@ -261,17 +427,6 @@ export function SessionPanel({
               Generate Report
             </Button>
           </div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="audio/*"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0]
-              if (file) onUploadAudio(file)
-              e.target.value = ''
-            }}
-          />
         </div>
       )}
     </div>

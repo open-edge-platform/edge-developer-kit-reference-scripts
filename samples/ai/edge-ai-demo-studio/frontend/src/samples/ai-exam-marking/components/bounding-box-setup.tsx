@@ -45,7 +45,21 @@ export function BoundingBoxSetup({
     if (file) {
       const reader = new FileReader()
       reader.onload = (event) => {
-        setReferenceImage(event.target?.result as string)
+        const dataUrl = event.target?.result as string
+        const img = new globalThis.Image()
+        img.onload = () => {
+          const canvas = document.createElement('canvas')
+          canvas.width = 612
+          canvas.height = 792
+          const ctx = canvas.getContext('2d')
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, 612, 792)
+            setReferenceImage(canvas.toDataURL('image/jpeg', 0.95))
+          } else {
+            setReferenceImage(dataUrl)
+          }
+        }
+        img.src = dataUrl
       }
       reader.readAsDataURL(file)
     }

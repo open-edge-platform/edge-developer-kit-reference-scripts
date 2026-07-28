@@ -17,11 +17,9 @@ check_uv() {
 }
 
 echo ""
-echo "NOTE: This worker requires a HuggingFace token (HF_TOKEN) with accepted"
-echo "      license agreements for the following models:"
-echo "        - pyannote/embedding"
-echo "        - pyannote/speaker-diarization-3.1"
-echo "      Visit https://hf.co/pyannote/embedding and https://hf.co/pyannote/speaker-diarization-3.1"
+echo "NOTE: This worker requires a HuggingFace token (HF_TOKEN) with an accepted"
+echo "      license agreement for pyannote/speaker-diarization-community-1."
+echo "      Visit https://hf.co/pyannote/speaker-diarization-community-1"
 echo "      to accept the license, then set HF_TOKEN=<your_token> in your environment."
 echo ""
 

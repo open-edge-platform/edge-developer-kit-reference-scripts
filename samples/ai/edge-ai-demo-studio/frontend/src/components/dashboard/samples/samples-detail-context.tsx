@@ -18,12 +18,14 @@ import {
   RotateCcw,
   ScrollText,
   Square,
+  Wand2,
 } from 'lucide-react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { useState } from 'react'
 import { Streamdown } from 'streamdown'
 import { ExportSamplesDialog } from '@/components/dashboard/samples/export-samples-dialog'
+import { RecommendedConfigDialog } from '@/components/dashboard/samples/recommended-config-dialog'
 import { StartAllServicesButton } from '@/components/dashboard/samples/start-all-services-button'
 import {
   Accordion,
@@ -38,17 +40,16 @@ import {
   useGetServices,
   useServiceStatus,
 } from '@/context/service-status-context'
-import { useSystemInfo } from '@/context/system-info-context'
 import { cn } from '@/lib/utils'
 import { ServiceLogs } from '@/services/common/logs/components/log'
 import { ServiceConfigureDispatch } from '@/services/common/demo/components/service-configure-dispatch'
 import type { Service } from '@/services/types'
 import {
   getCategoryLabels,
-  getDeviceMap,
   getOptionalDeps,
   getReadinessLabel,
   getRequiredDeps,
+  hasRecommendedConfig,
 } from '@/samples/types'
 import type {
   PipelineStep,
@@ -56,6 +57,7 @@ import type {
   Sample,
   ServiceDependency,
 } from '@/samples/types'
+import { GatedModelAlert } from '@/services/common/demo/components/gated-model-alert'
 
 export function SampleDetailContent({
   sample,
@@ -66,9 +68,8 @@ export function SampleDetailContent({
 }) {
   const requiredDeps = getRequiredDeps(sample)
   const optDeps = getOptionalDeps(sample)
-  const { systemInfo } = useSystemInfo()
-  const deviceMap = getDeviceMap(sample, systemInfo?.devices)
   const [exportOpen, setExportOpen] = useState(false)
+  const [recommendedOpen, setRecommendedOpen] = useState(false)
 
   const allDepIds = sample.dependencies.map((d) => d.serviceId)
   const serviceMap = useGetServices(allDepIds)
@@ -168,7 +169,7 @@ export function SampleDetailContent({
                     </Badge>
                   ))}
                 </div>
-                <p className="text-muted-foreground mt-1.5 max-w-2xl text-sm leading-relaxed">
+                <p className="text-muted-foreground mt-1.5 max-w-2xl text-sm leading-relaxed whitespace-pre-line">
                   {sample.longDescription}
                 </p>
               </div>
@@ -317,6 +318,25 @@ export function SampleDetailContent({
         </div>
       </div>
 
+      <div className="space-y-4">
+        {allServices.map((s) => {
+          const activeModelName = s.currentModel ?? s.defaultModel?.name ?? ''
+          const activeSource = s.currentSource ?? 'huggingface'
+          const activeModel = s.config?.availableModels?.find(
+            (m) => m.value === activeModelName,
+          )
+
+          return (
+            <GatedModelAlert
+              key={s.id}
+              model={activeModel}
+              source={activeSource}
+              serviceId={s.dbId}
+            />
+          )
+        })}
+      </div>
+
       <div className="glass-card overflow-hidden rounded-xl">
         <Accordion type="single" collapsible>
           <AccordionItem value="services" className="border-0">
@@ -358,10 +378,20 @@ export function SampleDetailContent({
               </div>
 
               <div className="ml-auto flex flex-wrap items-center justify-end gap-3">
+                {hasRecommendedConfig(sample) && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5"
+                    onClick={() => setRecommendedOpen(true)}
+                  >
+                    <Wand2 className="h-3.5 w-3.5" />
+                    Use Recommended Config
+                  </Button>
+                )}
                 {!allRequiredOnline && (
                   <StartAllServicesButton
                     serviceIds={requiredServices.map((s) => s.id)}
-                    deviceMap={deviceMap}
                     label="Start Required"
                   />
                 )}
@@ -370,7 +400,6 @@ export function SampleDetailContent({
                   optionalOnline < optionalServices.length && (
                     <StartAllServicesButton
                       serviceIds={optionalServices.map((s) => s.id)}
-                      deviceMap={deviceMap}
                       label="Start Optional"
                     />
                   )}
@@ -693,6 +722,13 @@ export function SampleDetailContent({
         open={exportOpen}
         onOpenChange={setExportOpen}
       />
+      {hasRecommendedConfig(sample) && (
+        <RecommendedConfigDialog
+          sample={sample}
+          open={recommendedOpen}
+          onOpenChange={setRecommendedOpen}
+        />
+      )}
     </>
   )
 }

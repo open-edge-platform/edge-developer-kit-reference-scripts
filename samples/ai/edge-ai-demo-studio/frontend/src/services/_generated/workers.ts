@@ -6,6 +6,7 @@ import type { Service } from '@/payload-types'
 import type { WorkerConfig } from '../types'
 
 import { worker as diarizationWorker } from '../diarization/data'
+import { worker as fileWatcherWorker } from '../file-watcher/data'
 import { worker as getiClassifierWorker } from '../geti-classifier/data'
 import { worker as imageBasedVideoSearchWorker } from '../suites/metro-ai-suite/image-based-video-search/data'
 import { worker as imageGenerationWorker } from '../image-generation/data'
@@ -25,6 +26,7 @@ import { worker as wakeWordDetectionWorker } from '../wake-word-detection/data'
 /** Worker configuration registry keyed by Payload service type. */
 const workerRegistry: Partial<Record<Service['type'], WorkerConfig>> = {
   diarization: diarizationWorker,
+  'file-watcher': fileWatcherWorker,
   'geti-classifier': getiClassifierWorker,
   'image-based-video-search': imageBasedVideoSearchWorker,
   'image-generation': imageGenerationWorker,

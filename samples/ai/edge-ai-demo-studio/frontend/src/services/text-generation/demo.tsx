@@ -25,7 +25,7 @@ export function TextGenerationDemo({ service }: { service: Service }) {
         onStop={chat.handleStop}
         onReset={chat.handleReset}
         isVlm={isMultimodal}
-        imagePreview={chat.imagePreview}
+        imagePreviews={chat.imagePreviews}
         onImageSelect={chat.handleImageSelect}
         onImageRemove={chat.handleRemoveImage}
         placeholder={

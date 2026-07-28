@@ -187,8 +187,7 @@ export function SyntheticImageGenerationDemo({
   const setGeneratedImages = useCallback(
     (
       updater:
-        | GeneratedImage[]
-        | ((prev: GeneratedImage[]) => GeneratedImage[]),
+        GeneratedImage[] | ((prev: GeneratedImage[]) => GeneratedImage[]),
     ) => {
       if (typeof updater === 'function') {
         setLocalImages((prevLocal) => {

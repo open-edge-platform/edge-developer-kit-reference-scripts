@@ -111,7 +111,7 @@ export function AvatarSection({ streamUrl, isSpeaking }: AvatarSectionProps) {
             </div>
           </div>
         )}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
+        {/* eslint-disable-next-line @next/next/no-img-element -- avatar stream src is assigned imperatively via ref; next/image requires a static src prop */}
         <img
           ref={imgRef}
           alt="Avatar Stream"

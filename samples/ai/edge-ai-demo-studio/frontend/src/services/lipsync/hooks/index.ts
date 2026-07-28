@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 const API_BASE = '/api/lipsync'
 
@@ -27,16 +27,54 @@ export function buildIceConfig(
   return { iceServers: [iceServer] }
 }
 
+export const ICE_GATHERING_TIMEOUT_MS = 5000
+
+export function waitForIceGathering(
+  pc: RTCPeerConnection,
+  timeoutMs: number = ICE_GATHERING_TIMEOUT_MS,
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (pc.iceGatheringState === 'complete') {
+      resolve(true)
+      return
+    }
+    const finish = (completed: boolean) => {
+      clearTimeout(timer)
+      pc.removeEventListener('icegatheringstatechange', onStateChange)
+      resolve(completed)
+    }
+    const onStateChange = () => {
+      if (pc.iceGatheringState === 'complete') finish(true)
+    }
+    const timer = setTimeout(() => finish(false), timeoutMs)
+    pc.addEventListener('icegatheringstatechange', onStateChange)
+  })
+}
+
 interface OfferResponse {
   sdp: string
   type: RTCSdpType
   session_id: string
 }
 
-interface AvatarSkin {
+export interface AvatarSkin {
   skin_id: string
   skin_name?: string
 }
+
+export interface AvatarListResponse {
+  items: AvatarSkin[]
+  default_skin: string | null
+}
+
+export interface AvatarTaskStatus {
+  status: string
+  avatar_id?: string
+  skin_name?: string
+  detail?: string
+}
+
+const TERMINAL_TASK_STATUSES = ['finished', 'error', 'not_found']
 
 export function useLipsyncOffer() {
   return useMutation({
@@ -44,7 +82,11 @@ export function useLipsyncOffer() {
       sdp: string | undefined
       type: RTCSdpType
     }): Promise<OfferResponse> => {
-      const res = await fetch(`${API_BASE}/v1/lipsync/offer`, {
+      const url = new URL(
+        `${API_BASE}/v1/lipsync/offer`,
+        window.location.origin,
+      )
+      const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(params),
@@ -108,12 +150,14 @@ export function useSkinUpload() {
   return useMutation({
     mutationFn: async (params: {
       videoFile: File
-      sessionId: string
+      sessionId?: string
       skinName?: string
     }) => {
       const formData = new FormData()
       formData.append('video', params.videoFile)
-      formData.append('session_id', params.sessionId)
+      if (params.sessionId) {
+        formData.append('session_id', params.sessionId)
+      }
       if (params.skinName) {
         formData.append('skin_name', params.skinName)
       }
@@ -128,15 +172,74 @@ export function useSkinUpload() {
   })
 }
 
+export function useAvatarTaskStatus(taskId: string | null) {
+  return useQuery<AvatarTaskStatus>({
+    queryKey: ['lipsync', 'task', taskId],
+    enabled: taskId !== null,
+    refetchInterval: (query) => {
+      const status = query.state.data?.status
+      return status && TERMINAL_TASK_STATUSES.includes(status) ? false : 2000
+    },
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/v1/tasks/${taskId}`)
+      if (!res.ok) throw new Error(await res.text())
+      const data = await res.json()
+      return typeof data === 'string' ? { status: data } : data
+    },
+  })
+}
+
 export function useAvatarList(enabled: boolean) {
-  return useQuery<AvatarSkin[]>({
+  return useQuery<AvatarListResponse>({
     queryKey: ['lipsync', 'avatars'],
     enabled,
     queryFn: async () => {
       const res = await fetch(`${API_BASE}/v1/avatar`)
       if (!res.ok) throw new Error(await res.text())
       const data = await res.json()
-      return data.items ?? []
+      return {
+        items: data.items ?? [],
+        default_skin: data.default_skin ?? null,
+      }
+    },
+  })
+}
+
+export function useDeleteSkin() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (skinId: string) => {
+      const url = new URL(
+        `${API_BASE}/v1/avatar/${encodeURIComponent(skinId)}`,
+        window.location.origin,
+      )
+      const res = await fetch(url, { method: 'DELETE' })
+      if (!res.ok) throw new Error(await res.text())
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['lipsync', 'avatars'] })
+    },
+  })
+}
+
+export interface SetDefaultSkinResponse {
+  reloaded_sessions?: string[]
+}
+
+export function useSetDefaultSkin() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (avatarId: string): Promise<SetDefaultSkinResponse> => {
+      const res = await fetch(`${API_BASE}/v1/avatar/default`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ avatarId }),
+      })
+      if (!res.ok) throw new Error(await res.text())
+      return res.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['lipsync', 'avatars'] })
     },
   })
 }

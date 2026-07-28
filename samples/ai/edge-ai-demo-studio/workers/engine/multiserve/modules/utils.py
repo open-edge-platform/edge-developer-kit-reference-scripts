@@ -349,55 +349,6 @@ def validate_and_sanitize_dir(cache_dir: str) -> str:
             "Model cache directory cannot contain '..' (directory traversal)"
         )
 
-    allowed_base_dirs = [
-        os.path.expanduser("~"),
-        "/tmp",
-        "/var/cache",
-        "/opt",
-        "/mnt",
-    ]
-
-    path_is_allowed = False
-    for allowed_base in allowed_base_dirs:
-        try:
-            allowed_resolved = Path(allowed_base).resolve()
-            try:
-                if Path(cache_dir).resolve().is_relative_to(allowed_resolved):
-                    path_is_allowed = True
-                    break
-            except AttributeError:  # Fallback for Python < 3.9
-                if str(allowed_resolved) in str(Path(cache_dir).resolve()):
-                    if (
-                        Path(cache_dir).resolve().parts[: len(allowed_resolved.parts)]
-                        == allowed_resolved.parts
-                    ):
-                        path_is_allowed = True
-                        break
-        except (OSError, ValueError):
-            continue
-
-    if not path_is_allowed:
-        raise ValueError(
-            f"Model cache directory must be within allowed locations: {allowed_base_dirs}. "
-            f"Attempted path: {cache_dir}"
-        )
-
-    sensitive_paths = [
-        "/etc",
-        "/usr",
-        "/bin",
-        "/sbin",
-        "/boot",
-        "/sys",
-        "/proc",
-        "/dev",
-        "/root",
-    ]
-    if any(cache_dir.startswith(sensitive) for sensitive in sensitive_paths):
-        raise ValueError(
-            f"Invalid model cache directory: {cache_dir} points to a sensitive system directory"
-        )
-
     if len(cache_dir) > MAX_PATH_LENGTH:
         raise ValueError("Model cache directory path is too long (>4096 characters)")
 

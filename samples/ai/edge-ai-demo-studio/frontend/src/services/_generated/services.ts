@@ -7,6 +7,7 @@ import type { Service as ServiceType } from '@/payload-types'
 // Data imports
 import { service as diarizationMeta } from '../diarization/data'
 import { service as embeddingsMeta } from '../embeddings/data'
+import { service as fileWatcherMeta } from '../file-watcher/data'
 import { service as getiClassifierMeta } from '../geti-classifier/data'
 import { service as imageBasedVideoSearchMeta } from '../suites/metro-ai-suite/image-based-video-search/data'
 import { service as imageGenerationMeta } from '../image-generation/data'
@@ -29,6 +30,7 @@ import { service as wakeWordDetectionMeta } from '../wake-word-detection/data'
 // Demo imports
 import { DiarizationDemo } from '../diarization/demo'
 import { EmbeddingDemo } from '../embeddings/demo'
+import { FileWatcherDemo } from '../file-watcher/demo'
 import { ImageGenerationDemo } from '../image-generation/demo'
 import { LipsyncDemo } from '../lipsync/demo'
 import { McpDemo } from '../mcp/demo'
@@ -53,6 +55,11 @@ export const serviceMap: Record<ServiceType['type'], Service> = {
     ...embeddingsMeta,
     status: 'offline',
     demo: EmbeddingDemo,
+  },
+  'file-watcher': {
+    ...fileWatcherMeta,
+    status: 'offline',
+    demo: FileWatcherDemo,
   },
   'geti-classifier': {
     ...getiClassifierMeta,

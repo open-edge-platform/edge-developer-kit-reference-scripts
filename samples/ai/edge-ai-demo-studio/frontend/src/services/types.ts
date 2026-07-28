@@ -91,6 +91,17 @@ export function getDevicesForModel(
   return config?.availableDevices ?? []
 }
 
+// True when the service accepts model names beyond availableModels
+export function supportsCustomModels(
+  config: ServiceConfig | undefined,
+): boolean {
+  if (!config) return false
+  return (
+    Boolean(config.supportsCustomModel) ||
+    (config.availableModelSources ?? []).some((s) => s.value === 'custom')
+  )
+}
+
 export function getBackendForModel(
   config: ServiceConfig | undefined,
   modelValue: string,

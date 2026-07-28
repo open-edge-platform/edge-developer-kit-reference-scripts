@@ -3,7 +3,7 @@ name = "paddleocr"
 version = "0.1.0"
 description = "PaddleOCR FastAPI worker (PP-OCRv5/v3 + PaddleOCR-VL) on OpenVINO"
 readme = "README.md"
-requires-python = ">=3.10,<3.13"
+requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.111.0",
     "uvicorn>=0.29.0",
@@ -20,7 +20,7 @@ dependencies = [
     "tqdm>=4.66",
     "torch>=2.12.1",
     "torchvision>=0.26.0",
-    "triton-xpu==3.7.1",
+    "triton-xpu>=3.7.1 ; sys_platform == 'win32' or sys_platform == 'linux'",
     "nncf>=2.18.0",
     "huggingface-hub>=0.32.4",
     "modelscope>=1.26.0",

@@ -3,27 +3,32 @@
 
 'use client'
 
-import { Database, FolderPlus, Loader2, Search, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { useGetService, useGetServices } from '@/context/service-status-context'
-import { cn } from '@/lib/utils'
 import type { Service } from '@/services/types'
+import { engines } from '@/engines/registry'
+import { ActiveKbBar } from './components/active-kb-bar'
+import { AddChunkPanel } from './components/add-chunk-panel'
 import { ChunksPanel } from './components/chunks-panel'
+import { FileUploadPanel } from './components/file-upload-panel'
+import { KnowledgeBasesRail } from './components/knowledge-bases-rail'
+import { SearchPanel } from './components/search-panel'
 import {
   useAddChunk,
   useConfigureEmbedding,
+  useCreateFileEmbeddings,
   useCreateKb,
   useDeleteChunk,
   useDeleteKb,
   useKbChunks,
+  useKbFiles,
   useKnowledgeBases,
   useSearchKb,
 } from './hooks'
 import type { KnowledgeBase } from './types'
-import { engines } from '@/engines/registry'
+
+type EmbedRun = { running: boolean; done: number; total: number }
+const IDLE_RUN: EmbedRun = { running: false, done: 0, total: 0 }
 
 // ── Demo component ───────────────────────────────────────────────
 
@@ -37,7 +42,7 @@ export function VectorDbDemo(_props: { service: Service }) {
   const [searchQuery, setSearchQuery] = useState('')
   const [error, setError] = useState<string | null>(null)
 
-  const configureMutation = useConfigureEmbedding()
+  const { mutate: configureWorker } = useConfigureEmbedding()
   const kbsQuery = useKnowledgeBases()
   const createKbMutation = useCreateKb()
   const deleteKbMutation = useDeleteKb()
@@ -45,6 +50,16 @@ export function VectorDbDemo(_props: { service: Service }) {
   const deleteChunkMutation = useDeleteChunk()
   const searchMutation = useSearchKb()
   const kbChunksQuery = useKbChunks(selectedKb?.id)
+  const kbFilesQuery = useKbFiles(selectedKb?.id)
+  const embedFileMutation = useCreateFileEmbeddings()
+  const [embedRun, setEmbedRun] = useState<EmbedRun>(IDLE_RUN)
+
+  // Embed progress is per-KB; reset it whenever the selected KB changes so a
+  // previous KB's run state never leaks onto another.
+  const selectKb = (kb: KnowledgeBase | null) => {
+    setSelectedKb(kb)
+    setEmbedRun(IDLE_RUN)
+  }
 
   const embeddingPort = embeddingsService?.port
 
@@ -94,7 +109,7 @@ export function VectorDbDemo(_props: { service: Service }) {
     if (embeddingStatus !== 'online' || !embeddingPort || !embeddingModelName)
       return
 
-    configureMutation.mutate(
+    configureWorker(
       {
         embeddingUrl: `http://localhost:${embeddingPort}/v1`,
         embeddingModel: embeddingModelName,
@@ -112,7 +127,6 @@ export function VectorDbDemo(_props: { service: Service }) {
           ),
       },
     )
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     embeddingStatus,
     embeddingPort,
@@ -121,6 +135,7 @@ export function VectorDbDemo(_props: { service: Service }) {
     rerankPort,
     rerankModelName,
     configured,
+    configureWorker,
   ])
 
   const handleCreateKb = () => {
@@ -138,7 +153,7 @@ export function VectorDbDemo(_props: { service: Service }) {
     deleteKbMutation.mutate(id, {
       onSuccess: () => {
         if (selectedKb?.id === id) {
-          setSelectedKb(null)
+          selectKb(null)
           searchMutation.reset()
         }
       },
@@ -203,6 +218,26 @@ export function VectorDbDemo(_props: { service: Service }) {
     )
   }
 
+  // Embed only the files that aren't in the vector store yet, one at a time, so
+  // re-running after adding a file never re-embeds (and duplicates) old files.
+  const handleGenerateEmbeddings = async (filenames: string[]) => {
+    if (!selectedKb || filenames.length === 0) return
+    setError(null)
+    setEmbedRun({ running: true, done: 0, total: filenames.length })
+    for (const filename of filenames) {
+      try {
+        await embedFileMutation.mutateAsync({ kbId: selectedKb.id, filename })
+        setEmbedRun((r) => ({ ...r, done: r.done + 1 }))
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : `Failed to embed ${filename}`,
+        )
+      }
+    }
+    setEmbedRun(IDLE_RUN)
+    kbChunksQuery.refetch()
+  }
+
   const handleSearch = () => {
     if (!selectedKb || !searchQuery.trim()) return
     setError(null)
@@ -217,10 +252,28 @@ export function VectorDbDemo(_props: { service: Service }) {
 
   const knowledgeBases = kbsQuery.data ?? []
   const chunks = kbChunksQuery.data?.chunks ?? []
+  const totalChunks = kbChunksQuery.data?.total_chunks ?? 0
+  const documentCount = kbFilesQuery.data?.length ?? 0
 
   return (
-    <div className="flex flex-col gap-6 xl:flex-row">
-      <div className="min-w-0 flex-1 space-y-6">
+    <div className="flex flex-col gap-5 lg:flex-row">
+      <div className="lg:sticky lg:top-4 lg:w-[300px] lg:shrink-0 lg:self-start">
+        <KnowledgeBasesRail
+          knowledgeBases={knowledgeBases}
+          selectedKb={selectedKb}
+          kbName={kbName}
+          onKbNameChange={setKbName}
+          onCreate={handleCreateKb}
+          isCreating={createKbMutation.isPending}
+          onRefresh={() => kbsQuery.refetch()}
+          isFetching={kbsQuery.isFetching}
+          isLoading={kbsQuery.isLoading}
+          onSelect={selectKb}
+          onDelete={handleDeleteKb}
+        />
+      </div>
+
+      <div className="min-w-0 flex-1 space-y-5">
         {!embeddingsOnline && (
           <div className="border-warning/50 bg-warning/10 text-warning rounded-lg border p-3 text-sm">
             The Embeddings service is offline. Start it to enable adding chunks
@@ -234,212 +287,64 @@ export function VectorDbDemo(_props: { service: Service }) {
           </div>
         )}
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <div className="space-y-3">
-            <p className="text-foreground flex items-center gap-2 text-sm font-medium">
-              <Database className="h-4 w-4" />
-              Knowledge Bases
-            </p>
+        <ActiveKbBar
+          selectedKb={selectedKb}
+          chunkCount={totalChunks}
+          documentCount={documentCount}
+        />
 
-            <div className="flex gap-2">
-              <Input
-                value={kbName}
-                onChange={(e) => setKbName(e.target.value)}
-                placeholder="New knowledge base name..."
-                className="bg-muted/30"
-                onKeyDown={(e) => e.key === 'Enter' && handleCreateKb()}
+        {selectedKb ? (
+          <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-2">
+            <div className="space-y-5">
+              <FileUploadPanel
+                kbId={selectedKb.id}
+                embeddingsOnline={embeddingsOnline}
+                onGenerateEmbeddings={handleGenerateEmbeddings}
+                isEmbedding={embedRun.running}
+                embedProgress={
+                  embedRun.running
+                    ? { done: embedRun.done, total: embedRun.total }
+                    : undefined
+                }
+                onError={setError}
               />
-              <Button
-                onClick={handleCreateKb}
-                disabled={createKbMutation.isPending || !kbName.trim()}
-                size="icon"
-                className="bg-primary hover:bg-primary-light shrink-0 text-white"
-              >
-                {createKbMutation.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <FolderPlus className="h-4 w-4" />
-                )}
-              </Button>
+
+              <AddChunkPanel
+                canMutate={embeddingsOnline}
+                isAdding={addChunkMutation.isPending}
+                onAddChunk={handleAddChunk}
+              />
             </div>
 
-            <Button
-              onClick={() => kbsQuery.refetch()}
-              variant="outline"
-              size="sm"
-              className="w-full"
-              disabled={kbsQuery.isFetching}
-            >
-              {kbsQuery.isFetching ? (
-                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-              ) : null}
-              Refresh List
-            </Button>
+            <div className="space-y-5">
+              <SearchPanel
+                query={searchQuery}
+                onQueryChange={setSearchQuery}
+                onSearch={handleSearch}
+                isSearching={searchMutation.isPending}
+                disabled={!embeddingsOnline}
+                results={searchMutation.data}
+              />
 
-            <div className="max-h-[240px] space-y-1.5 overflow-auto">
-              {knowledgeBases.length === 0 ? (
-                <div className="text-muted-foreground py-6 text-center text-xs">
-                  {kbsQuery.isLoading
-                    ? 'Loading knowledge bases...'
-                    : 'No knowledge bases yet. Create one above.'}
-                </div>
-              ) : (
-                knowledgeBases.map((kb) => (
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    key={kb.id}
-                    className={cn(
-                      'flex w-full cursor-pointer items-center justify-between rounded-lg border p-2.5 text-left text-sm transition-colors',
-                      selectedKb?.id === kb.id
-                        ? 'border-primary bg-primary/5'
-                        : 'border-border hover:bg-muted/30',
-                    )}
-                    onClick={() => setSelectedKb(kb)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault()
-                        setSelectedKb(kb)
-                      }
-                    }}
-                  >
-                    <span className="truncate">{kb.name}</span>
-                    <div className="flex items-center gap-1.5">
-                      <Badge variant="secondary" className="text-[10px]">
-                        ID: {kb.id}
-                      </Badge>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleDeleteKb(kb.id)
-                        }}
-                      >
-                        <Trash2 className="text-destructive h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-                ))
-              )}
+              <ChunksPanel
+                chunks={chunks}
+                totalChunks={totalChunks}
+                isLoading={kbChunksQuery.isLoading}
+                isFetching={kbChunksQuery.isFetching}
+                canMutate={embeddingsOnline}
+                isAdding={addChunkMutation.isPending}
+                isDeleting={deleteChunkMutation.isPending}
+                onRefresh={() => kbChunksQuery.refetch()}
+                onDeleteChunk={handleDeleteChunk}
+                onReplaceChunk={handleReplaceChunk}
+              />
             </div>
           </div>
-
-          <div className="space-y-4">
-            {!selectedKb ? (
-              <div className="text-muted-foreground border-border flex h-full items-center justify-center rounded-xl border border-dashed p-8 text-sm">
-                Select a knowledge base to manage
-              </div>
-            ) : (
-              <>
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="text-xs">
-                    {selectedKb.name}
-                  </Badge>
-                </div>
-
-                <ChunksPanel
-                  chunks={chunks}
-                  totalChunks={kbChunksQuery.data?.total_chunks ?? 0}
-                  isLoading={kbChunksQuery.isLoading}
-                  isFetching={kbChunksQuery.isFetching}
-                  canMutate={embeddingsOnline}
-                  isAdding={addChunkMutation.isPending}
-                  isDeleting={deleteChunkMutation.isPending}
-                  onRefresh={() => kbChunksQuery.refetch()}
-                  onAddChunk={handleAddChunk}
-                  onDeleteChunk={handleDeleteChunk}
-                  onReplaceChunk={handleReplaceChunk}
-                />
-
-                <div className="space-y-2">
-                  <p className="text-muted-foreground flex items-center gap-1.5 text-xs font-medium">
-                    <Search className="h-3.5 w-3.5" />
-                    Search Knowledge Base
-                  </p>
-                  <div className="flex gap-2">
-                    <Input
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="Enter search query..."
-                      className="bg-muted/30 text-sm"
-                      onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                    />
-                    <Button
-                      onClick={handleSearch}
-                      disabled={
-                        searchMutation.isPending ||
-                        !searchQuery.trim() ||
-                        !embeddingsOnline
-                      }
-                      size="sm"
-                      className="shrink-0 gap-1.5"
-                    >
-                      {searchMutation.isPending ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Search className="h-3.5 w-3.5" />
-                      )}
-                    </Button>
-                  </div>
-                </div>
-
-                {searchMutation.data && searchMutation.data.length > 0 && (
-                  <div className="space-y-2">
-                    <p className="text-muted-foreground text-xs font-medium">
-                      Results ({searchMutation.data.length})
-                    </p>
-                    <div className="max-h-[300px] space-y-2 overflow-auto">
-                      {searchMutation.data.map((result, i) => (
-                        <div
-                          key={`result-${i}`}
-                          data-testid="vectordb-search-result"
-                          className="border-border bg-muted/20 space-y-1.5 rounded-lg border p-3"
-                        >
-                          <p className="text-foreground line-clamp-3 text-sm">
-                            {result.content}
-                          </p>
-                          {result.score !== undefined && (
-                            <div className="flex items-center gap-2">
-                              <div className="bg-muted h-1.5 flex-1 overflow-hidden rounded-full">
-                                <div
-                                  className="bg-primary h-full rounded-full"
-                                  style={{
-                                    width: `${Math.min(result.score * 100, 100)}%`,
-                                  }}
-                                />
-                              </div>
-                              <span className="text-muted-foreground font-mono text-[10px]">
-                                {result.score.toFixed(3)}
-                              </span>
-                            </div>
-                          )}
-                          {result.metadata &&
-                            Object.keys(result.metadata).length > 0 && (
-                              <div className="flex flex-wrap gap-1">
-                                {Object.entries(result.metadata).map(
-                                  ([k, v]) => (
-                                    <Badge
-                                      key={k}
-                                      variant="secondary"
-                                      className="text-[9px]"
-                                    >
-                                      {k}: {String(v)}
-                                    </Badge>
-                                  ),
-                                )}
-                              </div>
-                            )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
+        ) : (
+          <div className="text-muted-foreground border-border flex items-center justify-center rounded-xl border border-dashed p-10 text-sm">
+            Select or create a knowledge base to get started.
           </div>
-        </div>
+        )}
       </div>
     </div>
   )

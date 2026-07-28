@@ -28,7 +28,19 @@ async function getHfToken(): Promise<string> {
 }
 
 const isWindows = os.platform() === 'win32'
+const isLinux = os.platform() === 'linux'
 const START_SCRIPT = isWindows ? 'start.ps1' : 'start.sh'
+
+// numactl accepts comma-separated CPU IDs and ranges, e.g. "0-7", "0,2,4-6".
+const NUMACTL_CPU_LIST_RE = /^\s*\d+(-\d+)?(\s*,\s*\d+(-\d+)?)*\s*$/
+
+function normalizeCpuAffinity(value: string | undefined): string | null {
+  if (!value) return null
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  if (!NUMACTL_CPU_LIST_RE.test(trimmed)) return null
+  return trimmed.replace(/\s+/g, '')
+}
 
 const LOG_ROTATION_CONFIG = {
   size: '50M' as const,
@@ -52,8 +64,7 @@ type ProcessEntry = {
 declare global {
   var processHandlerProcesses: Map<string, ProcessEntry> | undefined
   var processHandlerLogStreams:
-    | Map<string, ReturnType<typeof createStream>>
-    | undefined
+    Map<string, ReturnType<typeof createStream>> | undefined
   var processHandlerPendingSpawns: Set<string> | undefined
 }
 
@@ -243,6 +254,12 @@ async function spawnProcess(
     env?: Record<string, string | undefined>
     /** Override the default start script with a custom executable. */
     command?: string
+    /**
+     * Pin this process to specific CPU cores via numactl (Linux only).
+     * Accepts numactl -C format ("0-7", "0,2,4"). Ignored on non-Linux
+     * platforms, when numactl isn't installed, or when invalid.
+     */
+    cpuAffinity?: string
   },
 ) {
   if (processes.has(name) || pendingSpawns.has(name)) {
@@ -276,6 +293,20 @@ async function spawnProcess(
           ...args,
         ]
       : [startScript, ...args]
+  }
+
+  // Pin to specific CPU cores via numactl on Linux when configured.
+  const affinity = normalizeCpuAffinity(options.cpuAffinity)
+  if (affinity) {
+    if (!isLinux) {
+      logger.warn(
+        `[${name}] cpuAffinity is configured but only supported on Linux — ignoring`,
+      )
+    } else {
+      spawnArgs = ['-C', affinity, command, ...spawnArgs]
+      command = 'numactl'
+      logger.info(`[${name}] pinning to CPUs ${affinity} via numactl`)
+    }
   }
 
   await archiveProcessLogs(name)

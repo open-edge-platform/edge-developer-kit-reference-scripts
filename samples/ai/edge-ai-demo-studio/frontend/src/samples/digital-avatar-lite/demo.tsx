@@ -113,7 +113,7 @@ export function DigitalAvatarLiteDemo({ sample }: { sample: Sample }) {
             sttOnline={sttOnline}
             isVlm={isMultimodal}
             isSpeaking={isSpeaking}
-            imagePreview={chat.imagePreview}
+            imagePreviews={chat.imagePreviews}
             onImageSelect={chat.handleImageSelect}
             onImageRemove={chat.handleRemoveImage}
           />

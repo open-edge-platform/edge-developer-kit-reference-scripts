@@ -15,9 +15,15 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
+import { useSystemInfo } from '@/context/system-info-context'
 import { useDevicesQuery, resolveDeviceOptions } from '@/hooks/use-devices'
 import { useUpdateServiceConfig } from '@/hooks/use-service-config'
 import { ClearModelCacheSection } from '@/services/common/demo/components/clear-model-cache-section'
+import {
+  CpuAffinitySection,
+  isCpuAffinityValid,
+  normalizeCpuAffinity,
+} from '@/components/common/cpu-affinity-section'
 import {
   type ConfigurePanelStatus,
   ServiceConfigurePanel,
@@ -34,14 +40,21 @@ interface TtsConfigurePanelProps {
 }
 
 export function TtsConfigurePanel({ service }: TtsConfigurePanelProps) {
+  const { systemInfo } = useSystemInfo()
+  const isLinux = systemInfo?.os === 'linux'
+
   const currentModel =
     service.currentModel ?? service.defaultModel?.name ?? 'kokoro'
   const currentDevice =
     service.currentDevice ?? service.defaultModel?.device ?? 'CPU'
+  const currentCpuAffinity =
+    (service.metadata as { cpuAffinity?: string } | undefined)?.cpuAffinity ??
+    ''
 
   const [open, setOpen] = useState(false)
   const [draftModel, setDraftModel] = useState(currentModel)
   const [draftDevice, setDraftDevice] = useState(currentDevice)
+  const [draftCpuAffinity, setDraftCpuAffinity] = useState(currentCpuAffinity)
 
   const { mutate: updateConfig, isPending: isSaving } = useUpdateServiceConfig()
 
@@ -81,23 +94,33 @@ export function TtsConfigurePanel({ service }: TtsConfigurePanelProps) {
       if (!newOpen) {
         setDraftModel(currentModel)
         setDraftDevice(currentDevice)
+        setDraftCpuAffinity(currentCpuAffinity)
       }
       setOpen(newOpen)
     },
-    [currentModel, currentDevice],
+    [currentModel, currentDevice, currentCpuAffinity],
   )
+
+  const normalizedDraftAffinity = normalizeCpuAffinity(draftCpuAffinity)
+  const cpuAffinityChanged =
+    normalizedDraftAffinity !== normalizeCpuAffinity(currentCpuAffinity)
+  const cpuAffinityValid = isCpuAffinityValid(draftCpuAffinity)
 
   const isDirty =
     draftModel !== currentModel ||
-    draftDevice.toLowerCase() !== currentDevice.toLowerCase()
+    draftDevice.toLowerCase() !== currentDevice.toLowerCase() ||
+    cpuAffinityChanged
+
+  const isValid = cpuAffinityValid
 
   const handleCancel = useCallback(() => {
     setDraftModel(currentModel)
     setDraftDevice(currentDevice)
-  }, [currentModel, currentDevice])
+    setDraftCpuAffinity(currentCpuAffinity)
+  }, [currentModel, currentDevice, currentCpuAffinity])
 
   const handleSave = useCallback(() => {
-    if (!service.dbId) return
+    if (!service.dbId || !isValid) return
 
     updateConfig(
       {
@@ -106,15 +129,35 @@ export function TtsConfigurePanel({ service }: TtsConfigurePanelProps) {
         config: {
           name: draftModel,
           device: draftDevice,
+          ...(cpuAffinityChanged && {
+            metadata: { cpuAffinity: normalizedDraftAffinity },
+          }),
         },
       },
       { onSuccess: () => setOpen(false) },
     )
-  }, [service.dbId, service.id, draftModel, draftDevice, updateConfig])
+  }, [
+    service.dbId,
+    service.id,
+    draftModel,
+    draftDevice,
+    cpuAffinityChanged,
+    normalizedDraftAffinity,
+    isValid,
+    updateConfig,
+  ])
 
   const statusItems: ConfigurePanelStatus[] = [
     { label: 'Current model', value: currentModel || '—' },
     { label: 'Current device', value: currentDevice || '—' },
+    ...(isLinux
+      ? [
+          {
+            label: 'CPU affinity',
+            value: currentCpuAffinity || 'all cores',
+          },
+        ]
+      : []),
   ]
 
   return (
@@ -122,7 +165,7 @@ export function TtsConfigurePanel({ service }: TtsConfigurePanelProps) {
       serviceName={service.name}
       statusItems={statusItems}
       isDirty={isDirty}
-      isValid={true}
+      isValid={isValid}
       onSave={handleSave}
       isSaving={isSaving}
       onCancel={handleCancel}
@@ -245,6 +288,17 @@ export function TtsConfigurePanel({ service }: TtsConfigurePanelProps) {
           )}
         </div>
       </div>
+
+      {isLinux && (
+        <>
+          <Separator />
+          <CpuAffinitySection
+            value={draftCpuAffinity}
+            onChange={setDraftCpuAffinity}
+            currentServiceId={service.id}
+          />
+        </>
+      )}
 
       <Separator />
 

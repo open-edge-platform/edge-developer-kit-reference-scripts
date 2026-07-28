@@ -12,17 +12,19 @@ import { AudioLipsyncTab } from './components/audio-lipsync-tab'
 import { AvatarStream } from './components/avatar-stream'
 import { AvatarsTab } from './components/avatars-tab'
 import { ChatTab } from './components/chat-tab'
-import { buildIceConfig, useLipsyncOffer } from './hooks'
+import { buildIceConfig, useLipsyncOffer, waitForIceGathering } from './hooks'
 
 export function LipsyncDemo({ service }: { service: Service }) {
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
+  const [isConnecting, setIsConnecting] = useState(false)
+  const [isMediaConnected, setIsMediaConnected] = useState(false)
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const pcRef = useRef<RTCPeerConnection | null>(null)
+  const iceGatheringTimedOutRef = useRef(false)
 
-  const { mutateAsync: offerMutateAsync, isPending: isOfferPending } =
-    useLipsyncOffer()
+  const { mutateAsync: offerMutateAsync } = useLipsyncOffer()
 
   const clientIceServerUrl = (
     service.metadata as { clientIceServerUrl?: string } | undefined
@@ -34,11 +36,16 @@ export function LipsyncDemo({ service }: { service: Service }) {
 
   const connect = useCallback(async () => {
     setStatusMessage(null)
+    setIsConnecting(true)
+    setIsMediaConnected(false)
+    iceGatheringTimedOutRef.current = false
 
+    let createdPc: RTCPeerConnection | null = null
     try {
       const pc = new RTCPeerConnection(
         buildIceConfig(clientIceServerUrl, 'stun'),
       )
+      createdPc = pc
 
       pc.addEventListener('track', (event) => {
         if (videoRef.current && event.streams[0]) {
@@ -52,6 +59,8 @@ export function LipsyncDemo({ service }: { service: Service }) {
             clearTimeout(disconnectTimeoutRef.current)
             disconnectTimeoutRef.current = null
           }
+          iceGatheringTimedOutRef.current = false
+          setIsMediaConnected(true)
           setStatusMessage('Connected')
         } else if (pc.connectionState === 'failed') {
           if (disconnectTimeoutRef.current) {
@@ -60,7 +69,11 @@ export function LipsyncDemo({ service }: { service: Service }) {
           }
           setSessionId(null)
           setStatusMessage(null)
-          toast.error('WebRTC connection lost')
+          toast.error(
+            iceGatheringTimedOutRef.current
+              ? 'Could not establish media connection — check the configured ICE server'
+              : 'WebRTC connection lost',
+          )
         } else if (pc.connectionState === 'disconnected') {
           setStatusMessage('Reconnecting...')
           if (!disconnectTimeoutRef.current) {
@@ -81,19 +94,13 @@ export function LipsyncDemo({ service }: { service: Service }) {
 
       const offer = await pc.createOffer()
       await pc.setLocalDescription(offer)
-      await new Promise<void>((resolve) => {
-        if (pc.iceGatheringState === 'complete') {
-          resolve()
-        } else {
-          const onStateChange = () => {
-            if (pc.iceGatheringState === 'complete') {
-              pc.removeEventListener('icegatheringstatechange', onStateChange)
-              resolve()
-            }
-          }
-          pc.addEventListener('icegatheringstatechange', onStateChange)
-        }
-      })
+      const gatheringCompleted = await waitForIceGathering(pc)
+      if (!gatheringCompleted) {
+        iceGatheringTimedOutRef.current = true
+        toast.warning(
+          'ICE gathering timed out — the configured ICE server may be unreachable. Trying to connect anyway…',
+        )
+      }
 
       const answer = await offerMutateAsync({
         sdp: pc.localDescription?.sdp ?? offer.sdp,
@@ -107,7 +114,10 @@ export function LipsyncDemo({ service }: { service: Service }) {
       pcRef.current = pc
       setSessionId(answer.session_id)
     } catch (e) {
+      createdPc?.close()
       toast.error(e instanceof Error ? e.message : 'Failed to connect')
+    } finally {
+      setIsConnecting(false)
     }
   }, [offerMutateAsync, clientIceServerUrl])
 
@@ -125,6 +135,7 @@ export function LipsyncDemo({ service }: { service: Service }) {
     }
     setSessionId(null)
     setStatusMessage(null)
+    setIsMediaConnected(false)
   }, [])
 
   useEffect(() => {
@@ -138,7 +149,8 @@ export function LipsyncDemo({ service }: { service: Service }) {
       <AvatarStream
         videoRef={videoRef}
         isConnected={sessionId !== null}
-        isConnecting={isOfferPending}
+        isConnecting={isConnecting}
+        isEstablishing={!isMediaConnected}
         statusMessage={statusMessage}
         sessionId={sessionId}
         onConnect={connect}

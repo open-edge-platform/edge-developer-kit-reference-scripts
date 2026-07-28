@@ -199,8 +199,7 @@ export interface UseRoboticsAiDemoReturn {
   isPrerequisitesLoading: boolean
   prerequisites: { dialout: boolean; librealsense: boolean } | undefined
   calibrationStatus:
-    | { motor_calibrated: boolean; camera_calibrated: boolean }
-    | undefined
+    { motor_calibrated: boolean; camera_calibrated: boolean } | undefined
   refetchCalibrationStatus: () => void
   availableRobotTypes: string[]
   availableRobotPorts: {
