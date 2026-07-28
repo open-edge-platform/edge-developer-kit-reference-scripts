@@ -161,6 +161,7 @@ initialize_package_arrays() {
         "git"
         "docker"
         "docker-compose"
+        "qmassa"
     )
 }
 
@@ -495,6 +496,18 @@ detect_toolchain() {
     
     # Core development tools
     for tool in "${TOOLCHAIN_PACKAGES[@]}"; do
+        # Compose ships as a docker CLI plugin invoked as "docker compose", so
+        # there is no docker-compose binary for command -v to find.
+        if [ "$tool" = "docker-compose" ] && ! command -v docker-compose >/dev/null 2>&1; then
+            local compose_version
+            compose_version=$(timeout 5 docker compose version --short 2>/dev/null || true)
+            if [ -n "$compose_version" ]; then
+                printf "%-25s | %-40s\n" "docker compose" "$compose_version (plugin)"
+            else
+                printf "%-25s | %-40s\n" "docker-compose" "Not Installed"
+            fi
+            continue
+        fi
         if command -v "$tool" >/dev/null 2>&1; then
             local version
             case "$tool" in

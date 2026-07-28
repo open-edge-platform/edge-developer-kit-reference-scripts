@@ -57,6 +57,19 @@ S_ERROR="[ERROR]"
 S_VALID="[✓]"
 S_WARNING="[!]"
 
+# Colours used by the restart banners. Defined here because set -u makes an
+# unset reference fatal, and empty when the output is not a terminal so the
+# escape codes do not end up in the log file.
+if [ -t 1 ]; then
+    YELLOW='\033[1;33m'
+    GREEN='\033[0;32m'
+    NC='\033[0m'
+else
+    YELLOW=''
+    GREEN=''
+    NC=''
+fi
+
 # Error handler: reports failing command and line number
 error_trap() {
     local exit_code=$?
@@ -74,6 +87,20 @@ trap 'echo "Script interrupted"; exit 130' INT TERM
 export INSTALL_CAMERA=false
 export INSTALL_OPENVINO=false
 export TELEMETRY_CONSENT=""
+
+# Optional extras. Nothing here is installed unless the user asks for it,
+# either through the selection menu or --with-extras=<list>.
+INSTALL_DOCKER=false
+INSTALL_QMASSA=false
+INSTALL_DLSTREAMER=false
+
+# How extras were requested: unset, menu, list or none.
+EXTRAS_MODE="unset"
+EXTRAS_LIST=""
+
+# Outcome tracking, reported in the closing notice.
+EXTRAS_INSTALLED=()
+EXTRAS_FAILED=()
 
 # Log file configuration
 LOG_FILE="/var/log/intel-platform-installer.log"
@@ -119,7 +146,23 @@ usage() {
     echo "Intel Platform Installer"
     echo "========================"
     echo ""
-    echo "Usage: $0 [options]"
+    echo "Usage: sudo ./main_installer.sh [options]"
+    echo ""
+    echo "Drivers and OpenVINO are always installed. Optional extras are not."
+    echo ""
+    echo "Options:"
+    echo "  --with-extras           Choose optional components from a menu"
+    echo "  --with-extras=<list>    Install the listed components without asking"
+    echo "  --no-extras             Skip the menu and install no extras"
+    echo "  --telemetry=yes|no      Answer the telemetry question without prompting"
+    echo "  -h, --help              Show this help"
+    echo ""
+    echo "Components accepted by --with-extras:"
+    echo "  docker      Docker Engine, with the Compose and Buildx plugins"
+    echo "  qmassa      Terminal Intel GPU usage monitor"
+    echo "  dlstreamer  Intel DL Streamer, GStreamer media analytics elements"
+    echo "  all         Every component above"
+    echo "  none        No components, same as --no-extras"
     echo ""
     echo "Environment:"
     echo "  DEVKIT_AUTO_INSTALL=1   Unattended mode. Installs everything in a single"
@@ -127,6 +170,19 @@ usage() {
     echo "                          RESTARTS THE SYSTEM and prints the verification"
     echo "                          summary automatically on the next boot."
     echo "                          Default: off (two reboots, run the script twice)."
+    echo ""
+    echo "Examples:"
+    echo "  sudo ./main_installer.sh"
+    echo "      Drivers and OpenVINO. On a terminal you are asked about extras."
+    echo ""
+    echo "  sudo ./main_installer.sh --with-extras=docker"
+    echo "      Adds Docker, no prompt. Suitable for scripted and CI runs."
+    echo ""
+    echo "  sudo ./main_installer.sh --with-extras=all"
+    echo "      Adds every optional component, no prompt."
+    echo ""
+    echo "  sudo DLSTREAMER_VERSION=2026.1.0 ./main_installer.sh --with-extras=dlstreamer"
+    echo "      Pins the DL Streamer release instead of taking the latest."
     echo ""
 }
 
@@ -151,6 +207,7 @@ download_scripts() {
         "npu_installer.sh"
         "openvino_installer.sh"
         "print_summary_table.sh"
+        "dlstreamer_installer.sh"
     )
     
     # Add telemetry scripts if user consented
@@ -609,6 +666,447 @@ install_build_essentials() {
    fi
 }
 
+# ---------------------------------------------------------------------------
+# Additional software: Docker and qmassa (issue #1005)
+# Installed after the drivers so a failure here cannot block the baseline.
+# ---------------------------------------------------------------------------
+RUSTUP_INSTALLED_BY_US=0
+
+# Configure Docker to use the proxy from the environment, if one is set.
+# Two layers need it separately:
+#   daemon  -> systemd drop-in, used by docker pull/push
+#   client  -> ~/.docker/config.json, used by docker build and injected into containers
+# https://docs.docker.com/engine/daemon/proxy/
+configure_docker_proxy() {
+    local http_p https_p no_p
+    http_p="${HTTP_PROXY:-${http_proxy:-}}"
+    https_p="${HTTPS_PROXY:-${https_proxy:-}}"
+    no_p="${NO_PROXY:-${no_proxy:-}}"
+
+    if [ -z "$http_p" ] && [ -z "$https_p" ]; then
+        echo "$S_VALID No proxy set in the environment, skipping Docker proxy configuration"
+        return 0
+    fi
+
+    echo "# Configuring Docker proxy from the environment..."
+
+    # Always bypass the loopback interface so local registries keep working.
+    case ",$no_p," in
+        *,localhost,*) : ;;
+        *) no_p="${no_p:+$no_p,}localhost,127.0.0.1,::1" ;;
+    esac
+
+    # systemd treats '%' as a specifier prefix, so a literal one must be doubled.
+    local http_sd https_sd no_sd
+    http_sd=${http_p//%/%%}
+    https_sd=${https_p//%/%%}
+    no_sd=${no_p//%/%%}
+
+    mkdir -p /etc/systemd/system/docker.service.d
+    {
+        echo "[Service]"
+        [ -n "$http_sd" ]  && echo "Environment=\"HTTP_PROXY=$http_sd\""
+        [ -n "$https_sd" ] && echo "Environment=\"HTTPS_PROXY=$https_sd\""
+        [ -n "$no_sd" ]    && echo "Environment=\"NO_PROXY=$no_sd\""
+    } > /etc/systemd/system/docker.service.d/http-proxy.conf
+
+    systemctl daemon-reload || true
+    systemctl restart docker || true
+    echo "$S_VALID Wrote /etc/systemd/system/docker.service.d/http-proxy.conf"
+
+    # Client config, merged so any existing settings survive.
+    local target_home target_user
+    for target_user in root "${SUDO_USER:-}"; do
+        [ -z "$target_user" ] && continue
+        target_home=$(getent passwd "$target_user" | cut -d: -f6)
+        [ -z "$target_home" ] && continue
+        mkdir -p "$target_home/.docker"
+        HTTP_P="$http_p" HTTPS_P="$https_p" NO_P="$no_p" \
+        python3 - "$target_home/.docker/config.json" <<'PYEOF' || true
+import json, os, sys
+path = sys.argv[1]
+try:
+    with open(path) as fh:
+        cfg = json.load(fh)
+except Exception:
+    cfg = {}
+cfg.setdefault("proxies", {}).setdefault("default", {}).update({
+    k: v for k, v in (
+        ("httpProxy", os.environ.get("HTTP_P", "")),
+        ("httpsProxy", os.environ.get("HTTPS_P", "")),
+        ("noProxy", os.environ.get("NO_P", "")),
+    ) if v
+})
+with open(path, "w") as fh:
+    json.dump(cfg, fh, indent=2)
+    fh.write("\n")
+PYEOF
+        chown -R "$target_user": "$target_home/.docker" 2>/dev/null || true
+        echo "$S_VALID Wrote $target_home/.docker/config.json"
+    done
+
+    systemctl show --property=Environment docker 2>/dev/null | head -1 || true
+}
+
+# https://docs.docker.com/engine/install/ubuntu/
+install_docker() {
+    if command -v docker >/dev/null 2>&1; then
+        echo "$S_VALID Docker already installed: $(docker --version 2>/dev/null || echo unknown)"
+    else
+        echo "# Installing Docker Engine and Compose..."
+
+        # Distro packages conflict with Docker's own; remove any that are present.
+        local conflicting
+        conflicting=$(dpkg --get-selections docker.io docker-compose docker-compose-v2 docker-doc podman-docker containerd runc 2>/dev/null | cut -f1 || true)
+        if [ -n "$conflicting" ]; then
+            # shellcheck disable=SC2086
+            DEBIAN_FRONTEND=noninteractive apt-get remove -y $conflicting || true
+        fi
+
+        apt-get update
+        DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates curl
+
+        install -m 0755 -d /etc/apt/keyrings
+        curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+        chmod a+r /etc/apt/keyrings/docker.asc
+
+        local codename arch
+        # shellcheck disable=SC1091
+        codename=$(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+        arch=$(dpkg --print-architecture)
+
+        tee /etc/apt/sources.list.d/docker.sources >/dev/null <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $codename
+Components: stable
+Architectures: $arch
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
+
+        apt-get update
+        DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+        systemctl enable --now docker >/dev/null 2>&1 || true
+
+        echo "$S_VALID Docker installed: $(docker --version 2>/dev/null || echo unknown)"
+    fi
+
+    # Compose ships as a plugin, invoked as 'docker compose'
+    if docker compose version >/dev/null 2>&1; then
+        echo "$S_VALID Docker Compose installed: $(docker compose version --short 2>/dev/null || echo unknown)"
+    else
+        DEBIAN_FRONTEND=noninteractive apt-get install -y docker-compose-plugin || \
+            echo "$S_WARNING Docker Compose plugin not installed"
+    fi
+
+    # Proxy must be configured before the first pull, and after the daemon exists
+    configure_docker_proxy
+
+    # The docker group is created by the package but has no members, so the
+    # invoking user would still need sudo for every command.
+    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+        usermod -aG docker "$SUDO_USER" || true
+        echo "$S_VALID Added '$SUDO_USER' to the docker group"
+        echo "$S_WARNING Log out and back in, or run 'newgrp docker', to use docker without sudo"
+    fi
+}
+
+# https://github.com/ulissesf/qmassa - cargo is the recommended install route
+install_qmassa() {
+    if command -v qmassa >/dev/null 2>&1; then
+        echo "$S_VALID qmassa already installed: $(qmassa --version 2>/dev/null || echo unknown)"
+        return 0
+    fi
+
+    echo "# Installing qmassa (compiled from source)..."
+
+    DEBIAN_FRONTEND=noninteractive apt-get install -y \
+        build-essential pkg-config libudev-dev curl ca-certificates
+
+    # qmassa needs a newer Rust than Ubuntu 24.04 ships, so use rustup.
+    if ! command -v cargo >/dev/null 2>&1; then
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+            | sh -s -- -y --default-toolchain stable --profile minimal --no-modify-path
+        RUSTUP_INSTALLED_BY_US=1
+    fi
+
+    # shellcheck disable=SC1090,SC1091
+    [ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
+
+    if ! cargo install --locked --root /usr/local qmassa; then
+        echo "$S_ERROR qmassa build failed"
+        if [ "$RUSTUP_INSTALLED_BY_US" -eq 1 ]; then
+            rustup self uninstall -y >/dev/null 2>&1 || true
+        fi
+        return 1
+    fi
+
+    # Reclaim the toolchain, but only if this script installed it.
+    if [ "$RUSTUP_INSTALLED_BY_US" -eq 1 ]; then
+        rustup self uninstall -y >/dev/null 2>&1 || true
+        echo "$S_VALID Removed the temporary Rust toolchain"
+    fi
+
+    echo "$S_VALID qmassa installed: $(qmassa --version 2>/dev/null || echo unknown)"
+    echo "$S_WARNING qmassa needs root, or membership of the video and render groups, to report all stats"
+}
+
+# Delegates to the standalone installer, which handles the Intel repositories,
+# the OpenVINO version check and the system-wide environment. DLSTREAMER_VERSION
+# passes through the environment if the caller set it.
+install_dlstreamer() {
+    if [ ! -f "$SCRIPT_DIR/dlstreamer_installer.sh" ]; then
+        echo "$S_ERROR DL Streamer installer not found at $SCRIPT_DIR/dlstreamer_installer.sh"
+        return 1
+    fi
+
+    echo "# Installing Intel DL Streamer..."
+
+    if ! bash "$SCRIPT_DIR/dlstreamer_installer.sh"; then
+        return 1
+    fi
+
+    echo "$S_VALID DL Streamer installed"
+    echo "$S_WARNING Log out and back in so the DL Streamer environment is applied"
+}
+
+# ---------------------------------------------------------------------------
+# Optional extras: selection
+# ---------------------------------------------------------------------------
+
+parse_args() {
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --with-extras)
+                EXTRAS_MODE="menu"
+                ;;
+            --with-extras=*)
+                EXTRAS_MODE="list"
+                EXTRAS_LIST="${1#*=}"
+                ;;
+            --no-extras)
+                EXTRAS_MODE="none"
+                ;;
+            --telemetry=yes|--telemetry=y)
+                export TELEMETRY_CONSENT="yes"
+                ;;
+            --telemetry=no|--telemetry=n)
+                export TELEMETRY_CONSENT="no"
+                ;;
+            --telemetry)
+                echo "$S_ERROR --telemetry requires a value: yes or no"
+                exit 1
+                ;;
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            *)
+                echo "$S_ERROR Unknown option: $1"
+                echo "Run './main_installer.sh --help' for the list of options."
+                exit 1
+                ;;
+        esac
+        shift
+    done
+}
+
+# Turn a comma separated list into the per component decisions.
+apply_extras_list() {
+    local raw item
+    raw="$1"
+
+    local IFS=','
+    for item in $raw; do
+        case "$(echo "$item" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')" in
+            all)
+                INSTALL_DOCKER=true
+                INSTALL_QMASSA=true
+                INSTALL_DLSTREAMER=true
+                ;;
+            docker)
+                INSTALL_DOCKER=true
+                ;;
+            qmassa)
+                INSTALL_QMASSA=true
+                ;;
+            dlstreamer)
+                INSTALL_DLSTREAMER=true
+                ;;
+            none|"")
+                ;;
+            *)
+                echo "$S_ERROR Unknown component: $item"
+                echo "Valid components: docker, qmassa, dlstreamer, all, none"
+                exit 1
+                ;;
+        esac
+    done
+}
+
+# Plain prompt, used when whiptail is unavailable.
+select_extras_text() {
+    local reply=""
+
+    echo ""
+    echo "Optional components, none of them required:"
+    echo "  docker      Docker Engine, with the Compose and Buildx plugins"
+    echo "  qmassa      Terminal Intel GPU usage monitor"
+    echo "  dlstreamer  Intel DL Streamer, GStreamer media analytics elements"
+    echo ""
+    read -r -p "Install which? [docker,qmassa,dlstreamer,all,none] (default none): " reply || reply=""
+
+    if [ -n "$reply" ]; then
+        apply_extras_list "$reply"
+    fi
+}
+
+# Checklist menu. Runs before logging starts, so it has the real terminal.
+select_extras_menu() {
+    local choices="" status=0
+
+    if ! command -v whiptail >/dev/null 2>&1; then
+        select_extras_text
+        return 0
+    fi
+
+    # whiptail draws on stderr and returns its result on stdout, hence the
+    # descriptor swap. Cancel and Escape exit non-zero, which must not reach
+    # the ERR trap, so the status is captured rather than allowed to propagate.
+    set +e
+    choices=$(whiptail --title "Optional components" \
+        --checklist "\nNone of these are required. Space selects, Enter confirms.\n" \
+        14 76 3 \
+        "docker" "Docker Engine, Compose and Buildx plugins" OFF \
+        "qmassa" "Terminal Intel GPU usage monitor" OFF \
+        "dlstreamer" "DL Streamer media analytics elements" OFF \
+        3>&1 1>&2 2>&3)
+    status=$?
+    set -e
+
+    if [ "$status" -ne 0 ]; then
+        return 0
+    fi
+
+    case "$choices" in
+        *docker*) INSTALL_DOCKER=true ;;
+    esac
+    case "$choices" in
+        *qmassa*) INSTALL_QMASSA=true ;;
+    esac
+    case "$choices" in
+        *dlstreamer*) INSTALL_DLSTREAMER=true ;;
+    esac
+}
+
+# Decide what to install. Called before setup_logging so that any prompt
+# reaches the terminal instead of the tee pipeline.
+resolve_extras() {
+    case "$EXTRAS_MODE" in
+        list)
+            apply_extras_list "$EXTRAS_LIST"
+            ;;
+        none)
+            ;;
+        menu)
+            if [ -t 0 ] && [ -t 1 ]; then
+                select_extras_menu
+            else
+                echo "$S_ERROR --with-extras needs a terminal."
+                echo "In scripts use --with-extras=docker,qmassa instead."
+                exit 1
+            fi
+            ;;
+        *)
+            # No flag given. Ask on a terminal, install nothing otherwise, so
+            # unattended and CI runs stay untouched.
+            if [ -t 0 ] && [ -t 1 ]; then
+                select_extras_menu
+            fi
+            ;;
+    esac
+}
+
+# ---------------------------------------------------------------------------
+# Optional extras: installation and reporting
+# ---------------------------------------------------------------------------
+
+install_additional_software() {
+    if [ "$INSTALL_DOCKER" = false ] && [ "$INSTALL_QMASSA" = false ] \
+       && [ "$INSTALL_DLSTREAMER" = false ]; then
+        return 0
+    fi
+
+    echo ""
+    echo "========================================================================"
+    echo "# ADDITIONAL SOFTWARE INSTALLATION"
+    echo "========================================================================"
+
+    if [ "$INSTALL_DOCKER" = true ]; then
+        if install_docker; then
+            EXTRAS_INSTALLED+=("Docker Engine")
+        else
+            echo "$S_WARNING Docker installation had issues"
+            EXTRAS_FAILED+=("Docker Engine")
+        fi
+    fi
+
+    if [ "$INSTALL_QMASSA" = true ]; then
+        if install_qmassa; then
+            EXTRAS_INSTALLED+=("qmassa")
+        else
+            echo "$S_WARNING qmassa installation had issues"
+            EXTRAS_FAILED+=("qmassa")
+        fi
+    fi
+
+    if [ "$INSTALL_DLSTREAMER" = true ]; then
+        if install_dlstreamer; then
+            EXTRAS_INSTALLED+=("DL Streamer")
+        else
+            echo "$S_WARNING DL Streamer installation had issues"
+            EXTRAS_FAILED+=("DL Streamer")
+        fi
+    fi
+
+    return 0
+}
+
+# Closing note. A selected component that failed is stated plainly rather than
+# left in the scrollback, and anything not installed is advertised once.
+extras_notice() {
+    local item
+
+    if [ ${#EXTRAS_FAILED[@]} -gt 0 ]; then
+        echo ""
+        for item in "${EXTRAS_FAILED[@]}"; do
+            echo "$S_WARNING Selected but not installed: $item"
+        done
+        echo "    See $LOG_FILE for the reason."
+    fi
+
+    if [ "$INSTALL_DOCKER" = true ] && [ "$INSTALL_QMASSA" = true ] \
+       && [ "$INSTALL_DLSTREAMER" = true ]; then
+        return 0
+    fi
+
+    echo ""
+    echo "Optional components not installed:"
+    if [ "$INSTALL_DOCKER" = false ]; then
+        echo "  docker      Docker Engine, with the Compose and Buildx plugins"
+    fi
+    if [ "$INSTALL_QMASSA" = false ]; then
+        echo "  qmassa      Terminal Intel GPU usage monitor"
+    fi
+    if [ "$INSTALL_DLSTREAMER" = false ]; then
+        echo "  dlstreamer  Intel DL Streamer, GStreamer media analytics elements"
+    fi
+    echo ""
+    echo "  Add them at any time:"
+    echo "    sudo ./main_installer.sh --with-extras"
+}
 
 # Record that a restart is needed, and why. Safe to call repeatedly. (#987)
 flag_reboot_required() {
@@ -821,24 +1319,13 @@ send_telemetry_data() {
 }
 
 main() {
-    # Parse --telemetry argument before anything else
-    local arg
-    for arg in "$@"; do
-        case "$arg" in
-            --telemetry=yes|--telemetry=y)
-                export TELEMETRY_CONSENT="yes"
-                ;;
-            --telemetry=no|--telemetry=n)
-                export TELEMETRY_CONSENT="no"
-                ;;
-            --telemetry)
-                echo "${S_ERROR} --telemetry requires a value: yes or no"
-                exit 1
-                ;;
-        esac
-    done
-
+    parse_args "$@"
     check_privileges
+
+    # Ask before logging is redirected through tee, so the menu reaches the
+    # terminal, and before the drivers run, so the machine can be left alone.
+    resolve_extras
+
     setup_logging "$@"
 
     # Clear anything armed by a previous run
@@ -846,10 +1333,20 @@ main() {
     
     echo "Intel Platform Installer"
     echo "========================"
-    
+    echo ""
+    if [ "$INSTALL_DOCKER" = true ]; then
+        echo "$S_VALID Optional component selected: docker"
+    fi
+    if [ "$INSTALL_QMASSA" = true ]; then
+        echo "$S_VALID Optional component selected: qmassa"
+    fi
+    if [ "$INSTALL_DLSTREAMER" = true ]; then
+        echo "$S_VALID Optional component selected: dlstreamer"
+    fi
+
     # Ask for telemetry consent (skipped if --telemetry flag was provided)
     ask_telemetry_consent
-    
+
     download_scripts
     # 1. Detect platform first (needed for kernel policy in verify step)
     echo "# Detecting platform..."
@@ -912,9 +1409,14 @@ main() {
         fi
     fi
     
+    # Install additional software (Docker, Docker Compose, qmassa)
+    install_additional_software
+
     # Run installation summary
     summary
-    
+    # Report on the optional components
+    extras_notice
+
     # Send telemetry data if consent was given
     send_telemetry_data
    
