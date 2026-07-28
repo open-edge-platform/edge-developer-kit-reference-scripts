@@ -357,6 +357,27 @@ const performHealthCheck = async (
   }
 }
 
+const statusUnchanged = async (
+  payload: BasePayload,
+  service: Service,
+  expected: Service['status'],
+): Promise<boolean> => {
+  try {
+    const fresh = await payload.findByID({
+      collection: WORKLOAD_COLLECTION,
+      id: service.id,
+    })
+    if (fresh.status === expected) return true
+    logger.log(
+      `Service ${service.id} changed status to ${fresh.status} mid-check, skipping stale update`,
+    )
+    return false
+  } catch (error) {
+    logger.error(`Failed to re-read service ${service.id}:`, error)
+    return false
+  }
+}
+
 // Updates a service record in the database
 const updateServiceInDatabase = async (
   payload: BasePayload,
@@ -550,7 +571,7 @@ const processServiceHealthCheck = async (
     if (process && !isPidAlive(process.pid)) {
       cleanupDeadProcess(processName)
     }
-    if (currentIsHealthy) {
+    if (currentIsHealthy && (await statusUnchanged(payload, service, status))) {
       await updateServiceInDatabase(payload, service.id, { isHealthy: false })
     }
     return
@@ -570,6 +591,10 @@ const processServiceHealthCheck = async (
         status: ServiceStatus.ERROR,
         isHealthy: false,
       })
+      return
+    }
+
+    if (!process) {
       return
     }
   }
@@ -596,6 +621,8 @@ const processServiceHealthCheck = async (
     result.newIsHealthy !== null && result.newIsHealthy !== currentIsHealthy
 
   if (needsStatusUpdate || needsHealthUpdate) {
+    if (!(await statusUnchanged(payload, service, status))) return
+
     const updateData: ServiceUpdateData = {}
     if (needsStatusUpdate && result.newStatus !== null)
       updateData.status = result.newStatus

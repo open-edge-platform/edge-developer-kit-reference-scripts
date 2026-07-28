@@ -6,30 +6,78 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Version Management:
-# - Automatically resolves the latest release from GitHub
-# - Override is supported ONLY via environment variables passed to this script
-#   * NPU_ASSET_URL: full browser download URL to the desired tar.gz
-#   * OR NPU_VERSION + NPU_BUILD_ID: constructs asset URL for Ubuntu 24.04
-# - Latest releases: https://github.com/intel/linux-npu-driver/releases
+#
+# The driver is pinned to a validated release by default. The pinned path
+# builds the download URL directly and never contacts api.github.com, which is
+# rate limited to 60 requests/hour per source IP. Behind a shared NAT or
+# corporate proxy that quota is easily exhausted by other machines, which made
+# installation fail intermittently and undiagnosably. See issue #1038.
+#
+# Note that only the metadata API is rate limited. The release *download* host
+# is not, so the pinned path keeps working even when the API is exhausted.
+#
+# This mirrors main_installer.sh, which pins the kernel rather than resolving
+# the newest one.
+#
+# Overrides:
+#   NPU_VERSION=latest          resolve the newest release (needs the API)
+#   NPU_VERSION + NPU_BUILD_ID  install a specific release, no API call
+#   NPU_ASSET_URL               full tar.gz URL, no API call
+#   GITHUB_TOKEN                raises the API quota to 5000/hour when used
+#
+# Releases: https://github.com/intel/linux-npu-driver/releases
 #
 # Usage:
 #   sudo ./npu_installer.sh
+#   sudo NPU_VERSION=latest ./npu_installer.sh
+#   sudo NPU_VERSION=1.32.1 NPU_BUILD_ID=20260422-24767473183 ./npu_installer.sh
 
-# Version resolution variables (auto or overridden)
-# If unset, the script will query GitHub for the latest release and the
-# Ubuntu 24.04 tarball asset URL.
+# Validated release, updated deliberately rather than tracking upstream.
+readonly NPU_PINNED_VERSION="1.33.0"
+readonly NPU_PINNED_BUILD_ID="20260529-26625960453"
+
 NPU_VERSION="${NPU_VERSION:-}"
 NPU_BUILD_ID="${NPU_BUILD_ID:-}"
 NPU_ASSET_URL="${NPU_ASSET_URL:-}"
+
+# Apply the pin unless the caller asked for something else
+if [ -z "$NPU_ASSET_URL" ] && [ -z "$NPU_VERSION" ]; then
+   NPU_VERSION="$NPU_PINNED_VERSION"
+   NPU_BUILD_ID="$NPU_PINNED_BUILD_ID"
+fi
 
 log_success() {
    echo "$S_VALID $1"
 }
 
 # Resolve latest release and asset URL from GitHub (no jq required)
+GITHUB_API_ERROR=""
+
 resolve_latest_release() {
-   local json url tag asset_name
-   json=$(curl -fsSL https://api.github.com/repos/intel/linux-npu-driver/releases/latest 2>/dev/null || true)
+   local json url tag asset_name http_code body hdr
+   local -a auth=()
+   [ -n "${GITHUB_TOKEN:-}" ] && auth=(-H "Authorization: Bearer ${GITHUB_TOKEN}")
+
+   body=$(mktemp); hdr="${body}.hdr"
+   http_code=$(curl -sS -L -o "$body" -D "$hdr" -w '%{http_code}' \
+      --connect-timeout 10 --max-time 30 \
+      -H "Accept: application/vnd.github+json" "${auth[@]}" \
+      https://api.github.com/repos/intel/linux-npu-driver/releases/latest 2>/dev/null) || http_code="000"
+
+   case "$http_code" in
+      200) json=$(cat "$body") ;;
+      403|429)
+         if [ "$(grep -i '^x-ratelimit-remaining:' "$hdr" 2>/dev/null | tr -d '\r' | awk '{print $2}')" = "0" ]; then
+            GITHUB_API_ERROR="GitHub API rate limit exhausted for this source IP"
+         else
+            GITHUB_API_ERROR="GitHub API returned HTTP $http_code"
+         fi
+         ;;
+      000) GITHUB_API_ERROR="Cannot reach api.github.com (network or proxy)" ;;
+      *)   GITHUB_API_ERROR="GitHub API returned HTTP $http_code" ;;
+   esac
+   rm -f "$body" "$hdr"
+
    if [ -n "$json" ]; then
       tag=$(echo "$json" | grep -m1 '"tag_name"' | sed -E 's/.*"v?([^"]+)".*/\1/' )
       url=$(echo "$json" | grep '"browser_download_url"' | grep -E 'tar\.gz' | grep -E 'ubuntu2404|ubuntu24\.04|ubuntu24' | head -1 | sed -E 's/.*"(https:[^"]+)".*/\1/')
@@ -66,12 +114,21 @@ resolve_versions() {
       return 0
    fi
 
-   # Otherwise, query latest
-   if resolve_latest_release; then
-      return 0
+   # NPU_VERSION=latest explicitly opts in to the GitHub API
+   if [ "$NPU_VERSION" = "latest" ]; then
+      NPU_VERSION=""
+      if resolve_latest_release; then
+         return 0
+      fi
+      print_error "Unable to resolve the latest NPU release from GitHub"
+      [ -n "${GITHUB_API_ERROR:-}" ] && print_error "  $GITHUB_API_ERROR"
+      print_info "  api.github.com allows 60 requests/hour per source IP."
+      print_info "  Retry without NPU_VERSION=latest to install the pinned"
+      print_info "  release ${NPU_PINNED_VERSION}, which needs no API call, or set GITHUB_TOKEN."
+      return 1
    fi
 
-   print_error "Unable to resolve latest NPU release from GitHub"
+   print_error "Unable to resolve the NPU release"
    print_error "You can override via NPU_ASSET_URL or NPU_VERSION+NPU_BUILD_ID"
    return 1
 }
@@ -108,8 +165,12 @@ display_version_info() {
    print_info "NPU Version: ${NPU_VERSION:-auto} | Build: ${NPU_BUILD_ID:-auto}"
    print_info "Ubuntu Package: ${UBUNTU_VERSION}"
    print_info ""
-   print_info "Auto-resolved latest release from GitHub."
-   print_info "Override (optional): export NPU_ASSET_URL, or NPU_VERSION+NPU_BUILD_ID before running."
+   if [ "${NPU_VERSION}.${NPU_BUILD_ID}" = "${NPU_PINNED_VERSION}.${NPU_PINNED_BUILD_ID}" ]; then
+      print_info "Using the pinned validated release (no GitHub API call)."
+      print_info "Override: NPU_VERSION=latest, or NPU_VERSION + NPU_BUILD_ID, or NPU_ASSET_URL."
+   else
+      print_info "Using an overridden release."
+   fi
 }
 
 # Status indicators - using ASCII for better compatibility (conditional definition)

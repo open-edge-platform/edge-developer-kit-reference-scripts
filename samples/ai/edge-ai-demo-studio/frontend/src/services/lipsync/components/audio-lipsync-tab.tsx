@@ -3,10 +3,11 @@
 
 'use client'
 
-import { FileAudio, Loader2, Play, X } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { Loader2, Play } from 'lucide-react'
+import { useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { AudioDropZone } from '@/services/common/components/audio-drop-zone'
 import {
   Select,
   SelectContent,
@@ -17,7 +18,7 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { useAudioLipsync } from '../hooks'
 
-const SUPPORTED_AUDIO_FORMATS = ['.wav', '.mp3']
+const SUPPORTED_AUDIO_FORMATS = '.wav,.mp3'
 
 const LANGUAGE_OPTIONS = [
   { code: 'en-US', name: 'English' },
@@ -37,28 +38,11 @@ export function AudioLipsyncTab({ sessionId }: AudioLipsyncTabProps) {
   const [selectedAudioFile, setSelectedAudioFile] = useState<File | null>(null)
   const [textOverlay, setTextOverlay] = useState('')
   const [languageCode, setLanguageCode] = useState('en-US')
-  const audioInputRef = useRef<HTMLInputElement>(null)
 
   const audioLipsync = useAudioLipsync()
   const isConnected = sessionId !== null
 
-  const handleAudioFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    const ext = '.' + file.name.split('.').pop()?.toLowerCase()
-    if (!SUPPORTED_AUDIO_FORMATS.includes(ext)) {
-      toast.error(
-        `Unsupported audio format. Please use: ${SUPPORTED_AUDIO_FORMATS.join(', ')}`,
-      )
-      return
-    }
-    setSelectedAudioFile(file)
-  }
-
-  const clearAudioFile = () => {
-    setSelectedAudioFile(null)
-    if (audioInputRef.current) audioInputRef.current.value = ''
-  }
+  const clearAudioFile = () => setSelectedAudioFile(null)
 
   const handleProcessAudio = () => {
     if (!selectedAudioFile || !sessionId) return
@@ -88,58 +72,17 @@ export function AudioLipsyncTab({ sessionId }: AudioLipsyncTabProps) {
         Upload an audio file to sync with the avatar.
       </p>
 
-      <div>
-        <input
-          data-testid="lipsync-audio-input"
-          ref={audioInputRef}
-          type="file"
-          accept={SUPPORTED_AUDIO_FORMATS.join(',')}
-          onChange={handleAudioFileSelect}
-          disabled={!isConnected || audioLipsync.isPending}
-          className="hidden"
-        />
-        {selectedAudioFile ? (
-          <div className="border-primary/30 bg-primary/5 flex items-center justify-between rounded-lg border p-3">
-            <div className="flex items-center gap-2 overflow-hidden">
-              <FileAudio className="text-primary h-4 w-4 shrink-0" />
-              <span className="truncate text-sm font-medium">
-                {selectedAudioFile.name}
-              </span>
-              <span className="text-muted-foreground shrink-0 text-xs">
-                ({(selectedAudioFile.size / 1024).toFixed(0)} KB)
-              </span>
-            </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 shrink-0"
-              onClick={clearAudioFile}
-              disabled={audioLipsync.isPending}
-            >
-              <X className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            className="border-border hover:border-primary/40 hover:bg-muted/30 flex w-full cursor-pointer flex-col items-center gap-2 rounded-lg border border-dashed p-6 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-            onClick={() => audioInputRef.current?.click()}
-            disabled={!isConnected || audioLipsync.isPending}
-          >
-            <div className="bg-muted flex h-10 w-10 items-center justify-center rounded-full">
-              <FileAudio className="text-muted-foreground h-5 w-5" />
-            </div>
-            <div className="text-center">
-              <p className="text-foreground text-sm font-medium">
-                Click to upload audio
-              </p>
-              <p className="text-muted-foreground text-xs">
-                WAV or MP3 · Converted to 16kHz mono
-              </p>
-            </div>
-          </button>
-        )}
-      </div>
+      <AudioDropZone
+        file={selectedAudioFile}
+        onFileChange={setSelectedAudioFile}
+        accept={SUPPORTED_AUDIO_FORMATS}
+        strictExtensions
+        disabled={!isConnected || audioLipsync.isPending}
+        compact
+        label="Click to upload audio"
+        hint="WAV or MP3 · Converted to 16kHz mono"
+        inputTestId="lipsync-audio-input"
+      />
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">

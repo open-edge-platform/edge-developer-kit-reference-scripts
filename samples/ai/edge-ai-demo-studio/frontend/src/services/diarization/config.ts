@@ -6,10 +6,11 @@ import type { ServiceConfig } from '@/types/common'
 const DIARIZATION_DEVICES = ['CPU', 'XPU']
 
 export const serviceConfig: ServiceConfig = {
+  supportsCustomModel: false,
   availableModels: [
     {
-      value: 'pyannote/speaker-diarization-3.1',
-      label: 'pyannote Speaker Diarization 3.1',
+      value: 'pyannote/speaker-diarization-community-1',
+      label: 'pyannote Speaker Diarization Community-1',
       availableDevices: DIARIZATION_DEVICES,
       backend: 'pytorch',
       gated: ['huggingface'],

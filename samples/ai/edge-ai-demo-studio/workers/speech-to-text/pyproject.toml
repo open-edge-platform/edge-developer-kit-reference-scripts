@@ -7,15 +7,11 @@ requires-python = ">=3.11, <3.12"
 dependencies = [
     "fastapi[all]>=0.128.0",
     "ffmpeg-python==0.2.0",
-    "modelscope>=1.33.0",
     "openvino==2026.2",
-    "openvino-genai==2026.2",
     "pydub==0.25.1",
+    "requests>=2.31.0",
     "soundfile==0.12.1",
-    "torch==2.12.1",
     "uvicorn==0.32.1",
-    "protobuf==6.33.5",
-    "pillow>=12.1.1",
-    "huggingface-hub>=1.13.0",
     "scipy>=1.13.0",
+    "huggingface-hub>=1.22.0",
 ]

@@ -28,7 +28,8 @@ index-strategy = "unsafe-best-match"
 override-dependencies = [
     "torch>=2.12.1",
     "torchvision>=0.27.1",
-    "diffusers>=0.38.0"
+    "diffusers>=0.38.0",
+    "setuptools>=83.0.0"
 ]
 
 [[tool.uv.index]]

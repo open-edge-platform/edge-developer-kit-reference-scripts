@@ -112,6 +112,11 @@ export const Services: CollectionConfig = {
               default: 0.2,
               description: 'VAD Threshold for Wake Word Detection',
             },
+            cpuAffinity: {
+              type: 'string',
+              description:
+                'CPU cores to pin this service to (numactl -C format, e.g. "0-7" or "0,2,4"). Empty / missing = all cores. Linux only.',
+            },
           },
         },
       },

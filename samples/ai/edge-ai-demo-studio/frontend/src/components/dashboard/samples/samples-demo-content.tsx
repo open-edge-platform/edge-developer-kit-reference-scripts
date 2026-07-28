@@ -25,19 +25,16 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { useGetServices } from '@/context/service-status-context'
-import { useSystemInfo } from '@/context/system-info-context'
 import { cn } from '@/lib/utils'
 import { SampleParamsSlotContext } from '@/samples/common/sample-params-slot'
 import { getSampleById } from '@/samples/registry'
-import { getDeviceMap, getOptionalDeps, getRequiredDeps } from '@/samples/types'
+import { getOptionalDeps, getRequiredDeps } from '@/samples/types'
 import type { Service } from '@/services/types'
 
 export function SampleDemoContent({ sampleId }: { sampleId: string }) {
   const sample = getSampleById(sampleId)!
   const requiredDeps = getRequiredDeps(sample)
   const optDeps = getOptionalDeps(sample)
-  const { systemInfo } = useSystemInfo()
-  const deviceMap = getDeviceMap(sample, systemInfo?.devices)
 
   const allDepIds = [
     ...requiredDeps.map((d) => d.serviceId),
@@ -306,7 +303,6 @@ export function SampleDemoContent({ sampleId }: { sampleId: string }) {
             <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row">
               <StartAllServicesButton
                 serviceIds={requiredServices.map((s) => s.id)}
-                deviceMap={deviceMap}
                 label="Start All Services"
                 className="bg-primary hover:bg-primary-light shadow-primary/10 text-white shadow-lg"
               />

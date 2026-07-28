@@ -22,7 +22,9 @@ export const sample: Sample = {
     {
       serviceId: 'text-generation',
       role: 'required',
-      defaultDevice: 'GPU',
+      recommended: {
+        device: 'GPU',
+      },
     },
     {
       serviceId: 'speech-to-text',

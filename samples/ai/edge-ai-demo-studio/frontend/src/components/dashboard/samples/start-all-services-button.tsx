@@ -10,23 +10,16 @@ import { useServiceStatus } from '@/context/service-status-context'
 
 interface StartAllServicesButtonProps {
   serviceIds: string[]
-  deviceMap?: Record<string, string>
   label?: string
   className?: string
 }
 
 export function StartAllServicesButton({
   serviceIds,
-  deviceMap,
   label = 'Start All Services',
   className,
 }: StartAllServicesButtonProps) {
-  const {
-    serviceById,
-    startService,
-    configureAndStartService,
-    isActionPending,
-  } = useServiceStatus()
+  const { serviceById, startService, isActionPending } = useServiceStatus()
 
   const statusOf = useCallback(
     (id: string) => serviceById.get(id)?.status,
@@ -53,14 +46,9 @@ export function StartAllServicesButton({
 
   const handleStartAll = useCallback(() => {
     for (const id of actionable) {
-      const device = deviceMap?.[id]
-      if (device) {
-        configureAndStartService(id, device)
-      } else {
-        startService(id)
-      }
+      startService(id)
     }
-  }, [actionable, deviceMap, startService, configureAndStartService])
+  }, [actionable, startService])
 
   if (notOnline.length === 0) return null
 

@@ -21,8 +21,8 @@ $GIT_URL = "https://github.com/git-for-windows/git/releases/download/v2.51.0.win
 $GIT_DIR = Join-Path $THIRDPARTY_DIR 'git'
 $GIT_PATH = Join-Path $GIT_DIR 'cmd\git.exe'
 
-$FFMPEG_ZIP_PATH = Join-Path $THIRDPARTY_DIR 'ffmpeg-release-essentials.zip'
-$FFMPEG_ZIP_URL = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
+$FFMPEG_ZIP_PATH = Join-Path $THIRDPARTY_DIR 'ffmpeg-win64-gpl.zip'
+$FFMPEG_ZIP_URL = "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-06-30-13-34/ffmpeg-n7.1.5-1-g7d0e842004-win64-gpl-7.1.zip"
 $FFMPEG_DIR = Join-Path $THIRDPARTY_DIR 'ffmpeg'
 $FFMPEG_PATH = Join-Path $FFMPEG_DIR 'bin\ffmpeg.exe'
 

@@ -27,13 +27,20 @@ interface PortCheckResult {
   belongsToProject: boolean
 }
 
+// The server always runs with cwd = frontend/, so the repository root is
+// one level up (same convention as WORKER_DIR in constants.ts). Do NOT
+// derive this from __dirname: it points at the bundler's chunk output
+// directory, whose depth varies by bundler/version — a wrong hop count
+// resolves to the filesystem root and makes every process on a tracked
+// port look like it belongs to this project.
 function getProjectRoot(): string {
-  return path.resolve(
-    __dirname,
-    process.env.NODE_ENV !== 'production'
-      ? '../../../../../../../'
-      : '../../../../',
-  )
+  return path.resolve(process.cwd(), '..')
+}
+
+// A root this shallow can only come from misresolution; matching against
+// it would classify other checkouts' processes as ours.
+function isUnsafeProjectRoot(projectRoot: string): boolean {
+  return path.dirname(projectRoot) === projectRoot
 }
 
 const ALLOWED_PROCESS_IDENTIFIERS = {
@@ -91,6 +98,13 @@ function belongsToProject(commandLine: string | undefined): boolean {
   Project Root: ${projectRoot}
   Project Root (Normalized): ${projectRootNormalized}
 `)
+
+  if (isUnsafeProjectRoot(projectRoot)) {
+    logger.warn(
+      `Project root resolved to "${projectRoot}" — refusing to claim ownership of processes`,
+    )
+    return false
+  }
 
   // Check 1: Verify the command contains the project root directory
   if (!cmdNormalized.includes(projectRootNormalized)) {

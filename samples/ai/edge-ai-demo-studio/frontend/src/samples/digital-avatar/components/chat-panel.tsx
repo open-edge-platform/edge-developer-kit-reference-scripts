@@ -21,9 +21,9 @@ interface ChatPanelProps {
   isConnected: boolean
   sttOnline?: boolean
   isVlm?: boolean
-  imagePreview?: string | null
+  imagePreviews?: string[]
   onImageSelect?: (e: React.ChangeEvent<HTMLInputElement>) => void
-  onImageRemove?: () => void
+  onImageRemove?: (index: number) => void
 }
 
 export function ChatPanel({
@@ -37,7 +37,7 @@ export function ChatPanel({
   isConnected,
   sttOnline,
   isVlm,
-  imagePreview,
+  imagePreviews,
   onImageSelect,
   onImageRemove,
 }: ChatPanelProps) {
@@ -53,7 +53,7 @@ export function ChatPanel({
       disabled={!isConnected}
       sttOnline={sttOnline}
       isVlm={isVlm}
-      imagePreview={imagePreview}
+      imagePreviews={imagePreviews}
       onImageSelect={onImageSelect}
       onImageRemove={onImageRemove}
       className="max-h-[600px]"

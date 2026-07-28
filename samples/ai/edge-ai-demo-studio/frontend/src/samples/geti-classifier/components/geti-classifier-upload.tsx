@@ -4,8 +4,7 @@
 'use client'
 
 import { useState, useCallback, useEffect } from 'react'
-import Image from 'next/image'
-import { FileImage, X, AlertCircle, Loader2, Sparkles } from 'lucide-react'
+import { AlertCircle, Loader2, Sparkles } from 'lucide-react'
 import {
   Card,
   CardContent,
@@ -14,20 +13,14 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
+import { ImageDropZone } from '@/components/common/image-drop-zone'
 import { useClassify, getOriginalImageUrl, getCroppedImageUrl } from '../hooks'
 import type { ClassificationResult, AppView } from './types'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const ALLOWED_IMAGE_TYPES = new Set([
-  'image/jpeg',
-  'image/png',
-  'image/bmp',
-  'image/tiff',
-  'image/webp',
-])
-
+const ACCEPTED_IMAGE_TYPES =
+  'image/jpeg,image/png,image/bmp,image/tiff,image/webp'
 const MAX_FILE_SIZE_MB = 10
 
 // ── Props ─────────────────────────────────────────────────────────────────────
@@ -46,9 +39,6 @@ export function GetiClassifierUpload({
   setClassificationResult,
 }: GetiClassifierUploadProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
-  const [isDragging, setIsDragging] = useState(false)
-  const [validationError, setValidationError] = useState<string | null>(null)
 
   // ── Classify hook ───────────────────────────────────────────────────────────
   const classify = useClassify({
@@ -93,74 +83,14 @@ export function GetiClassifierUpload({
     }
   }, [classify.isSuccess, setCurrentView])
 
-  // ── File validation ─────────────────────────────────────────────────────────
-  const validateAndSetFile = useCallback(
-    (file: File) => {
-      setValidationError(null)
+  // ── File selection ──────────────────────────────────────────────────────────
+  const handleFileChange = useCallback(
+    (file: File | null) => {
       classify.reset()
-
-      if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
-        setValidationError(
-          'Please select a valid image file (JPG, PNG, BMP, TIFF, WEBP)',
-        )
-        return
-      }
-      if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
-        setValidationError(`File size must be less than ${MAX_FILE_SIZE_MB}MB`)
-        return
-      }
-
       setSelectedFile(file)
-      setPreviewUrl(URL.createObjectURL(file))
     },
     [classify],
   )
-
-  // ── Drag handlers ───────────────────────────────────────────────────────────
-  const handleDragEnter = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsDragging(true)
-  }, [])
-
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsDragging(false)
-  }, [])
-
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-  }, [])
-
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault()
-      e.stopPropagation()
-      setIsDragging(false)
-      const file = e.dataTransfer.files[0]
-      if (file) validateAndSetFile(file)
-    },
-    [validateAndSetFile],
-  )
-
-  const handleFileInput = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0]
-      if (file) validateAndSetFile(file)
-    },
-    [validateAndSetFile],
-  )
-
-  // ── Clear ───────────────────────────────────────────────────────────────────
-  const clearFile = useCallback(() => {
-    setSelectedFile(null)
-    if (previewUrl) URL.revokeObjectURL(previewUrl)
-    setPreviewUrl(null)
-    setValidationError(null)
-    classify.reset()
-  }, [previewUrl, classify])
 
   // ── Classify ────────────────────────────────────────────────────────────────
   const handleClassify = useCallback(() => {
@@ -170,8 +100,7 @@ export function GetiClassifierUpload({
 
   // ── Derived ─────────────────────────────────────────────────────────────────
   const isDisabled = !modelReady || classify.isPending
-  const displayError =
-    validationError ?? (classify.isError ? classify.error.message : null)
+  const displayError = classify.isError ? classify.error.message : null
 
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
@@ -204,77 +133,13 @@ export function GetiClassifierUpload({
         )}
 
         {/* ── Drop zone ───────────────────────────────────────────────────── */}
-        {!selectedFile ? (
-          <div
-            onDragEnter={handleDragEnter}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-            className={cn(
-              'relative cursor-pointer rounded-lg border-2 border-dashed p-12 text-center transition-all duration-200',
-              isDragging && 'border-primary bg-primary/5',
-              !isDragging &&
-                'border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/50',
-              isDisabled && 'pointer-events-none opacity-50',
-            )}
-          >
-            <input
-              type="file"
-              accept="image/jpeg,image/png,image/bmp,image/tiff,image/webp"
-              onChange={handleFileInput}
-              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-              disabled={isDisabled}
-            />
-            <FileImage className="text-muted-foreground mx-auto mb-4 h-16 w-16" />
-            <p className="mb-2 text-lg font-medium">Drop your image here</p>
-            <p className="text-muted-foreground text-sm">
-              or click to browse (JPG, PNG, BMP, TIFF, WEBP)
-            </p>
-            <p className="text-muted-foreground mt-2 text-xs">
-              Maximum file size: {MAX_FILE_SIZE_MB}MB
-            </p>
-          </div>
-        ) : (
-          /* ── Selected file preview ──────────────────────────────────────── */
-          <div className="space-y-3">
-            <div className="bg-muted/30 overflow-hidden rounded-lg border">
-              {previewUrl && (
-                <Image
-                  src={previewUrl}
-                  alt="Image preview"
-                  width={600}
-                  height={256}
-                  className="mx-auto object-contain"
-                  style={{ maxHeight: '16rem', width: 'auto' }}
-                  unoptimized
-                />
-              )}
-            </div>
-
-            <div className="flex items-center justify-between rounded-lg border-2 border-green-500 bg-green-50 p-4 dark:bg-green-950/20">
-              <div className="flex min-w-0 flex-1 items-center gap-3">
-                <FileImage className="h-6 w-6 flex-shrink-0 text-green-600 dark:text-green-400" />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium">{selectedFile.name}</p>
-                  <p className="text-muted-foreground text-sm">
-                    {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-                  </p>
-                </div>
-              </div>
-              {!classify.isPending && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={clearFile}
-                  className="flex-shrink-0 hover:bg-red-100 dark:hover:bg-red-950"
-                  type="button"
-                >
-                  <X className="h-5 w-5 text-red-600 dark:text-red-400" />
-                </Button>
-              )}
-            </div>
-          </div>
-        )}
+        <ImageDropZone
+          file={selectedFile}
+          onFileChange={handleFileChange}
+          accept={ACCEPTED_IMAGE_TYPES}
+          maxSizeMb={MAX_FILE_SIZE_MB}
+          disabled={isDisabled}
+        />
 
         {/* ── Pipeline steps indicator ─────────────────────────────────────── */}
         {classify.isPending && (

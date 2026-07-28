@@ -43,14 +43,11 @@ command_exists() {
 # Check if Python is installed
 print_status "[1/7] Checking Python installation..."
 if command_exists python3; then
-    PYTHON_CMD="python3"
     PYTHON_VERSION=$(python3 --version 2>&1)
 elif command_exists python; then
     PYTHON_VERSION=$(python --version 2>&1)
     # Check if it's Python 3
-    if echo "$PYTHON_VERSION" | grep -q "Python 3"; then
-        PYTHON_CMD="python"
-    else
+    if ! echo "$PYTHON_VERSION" | grep -q "Python 3"; then
         print_error "ERROR: Python 3 is required, but only Python 2 was found!"
         print_error "Please install Python 3 from your package manager or https://python.org"
         exit 1
@@ -235,14 +232,28 @@ download_binaries
 print_success "Llama-cpp binaries are available."
 echo ""
 
+# Install uv if not present
+print_status "[4/7] Checking uv installation..."
+if ! command_exists uv; then
+    print_status "Installing uv..."
+    if ! curl -LsSf https://astral.sh/uv/install.sh | sh; then
+        print_error "ERROR: Failed to install uv!"
+        exit 1
+    fi
+    # Add uv to PATH for this session
+    export PATH="$HOME/.local/bin:$PATH"
+    print_success "uv installed successfully."
+else
+    print_success "uv is already installed."
+fi
+echo ""
+
 # Check if virtual environment exists, create if not
 print_status "[4/7] Setting up virtual environment..."
-if [ ! -d "venv" ]; then
-    print_status "Creating virtual environment..."
-    if ! $PYTHON_CMD -m venv venv; then
+if [ ! -d ".venv" ]; then
+    print_status "Creating virtual environment with uv..."
+    if ! uv venv .venv; then
         print_error "ERROR: Failed to create virtual environment!"
-        print_error "Make sure python3-venv is installed:"
-        print_error "  Ubuntu/Debian: sudo apt install python3-venv"
         exit 1
     fi
     print_success "Virtual environment created successfully."
@@ -254,7 +265,7 @@ echo ""
 # Activate virtual environment
 print_status "[5/7] Activating virtual environment..."
 # shellcheck disable=SC1091
-if ! source ./venv/bin/activate; then
+if ! source ./.venv/bin/activate; then
     print_error "ERROR: Failed to activate virtual environment!"
     exit 1
 fi
@@ -264,15 +275,9 @@ echo ""
 # Install/Update dependencies
 print_status "[6/7] Installing dependencies..."
 print_status "This may take a few minutes on first run..."
-if ! pip install -r requirements.txt --quiet; then
+if ! uv pip install -r requirements.txt; then
     print_error "ERROR: Failed to install dependencies!"
-    echo ""
-    print_status "Trying to install dependencies with more verbose output..."
-    if ! pip install -r requirements.txt; then
-        print_error "Installation failed. You may need to install system dependencies:"
-        print_error "  Ubuntu/Debian: sudo apt install build-essential python3-dev"
-        exit 1
-    fi
+    exit 1
 fi
 print_success "Dependencies installed successfully."
 echo ""
@@ -339,7 +344,7 @@ cleanup() {
 trap cleanup SIGINT SIGTERM
 
 # Run the Python application
-$PYTHON_CMD app.py
+uv run app.py
 
 # If we get here, the app has stopped
 echo ""

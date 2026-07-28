@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import json
+import shutil
 import yaml
 import argparse
 import socket
@@ -32,7 +33,7 @@ from fastapi import (
     Form,
     BackgroundTasks,
 )
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from pydantic import BaseModel
@@ -49,16 +50,6 @@ from pathlib import Path
 import psutil
 import asyncio
 from fastapi.responses import StreamingResponse
-
-# import aiortc.codecs.vpx
-# aiortc.codecs.vpx.MIN_BITRATE = 15000000
-# aiortc.codecs.vpx.DEFAULT_BITRATE = 100000000
-# aiortc.codecs.vpx.MAX_BITRATE = 1500000000
-
-# import aiortc.codecs.h264
-# aiortc.codecs.h264.MIN_BITRATE = 15000000
-# aiortc.codecs.h264.DEFAULT_BITRATE = 100000000
-# aiortc.codecs.h264.MAX_BITRATE = 1500000000
 
 avatar_dir = Path("./data/avatars")
 tasks = {}
@@ -144,7 +135,6 @@ def get_local_ip():
 
 
 def parse_arguments():
-    """Parse command line arguments."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--config", type=str, default="config.wav2lip.yaml", help="Lipsync Config File"
@@ -174,78 +164,182 @@ def parse_arguments():
         choices=["huggingface", "modelscope"],
         help="Model source (default: huggingface)",
     )
+    parser.add_argument(
+        "--int8",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "Use an INT8 (NNCF-quantized) model. Defaults to True on CPU and NPU "
+            "(FP16 can't sustain 25fps there) and False on other devices. "
+            "Pass --no-int8 to force FP16."
+        ),
+    )
     return parser.parse_args()
 
 
-def create_app(args):
-    """Create and configure FastAPI application."""
+CHECKPOINT_PATH = "models/wav2lip/checkpoints/wav2lipv2.pth"
+OV_FP16_PATH = "models/wav2lip/checkpoints/wav2lipv2_ov/wav2lip.xml"
+OV_INT8_PATH = "models/wav2lip/checkpoints/wav2lipv2_ov_int8/wav2lip.xml"
+OV_DEVICES = {"cpu", "gpu", "npu", "auto"}
 
+
+def download_wav2lip_checkpoint(source: str):
+    """Fetch the Wav2Lip PyTorch checkpoint if not already present."""
+    getLogger(__name__).info("Downloading Wav2Lip models if needed...")
+    download = ms_snapshot_download if source == "modelscope" else snapshot_download
+    download(
+        repo_id="Kedreamix/Linly-Talker",
+        local_dir="models/wav2lip",
+        allow_patterns=["checkpoints/wav2lipv2.pth"],
+    )
+    getLogger(__name__).info("Wav2Lip models ready.")
+
+
+def ensure_openvino_model():
+    """Convert the PyTorch checkpoint to OpenVINO FP16 IR (idempotent)."""
+    from convert_to_openvino import convert_wav2lip_to_openvino
+
+    convert_wav2lip_to_openvino(
+        checkpoint_path=CHECKPOINT_PATH,
+        output_path=OV_FP16_PATH,
+        img_size=256,
+        batch_size=16,
+    )
+    getLogger(__name__).info("OpenVINO Wav2Lip model ready.")
+
+
+def ensure_default_avatar(args) -> str:
+    conf_path = Path(args.config).resolve()
+    if not conf_path.exists():
+        return ""
+
+    with open(conf_path) as f:
+        config = yaml.safe_load(f) or {}
+    avatar_path = config.get("wav2lip", {}).get("avatar_path", "")
+
+    if avatar_path:
+        full_path = Path(avatar_path).resolve()
+        if full_path.exists() and (full_path / "coords.pkl").exists():
+            getLogger(__name__).info(f"Avatar found at {full_path}")
+            return avatar_path
+
+    getLogger(__name__).info(
+        "Avatar not found or invalid. Generating default avatar..."
+    )
+    video_path = Path("data/samples/sample_video_ai.mp4")
+    if not video_path.exists():
+        getLogger(__name__).error(
+            f"Cannot generate avatar. Missing video: {video_path}"
+        )
+        return avatar_path
+
+    generate_wav2lip_avatar(
+        video_path=str(video_path),
+        frame_count=128,
+        device=args.device,
+        img_size=256,
+        batch_size=1,
+        no_smooth=False,
+        pads=(0, 0, 0, 0),
+        base_avatar_dir=avatar_dir,
+        skin_name=None,
+        wav2lip_config_path=conf_path,
+        avatar_id="sample",
+    )
+    getLogger(__name__).info("Avatar generation completed.")
+    with open(conf_path) as f:
+        return (
+            (yaml.safe_load(f) or {}).get("wav2lip", {}).get("avatar_path", avatar_path)
+        )
+
+
+def ensure_int8_model(avatar_path: str):
+    if Path(OV_INT8_PATH).exists():
+        getLogger(__name__).info("INT8 quantized model already exists, skipping.")
+        return
+
+    getLogger(__name__).info("Generating INT8 quantized model via NNCF...")
+    from convert_to_openvino import quantize_wav2lip_to_int8
+
+    quantize_wav2lip_to_int8(
+        fp16_model_path=OV_FP16_PATH,
+        output_path=OV_INT8_PATH,
+        avatar_path=avatar_path,
+        img_size=256,
+        batch_size=16,
+    )
+    getLogger(__name__).info("INT8 quantized model ready.")
+
+
+def preload_ov_model(args):
+
+    from modules.lipsync.wav2lip.wav2lip_avatar import compile_wav2lip_model
+
+    try:
+        with open(Path(args.config).resolve()) as f:
+            cfg = yaml.safe_load(f) or {}
+    except Exception as e:
+        getLogger(__name__).warning(f"Skipping model preload; cannot read config: {e}")
+        return
+
+    avatar_path = cfg.get("wav2lip", {}).get("avatar_path", "")
+    if not avatar_path:
+        getLogger(__name__).warning("Skipping model preload; no avatar_path in config.")
+        return
+
+    # Match the exact parameters WebRTCAvatar derives so the cache key lines up.
+    batch_size = cfg.get("batch_size", 16)
+    image_size = int(str(avatar_path).split("_")[-1])
+    model_path = OV_FP16_PATH
+    if args.int8 and Path(OV_INT8_PATH).exists():
+        model_path = OV_INT8_PATH
+
+    getLogger(__name__).info(
+        "Precompiling Wav2Lip model for faster first connection..."
+    )
+    compile_wav2lip_model(model_path, args.device, batch_size, image_size)
+
+
+def initialize_models(args):
+    download_wav2lip_checkpoint(args.source)
+
+    is_ov = args.device.lower() in OV_DEVICES
+    if is_ov:
+        ensure_openvino_model()
+
+    avatar_path = ensure_default_avatar(args)
+
+    if is_ov and args.int8:
+        ensure_int8_model(avatar_path)
+
+    # Remove the original PyTorch checkpoint once all conversions are done.
+    if is_ov:
+        pth_path = Path(CHECKPOINT_PATH)
+        if pth_path.exists():
+            pth_path.unlink()
+
+        preload_ov_model(args)
+        getLogger(__name__).info(f"Deleted original checkpoint: {CHECKPOINT_PATH}")
+
+
+def create_app(args):
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         getLogger(__name__).info("Starting lifespan...")
         try:
-            getLogger(__name__).info("Downloading Wav2Lip models if needed...")
-            download = (
-                ms_snapshot_download
-                if args.source == "modelscope"
-                else snapshot_download
-            )
-            download(
-                repo_id="Kedreamix/Linly-Talker",
-                local_dir="models/wav2lip",
-                allow_patterns=["checkpoints/wav2lipv2.pth"],
-            )
-            getLogger(__name__).info("Wav2Lip models ready.")
-
-            # Avatar generation check
-            conf_path = Path(args.config).resolve()
-            if conf_path.exists():
-                with open(conf_path) as f:
-                    config = yaml.safe_load(f)
-
-                avatar_path = config.get("wav2lip", {}).get("avatar_path", "")
-                is_valid = False
-                if avatar_path:
-                    full_path = Path(avatar_path).resolve()
-                    if full_path.exists() and (full_path / "coords.pkl").exists():
-                        is_valid = True
-                        getLogger(__name__).info(f"Avatar found at {full_path}")
-
-                if not is_valid:
-                    getLogger(__name__).info(
-                        "Avatar not found or invalid. Generating default avatar..."
-                    )
-                    video_path = Path("data/samples/sample_video_ai.mp4")
-                    if video_path.exists():
-                        generate_wav2lip_avatar(
-                            video_path=str(video_path),
-                            frame_count=128,
-                            device=args.device,
-                            img_size=256,
-                            batch_size=1,
-                            no_smooth=False,
-                            pads=(0, 0, 0, 0),
-                            base_avatar_dir=avatar_dir,
-                            skin_name=None,
-                            wav2lip_config_path=conf_path,
-                            avatar_id="sample",
-                        )
-                        getLogger(__name__).info("Avatar generation completed.")
-                    else:
-                        getLogger(__name__).error(
-                            f"Cannot generate avatar. Missing video: {video_path}"
-                        )
+            initialize_models(args)
+            app.state.ready = True
+            getLogger(__name__).info("Startup complete; server is ready.")
         except Exception as e:
             getLogger(__name__).error(f"Error in lifespan startup: {e}")
             exit(1)
         yield
 
     app = FastAPI(lifespan=lifespan)
+    # Not ready until lifespan startup (model download/convert/quantize) finishes.
+    app.state.ready = False
 
-    # Get the current machine's IP address
     local_ip = get_local_ip()
-
-    # Build the list of allowed origins
     allowed_origins = [
         "http://localhost:8080",
         "http://127.0.0.1:8080",
@@ -306,8 +400,18 @@ def run_avatar_generation(taskId, video_path, cfg_path, skin_name=None, device="
         }
 
     except Exception as e:
-        getLogger(__name__).error(f"Avatar generation failed: {e}")
-        tasks[taskId] = {"status": "error", "detail": str(e)}
+        getLogger(__name__).exception("Avatar generation failed")
+        tasks[taskId] = {"status": "error", "detail": str(e) or repr(e)}
+
+        partial = avatar_dir / f"wav2lip_avatar_{taskId}_256"
+        if partial.is_dir():
+            shutil.rmtree(partial, ignore_errors=True)
+        upload_dir = Path("./data/samples") / taskId
+        if upload_dir.is_dir():
+            shutil.rmtree(upload_dir, ignore_errors=True)
+
+
+SKIN_ID_RE = re.compile(r"^[A-Za-z0-9_\-]+$")
 
 
 def setup_routes(
@@ -315,8 +419,34 @@ def setup_routes(
 ):
     """Setup all FastAPI routes."""
 
+    def resolve_skin_dir(skin_id: str) -> Path:
+        """Validate a skin id and return its directory, guarding traversal."""
+        if not SKIN_ID_RE.fullmatch(skin_id):
+            raise HTTPException(status_code=400, detail="Invalid skin id")
+        skin_path = (avatar_dir / skin_id).resolve()
+        if skin_path.parent != avatar_dir.resolve() or not skin_path.is_dir():
+            raise HTTPException(status_code=404, detail="Skin not found")
+        return skin_path
+
+    def get_default_skin() -> str | None:
+        """Read the active skin folder name from the wav2lip config."""
+        try:
+            cfg_path = Path(args.config).resolve()
+            if cfg_path.exists():
+                with cfg_path.open() as f:
+                    data = yaml.safe_load(f) or {}
+                avatar_path = data.get("wav2lip", {}).get("avatar_path", "")
+                if avatar_path:
+                    return Path(avatar_path).name
+        except Exception as e:
+            getLogger(__name__).warning(f"Could not resolve default skin: {e}")
+        return None
+
     @app.get("/healthcheck")
     async def healthcheck():
+        # Report healthy only after startup (incl. INT8 quantization) completes.
+        if not getattr(app.state, "ready", False):
+            return JSONResponse({"status": "initializing"}, status_code=503)
         return JSONResponse({"status": "ok"})
 
     @app.websocket("/ws/{session_id}")
@@ -367,16 +497,9 @@ def setup_routes(
         text_overlay: str = Form(None),
         language_code: str = Form("en-US"),
     ):
-        """
-        Endpoint for processing audio files directly for lipsync streaming.
-        The audio and video are streamed back via WebRTC similar to the chat endpoint.
-        """
-
-        # Validate session
         if not session_id or session_id not in avatars:
             raise HTTPException(status_code=400, detail="Invalid or missing session_id")
 
-        # Validate audio file
         if not file.filename.lower().endswith((".wav", ".mp3")):
             raise HTTPException(
                 status_code=400,
@@ -384,14 +507,12 @@ def setup_routes(
             )
 
         try:
-            # Read and process audio file
             audio_data = await file.read()
             audio_buffer = io.BytesIO(audio_data)
 
-            # Load audio with librosa (converts to mono, 16kHz)
             audio_array, sample_rate = librosa.load(
                 audio_buffer,
-                sr=16000,  # Target sample rate to match avatar expectations
+                sr=16000,
                 mono=True,
             )
 
@@ -399,16 +520,12 @@ def setup_routes(
                 f"Loaded audio: duration={len(audio_array)/sample_rate:.2f}s, samples={len(audio_array)}"
             )
 
-            # Get avatar instance
             avatar_streamer = avatars[session_id]
 
-            # Prepare metadata for text overlay if provided
             metadata = None
             if text_overlay:
                 metadata = {"message": text_overlay, "language_code": language_code}
 
-            # Process audio through the WebRTC avatar
-            # This will queue the audio for lipsync processing and stream via WebRTC
             avatar_streamer.process_audio(audio_array, metadata)
 
             return JSONResponse(
@@ -436,18 +553,17 @@ def setup_routes(
     async def upload_avatar(
         background: BackgroundTasks,
         video: UploadFile = File(...),
-        session_id: str = Form(...),
+        session_id: str = Form(None),  # optional; uploads don't need a session
         skin_name: str = Form(None),
     ):
-        if not session_id or session_id not in avatars:
-            raise HTTPException(status_code=400, detail="Invalid or missing session_id")
         if not video or not video.filename:
             raise HTTPException(status_code=400, detail="Missing video file")
 
         skin_id = uuid4().hex[:8]
-        samples_dir = Path("./data/samples").resolve() / skin_id
-        samples_dir.mkdir(parents=True, exist_ok=True)
-        video_path = samples_dir / video.filename
+        skin_dir = (avatar_dir / f"wav2lip_avatar_{skin_id}_256").resolve()
+        skin_dir.mkdir(parents=True, exist_ok=True)
+        suffix = re.sub(r"[^A-Za-z0-9.]", "", Path(video.filename).suffix) or ".mp4"
+        video_path = skin_dir / f"source{suffix.lower()}"
 
         with open(video_path, "wb") as f:
             f.write(await video.read())
@@ -458,10 +574,11 @@ def setup_routes(
             validate_video(str(video_path))
         except Exception as e:
             getLogger(__name__).error(f"Fail to process video: {e}")
+            shutil.rmtree(skin_dir, ignore_errors=True)
             raise HTTPException(status_code=400, detail="Invalid or unsupported video")
 
         tasks[skin_id] = {
-            "status": "finished",
+            "status": "processing",
             "avatar_id": skin_id,
             "skin_name": skin_name,
         }
@@ -485,6 +602,8 @@ def setup_routes(
         for d in avatar_dir.iterdir():
             if not d.is_dir():
                 continue
+            if not (d / "coords.pkl").exists():
+                continue
             skin = {"skin_id": d.name}
             cfg = d / "config.json"
             if cfg.exists():
@@ -495,7 +614,53 @@ def setup_routes(
                 except Exception:
                     pass
             items.append(skin)
-        return {"items": items}
+
+        return {"items": items, "default_skin": get_default_skin()}
+
+    @app.get("/v1/avatar/{skin_id}/preview")
+    async def avatar_preview(skin_id: str):
+        """Serve a cached JPEG thumbnail of the skin's first full frame."""
+        skin_path = resolve_skin_dir(skin_id)
+        thumb = skin_path / "preview.jpg"
+        if not thumb.exists():
+            import cv2
+
+            frames = sorted((skin_path / "full_images").glob("*.[pj][np]g"))
+            if not frames:
+                raise HTTPException(status_code=404, detail="No preview available")
+            img = cv2.imread(str(frames[0]))
+            if img is None:
+                raise HTTPException(status_code=404, detail="No preview available")
+            h, w = img.shape[:2]
+            scale = 320.0 / max(h, w)
+            if scale < 1:
+                img = cv2.resize(img, (int(w * scale), int(h * scale)))
+            cv2.imwrite(str(thumb), img, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        return FileResponse(thumb, media_type="image/jpeg")
+
+    @app.delete("/v1/avatar/{skin_id}")
+    async def delete_avatar_skin(skin_id: str):
+        skin_path = resolve_skin_dir(skin_id)
+        if skin_id == get_default_skin():
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot delete the active skin. Switch to another skin first.",
+            )
+
+        shutil.rmtree(skin_path)
+
+        match = re.fullmatch(r"wav2lip_avatar_(.+)_\d+", skin_id)
+        if match:
+            upload_id = match.group(1)
+            tasks.pop(upload_id, None)
+            samples_root = Path("./data/samples").resolve()
+            source_dir = (samples_root / upload_id).resolve()
+            if source_dir.parent == samples_root and source_dir.is_dir():
+                shutil.rmtree(source_dir)
+                getLogger(__name__).info(f"Deleted uploaded source video: {source_dir}")
+
+        getLogger(__name__).info(f"Deleted avatar skin: {skin_id}")
+        return {"status": "success", "skin_id": skin_id}
 
     @app.patch("/v1/avatar/default")
     async def set_default_skin(req: Request):
@@ -535,6 +700,11 @@ def setup_routes(
             raise HTTPException(
                 status_code=400, detail=f"Avatar folder does not exist: {avatar_path}"
             )
+        if not (target_dir / "coords.pkl").exists():
+            raise HTTPException(
+                status_code=400,
+                detail="Avatar is incomplete (missing coords.pkl); cannot be used.",
+            )
 
         cfg_path = args.config if isinstance(args.config, Path) else Path(args.config)
         if not cfg_path.parent.exists():
@@ -570,14 +740,28 @@ def setup_routes(
                     default_flow_style=False,
                 )
             getLogger(__name__).info(f"Updated wav2lip.avatar_path -> {avatar_path}")
-            return {
-                "status": "success",
-                "avatar_path": avatar_path,
-                "avatar_id": avatar_id,
-            }
         except Exception as e:
             getLogger(__name__).error(f"Failed to write YAML: {e}")
             raise HTTPException(status_code=500, detail="Failed to save default skin")
+
+        # Hot-reload the new skin into any live sessions so the change applies
+        # immediately, without requiring a WebRTC reconnect.
+        reloaded, failed = [], []
+        for sid, streamer in list(avatars.items()):
+            try:
+                await asyncio.to_thread(streamer.avatar.reload_avatar, avatar_path)
+                reloaded.append(sid)
+            except Exception as e:
+                getLogger(__name__).error(f"Hot-reload failed for session {sid}: {e}")
+                failed.append(sid)
+
+        return {
+            "status": "success",
+            "avatar_path": avatar_path,
+            "avatar_id": avatar_id,
+            "reloaded_sessions": reloaded,
+            "failed_sessions": failed,
+        }
 
     @app.post("/v1/lipsync/offer", include_in_schema=False)
     async def offer(request: Request):
@@ -686,6 +870,7 @@ def setup_routes(
             configs=configs,
             device=args.device,
             ws_manager=manager,
+            use_int8=args.int8,
         )
         audio, video = avatar_streamer.get_av_tracks()
         _ = pc.addTrack(audio)
@@ -734,27 +919,27 @@ def setup_routes(
 
 
 def run_server(app: FastAPI, port: int):
-    """Run the FastAPI server."""
     uvicorn.run(app, host="0.0.0.0", port=port)
 
 
 def main():
-    """Main function to run the avatar server."""
-    # Parse command line arguments
     args = parse_arguments()
 
-    # Initialize global state
+    # Default to INT8 on CPU and NPU, where FP16 can't keep up with 25fps
+    # streaming; other devices opt in with --int8. --int8/--no-int8 overrides this.
+    if args.int8 is None:
+        args.int8 = args.device.lower() in ("cpu", "npu")
+    getLogger(__name__).info(
+        f"Inference device={args.device}, precision={'INT8' if args.int8 else 'FP16'}"
+    )
+
     pcs = set()
     avatars = {}
     manager = WSConnectionManager()
 
-    # Create FastAPI application
     app = create_app(args)
-
-    # Setup routes
     setup_routes(app, pcs, avatars, manager, args)
 
-    # Run the server
     port = int(args.port)
     getLogger(__name__).info(f"Starting Avatar server on port {port}")
     run_server(app, port)

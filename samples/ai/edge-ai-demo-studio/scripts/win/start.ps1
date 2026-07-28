@@ -98,22 +98,78 @@ function Test-NodeInstalled {
     }
 }
 
+function Get-FrontendPort {
+    $envPath = Join-Path $FRONTEND_DIR ".env"
+    if (Test-Path $envPath) {
+        $portLine = Get-Content $envPath | Where-Object { $_ -match '^PORT=' } | Select-Object -Last 1
+        if ($portLine) {
+            $port = ($portLine -replace '^PORT=', '').Trim().Trim('"')
+            if ($port) { return $port }
+        }
+    }
+    return "8080"
+}
+
+function Wait-FrontendReady {
+    param(
+        [System.Diagnostics.Process]$Process,
+        [string]$Url,
+        [int]$TimeoutSeconds = 240
+    )
+
+    Write-Host "Waiting for frontend to become ready at $Url ..." -ForegroundColor Yellow
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        if ($Process.HasExited) {
+            Write-Host "ERROR: Frontend process exited before becoming ready." -ForegroundColor Red
+            return $false
+        }
+        try {
+            $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 10
+            if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 400) {
+                return $true
+            }
+        } catch {
+            # Server not ready yet; keep polling
+        }
+        Start-Sleep -Seconds 2
+    }
+    Write-Host "ERROR: Frontend did not respond at $Url within $TimeoutSeconds seconds." -ForegroundColor Red
+    return $false
+}
+
 function Start-Frontend {
     Write-Host "Starting frontend..." -ForegroundColor Green
-    
+
     # Ensure Node.js is installed and in PATH
     if (-not (Test-NodeInstalled)) {
         Write-Host "Node.js is not installed. Exiting setup." -ForegroundColor Red
         exit 1
     }
-    
-    # Start the frontend server
+
+    $frontendUrl = "http://localhost:$(Get-FrontendPort)"
+    # Probe an API route that calls getPayload() so Payload runs onInit;
+    # the root page is statically prerendered and never touches Payload.
+    $healthcheckUrl = "$frontendUrl/api/services"
+
+    # Start the frontend server in the background; its logs stream to this console
     try {
-        npm run start
-        Write-Host "Frontend started successfully." -ForegroundColor Green
+        $proc = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "npm run start" `
+            -WorkingDirectory $FRONTEND_DIR -NoNewWindow -PassThru
     } catch {
         Write-Host "ERROR: Failed to start frontend." -ForegroundColor Red
         throw $_
+    }
+
+    # Hit the server once it is up to force Payload to run onInit
+    if (Wait-FrontendReady -Process $proc -Url $healthcheckUrl) {
+        Write-Host "Frontend start completed. Server is ready at $frontendUrl" -ForegroundColor Green
+    }
+
+    # Keep streaming frontend logs until the server stops
+    $proc.WaitForExit()
+    if ($proc.ExitCode -ne 0) {
+        throw "Frontend exited with code $($proc.ExitCode)"
     }
 }
 

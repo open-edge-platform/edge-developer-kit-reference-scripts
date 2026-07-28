@@ -3,7 +3,8 @@
 
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import {
   useOptionalServiceGroup,
@@ -27,7 +28,15 @@ import { alignTranscriptWithSegments, formatTimestamp } from './utils'
 import { logger } from '@/lib/logger'
 import { SOAP_SYSTEM_PROMPT } from './hooks/use-soap-report'
 
-export function MedicalScribeDemo({ sample: _sample }: { sample: Sample }) {
+export function MedicalScribeDemo({ sample }: { sample: Sample }) {
+  return (
+    <Suspense fallback={null}>
+      <MedicalScribeDemoInner sample={sample} />
+    </Suspense>
+  )
+}
+
+function MedicalScribeDemoInner({ sample: _sample }: { sample: Sample }) {
   const textGen = useTextGenerationParams({
     initial: {
       systemPrompt: SOAP_SYSTEM_PROMPT,
@@ -41,6 +50,10 @@ export function MedicalScribeDemo({ sample: _sample }: { sample: Sample }) {
     initialEnabled: true,
     optional: true,
   })
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+
   const { profiles, addProfile, removeProfile, updateEmbedding } =
     useDoctorProfiles()
   const { sessions, isFetched, createSession, updateSession, deleteSession } =
@@ -52,15 +65,62 @@ export function MedicalScribeDemo({ sample: _sample }: { sample: Sample }) {
   const recordingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
     null,
   )
-  const [audioDuration, setAudioDuration] = useState<number | null>(null)
-  const [selectedSessionIdState, setSelectedSessionId] = useState<
-    string | null
-  >(null)
-  const selectedSessionId =
-    selectedSessionIdState ?? (isFetched ? (sessions[0]?.id ?? null) : null)
-  const [isProcessing, setIsProcessing] = useState(false)
+  const [audioDurations, setAudioDurations] = useState<
+    Record<string, number | null>
+  >({})
+  const setSessionDuration = useCallback(
+    (sessionId: string, value: number | null) => {
+      setAudioDurations((prev) => ({ ...prev, [sessionId]: value }))
+    },
+    [],
+  )
+  const paramSessionId = searchParams.get('session')
+  const selectedSessionId = isFetched
+    ? (sessions.find((s) => s.id === paramSessionId)?.id ??
+      sessions[0]?.id ??
+      null)
+    : null
 
-  const generatingSessionIdRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!isFetched) return
+    if (!paramSessionId) return
+    if (!selectedSessionId) return
+    if (paramSessionId === selectedSessionId) return
+    const params = new URLSearchParams(searchParams.toString())
+    params.set('session', selectedSessionId)
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false })
+  }, [
+    isFetched,
+    paramSessionId,
+    selectedSessionId,
+    router,
+    pathname,
+    searchParams,
+  ])
+
+  const reconciledRef = useRef(false)
+  useEffect(() => {
+    if (!isFetched) return
+    if (reconciledRef.current) return
+    reconciledRef.current = true
+    sessions.forEach((s) => {
+      if (s.status === 'processing' || s.status === 'recording') {
+        updateSession(s.id, {
+          status: 'error',
+          errorMessage:
+            'Processing was interrupted by a page reload. Please record or upload again.',
+        })
+
+        toast.error(
+          'Processing was interrupted by a page reload. Please record or upload again.',
+        )
+      }
+    })
+  }, [isFetched, sessions, updateSession])
+
+  const [generatingSessionId, setGeneratingSessionId] = useState<string | null>(
+    null,
+  )
 
   const transcribe = useTranscribe()
   const diarize = useDiarize()
@@ -70,11 +130,12 @@ export function MedicalScribeDemo({ sample: _sample }: { sample: Sample }) {
     systemPrompt: textGen.values.systemPrompt || undefined,
     disableReasoning: textGen.values.disableReasoning,
     onFinish: (text) => {
-      if (generatingSessionIdRef.current) {
-        updateSession(generatingSessionIdRef.current, {
+      if (generatingSessionId) {
+        updateSession(generatingSessionId, {
           soapReport: text,
           reportCreatedAt: formatTimestamp(new Date()),
         })
+        setGeneratingSessionId(null)
       }
     },
   })
@@ -90,12 +151,11 @@ export function MedicalScribeDemo({ sample: _sample }: { sample: Sample }) {
       const session = sessions.find((s) => s.id === sessionId)
       if (!session) return
 
-      setIsProcessing(true)
-      setAudioDuration(null)
+      setSessionDuration(sessionId, null)
       updateSession(sessionId, { status: 'processing', audioBlob: audio })
 
       if (knownDuration != null) {
-        setAudioDuration(knownDuration)
+        setSessionDuration(sessionId, knownDuration)
       } else {
         try {
           const url = URL.createObjectURL(audio)
@@ -104,7 +164,8 @@ export function MedicalScribeDemo({ sample: _sample }: { sample: Sample }) {
             audioEl.onloadedmetadata = () => resolve()
             audioEl.onerror = () => resolve()
           })
-          if (isFinite(audioEl.duration)) setAudioDuration(audioEl.duration)
+          if (isFinite(audioEl.duration))
+            setSessionDuration(sessionId, audioEl.duration)
           URL.revokeObjectURL(url)
         } catch {
           logger.warn('Could not read audio duration')
@@ -167,8 +228,7 @@ export function MedicalScribeDemo({ sample: _sample }: { sample: Sample }) {
         })
         toast.error('Failed to process audio')
       } finally {
-        setIsProcessing(false)
-        setAudioDuration(null)
+        setSessionDuration(sessionId, null)
       }
     },
     [
@@ -178,6 +238,7 @@ export function MedicalScribeDemo({ sample: _sample }: { sample: Sample }) {
       diarize,
       diarizationGroup.enabled,
       updateSession,
+      setSessionDuration,
     ],
   )
 
@@ -231,7 +292,7 @@ export function MedicalScribeDemo({ sample: _sample }: { sample: Sample }) {
   const handleGenerateReport = useCallback(() => {
     if (!selectedSession || selectedSession.transcripts.length === 0) return
 
-    generatingSessionIdRef.current = selectedSession.id
+    setGeneratingSessionId(selectedSession.id)
 
     const dialogue = selectedSession.transcripts
       .map((t) => `${t.speaker}: ${t.text}`)
@@ -245,9 +306,11 @@ export function MedicalScribeDemo({ sample: _sample }: { sample: Sample }) {
       if (!soapReport.isGenerating) {
         soapReport.reset()
       }
-      setSelectedSessionId(id)
+      const params = new URLSearchParams(searchParams)
+      params.set('session', id)
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false })
     },
-    [soapReport],
+    [soapReport, router, pathname, searchParams],
   )
 
   const handleUpdateReport = useCallback(
@@ -261,6 +324,10 @@ export function MedicalScribeDemo({ sample: _sample }: { sample: Sample }) {
     [selectedSessionId, updateSession],
   )
 
+  const selectedIsGenerating =
+    generatingSessionId === selectedSessionId && soapReport.isGenerating
+  const isProcessing = selectedSession?.status === 'processing'
+
   return (
     <div className="flex h-[calc(100dvh-12rem)] flex-col">
       <SampleParamsSlot groups={[textGen.group, diarizationGroup.group]} />
@@ -272,6 +339,7 @@ export function MedicalScribeDemo({ sample: _sample }: { sample: Sample }) {
           onSelectSession={handleSelectSession}
           onCreateSession={createSession}
           onDeleteSession={deleteSession}
+          onUpdateSession={updateSession}
           doctorProfiles={profiles}
           isRecording={isRecording}
           onStartRecording={handleStartRecording}
@@ -279,7 +347,8 @@ export function MedicalScribeDemo({ sample: _sample }: { sample: Sample }) {
           onUploadAudio={handleUploadAudio}
           onGenerateReport={handleGenerateReport}
           isProcessing={isProcessing}
-          isGeneratingReport={soapReport.isGenerating}
+          isGeneratingReport={selectedIsGenerating}
+          isAnyReportGenerating={soapReport.isGenerating}
           profileActions={
             <DoctorProfileSheet
               profiles={profiles}
@@ -295,13 +364,13 @@ export function MedicalScribeDemo({ sample: _sample }: { sample: Sample }) {
           dialogueCreatedAt={selectedSession?.dialogueCreatedAt ?? ''}
           isRecording={isRecording}
           isProcessing={isProcessing}
-          audioDuration={audioDuration ?? undefined}
+          audioDuration={audioDurations[selectedSessionId ?? ''] ?? undefined}
           recordingDuration={recordingDuration ?? undefined}
         />
 
         <SoapReportPanel
-          message={soapReport.message}
-          isGenerating={soapReport.isGenerating}
+          message={selectedIsGenerating ? soapReport.message : undefined}
+          isGenerating={selectedIsGenerating}
           savedReport={selectedSession?.soapReport}
           onUpdateReport={handleUpdateReport}
           reportCreatedAt={selectedSession?.reportCreatedAt ?? ''}

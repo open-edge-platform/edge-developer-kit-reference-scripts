@@ -3,13 +3,13 @@ name = "helper"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.13, <3.14"
+requires-python = ">=3.13"
 dependencies = [
     "openvino>=2026.2",
     "torch>=2.12.1",
     "torchaudio>=2.11.0",
     "torchvision>=0.26.0",
-    "triton-xpu==3.7.1",
+    "triton-xpu>=3.7.1 ; sys_platform == 'win32' or sys_platform == 'linux'",
 ]
 
 [tool.uv.sources]

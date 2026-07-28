@@ -155,20 +155,18 @@ class GetiWorker:
     # ── Devices ───────────────────────────────────────────────────────────────
 
     def get_devices(self) -> dict[str, Any]:
+        available = self._device_manager.get_available_devices()
         return {
             "status": "ok",
             "current_device": self._model_manager.worker_config_cls.get(
                 "device", DEFAULT_DEVICE
             ),
-            "available_devices": (
-                self._device_manager.get_available_devices()
-            ),
+            "available_devices": available,
             "supported_devices": sorted(
-                self._device_manager.SUPPORTED_DEVICES
-                if hasattr(self._device_manager, "SUPPORTED_DEVICES")
-                else {"CPU", "GPU", "NPU"}
+                d["name"] for d in available if d["supported"]
             ),
         }
+
 
     # ── Projects / Models ─────────────────────────────────────────────────────
 

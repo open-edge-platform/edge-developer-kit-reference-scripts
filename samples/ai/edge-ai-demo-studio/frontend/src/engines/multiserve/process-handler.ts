@@ -353,10 +353,14 @@ const startMultiserveServer = async (service: Service) => {
     return false
   }
 
+  const cpuAffinity = (service.metadata as { cpuAffinity?: string } | undefined)
+    ?.cpuAffinity
+
   await spawnProcess(processName, command, {
     cwd: cwd,
     env: env,
     command: UV_PATH,
+    cpuAffinity,
   })
 
   const hcController = new AbortController()

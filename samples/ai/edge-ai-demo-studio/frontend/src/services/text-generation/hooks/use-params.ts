@@ -20,11 +20,7 @@ const TEXT_GEN_DEFAULTS = {
 }
 
 type RequestParamKey =
-  | 'maxTokens'
-  | 'temperature'
-  | 'topP'
-  | 'topK'
-  | 'repetitionPenalty'
+  'maxTokens' | 'temperature' | 'topP' | 'topK' | 'repetitionPenalty'
 
 export interface TextGenParamValues {
   maxTokens: number
@@ -54,7 +50,14 @@ function useTouchedState<T>(
   return [value, set, touched, reset]
 }
 
-export function useTextGenParams(initial?: Partial<TextGenParamValues>): {
+interface UseTextGenParamsOptions {
+  systemPromptTooltip?: string
+}
+
+export function useTextGenParams(
+  initial?: Partial<TextGenParamValues>,
+  options?: UseTextGenParamsOptions,
+): {
   values: TextGenParamValues
   requestParams: Partial<Pick<TextGenParamValues, RequestParamKey>>
   params: DemoParam[]
@@ -201,6 +204,9 @@ export function useTextGenParams(initial?: Partial<TextGenParamValues>): {
       type: 'textarea',
       id: 'system_prompt',
       label: 'System Prompt',
+      ...(options?.systemPromptTooltip
+        ? { tooltip: options.systemPromptTooltip }
+        : {}),
       placeholder: 'Enter a custom system prompt…',
       value: systemPrompt,
       rows: 3,

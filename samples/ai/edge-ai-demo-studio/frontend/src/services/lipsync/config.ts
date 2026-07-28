@@ -3,14 +3,16 @@
 
 import type { ServiceConfig } from '@/services/types'
 
+const LIPSYNC_DEVICES = ['CPU', 'GPU', 'NPU']
+
 export const serviceConfig: ServiceConfig = {
   supportsCustomModel: false,
   availableModels: [
     {
       value: 'Wav2Lip',
       label: 'Wav2Lip',
-      availableDevices: ['cpu', 'xpu'],
-      backend: 'pytorch',
+      availableDevices: LIPSYNC_DEVICES,
+      backend: 'openvino',
     },
   ],
   availableModelSources: [

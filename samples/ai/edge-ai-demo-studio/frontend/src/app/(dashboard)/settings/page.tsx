@@ -13,6 +13,7 @@ import {
   ServiceHealthSection,
 } from './components'
 import {
+  useHfToken,
   useSaveHfToken,
   useSaveStartupTimeout,
   useStartupTimeout,
@@ -22,22 +23,30 @@ export default function SettingsPage() {
   const { settings, updateSettings } = useSettings()
   const [saved, setSaved] = useState(false)
   const [startupTimeoutDraft, setStartupTimeout] = useState<number | null>(null)
+  const [hfTokenDraft, setHfTokenDraft] = useState<string | null>(null)
 
   const { data: timeoutData } = useStartupTimeout()
+  const { data: hfTokenData } = useHfToken()
 
   const startupTimeout =
     startupTimeoutDraft ?? timeoutData?.startupTimeout ?? 600
+  const hasToken = hfTokenData?.hasToken ?? false
 
   const showSaved = useCallback(() => {
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
   }, [])
 
-  const { mutate: saveHfToken } = useSaveHfToken(showSaved)
+  const { mutate: saveHfToken } = useSaveHfToken(() => {
+    setHfTokenDraft(null)
+    showSaved()
+  })
   const { mutate: saveStartupTimeout } = useSaveStartupTimeout(showSaved)
 
   const handleSave = () => {
-    saveHfToken(settings.hfToken)
+    if (hfTokenDraft !== null) {
+      saveHfToken(hfTokenDraft)
+    }
     saveStartupTimeout(startupTimeout)
   }
 
@@ -56,8 +65,9 @@ export default function SettingsPage() {
       />
 
       <ApiConfigSection
-        hfToken={settings.hfToken}
-        onTokenChange={(hfToken) => updateSettings({ hfToken })}
+        hfToken={hfTokenDraft ?? ''}
+        hasToken={hasToken}
+        onTokenChange={setHfTokenDraft}
       />
 
       <ServiceHealthSection

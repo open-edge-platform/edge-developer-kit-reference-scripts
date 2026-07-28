@@ -13,13 +13,13 @@ export const getDocsData = ({ host }: { host: string }): ServiceDocsData => ({
       method: 'POST',
       path: '/v1/configure',
       description:
-        'Configure external embedding and reranker service URLs. Must be called before using text-based embedding operations.',
+        'Configure external embedding and reranker service URLs. Must be called before using text-based embedding operations (create embeddings, add text chunks, text search).',
       params: [
         {
           name: 'embedding_url',
           type: 'string',
           required: true,
-          desc: 'Base URL of the external embedding service',
+          desc: 'Base URL of the external embedding service (e.g. http://localhost:8001/v1)',
         },
         {
           name: 'embedding_model',
@@ -43,6 +43,14 @@ export const getDocsData = ({ host }: { host: string }): ServiceDocsData => ({
     },
     {
       method: 'GET',
+      path: '/v1/config',
+      description:
+        'Get the current embedding/reranker configuration currently in effect.',
+    },
+
+    // ── Knowledge bases ─────────────────────────────────────
+    {
+      method: 'GET',
       path: '/v1/kb',
       description: 'List all knowledge bases.',
     },
@@ -60,9 +68,38 @@ export const getDocsData = ({ host }: { host: string }): ServiceDocsData => ({
       ],
     },
     {
+      method: 'GET',
+      path: '/v1/kb/{id}',
+      description: 'Get a single knowledge base by ID.',
+      params: [
+        {
+          name: 'id',
+          type: 'integer',
+          required: true,
+          desc: 'Knowledge base ID',
+        },
+      ],
+    },
+    {
       method: 'DELETE',
       path: '/v1/kb/{id}',
-      description: 'Delete a knowledge base and all its data.',
+      description:
+        'Delete a knowledge base and all its data (uploaded files and vector store). Returns the updated list of knowledge bases.',
+      params: [
+        {
+          name: 'id',
+          type: 'integer',
+          required: true,
+          desc: 'Knowledge base ID',
+        },
+      ],
+    },
+
+    // ── Documents (file upload) ─────────────────────────────
+    {
+      method: 'GET',
+      path: '/v1/kb/{id}/files',
+      description: 'List the document files uploaded to a knowledge base.',
       params: [
         {
           name: 'id',
@@ -74,9 +111,112 @@ export const getDocsData = ({ host }: { host: string }): ServiceDocsData => ({
     },
     {
       method: 'POST',
+      path: '/v1/kb/{id}/files',
+      description:
+        'Upload a document file to the knowledge base (multipart/form-data). Accepts .pdf, .docx, .html, .txt, .csv, and .json. Files are stored until embeddings are generated.',
+      params: [
+        {
+          name: 'file',
+          type: 'file',
+          required: true,
+          desc: 'The document to upload (multipart form field "file")',
+        },
+      ],
+    },
+    {
+      method: 'DELETE',
+      path: '/v1/kb/{id}/files',
+      description: 'Delete a previously uploaded file from the knowledge base.',
+      params: [
+        {
+          name: 'name',
+          type: 'string',
+          required: true,
+          desc: 'Filename to delete (e.g. "document.pdf")',
+        },
+      ],
+    },
+
+    // ── Embedding generation ────────────────────────────────
+    {
+      method: 'POST',
+      path: '/v1/kb/{id}/create',
+      description:
+        'Chunk and embed all uploaded documents in the knowledge base into the FAISS vector store (requires embedding service configured).',
+      params: [
+        {
+          name: 'splitter_name',
+          type: 'string',
+          required: false,
+          desc: "Text splitter: 'Character', 'RecursiveCharacter' (default), or 'Markdown'",
+        },
+        {
+          name: 'chunk_size',
+          type: 'integer',
+          required: false,
+          desc: 'Size of each text chunk (default: 512)',
+        },
+        {
+          name: 'chunk_overlap',
+          type: 'integer',
+          required: false,
+          desc: 'Overlap between chunks; must be less than chunk_size (default: 200)',
+        },
+      ],
+    },
+    {
+      method: 'POST',
+      path: '/v1/kb/{id}/files/embed',
+      description:
+        'Chunk and embed a single uploaded file into the vector store (requires embedding service configured).',
+      params: [
+        {
+          name: 'filename',
+          type: 'string',
+          required: true,
+          desc: 'Name of the uploaded file to embed',
+        },
+        {
+          name: 'splitter_name',
+          type: 'string',
+          required: false,
+          desc: "Text splitter: 'Character', 'RecursiveCharacter' (default), or 'Markdown'",
+        },
+        {
+          name: 'chunk_size',
+          type: 'integer',
+          required: false,
+          desc: 'Size of each text chunk (default: 512)',
+        },
+        {
+          name: 'chunk_overlap',
+          type: 'integer',
+          required: false,
+          desc: 'Overlap between chunks; must be less than chunk_size (default: 200)',
+        },
+      ],
+    },
+
+    // ── Chunks ──────────────────────────────────────────────
+    {
+      method: 'GET',
       path: '/v1/kb/{id}/chunks',
       description:
-        'Add a text chunk to the knowledge base (requires embedding service configured).',
+        'Retrieve all chunks stored in the knowledge base. Returns { kb_id, total_chunks, chunks }.',
+      params: [
+        {
+          name: 'include_embeddings',
+          type: 'boolean',
+          required: false,
+          desc: 'Include the raw embedding vectors in the response (default: false)',
+        },
+      ],
+    },
+    {
+      method: 'POST',
+      path: '/v1/kb/{id}/chunks',
+      description:
+        'Add a single text chunk to the knowledge base (requires embedding service configured).',
       params: [
         {
           name: 'content',
@@ -93,6 +233,35 @@ export const getDocsData = ({ host }: { host: string }): ServiceDocsData => ({
       ],
     },
     {
+      method: 'DELETE',
+      path: '/v1/kb/{id}/chunks',
+      description: 'Delete chunks from the knowledge base by document IDs.',
+      params: [
+        {
+          name: 'doc_ids',
+          type: 'string[]',
+          required: true,
+          desc: 'List of document IDs to delete',
+        },
+      ],
+    },
+    {
+      method: 'DELETE',
+      path: '/v1/kb/{id}/chunks/source',
+      description:
+        'Delete all chunks that originate from a given source (e.g. a filename or "manual_chunk").',
+      params: [
+        {
+          name: 'source',
+          type: 'string',
+          required: true,
+          desc: 'Filename (e.g. "document.pdf") or special identifier (e.g. "manual_chunk")',
+        },
+      ],
+    },
+
+    // ── Vectors (pre-computed) ──────────────────────────────
+    {
       method: 'POST',
       path: '/v1/kb/{id}/vectors',
       description:
@@ -106,6 +275,8 @@ export const getDocsData = ({ host }: { host: string }): ServiceDocsData => ({
         },
       ],
     },
+
+    // ── Search ──────────────────────────────────────────────
     {
       method: 'POST',
       path: '/v1/kb/{id}/search',
@@ -119,16 +290,46 @@ export const getDocsData = ({ host }: { host: string }): ServiceDocsData => ({
           desc: 'Search query string',
         },
         {
+          name: 'search_type',
+          type: 'string',
+          required: false,
+          desc: "'similarity' (default), 'mmr', or 'similarity_score_threshold'",
+        },
+        {
           name: 'top_k',
           type: 'integer',
           required: false,
-          desc: 'Number of results to retrieve (default: 4)',
+          desc: 'Number of documents to retrieve from vector search (default: 4)',
         },
         {
           name: 'top_n',
           type: 'integer',
           required: false,
-          desc: 'Number of results after reranking (default: 3)',
+          desc: 'Number of documents to return after reranking (default: 3)',
+        },
+        {
+          name: 'score_threshold',
+          type: 'number',
+          required: false,
+          desc: 'Minimum relevance threshold (only for similarity_score_threshold)',
+        },
+        {
+          name: 'fetch_k',
+          type: 'integer',
+          required: false,
+          desc: 'Documents passed to the MMR algorithm (only for mmr, default: 20)',
+        },
+        {
+          name: 'lambda_mult',
+          type: 'number',
+          required: false,
+          desc: 'MMR diversity, 1=min diversity, 0=max diversity (only for mmr, default: 0.5)',
+        },
+        {
+          name: 'filter',
+          type: 'object',
+          required: false,
+          desc: 'Filter results by document metadata',
         },
       ],
     },
@@ -150,6 +351,12 @@ export const getDocsData = ({ host }: { host: string }): ServiceDocsData => ({
           required: false,
           desc: 'Number of results to return (default: 4)',
         },
+        {
+          name: 'filter',
+          type: 'object',
+          required: false,
+          desc: 'Filter results by document metadata',
+        },
       ],
     },
   ],
@@ -162,19 +369,35 @@ export const getDocsData = ({ host }: { host: string }): ServiceDocsData => ({
           languageCode: 'python',
           code: `import requests
 
-# 1. Create a knowledge base
+# 1. Point the worker at an embedding (and optional reranker) service
+requests.post(
+    "${host}/v1/configure",
+    json={
+        "embedding_url": "http://localhost:8001/v1",
+        "embedding_model": "BAAI/bge-small-en-v1.5",
+    },
+)
+
+# 2. Create a knowledge base
 kb = requests.post(
     "${host}/v1/kb",
     json={"name": "My Documents"}
 ).json()
 
-# 2. Add text chunks (requires embedding service configured)
+# 3. Upload a document file (.pdf, .docx, .html, .txt, .csv, .json)
+with open("handbook.pdf", "rb") as f:
+    requests.post(
+        f"${host}/v1/kb/{kb['id']}/files",
+        files={"file": ("handbook.pdf", f, "application/pdf")},
+    )
+
+# 4. Chunk + embed the uploaded documents into the vector store
 requests.post(
-    f"${host}/v1/kb/{kb['id']}/chunks",
-    json={"content": "Intel OpenVINO accelerates AI inference on edge devices."}
+    f"${host}/v1/kb/{kb['id']}/create",
+    json={"chunk_size": 512, "chunk_overlap": 200},
 )
 
-# 3. Search
+# 5. Search
 results = requests.post(
     f"${host}/v1/kb/{kb['id']}/search",
     json={"query": "edge AI inference", "top_k": 5}
@@ -190,6 +413,15 @@ for doc in results:
 curl -X POST ${host}/v1/kb \\
   -H "Content-Type: application/json" \\
   -d '{"name": "My Documents"}'
+
+# Upload a document file (multipart/form-data)
+curl -X POST ${host}/v1/kb/1/files \\
+  -F "file=@handbook.pdf"
+
+# Generate embeddings for the uploaded documents
+curl -X POST ${host}/v1/kb/1/create \\
+  -H "Content-Type: application/json" \\
+  -d '{"chunk_size": 512, "chunk_overlap": 200}'
 
 # Add pre-computed vectors (no embedding service needed)
 curl -X POST ${host}/v1/kb/1/vectors \\

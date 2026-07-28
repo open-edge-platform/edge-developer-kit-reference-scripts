@@ -19,7 +19,7 @@ export const service: ServiceMeta = {
   execution: { mode: 'worker' },
   defaultModel: {
     name: 'Wav2Lip',
-    device: 'cpu',
+    device: 'CPU',
   },
   config: serviceConfig,
   logSources: [{ type: 'service', label: 'lipsync', target: 'lipsync' }],
@@ -34,7 +34,7 @@ export const worker: WorkerConfig = {
       '--port',
       String(doc.port),
       '--device',
-      doc.models?.default?.device ?? 'xpu',
+      doc.models?.default?.device ?? 'CPU',
       '--source',
       doc.models?.default?.source || 'huggingface',
     ]

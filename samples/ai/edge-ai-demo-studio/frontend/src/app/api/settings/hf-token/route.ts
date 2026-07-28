@@ -15,7 +15,7 @@ export async function GET() {
     overrideAccess: true,
   })
   const token = settings.hfToken
-  return NextResponse.json({ hfToken: token ? '••••••••' : '' })
+  return NextResponse.json({ hasToken: Boolean(token) })
 }
 
 export async function POST(request: Request) {

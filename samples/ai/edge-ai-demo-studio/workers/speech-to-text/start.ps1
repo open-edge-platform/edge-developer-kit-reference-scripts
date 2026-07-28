@@ -7,6 +7,11 @@ $UV_CMD = Join-Path $SCRIPT_DIR "..\thirdparty\uv\uv.exe"
 $ROOT_THIRDPARTY_DIR = Join-Path (Split-Path (Split-Path $SCRIPT_DIR -Parent) -Parent) "thirdparty"
 $FFMPEG_PATH = Join-Path $ROOT_THIRDPARTY_DIR "ffmpeg\bin\ffmpeg.exe"
 
+$WORKERS_DIR = Split-Path $SCRIPT_DIR -Parent
+$WORKERS_THIRDPARTY_DIR = Join-Path $WORKERS_DIR "thirdparty"
+$OVMS_DIR = Join-Path $WORKERS_THIRDPARTY_DIR "ovms"
+$OVMS_PATH = Join-Path $WORKERS_THIRDPARTY_DIR "ovms\ovms.exe"
+
 function Test-UV {
     if (Test-Path $UV_CMD) { return }
     Write-Host "ERROR: uv not found at $UV_CMD" -ForegroundColor Red
@@ -21,8 +26,16 @@ function Test-FFmpeg {
     exit 1
 }
 
+function Test-OVMS {
+    if (Test-Path $OVMS_PATH) { return }
+    Write-Host "ERROR: OVMS not found at $OVMS_PATH" -ForegroundColor Red
+    Write-Host "Please run the workers setup script first." -ForegroundColor Red
+    exit 1
+}
+
 Test-UV
 Test-FFmpeg
+Test-OVMS
 
 $OVMS_VERSION = "v2026.2"
 $OPTIMUM_VENV_DIR = Join-Path $SCRIPT_DIR "thirdparty\.venv"
@@ -39,6 +52,18 @@ function Invoke-FileDownload {
     Write-Host "Downloading $Description..."
     Invoke-WebRequest -Uri $Url -OutFile $Output -UseBasicParsing
     Write-Host "Downloaded $Description."
+}
+
+function Install-OvmsJinja {
+    $OvmsPythonDir = Join-Path $OVMS_DIR "python"
+    if (Test-Path (Join-Path $OvmsPythonDir "jinja2")) {
+        Write-Host "Jinja2 already installed in OVMS python directory. Skipping."
+        return
+    }
+    Write-Host "Installing Jinja2 and MarkupSafe into OVMS python directory..."
+    & $UV_CMD pip install --target $OvmsPythonDir "Jinja2==3.1.6" "MarkupSafe==3.0.2"
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    Write-Host "Jinja2/MarkupSafe installed into OVMS python directory."
 }
 
 function Install-OptimumVenv {
@@ -67,11 +92,14 @@ function Install-OptimumVenv {
     Write-Host "Installing Optimum export model dependencies into venv..."
     & $UV_CMD pip install --python $OPTIMUM_VENV_DIR --prerelease allow --index-strategy unsafe-best-match -r $RequirementsPath
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    & $UV_CMD pip install --python $OPTIMUM_VENV_DIR modelscope datasets Jinja2==3.1.6 MarkupSafe==3.0.2
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
     Write-Host "Optimum venv setup completed."
 }
 
 Set-Location $SCRIPT_DIR
+Install-OvmsJinja
 Install-OptimumVenv
 & $UV_CMD run main.py @args
 exit $LASTEXITCODE

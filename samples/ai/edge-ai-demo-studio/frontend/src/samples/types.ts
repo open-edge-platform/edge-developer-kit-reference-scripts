@@ -16,12 +16,25 @@ export type SampleCategory =
 
 export type DependencyRole = 'required' | 'optional'
 
+/** Recommended device / model settings that can be applied in one click. */
+export interface RecommendedServiceConfig {
+  /** Recommended device string (e.g. 'GPU.0', 'CPU'). */
+  device?: string
+  /** Pin a specific model when applying the recommendation. */
+  model?: string
+  /** Pin a quantization format (e.g. 'int8', 'int4'). */
+  quant?: string
+  /** Pin an inference backend (e.g. 'openvino', 'llamacpp'). */
+  backend?: string
+}
+
 export interface ServiceDependency {
   serviceId: PayloadService['type']
   role: DependencyRole
-  defaultDevice?: string
   capabilityKey?: string
   impactText?: string
+  /** Recommended configuration for the "Use Recommended Config" feature. */
+  recommended?: RecommendedServiceConfig
 }
 
 export type SampleDemoType = 'component' | 'external'
@@ -63,35 +76,108 @@ export function getOptionalDeps(s: Sample): ServiceDependency[] {
   return s.dependencies.filter((d) => d.role === 'optional')
 }
 
-export function getDeviceMap(
-  s: Sample,
+function resolveDevice(
+  requested: string,
   availableDevices?: string[],
-): Record<string, string> {
-  const map: Record<string, string> = {}
-  for (const d of s.dependencies) {
-    if (d.defaultDevice) {
-      map[d.serviceId] = resolveDevice(d.defaultDevice, availableDevices)
-    }
+): { device: string; fellBack: boolean; note?: string } {
+  if (!availableDevices || availableDevices.length === 0) {
+    return { device: requested, fellBack: false }
   }
-  return map
-}
-
-function resolveDevice(requested: string, availableDevices?: string[]): string {
-  if (!availableDevices || availableDevices.length === 0) return requested
 
   const reqLower = requested.toLowerCase()
+  const reqFamily = reqLower.split(/[.:]/)[0]
 
-  const found = availableDevices.some((d) => {
+  // 1. Exact match (case-insensitive)
+  const exactMatch = availableDevices.find((d) => d.toLowerCase() === reqLower)
+  if (exactMatch) return { device: exactMatch, fellBack: false }
+
+  // 2. Same-family alternative (e.g. GPU.1 → GPU.0); GPU ↔ XPU are interchangeable
+  const familyMatch = availableDevices.find((d) => {
     const family = d.split(/[.:]/)[0].toLowerCase()
-    return d.toLowerCase() === reqLower || family === reqLower
+    if (reqFamily === 'gpu' || reqFamily === 'xpu') {
+      return family === 'gpu' || family === 'xpu'
+    }
+    return family === reqFamily
   })
+  if (familyMatch) {
+    return {
+      device: familyMatch,
+      fellBack: true,
+      note: `${requested} not available — using ${familyMatch}`,
+    }
+  }
 
-  if (found) return requested
-
+  // 3. CPU fallback
   const cpu = availableDevices.find(
     (d) => d.split(/[.:]/)[0].toLowerCase() === 'cpu',
   )
-  return cpu ?? availableDevices[0] ?? requested
+  if (cpu) {
+    return {
+      device: cpu,
+      fellBack: true,
+      note: `${requested} not available — falling back to ${cpu}`,
+    }
+  }
+
+  // 4. First available
+  const first = availableDevices[0]
+  if (first) {
+    return {
+      device: first,
+      fellBack: true,
+      note: `${requested} not available — using ${first}`,
+    }
+  }
+
+  return { device: requested, fellBack: false }
+}
+
+// ─── Recommended config helpers ───────────────────────────────────────────────
+
+export interface ResolvedRecommendation {
+  serviceId: PayloadService['type']
+  /** Resolved device after applying availability fallback; undefined when no device was specified. */
+  device?: string
+  model?: string
+  quant?: string
+  backend?: string
+  /** True when the preferred device was unavailable and a fallback was used. */
+  fellBack: boolean
+  /** Human-readable explanation of the fallback (e.g. "GPU.1 not available — using GPU.0"). */
+  fallbackNote?: string
+}
+
+/** Returns true when at least one dependency declares a recommended config. */
+export function hasRecommendedConfig(s: Sample): boolean {
+  return s.dependencies.some((d) => d.recommended !== undefined)
+}
+
+/**
+ * Resolves the recommended config for every dependency that declares one,
+ * applying device fallback logic against `availableDevices`.
+ */
+export function resolveRecommendedConfigs(
+  s: Sample,
+  availableDevices?: string[],
+): ResolvedRecommendation[] {
+  return s.dependencies
+    .filter((dep) => dep.recommended !== undefined)
+    .map((dep) => {
+      const rec = dep.recommended as RecommendedServiceConfig
+      const rawDevice = rec.device
+      const resolved = rawDevice
+        ? resolveDevice(rawDevice, availableDevices)
+        : undefined
+      return {
+        serviceId: dep.serviceId,
+        device: resolved?.device,
+        model: rec.model,
+        quant: rec.quant,
+        backend: rec.backend,
+        fellBack: resolved?.fellBack ?? false,
+        fallbackNote: resolved?.note,
+      }
+    })
 }
 
 export function getCategoryLabels(s: Sample): string[] {

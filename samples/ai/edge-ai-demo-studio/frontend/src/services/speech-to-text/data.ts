@@ -15,10 +15,11 @@ export const service: ServiceMeta = {
     'Automatic speech recognition service using Whisper models optimized with OpenVINO. Supports 99+ languages, batch transcription, audio denoising, and translation to English.',
   icon: Mic,
   port: 8023,
+  reservedPorts: [5009],
   supportedOS: ['linux', 'windows'],
   execution: { mode: 'worker' },
   defaultModel: {
-    name: 'openai/whisper-tiny',
+    name: 'openai/whisper-base',
     device: 'CPU',
   },
   config: serviceConfig,

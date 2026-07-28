@@ -6,12 +6,13 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { sqliteAdapter } from '@payloadcms/db-sqlite'
 import { type BasePayload, buildConfig } from 'payload'
-import sharp from 'sharp'
 import { engines } from './engines/_generated/engines'
 import {
-  getBackendsForService,
+  getBackendByValue,
   getRecommendedBackendForService,
 } from './engines/registry'
+import { applyDeploymentConfig } from './lib/deployment-config'
+import { generateDeploymentDocs } from './lib/deployment-docs'
 import {
   initHealthCheckService,
   stopHealthCheckService,
@@ -26,6 +27,7 @@ import { AppSettings } from './payload/globals/AppSettings'
 import type { Service } from './payload-types'
 import { metaMap } from './services/_generated/meta'
 import { getExecutionModes } from './services/types'
+import type { OS } from './types/common'
 import { migrations } from './payload/migrations'
 
 const filename = fileURLToPath(import.meta.url)
@@ -35,14 +37,70 @@ async function inactivateServices(payload: BasePayload) {
   const result = await payload.update({
     collection: 'services',
     where: {
-      status: { not_equals: 'inactive' },
+      or: [
+        { status: { not_equals: 'inactive' } },
+        { isHealthy: { equals: true } },
+      ],
     },
     data: {
       status: 'inactive',
+      isHealthy: false,
     },
   })
 
   return result
+}
+
+const FALLBACK_MODEL: Service['models']['default'] = {
+  name: 'default',
+  device: 'CPU',
+}
+
+type SeedData = {
+  engine: Service['engine']
+  models: Service['models']
+  healthCheck?: Service['healthCheck']
+}
+
+function canonicalizeModel(
+  model: Service['models']['default'],
+): Service['models']['default'] {
+  if (model.backend !== 'llamacpp' || !model.quant) return model
+  const { quant, ...rest } = model
+  if (model.name.endsWith(`:${quant}`)) return rest
+  return { ...rest, name: engines.multiserve.getModelName(model) }
+}
+
+function resolveEngineBackedSeedData(
+  serviceType: Service['type'],
+  savedModel: Service['models']['default'] | undefined,
+  serverOS: OS,
+): SeedData {
+  const savedBackend = savedModel?.backend
+    ? getBackendByValue(savedModel.backend)
+    : undefined
+  const backend =
+    (savedBackend?.supportedServices.includes(serviceType)
+      ? savedBackend
+      : undefined) ?? getRecommendedBackendForService(serviceType, serverOS)
+
+  if (!backend) {
+    return { engine: 'worker', models: { default: FALLBACK_MODEL } }
+  }
+
+  const engineId = Object.entries(engines).find(([, eng]) =>
+    eng.supportedBackends.some((b) => b.value === backend.value),
+  )?.[0]
+
+  return {
+    engine: (engineId ?? 'worker') as Service['engine'],
+    models: {
+      default: canonicalizeModel(
+        backend.models[serviceType]?.[0] ?? FALLBACK_MODEL,
+      ),
+    },
+    healthCheck: backend.healthcheck ?? undefined,
+  }
 }
 
 async function ensureServicesExist(payload: BasePayload) {
@@ -53,7 +111,9 @@ async function ensureServicesExist(payload: BasePayload) {
   const existingMap = new Map(existing.docs.map((d) => [d.type, d]))
   const serverOS = os.platform() === 'win32' ? 'windows' : 'linux'
 
-  for (const [serviceType, meta] of Object.entries(metaMap)) {
+  for (const [key, meta] of Object.entries(metaMap)) {
+    const serviceType = key as Service['type']
+
     if (meta.execution.mode === 'none' && !meta.port) {
       logger.log(
         `ℹ️  Skipping auto-creation of ${meta.name} with 'none' execution mode and missing port:`,
@@ -63,75 +123,53 @@ async function ensureServicesExist(payload: BasePayload) {
 
     const modes = getExecutionModes(meta.execution)
     const isEngineBacked = modes.some((m) => m !== 'worker' && m !== 'none')
+    const existingService = existingMap.get(serviceType)
 
-    let engine: Service['engine'] = 'worker'
-    let models: {
-      default: { name: string; device: string; backend?: string }
-      [k: string]: { name: string; device: string; backend?: string }
-    }
-
-    let healthCheck: Service['healthCheck'] | undefined
-
-    if (isEngineBacked) {
-      const recommended = getRecommendedBackendForService(
-        serviceType as (typeof existing.docs)[0]['type'],
-        serverOS,
-      )
-      const backends = getBackendsForService(
-        serviceType as (typeof existing.docs)[0]['type'],
-      )
-      const targetBackend = recommended ?? backends[0]
-
-      if (targetBackend) {
-        const engineId = Object.entries(engines).find(([, eng]) =>
-          eng.supportedBackends.some((b) => b.value === targetBackend.value),
-        )?.[0]
-        engine = (engineId ?? 'worker') as Service['engine']
-        const serviceModels = targetBackend.models[
-          serviceType as keyof typeof targetBackend.models
-        ] as { name: string; device: string; backend?: string }[] | undefined
-        models = {
-          default: serviceModels?.[0] ?? { name: 'default', device: 'CPU' },
+    const seedData: SeedData = isEngineBacked
+      ? resolveEngineBackedSeedData(
+          serviceType,
+          existingService?.models?.default,
+          serverOS,
+        )
+      : {
+          engine: 'worker',
+          models: { default: meta.defaultModel ?? FALLBACK_MODEL },
+          healthCheck: meta.healthCheck,
         }
-      } else {
-        models = { default: { name: 'default', device: 'CPU' } }
-      }
-
-      if (isEngineBacked && targetBackend && targetBackend.healthcheck) {
-        healthCheck = targetBackend.healthcheck
-      }
-    } else {
-      models = {
-        default: meta.defaultModel ?? { name: 'default', device: 'CPU' },
-      }
-      if (meta.healthCheck) {
-        healthCheck = meta.healthCheck
-      }
-    }
 
     const newData = {
       name: meta.name,
-      type: serviceType as (typeof existing.docs)[0]['type'],
+      type: serviceType,
       port: meta.port,
-      engine,
-      models,
-      healthCheck,
       status: 'inactive' as const,
+      ...seedData,
     }
-
-    const existingService = existingMap.get(
-      serviceType as (typeof existing.docs)[0]['type'],
-    )
 
     if (existingService) {
       const fieldsToCheck = ['port', 'engine', 'healthCheck'] as const
       const hasModels = Boolean(existingService.models?.default?.name)
+      // Preserve the user's saved models when present (canonicalized);
+      // otherwise seed them from the static default.
+      const preservedModels = hasModels
+        ? {
+            ...existingService.models,
+            default: canonicalizeModel(existingService.models.default),
+          }
+        : undefined
+      const modelsChanged =
+        hasModels &&
+        JSON.stringify(preservedModels) !==
+          JSON.stringify(existingService.models)
+      const targetData = preservedModels
+        ? { ...newData, models: preservedModels }
+        : newData
       const needsUpdate =
         !hasModels ||
+        modelsChanged ||
         fieldsToCheck.some(
           (field) =>
             JSON.stringify(existingService[field]) !==
-            JSON.stringify(newData[field]),
+            JSON.stringify(targetData[field]),
         )
 
       if (needsUpdate) {
@@ -139,11 +177,7 @@ async function ensureServicesExist(payload: BasePayload) {
           await payload.update({
             collection: 'services',
             id: existingService.id,
-            // Preserve the user's saved models when present; otherwise seed
-            // them from the static default.
-            data: hasModels
-              ? { ...newData, models: existingService.models }
-              : newData,
+            data: targetData,
           })
           logger.log(
             `🔄 Updated service record: ${meta.name} (${serviceType}) — config changed`,
@@ -187,9 +221,26 @@ async function gracefulShutdown(reason: string): Promise<void> {
   globalThis._appShuttingDown = true
 
   logger.log(reason)
+  logger.log('Stopping all hosted services...')
   stopHealthCheckService()
   await killAllProcesses()
+  logger.log('All services stopped. Goodbye!')
   process.exit(0)
+}
+
+let repeatSignalNoticeShown = false
+
+function handleTerminationSignal(reason: string): void {
+  if (globalThis._appShuttingDown) {
+    if (!repeatSignalNoticeShown) {
+      repeatSignalNoticeShown = true
+      logger.log(
+        'Shutdown already in progress — further Ctrl+C is ignored so all services can stop cleanly.',
+      )
+    }
+    return
+  }
+  gracefulShutdown(reason)
 }
 
 export default buildConfig({
@@ -226,12 +277,16 @@ export default buildConfig({
     await inactivateServices(payload)
     await ensureServicesExist(payload)
 
+    // Apply user presets from deployment.json (if present) on top of the
+    // seeded defaults — may auto-start services marked "online".
+    await applyDeploymentConfig(payload)
+
+    // Keep the deployment.json reference docs in sync with the registries
+    generateDeploymentDocs()
+
     // Initialize health check service with 10 second interval
     initHealthCheckService(payload)
 
-    // Register signal handlers only once — onInit may be called multiple
-    // times during Next.js hot-module reloads, which would otherwise stack
-    // duplicate listeners and cause concurrent cleanup races.
     if (!globalThis._appSignalHandlersRegistered) {
       globalThis._appSignalHandlersRegistered = true
 
@@ -239,17 +294,10 @@ export default buildConfig({
         await gracefulShutdown(`Process beforeExit event with code: ${code}`)
       })
 
-      // NOTE: The 'exit' event is synchronous — async operations cannot run
-      // inside it, so cleanup must happen in the signal/beforeExit handlers.
-
-      process.on(
-        'SIGINT',
-        async () => await gracefulShutdown('SIGINT received (Ctrl+C)'),
+      process.on('SIGINT', () =>
+        handleTerminationSignal('SIGINT received (Ctrl+C)'),
       )
-      process.on(
-        'SIGTERM',
-        async () => await gracefulShutdown('SIGTERM received'),
-      )
+      process.on('SIGTERM', () => handleTerminationSignal('SIGTERM received'))
     }
   },
   // database-adapter-config-start
@@ -260,6 +308,4 @@ export default buildConfig({
     migrationDir: './src/payload/migrations',
     prodMigrations: migrations,
   }),
-  // database-adapter-config-end
-  sharp,
 })

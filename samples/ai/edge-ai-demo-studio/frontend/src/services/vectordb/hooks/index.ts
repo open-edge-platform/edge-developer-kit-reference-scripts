@@ -138,6 +138,31 @@ export function useDeleteChunk() {
   })
 }
 
+/** Delete multiple chunks at once by their document IDs. */
+export function useDeleteChunksByIds() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (params: { kbId: number; docIds: string[] }) => {
+      const url = new URL(
+        `${API_BASE}/kb/${params.kbId}/chunks`,
+        window.location.origin,
+      )
+      const res = await fetch(url, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ doc_ids: params.docIds }),
+      })
+      if (!res.ok) throw new Error(await res.text())
+      return res.json()
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ['vectordb', 'chunks', variables.kbId],
+      })
+    },
+  })
+}
+
 export function useSearchKb() {
   return useMutation({
     mutationFn: async (params: {
@@ -230,23 +255,32 @@ export function useDeleteFile() {
   })
 }
 
-export function useCreateEmbeddings() {
+/**
+ * Embed a single already-uploaded file. This endpoint is idempotent per source:
+ * it first removes any existing chunks whose source is this file, then re-embeds
+ * it — so embedding a file that was already embedded won't create duplicates.
+ * Prefer this over a bulk "embed the whole directory" call, which re-embeds
+ * (and thus duplicates) files that were already in the vector store.
+ */
+export function useCreateFileEmbeddings() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (params: {
       kbId: number
+      filename: string
       chunkSize?: number
       chunkOverlap?: number
       splitterName?: string
     }) => {
       const url = new URL(
-        `${API_BASE}/kb/${params.kbId}/create`,
+        `${API_BASE}/kb/${params.kbId}/files/embed`,
         window.location.origin,
       )
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          filename: params.filename,
           chunk_size: params.chunkSize ?? 512,
           chunk_overlap: params.chunkOverlap ?? 200,
           splitter_name: params.splitterName ?? 'RecursiveCharacter',

@@ -19,6 +19,7 @@ import type {
   Service,
   ServiceDocsData,
 } from '@/services/types'
+import { Streamdown } from 'streamdown'
 import CodeBlock from './codeblock'
 import { DocsNavigation, type NavItem } from './docs-navigation'
 
@@ -49,9 +50,9 @@ function SectionHeader({
       ) : null}
       <h2 className="text-foreground text-2xl font-semibold">{title}</h2>
       {description ? (
-        <p className="text-muted-foreground text-sm leading-relaxed">
-          {description}
-        </p>
+        <div className="prose prose-sm dark:prose-invert text-muted-foreground [&_a]:text-primary max-w-none leading-relaxed [&_p:first-child]:mt-0 [&_p:last-child]:mb-0">
+          <Streamdown linkSafety={{ enabled: false }}>{description}</Streamdown>
+        </div>
       ) : null}
     </div>
   )

@@ -3,10 +3,25 @@
 
 'use client'
 
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 interface StartupTimeoutResponse {
   startupTimeout: number
+}
+
+interface HfTokenResponse {
+  hasToken: boolean
+}
+
+export function useHfToken() {
+  return useQuery({
+    queryKey: ['settings', 'hf-token'],
+    queryFn: async (): Promise<HfTokenResponse> => {
+      const response = await fetch('/api/settings/hf-token')
+      if (!response.ok) throw new Error(await response.text())
+      return response.json()
+    },
+  })
 }
 
 export function useStartupTimeout() {
@@ -21,6 +36,7 @@ export function useStartupTimeout() {
 }
 
 export function useSaveHfToken(onSuccess: () => void) {
+  const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (hfToken: string) => {
       const response = await fetch('/api/settings/hf-token', {
@@ -31,7 +47,10 @@ export function useSaveHfToken(onSuccess: () => void) {
       if (!response.ok) throw new Error(await response.text())
       return response
     },
-    onSuccess,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings', 'hf-token'] })
+      onSuccess()
+    },
   })
 }
 

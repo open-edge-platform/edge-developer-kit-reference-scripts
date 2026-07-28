@@ -3,14 +3,14 @@ name = "diarization"
 version = "0.1.0"
 description = "Speaker diarization worker using pyannote.audio"
 readme = "README.md"
-requires-python = ">=3.11, <3.12"
+requires-python = ">=3.11"
 dependencies = [
     "fastapi[all]>=0.128.0",
     "uvicorn==0.32.1",
     "pyannote-audio>=4.0.4",
-    "torch==2.12.1",
-    "torchaudio==2.11.0",
-    "triton-xpu==3.7.1",
+    "torch==2.13.0",
+    "torchaudio>=2.11.0",
+    "triton-xpu>=3.7.1",
     "soundfile==0.12.1",
     "numpy>=2.2.6",
     "scipy>=1.11.0",
@@ -29,4 +29,3 @@ triton-xpu = { index = "pytorch" }
 name = "pytorch"
 url = "https://download.pytorch.org/whl/xpu"
 explicit = true
-

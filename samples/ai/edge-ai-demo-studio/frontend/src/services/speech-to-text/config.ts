@@ -8,6 +8,12 @@ const STT_DEVICES = ['CPU', 'GPU', 'NPU']
 export const serviceConfig: ServiceConfig = {
   availableModels: [
     {
+      value: 'openai/whisper-large-v3-turbo',
+      label: 'Whisper Large v3 Turbo',
+      availableDevices: STT_DEVICES,
+      backend: 'openvino',
+    },
+    {
       value: 'openai/whisper-large-v3',
       label: 'Whisper Large v3',
       availableDevices: STT_DEVICES,
@@ -40,6 +46,6 @@ export const serviceConfig: ServiceConfig = {
   ],
   availableModelSources: [
     { value: 'huggingface', label: 'Hugging Face' },
-    { value: 'modelscope', label: 'ModelScope' },
+    // { value: 'modelscope', label: 'ModelScope' },
   ],
 }

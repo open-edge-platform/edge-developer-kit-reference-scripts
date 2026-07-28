@@ -32,6 +32,34 @@ from modules.lipsync.wav2lip.wav2lip256.face_detection import (
 IMG_COMPRESSION_LEVEL = 5
 
 
+def _torch_device(device: str) -> str:
+    """Map an inference device name to one usable by the torch face detector.
+
+    The worker's --device is an OpenVINO name (cpu/gpu/gpu.1/npu/auto), but
+    face detection runs on PyTorch, which only knows cpu/cuda/xpu. Passing an
+    OV name straight through makes FaceAlignment raise an empty ValueError.
+    """
+    import torch
+
+    dev = (device or "cpu").lower()
+    if dev.startswith("cuda"):
+        return device
+    if dev.startswith("gpu") or dev == "xpu":
+        if torch.xpu.is_available():
+            return "xpu"
+        getLogger(__name__).warning(
+            f"torch XPU not available for face detection (device={device}); "
+            "falling back to CPU."
+        )
+        return "cpu"
+    if dev != "cpu":
+        getLogger(__name__).info(
+            f"Face detection has no torch backend for '{device}'; using CPU."
+        )
+        return "cpu"
+    return "cpu"
+
+
 def extractImagesFromVideo(video_path, save_path, frame_count=128):
     cap = cv2.VideoCapture(video_path)
     count = 0
@@ -60,7 +88,9 @@ def performFaceAlignment(full_images_path, batch_size, device, pads, smooth):
         frame = cv2.imread(image_path)
         full_frames.append(frame)
 
-    detector = FaceAlignment(LandmarksType._2D, flip_input=False, device=device)
+    detector = FaceAlignment(
+        LandmarksType._2D, flip_input=False, device=_torch_device(device)
+    )
 
     predictions = []
     for i in tqdm(range(0, len(full_frames), batch_size)):
@@ -74,6 +104,7 @@ def performFaceAlignment(full_images_path, batch_size, device, pads, smooth):
 
     for rect, image in zip(predictions, full_frames):
         if rect is None:
+            os.makedirs("temp", exist_ok=True)
             cv2.imwrite(
                 "temp/faulty_frame.jpg", image
             )  # check this frame where the face was not detected.
@@ -168,9 +199,19 @@ def generate_wav2lip_avatar(
     print("Extracting Images from Video")
     extractImagesFromVideo(video_path, full_image_path, frame_count)
 
+    extracted = glob(os.path.join(full_image_path, "*.png"))
+    if not extracted:
+        raise ValueError(
+            f"No frames could be extracted from video: {video_path}. "
+            "The file may be missing, corrupt, or in an unsupported format."
+        )
+
     aligned_faces = performFaceAlignment(
         full_image_path, batch_size, device, pads, smooth=(not no_smooth)
     )
+    if not aligned_faces:
+        raise ValueError("No faces detected in the video.")
+
     generateCoordinates(aligned_faces, face_image_path, coords_path, img_size)
 
     wav2lip_config_path = Path(wav2lip_config_path).resolve()

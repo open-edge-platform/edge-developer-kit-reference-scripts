@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-import archiver from 'archiver'
+import { ZipArchive } from 'archiver'
 import { type NextRequest, NextResponse } from 'next/server'
 import {
   buildExportBundle,
@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
  */
 function zipDirectory(dir: string, rootDir: string): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    const archive = archiver('zip', { zlib: { level: 9 } })
+    const archive = new ZipArchive({ zlib: { level: 9 } })
     const chunks: Buffer[] = []
     archive.on('data', (chunk: Buffer) => chunks.push(chunk))
     archive.on('warning', (warn) => logger.warn?.(`zip warning: ${warn}`))

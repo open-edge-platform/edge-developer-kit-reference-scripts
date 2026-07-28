@@ -219,21 +219,29 @@ download_scripts() {
         echo "$S_VALID Skipping telemetry scripts (user declined or not set)"
     fi
 
-    # Download scripts
+    # Download scripts.
+    # Only fetch a script that is not already present. This keeps the one-line
+    # install working (nothing on disk, everything is downloaded) while a run
+    # from a clone uses its own checked-out scripts instead of having them
+    # overwritten by the copies on the remote branch. Set DEVKIT_FORCE_DOWNLOAD=1
+    # to always pull the remote copy over any local one.
     apt update
     apt install -y curl
     mkdir -p "$DOWNLOAD_DIR"
     for script in "${ALL_SCRIPTS[@]}"; do
-        #local token=$(get_script_token "$script")
-        local url="$BASE_URL/$script?"
+        local url="$BASE_URL/$script"
         local path="$DOWNLOAD_DIR/$script"
+
+        if [ -f "$path" ] && [ "${DEVKIT_FORCE_DOWNLOAD:-0}" != "1" ]; then
+            echo "Using local: $script"
+            continue
+        fi
+
         if curl -fsSL "$url" -o "$path"; then
             echo "Downloaded: $script"
         else
-            if ! apt-get install -y curl; then
-                echo "$S_ERROR Failed to install 'curl' needed to download scripts"
-                return 1
-            fi
+            echo "$S_ERROR Failed to download $script"
+            return 1
         fi
     done
 
@@ -1020,11 +1028,8 @@ resolve_extras() {
             fi
             ;;
         *)
-            # No flag given. Ask on a terminal, install nothing otherwise, so
-            # unattended and CI runs stay untouched.
-            if [ -t 0 ] && [ -t 1 ]; then
-                select_extras_menu
-            fi
+            # No flag given: install nothing, the same as --no-extras. The menu
+            # is shown only when the user explicitly asks with --with-extras.
             ;;
     esac
 }
