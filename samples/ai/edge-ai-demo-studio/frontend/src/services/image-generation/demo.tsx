@@ -5,9 +5,10 @@
 
 import { Download, ImageIcon, Loader2, Sparkles, Upload } from 'lucide-react'
 import Image from 'next/image'
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { UploadButton } from '@/components/common/upload-button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
@@ -26,12 +27,14 @@ function ImageOutput({
   label,
   resolution,
   'data-testid': testId,
+  errorMessage,
 }: {
   images: string[]
   isPending: boolean
   label: string
   resolution: string
   'data-testid'?: string
+  errorMessage?: string
 }) {
   const downloadImage = (src: string, index: number) => {
     const link = document.createElement('a')
@@ -60,9 +63,12 @@ function ImageOutput({
           images.length > 0 ? 'bg-muted/10' : 'bg-muted/20',
         )}
       >
+        {errorMessage && (
+          <p className="text-destructive px-4">Error: {errorMessage}</p>
+        )}
         {isPending && <Skeleton className="h-full w-full rounded-none" />}
 
-        {!isPending && images.length === 0 && (
+        {!isPending && images.length === 0 && !errorMessage && (
           <div className="text-muted-foreground flex flex-col items-center gap-2">
             <ImageIcon className="h-12 w-12 opacity-30" />
             <p className="text-sm">{label} will appear here</p>
@@ -168,7 +174,6 @@ export function ImageGenerationDemo({ service }: { service: Service }) {
   const [editPrompt, setEditPrompt] = useState('')
   const [sourceImage, setSourceImage] = useState<File | null>(null)
   const [sourcePreview, setSourcePreview] = useState<string | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [negativePrompt, setNegativePrompt] = useState('')
 
@@ -213,9 +218,7 @@ export function ImageGenerationDemo({ service }: { service: Service }) {
     })
   }
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+  const handleFileUpload = (file: File) => {
     setSourceImage(file)
     if (sourcePreview) URL.revokeObjectURL(sourcePreview)
     setSourcePreview(URL.createObjectURL(file))
@@ -280,14 +283,6 @@ export function ImageGenerationDemo({ service }: { service: Service }) {
                   )}
                 </Button>
 
-                {generateMutation.isError && (
-                  <p className="text-destructive text-sm">
-                    {generateMutation.error instanceof Error
-                      ? generateMutation.error.message
-                      : 'Image generation failed.'}
-                  </p>
-                )}
-
                 {generateMutation.taskStatus && generateMutation.isPending && (
                   <GenerationProgress
                     taskStatus={generateMutation.taskStatus}
@@ -301,6 +296,11 @@ export function ImageGenerationDemo({ service }: { service: Service }) {
                 label="Generated Image"
                 resolution={imageGenValues.resolution}
                 data-testid="imggen-gallery"
+                errorMessage={
+                  generateMutation.error instanceof Error
+                    ? generateMutation.error.message
+                    : undefined
+                }
               />
             </div>
           </TabsContent>
@@ -312,23 +312,15 @@ export function ImageGenerationDemo({ service }: { service: Service }) {
                   Source Image
                 </p>
 
-                <input
-                  ref={fileInputRef}
-                  type="file"
+                <UploadButton
                   accept="image/*"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                />
-
-                <Button
-                  variant="outline"
-                  onClick={() => fileInputRef.current?.click()}
+                  onFiles={(files) => handleFileUpload(files[0])}
                   disabled={editMutation.isPending}
                   className="w-full gap-2"
                 >
                   <Upload className="h-4 w-4" />
                   {sourceImage ? 'Change Image' : 'Upload Image to Edit'}
-                </Button>
+                </UploadButton>
 
                 {sourcePreview && (
                   <div className="bg-muted/30 flex justify-center rounded-lg border p-2">
@@ -382,14 +374,6 @@ export function ImageGenerationDemo({ service }: { service: Service }) {
                     </>
                   )}
                 </Button>
-
-                {editMutation.isError && (
-                  <p className="text-destructive text-sm">
-                    {editMutation.error instanceof Error
-                      ? editMutation.error.message
-                      : 'Image editing failed.'}
-                  </p>
-                )}
               </div>
 
               <ImageOutput
@@ -397,6 +381,11 @@ export function ImageGenerationDemo({ service }: { service: Service }) {
                 isPending={editMutation.isPending}
                 label="Edited Image"
                 resolution={imageGenValues.resolution}
+                errorMessage={
+                  editMutation.error instanceof Error
+                    ? editMutation.error.message
+                    : undefined
+                }
               />
             </div>
           </TabsContent>

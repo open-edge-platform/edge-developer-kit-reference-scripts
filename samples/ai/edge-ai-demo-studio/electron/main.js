@@ -520,7 +520,7 @@ function startNextServer() {
   const serverProcess = spawn(nodePath, ["server.js"], {
     cwd: frontendPath,
     stdio: "pipe",
-    env: { ...process.env, PORT: "8080" },
+    env: { ...process.env, PORT: "8080", NEXT_MANUAL_SIG_HANDLE: "true" },
   });
 
   childProcesses.push(serverProcess);

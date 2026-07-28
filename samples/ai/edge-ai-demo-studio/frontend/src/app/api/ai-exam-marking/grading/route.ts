@@ -48,7 +48,7 @@ export async function POST(request: Request) {
         },
         {
           role: 'user',
-          content: `Given the question and student answer, evaluate the student's answer:\n\n${answer ?? ''}`,
+          content: `Evaluate the student's answer:\n\n${answer?.trim() ? answer : 'Empty answer'}`,
         },
       ],
     })

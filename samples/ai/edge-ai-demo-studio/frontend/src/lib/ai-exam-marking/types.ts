@@ -20,6 +20,8 @@ export type DataEntry = {
 export interface SavedRecord {
   id: string
   timestamp: string
+  studentName?: string
+  studentId?: string
   dataEntries: Array<{
     number: string
     question: string
@@ -29,6 +31,7 @@ export interface SavedRecord {
   ocrResult: {
     text: string
     imagePreview?: string
+    overlayImage?: string
   }
   llmResult: {
     prompt: string

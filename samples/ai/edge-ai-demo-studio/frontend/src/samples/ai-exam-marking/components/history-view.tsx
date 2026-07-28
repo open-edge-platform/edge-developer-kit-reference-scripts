@@ -3,6 +3,7 @@
 
 'use client'
 
+import type React from 'react'
 import { useState } from 'react'
 import {
   Card,
@@ -31,18 +32,26 @@ import Image from 'next/image'
 import { jsPDF } from 'jspdf'
 import type { SavedRecord } from '@/lib/ai-exam-marking/types'
 
-type HistoryViewProps = {
-  records: SavedRecord[]
-  deleteRecord: (id: string) => boolean
-  deleteAllRecords: () => void
-}
-
 export function HistoryView({
+  role,
+  studentId,
   records,
   deleteRecord,
   deleteAllRecords,
-}: HistoryViewProps) {
+}: {
+  role: 'teacher' | 'student' | null
+  studentId?: string
+  records: SavedRecord[]
+  deleteRecord: (id: string) => boolean
+  deleteAllRecords: () => void
+}) {
   const [selectedRecord, setSelectedRecord] = useState<SavedRecord | null>(null)
+
+  // Students only see their own records; teachers see all
+  const visibleRecords =
+    role === 'student' && studentId
+      ? records.filter((r) => r.studentId === studentId)
+      : records
 
   const handleDelete = (id: string, e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation()
@@ -102,6 +111,13 @@ export function HistoryView({
     }
 
     addText(`Grading Report`, 16, true)
+    if (record.studentName || record.studentId) {
+      addText(
+        `Student: ${[record.studentName, record.studentId].filter(Boolean).join(' — ')}`,
+        11,
+        true,
+      )
+    }
     addText(`Saved: ${new Date(record.timestamp).toLocaleString()}`, 9)
     y += 4
 
@@ -167,17 +183,17 @@ export function HistoryView({
   ) => {
     e.stopPropagation()
     const doc = buildPdf(record)
-    doc.save(`grading-result-${record.id.slice(-8)}.pdf`)
+    doc.save(`grading-result-${record.studentId || record.id}.pdf`)
   }
 
   const handleExportAll = () => {
-    records.forEach((record, idx) => {
+    visibleRecords.forEach((record, idx) => {
       const doc = buildPdf(record)
-      doc.save(`grading-result-${idx + 1}-${record.id.slice(-8)}.pdf`)
+      doc.save(`grading-result-${idx + 1}-${record.studentId || record.id}.pdf`)
     })
   }
 
-  if (records.length === 0) {
+  if (visibleRecords.length === 0) {
     return (
       <Card>
         <CardHeader>
@@ -188,7 +204,9 @@ export function HistoryView({
         </CardHeader>
         <CardContent>
           <p className="text-muted-foreground text-center text-xs">
-            Process some images with OCR and LLM to see results here.
+            {role === 'student'
+              ? 'No grading results found for your student ID.'
+              : 'Process some images with OCR and LLM to see results here.'}
           </p>
         </CardContent>
       </Card>
@@ -216,21 +234,23 @@ export function HistoryView({
                 <Download className="mr-2 h-4 w-4" />
                 Export All
               </Button>
-              <Button
-                onClick={handleDeleteAll}
-                variant="outline"
-                size="sm"
-                className="text-xs"
-              >
-                <Trash2 className="text-destructive mr-2 h-4 w-4" />
-                Delete All
-              </Button>
+              {role === 'teacher' && (
+                <Button
+                  onClick={handleDeleteAll}
+                  variant="outline"
+                  size="sm"
+                  className="text-xs"
+                >
+                  <Trash2 className="text-destructive mr-2 h-4 w-4" />
+                  Delete All
+                </Button>
+              )}
             </div>
           </div>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4 text-sm">
-            {records.map((record) => (
+          <div className="space-y-3">
+            {visibleRecords.map((record) => (
               <div
                 key={record.id}
                 className="bg-card hover:bg-muted/50 cursor-pointer rounded-lg border p-4 transition-colors"
@@ -241,14 +261,19 @@ export function HistoryView({
                     <div className="flex items-center gap-2">
                       <FileText className="text-muted-foreground h-4 w-4" />
                       <p className="font-medium">
-                        Record {record.id.slice(-8)}
+                        {record.studentId ?? `Record ${record.id}`}
                       </p>
+                      {record.studentName && (
+                        <span className="text-muted-foreground text-xs">
+                          — {record.studentName}
+                        </span>
+                      )}
                     </div>
-                    <div className="text-muted-foreground flex items-center gap-2 text-sm text-xs">
+                    <div className="text-muted-foreground flex items-center gap-2 text-xs">
                       <Calendar className="h-3 w-3" />
                       {new Date(record.timestamp).toLocaleString()}
                     </div>
-                    <p className="text-muted-foreground text-sm text-xs">
+                    <p className="text-muted-foreground text-xs">
                       {record.dataEntries.length} questions •{' '}
                       {record.llmResult.response.length} results
                     </p>
@@ -262,14 +287,16 @@ export function HistoryView({
                     >
                       <Download className="h-4 w-4" />
                     </Button>
-                    <Button
-                      aria-label="Delete Record"
-                      variant="outline"
-                      size="sm"
-                      onClick={(e) => handleDelete(record.id, e)}
-                    >
-                      <Trash2 className="text-destructive h-4 w-4" />
-                    </Button>
+                    {role === 'teacher' && (
+                      <Button
+                        aria-label="Delete Record"
+                        variant="outline"
+                        size="sm"
+                        onClick={(e) => handleDelete(record.id, e)}
+                      >
+                        <Trash2 className="text-destructive h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
                 </div>
               </div>

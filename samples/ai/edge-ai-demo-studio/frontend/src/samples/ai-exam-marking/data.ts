@@ -26,6 +26,7 @@ export const sample: Sample = {
       capabilityKey: 'voice_input',
       impactText: 'Voice input will be disabled.',
     },
+    { serviceId: 'file-watcher', role: 'required' },
     { serviceId: 'text-generation', role: 'required' },
     {
       serviceId: 'embeddings',

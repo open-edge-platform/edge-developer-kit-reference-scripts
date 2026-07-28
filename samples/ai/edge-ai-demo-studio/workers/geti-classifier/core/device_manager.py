@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import logging
+import re
 from typing import Any
 
 import openvino as ov
@@ -10,8 +11,40 @@ from geti_sdk.deployment import Deployment
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_DEVICES = {"CPU", "GPU", "NPU"}
-DEFAULT_DEVICE = "GPU"
+SUPPORTED_DEVICE_PATTERN = re.compile(r'^(CPU|GPU(\.\d+)?|NPU)$', re.IGNORECASE)
+
+
+def _resolve_default_device() -> str:
+    """
+    Query OpenVINO at startup to pick the best available device.
+    Priority: GPU.x > NPU > CPU
+    Falls back to CPU if OpenVINO is unavailable.
+    """
+    try:
+        core = ov.Core()
+        available = core.available_devices
+
+        for device in available:
+            if device.upper().startswith("GPU"):
+                logger.info(f"[DEVICE] Default device resolved to: {device}")
+                return device
+
+        for device in available:
+            if device.upper().startswith("NPU"):
+                logger.info(f"[DEVICE] Default device resolved to: {device}")
+                return device
+
+        logger.info("[DEVICE] No GPU/NPU found, defaulting to CPU")
+        return "CPU"
+
+    except Exception as exc:
+        logger.warning(
+            f"[DEVICE] Could not query OpenVINO, defaulting to CPU: {exc}"
+        )
+        return "CPU"
+
+
+DEFAULT_DEVICE = _resolve_default_device()
 
 
 class DeviceManager:
@@ -35,18 +68,22 @@ class DeviceManager:
                 except Exception:
                     full_name = device_name
 
-                if device_name.startswith("GPU"):
+                if device_name.upper().startswith("GPU"):
                     device_type = "GPU"
-                elif device_name.startswith("NPU"):
+                elif device_name.upper().startswith("NPU"):
                     device_type = "NPU"
                 else:
                     device_type = "CPU"
+
+                is_supported = bool(
+                    SUPPORTED_DEVICE_PATTERN.match(device_name)
+                )
 
                 devices.append({
                     "name": device_name,
                     "full_name": full_name,
                     "type": device_type,
-                    "supported": device_type in SUPPORTED_DEVICES,
+                    "supported": is_supported,
                 })
 
             logger.info(
@@ -71,12 +108,12 @@ class DeviceManager:
     @staticmethod
     def validate_device(device: str) -> str:
         normalized = device.strip().upper()
-        if normalized not in SUPPORTED_DEVICES:
+        if not SUPPORTED_DEVICE_PATTERN.match(normalized):
             raise HTTPException(
                 status_code=400,
                 detail=(
                     f"Unsupported device '{device}'. "
-                    f"Must be one of: {sorted(SUPPORTED_DEVICES)}"
+                    f"Must be CPU, GPU, GPU.0, GPU.1, GPU.x, or NPU"
                 ),
             )
         return normalized

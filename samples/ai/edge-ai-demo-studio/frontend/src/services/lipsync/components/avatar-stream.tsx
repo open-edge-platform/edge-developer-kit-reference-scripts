@@ -33,6 +33,11 @@ export interface AvatarStreamProps {
   onDisconnect: () => void
   /** When true, shows a "Speaking" overlay badge on the video. */
   isSpeaking?: boolean
+  /**
+   * When true (and connected), shows an overlay indicating the WebRTC media
+   * path is still being established — the video has no frames yet.
+   */
+  isEstablishing?: boolean
   /** When provided, shows a session ID badge below the video. */
   sessionId?: string | null
 }
@@ -45,6 +50,7 @@ export function AvatarStream({
   onConnect,
   onDisconnect,
   isSpeaking,
+  isEstablishing,
   sessionId,
 }: AvatarStreamProps) {
   return (
@@ -123,6 +129,18 @@ export function AvatarStream({
               className="h-full w-full object-contain"
             />
           </div>
+
+          {isConnected && isEstablishing && (
+            <div
+              data-testid="avatar-establishing-overlay"
+              className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center"
+            >
+              <Loader2 className="h-7 w-7 animate-spin text-white/70" />
+              <p className="text-xs text-white/70">
+                Establishing media connection…
+              </p>
+            </div>
+          )}
 
           {!isConnected && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 px-6 text-center">

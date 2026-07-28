@@ -157,11 +157,29 @@ if not exist "llama-%LLAMACPP_VERSION%-bin-win-vulkan-x64\llama-server.exe" (
 echo Llama-cpp binaries are available.
 echo.
 
+:: Install uv if not present
+echo [5/8] Checking uv installation...
+where uv >nul 2>&1
+if %errorlevel% neq 0 (
+    echo Installing uv...
+    winget install --id=astral-sh.uv -e --silent --accept-package-agreements --accept-source-agreements
+    if %errorlevel% neq 0 (
+        echo ERROR: Failed to install uv!
+        pause
+        exit /b 1
+    )
+    echo uv installed successfully. Refreshing PATH...
+    set "PATH=%USERPROFILE%\.local\bin;%PATH%"
+) else (
+    echo uv is already installed.
+)
+echo.
+
 :: Check if virtual environment exists, create if not
 echo [5/8] Setting up virtual environment...
-if not exist "venv" (
-    echo Creating virtual environment...
-    python -m venv venv
+if not exist ".venv" (
+    echo Creating virtual environment with uv...
+    uv venv .venv
     if %errorlevel% neq 0 (
         echo ERROR: Failed to create virtual environment!
         pause
@@ -175,7 +193,7 @@ echo.
 
 :: Activate virtual environment
 echo [6/8] Activating virtual environment...
-call venv\Scripts\activate.bat
+call .venv\Scripts\activate.bat
 if %errorlevel% neq 0 (
     echo ERROR: Failed to activate virtual environment!
     pause
@@ -187,16 +205,11 @@ echo.
 :: Install/Update dependencies
 echo [7/8] Installing dependencies...
 echo This may take a few minutes on first run...
-pip install -r requirements.txt --quiet
+uv pip install -r requirements.txt
 if %errorlevel% neq 0 (
     echo ERROR: Failed to install dependencies!
-    echo.
-    echo Trying to install dependencies with more verbose output...
-    pip install -r requirements.txt
-    if %errorlevel% neq 0 (
-        pause
-        exit /b 1
-    )
+    pause
+    exit /b 1
 )
 echo Dependencies installed successfully.
 echo.
@@ -218,7 +231,7 @@ echo ================================================
 echo.
 
 :: Run the Python application
-python app.py
+uv run app.py
 
 :: Application has stopped
 echo.

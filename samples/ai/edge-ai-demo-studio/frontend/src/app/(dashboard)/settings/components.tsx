@@ -102,9 +102,11 @@ export function AppearanceSection({
 
 export function ApiConfigSection({
   hfToken,
+  hasToken,
   onTokenChange,
 }: {
   hfToken: string
+  hasToken: boolean
   onTokenChange: (token: string) => void
 }) {
   const [showToken, setShowToken] = useState(false)
@@ -124,7 +126,11 @@ export function ApiConfigSection({
               type={showToken ? 'text' : 'password'}
               value={hfToken}
               onChange={(event) => onTokenChange(event.target.value)}
-              placeholder="hf_xxxxxxxxxxxxxxxxxxxx"
+              placeholder={
+                hasToken
+                  ? '•••••••• (token saved — enter a new one to replace)'
+                  : 'hf_xxxxxxxxxxxxxxxxxxxx'
+              }
               className="bg-muted/30 pr-10"
             />
             <Button
@@ -224,7 +230,7 @@ export function ProxyConfigSection({
             min={30}
             value={proxyTimeout}
             onChange={(event) =>
-              onTimeoutChange(Math.max(30, Number(event.target.value) || 30))
+              onTimeoutChange(Math.max(30, Number(event.target.value) || 300))
             }
             className="bg-muted/30 w-32"
           />
@@ -243,10 +249,10 @@ export function ProxyConfigSection({
             </p>
           )}
         <p className="text-muted-foreground text-xs">
-          Maximum time a request can take before being terminated. Default is 30
-          seconds. Adjust this if you encounter frequent timeouts with
-          long-running requests, but be cautious as setting it too high may
-          cause resource exhaustion.
+          Maximum time a request can take before being terminated. Default is
+          300 seconds (5 minutes). Adjust this if you encounter frequent
+          timeouts with long-running requests, but be cautious as setting it too
+          high may cause resource exhaustion.
         </p>
 
         {activeProxyTimeout !== undefined &&

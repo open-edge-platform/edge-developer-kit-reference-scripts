@@ -16,7 +16,11 @@ import { useTextGenerationParams } from '@/samples/common/hooks/use-text-generat
 import { useTtsParams } from '@/services/text-to-speech/hooks/use-tts-params'
 import { useTextGenChat } from '@/services/text-generation/hooks/use-chat'
 import { AvatarStream } from '@/services/lipsync/components/avatar-stream'
-import { buildIceConfig, useLipsyncOffer } from '@/services/lipsync/hooks'
+import {
+  buildIceConfig,
+  useLipsyncOffer,
+  waitForIceGathering,
+} from '@/services/lipsync/hooks'
 import type { Sample } from '../types'
 import { ChatPanel } from './components/chat-panel'
 import { SampleParamsSlot } from '../common/sample-params-slot'
@@ -40,15 +44,17 @@ export function DigitalAvatarDemo({ sample }: { sample: Sample }) {
 
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
+  const [isConnecting, setIsConnecting] = useState(false)
+  const [isMediaConnected, setIsMediaConnected] = useState(false)
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const pcRef = useRef<RTCPeerConnection | null>(null)
+  const iceGatheringTimedOutRef = useRef(false)
   const disconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   )
 
-  const { mutateAsync: offerMutateAsync, isPending: isOfferPending } =
-    useLipsyncOffer()
+  const { mutateAsync: offerMutateAsync } = useLipsyncOffer()
   const lipsyncService = useGetService('lipsync')
   const ttsService = useGetService('text-to-speech')
   const textGenService = useGetService('text-generation')
@@ -59,11 +65,16 @@ export function DigitalAvatarDemo({ sample }: { sample: Sample }) {
 
   const connect = useCallback(async () => {
     setStatusMessage(null)
+    setIsConnecting(true)
+    setIsMediaConnected(false)
+    iceGatheringTimedOutRef.current = false
 
+    let createdPc: RTCPeerConnection | null = null
     try {
       const pc = new RTCPeerConnection(
         buildIceConfig(clientIceServerUrl, 'stun'),
       )
+      createdPc = pc
 
       pc.addEventListener('track', (event) => {
         if (videoRef.current && event.streams[0]) {
@@ -77,6 +88,8 @@ export function DigitalAvatarDemo({ sample }: { sample: Sample }) {
             clearTimeout(disconnectTimeoutRef.current)
             disconnectTimeoutRef.current = null
           }
+          iceGatheringTimedOutRef.current = false
+          setIsMediaConnected(true)
           setStatusMessage('Connected')
         } else if (pc.connectionState === 'failed') {
           if (disconnectTimeoutRef.current) {
@@ -85,7 +98,11 @@ export function DigitalAvatarDemo({ sample }: { sample: Sample }) {
           }
           setSessionId(null)
           setStatusMessage(null)
-          toast.error('WebRTC connection lost')
+          toast.error(
+            iceGatheringTimedOutRef.current
+              ? 'Could not establish media connection — check the configured ICE server'
+              : 'WebRTC connection lost',
+          )
         } else if (pc.connectionState === 'disconnected') {
           setStatusMessage('Reconnecting...')
           if (!disconnectTimeoutRef.current) {
@@ -107,19 +124,13 @@ export function DigitalAvatarDemo({ sample }: { sample: Sample }) {
       const offer = await pc.createOffer()
       await pc.setLocalDescription(offer)
 
-      await new Promise<void>((resolve) => {
-        if (pc.iceGatheringState === 'complete') {
-          resolve()
-        } else {
-          const onStateChange = () => {
-            if (pc.iceGatheringState === 'complete') {
-              pc.removeEventListener('icegatheringstatechange', onStateChange)
-              resolve()
-            }
-          }
-          pc.addEventListener('icegatheringstatechange', onStateChange)
-        }
-      })
+      const gatheringCompleted = await waitForIceGathering(pc)
+      if (!gatheringCompleted) {
+        iceGatheringTimedOutRef.current = true
+        toast.warning(
+          'ICE gathering timed out — the configured ICE server may be unreachable. Trying to connect anyway…',
+        )
+      }
 
       const answer = await offerMutateAsync({
         sdp: pc.localDescription?.sdp ?? offer.sdp,
@@ -133,7 +144,10 @@ export function DigitalAvatarDemo({ sample }: { sample: Sample }) {
       pcRef.current = pc
       setSessionId(answer.session_id)
     } catch (e) {
+      createdPc?.close()
       toast.error(e instanceof Error ? e.message : 'Failed to connect')
+    } finally {
+      setIsConnecting(false)
     }
   }, [offerMutateAsync, clientIceServerUrl])
 
@@ -151,6 +165,7 @@ export function DigitalAvatarDemo({ sample }: { sample: Sample }) {
     }
     setSessionId(null)
     setStatusMessage(null)
+    setIsMediaConnected(false)
   }, [])
 
   useEffect(() => {
@@ -200,7 +215,8 @@ export function DigitalAvatarDemo({ sample }: { sample: Sample }) {
           <AvatarStream
             videoRef={videoRef}
             isConnected={sessionId !== null}
-            isConnecting={isOfferPending}
+            isConnecting={isConnecting}
+            isEstablishing={!isMediaConnected}
             statusMessage={statusMessage}
             isSpeaking={isSpeaking}
             onConnect={connect}
@@ -219,7 +235,7 @@ export function DigitalAvatarDemo({ sample }: { sample: Sample }) {
             isConnected={sessionId !== null}
             sttOnline={sttOnline}
             isVlm={isMultimodal}
-            imagePreview={chat.imagePreview}
+            imagePreviews={chat.imagePreviews}
             onImageSelect={chat.handleImageSelect}
             onImageRemove={chat.handleRemoveImage}
           />

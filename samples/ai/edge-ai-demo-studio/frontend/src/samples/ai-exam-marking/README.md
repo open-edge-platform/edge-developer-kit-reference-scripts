@@ -1,16 +1,18 @@
 # AI Exam Marking
 
-AI-powered exam grading that extracts student answers from answer sheet images using OCR (Vision Language Model) and evaluates them against a marking scheme using an LLM — producing annotated, downloadable results.
+An AI-powered exam grading system that extracts student answers from answer sheet images using a VLM with OCR capability, and evaluates them against a marking scheme using an LLM — producing annotated, downloadable results.
 
 ---
 
 ## Overview
 
-The AI Exam Marking sample automates the manual grading workflow in three steps:
+The AI Exam Marking sample automates the manual grading workflow in five steps:
 
 1. **Marking Scheme Setup** — Define questions, max marks, and marking rubrics. Draw bounding boxes on a reference answer sheet to map where each question's answer appears.
 2. **Grading** — Upload or capture one or more student answer sheet images. Each image is queued and processed automatically: OCR extracts the answers, the LLM grades each answer against the rubric, and the result is annotated directly onto the image.
 3. **History** — Browse all graded records, preview annotated images, export PDF reports, and delete individual or all records.
+4. **Dashboard** — View class-level analytics including average score, pass rate, score distribution, per-question performance, and student result summaries.
+5. **Chatbot** — Ask natural-language questions about the graded results (for example, trends, top/bottom performers, or question-level difficulty) using an AI assistant grounded in dashboard statistics.
 
 ---
 
@@ -18,9 +20,9 @@ The AI Exam Marking sample automates the manual grading workflow in three steps:
 
 | Service | Role |
 |---|---|
-| **Text Generation (VLM)** | **Required.** Must be a Vision Language Model capable of processing images. Used for both OCR extraction and LLM grading. |
+| **Text Generation (VLM)** | **Required.** Must be a Vision Language Model capable of processing images. Used for OCR extraction, LLM grading, and chatbot analysis of grading outcomes. **Recommended model:** [openbmb/MiniCPM-V-4_5-gguf](https://huggingface.co/openbmb/MiniCPM-V-4_5-gguf) |
 
-> **Important:** The text-generation service must be loaded with a multimodal (VLM) model such as LLaVA. A warning is shown in the UI if a non-multimodal model is detected.
+> **Important:** The text-generation service must be loaded with a multimodal (VLM) model. A warning is shown in the UI if a non-multimodal model is detected.
 
 > **Note:** Grading accuracy and OCR quality vary depending on the model used. Larger, more capable VLM models generally produce more reliable output and better performance. If results appear inconsistent or the JSON structure is malformed, try a different model or refine the prompts via **Edit Prompts**.
 
@@ -38,7 +40,7 @@ Define the structure of the exam:
 - **Marks** — Maximum marks available for the question.
 - **Marking Scheme** — Detailed rubric describing what earns each mark.
 
-A **Load Demo Data** button is available to populate example questions (5 business-oriented questions with full rubrics) for quick testing.
+A **Load Predefined Questions** button is available to populate example questions (5 business-oriented questions with full rubrics) for quick testing.
 
 #### Bounding Box Setup
 
@@ -50,7 +52,7 @@ Upload a reference (blank or sample) answer sheet image. For each defined questi
 
 Upload or capture student answer sheet images. Each image is added to a serial processing queue and graded automatically:
 
-> **Sample image:** A sample student answer sheet is provided at `public/data/ai-exam-marking/sample.png`. Use it together with the demo marking scheme (loaded via **Load Demo Data**) to try the full grading pipeline without needing a real exam paper.
+> **Sample image:** A sample student answer sheet is provided at `public/data/ai-exam-marking/sample.png`. Use it together with the demo marking scheme (loaded via **Load Predefined Questions**) to try the full grading pipeline without needing a real exam paper.
 
 1. **OCR** — The image is sent to the VLM with the OCR prompt. The model returns a structured JSON array:
    ```json
@@ -106,50 +108,30 @@ Records can be exported as a **PDF report** or deleted individually. A **Delete 
 
 ---
 
-## API Routes
+### Step 4 — Dashboard
 
-### `POST /api/ai-exam-marking/ocr`
+The dashboard provides an aggregate view of grading outcomes across saved records, including:
 
-Sends an answer sheet image to the VLM and extracts structured question-answer pairs.
+- **Total Students**
+- **Class Average**
+- **Pass Rate (>=50%)**
+- **Human Review Count**
+- **Score Distribution** by percentage bands
+- **Per-Question Averages** (awarded marks, max marks, and percentage)
+- **Student Results Table** with timestamped score and pass/fail outcome
 
-**Request**
-```json
-{
-  "image": "<base64-encoded image>",
-  "prompt": "(optional) custom OCR instruction"
-}
-```
-
-**Response**
-```json
-{
-  "1": { "question": "1. ...", "answer": "..." },
-  "2": { "question": "2. ...", "answer": "..." }
-}
-```
+This step is intended for quick class-level quality checks and identifying patterns before drilling into individual records in History.
 
 ---
 
-### `POST /api/ai-exam-marking/grading`
+### Step 5 — Chatbot
 
-Grades a single student answer against a marking scheme using the LLM.
+The chatbot uses the same text-generation service and is automatically grounded with dashboard-derived context (summary metrics, score distribution, per-question averages, and student score outcomes).
 
-**Request**
-```json
-{
-  "prompt": "<filled grading prompt with question, marks, and scheme>",
-  "answer": "<student answer text>"
-}
-```
+Use it to ask questions such as:
 
-**Response**
-```json
-{
-  "student_answer": "...",
-  "feedback": "concise 10-word summary",
-  "marks_awarded": 2,
-  "human_review": false
-}
-```
+- Which students scored above 80%?
+- Which question has the lowest average?
+- How many answers were flagged for human review?
 
 ---

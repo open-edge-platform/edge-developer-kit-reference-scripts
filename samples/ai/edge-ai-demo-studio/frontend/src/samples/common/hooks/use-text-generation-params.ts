@@ -16,13 +16,16 @@ export type { TextGenParamValues as TextGenerationParams }
 interface UseTextGenerationParamsOptions {
   initial?: Partial<TextGenParamValues>
   optional?: boolean
+  systemPromptTooltip?: string
 }
 
 export function useTextGenerationParams(
   options?: UseTextGenerationParamsOptions,
 ) {
-  const { initial, optional = false } = options ?? {}
-  const { values, requestParams, params } = useTextGenParams(initial)
+  const { initial, optional = false, systemPromptTooltip } = options ?? {}
+  const { values, requestParams, params } = useTextGenParams(initial, {
+    systemPromptTooltip,
+  })
   const [enabled, setEnabled] = useState(true)
 
   const online = useServiceLiveStatus('text-generation') === 'online'

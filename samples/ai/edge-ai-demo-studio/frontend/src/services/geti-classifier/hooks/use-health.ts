@@ -51,8 +51,7 @@ export function useGetiHealth(enabled = true) {
     queryFn: async () => {
       const res = await fetch('/api/geti-classifier/healthcheck')
       const data = (await res.json()) as
-        | GetiHealthResponse
-        | GetiHealthErrorResponse
+        GetiHealthResponse | GetiHealthErrorResponse
       return data as GetiHealthResponse
     },
     enabled,

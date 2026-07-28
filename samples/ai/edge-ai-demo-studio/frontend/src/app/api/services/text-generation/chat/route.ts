@@ -56,6 +56,14 @@ ${context}
 Answer the user's question based on the context above.`
 }
 
+const RAG_CONTEXT_PLACEHOLDER = /\{\s*context\s*\}/gi
+
+function injectRAGContext(customPrompt: string, context: string): string {
+  const replaced = customPrompt.replace(RAG_CONTEXT_PLACEHOLDER, context)
+  if (replaced !== customPrompt) return replaced
+  return `${customPrompt}\n\nContext:\n${context}`
+}
+
 async function fetchRAGContext(
   knowledgeBaseId: number,
   query: string,
@@ -204,13 +212,16 @@ export async function POST(req: Request) {
     return new Response('No available model', { status: 500 })
   }
 
-  let systemPrompt = customSystemPrompt?.trim() || createDefaultSystemPrompt()
+  const trimmedCustomPrompt = customSystemPrompt?.trim()
+  let systemPrompt = trimmedCustomPrompt || createDefaultSystemPrompt()
   if (knowledgeBaseId != null) {
     const query = getLastUserText(messages)
     if (query) {
       const context = await fetchRAGContext(knowledgeBaseId, query, topK)
       if (context) {
-        systemPrompt = createRAGSystemPrompt(context)
+        systemPrompt = trimmedCustomPrompt
+          ? injectRAGContext(trimmedCustomPrompt, context)
+          : createRAGSystemPrompt(context)
       }
     }
   }

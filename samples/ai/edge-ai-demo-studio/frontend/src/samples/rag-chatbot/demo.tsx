@@ -28,7 +28,10 @@ import { SampleParamsSlot } from '../common/sample-params-slot'
 const FEATURE_SERVICES = ['text-to-speech', 'speech-to-text', 'mcp']
 
 export function RagChatbotDemo({ sample }: { sample: Sample }) {
-  const textGen = useTextGenerationParams()
+  const textGen = useTextGenerationParams({
+    systemPromptTooltip:
+      'Optional. Add {context} where you want the retrieved knowledge-base context inserted. If you omit {context}, the context is appended to the end of your prompt.',
+  })
   const rag = useRagParams()
 
   const featureProviders = useFeatureProviders(FEATURE_SERVICES)
@@ -100,7 +103,7 @@ export function RagChatbotDemo({ sample }: { sample: Sample }) {
             sttOnline={sttOnline}
             ttsOnline={ttsOnline}
             isVlm={isMultimodal}
-            imagePreview={chat.imagePreview}
+            imagePreviews={chat.imagePreviews}
             onImageSelect={chat.handleImageSelect}
             onImageRemove={chat.handleRemoveImage}
           />

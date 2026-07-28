@@ -73,14 +73,14 @@ export function GetiClassifierSettings({
   const [segSelectedProjectId, setSegSelectedProjectId] = useState('')
   const [segModels, setSegModels] = useState<GetiModel[]>([])
   const [segSelectedModelId, setSegSelectedModelId] = useState('latest')
-  const [segSelectedDevice, setSegSelectedDevice] = useState('GPU')
+  const [segSelectedDevice, setSegSelectedDevice] = useState('')
 
   // ── Classification state ────────────────────────────────────────────────────
   const [clsProjects, setClsProjects] = useState<GetiProject[]>([])
   const [clsSelectedProjectId, setClsSelectedProjectId] = useState('')
   const [clsModels, setClsModels] = useState<GetiModel[]>([])
   const [clsSelectedModelId, setClsSelectedModelId] = useState('latest')
-  const [clsSelectedDevice, setClsSelectedDevice] = useState('GPU')
+  const [clsSelectedDevice, setClsSelectedDevice] = useState('')
 
   // ── Auto-sync ───────────────────────────────────────────────────────────────
   const [autoSyncEnabled, setAutoSyncEnabled] = useState(false)

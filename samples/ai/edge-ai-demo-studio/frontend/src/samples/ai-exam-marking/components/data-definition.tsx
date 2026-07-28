@@ -101,77 +101,79 @@ export function DataDefinition({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">
+          <fieldset className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="question-number" className="text-xs">
+                  Question Number
+                </Label>
+                <Input
+                  id="question-number"
+                  type="number"
+                  placeholder="e.g., 1"
+                  value={number}
+                  onChange={(e) => setNumber(e.target.value)}
+                  className="text-xs"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="marks" className="text-xs">
+                  Marks
+                </Label>
+                <Input
+                  id="marks"
+                  type="number"
+                  placeholder="e.g., 10"
+                  value={marks}
+                  onChange={(e) => setMarks(e.target.value)}
+                  className="text-xs"
+                />
+              </div>
+            </div>
+
             <div className="space-y-2">
-              <Label htmlFor="question-number" className="text-xs">
-                Question Number
+              <Label htmlFor="question" className="text-xs">
+                Question
               </Label>
-              <Input
-                id="question-number"
-                type="number"
-                placeholder="e.g., 1"
-                value={number}
-                onChange={(e) => setNumber(e.target.value)}
+              <Textarea
+                id="question"
+                placeholder="Enter the question text"
+                value={question}
+                onChange={(e) => setQuestion(e.target.value)}
+                rows={3}
                 className="text-xs"
               />
             </div>
+
             <div className="space-y-2">
-              <Label htmlFor="marks" className="text-xs">
-                Marks
+              <Label htmlFor="scheme" className="text-xs">
+                Marking Scheme
               </Label>
-              <Input
-                id="marks"
-                type="number"
-                placeholder="e.g., 10"
-                value={marks}
-                onChange={(e) => setMarks(e.target.value)}
+              <Textarea
+                id="scheme"
+                placeholder="Enter the marking scheme or answer key"
+                value={scheme}
+                onChange={(e) => setScheme(e.target.value)}
+                rows={4}
                 className="text-xs"
               />
             </div>
-          </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="question" className="text-xs">
-              Question
-            </Label>
-            <Textarea
-              id="question"
-              placeholder="Enter the question text"
-              value={question}
-              onChange={(e) => setQuestion(e.target.value)}
-              rows={3}
-              className="text-xs"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="scheme" className="text-xs">
-              Marking Scheme
-            </Label>
-            <Textarea
-              id="scheme"
-              placeholder="Enter the marking scheme or answer key"
-              value={scheme}
-              onChange={(e) => setScheme(e.target.value)}
-              rows={4}
-              className="text-xs"
-            />
-          </div>
-
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <Button onClick={addEntry} className="flex-1 text-xs">
-              <Plus className="mr-2 h-4 w-4" />
-              Add Question
-            </Button>
-            <Button
-              onClick={loadDemoQuestions}
-              variant="outline"
-              className="flex-1 bg-transparent text-xs"
-            >
-              <Sparkles className="mr-2 h-4 w-4" />
-              Load Predefined Questions
-            </Button>
-          </div>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Button onClick={addEntry} className="flex-1 text-xs">
+                <Plus className="mr-2 h-4 w-4" />
+                Add Question
+              </Button>
+              <Button
+                onClick={loadDemoQuestions}
+                variant="outline"
+                className="flex-1 bg-transparent text-xs"
+              >
+                <Sparkles className="mr-2 h-4 w-4" />
+                Load Predefined Questions
+              </Button>
+            </div>
+          </fieldset>
         </CardContent>
       </Card>
 

@@ -1,4 +1,4 @@
-@REM Copyright (C) 2024 Intel Corporation
+﻿@REM Copyright (C) 2024 Intel Corporation
 @REM SPDX-License-Identifier: Apache-2.0
 
 @echo off

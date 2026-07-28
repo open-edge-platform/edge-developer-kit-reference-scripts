@@ -163,8 +163,7 @@ async function probeMcpServer(
   const initData = await parseJsonRpcResponse(initRes)
 
   const serverInfo = initData?.result?.serverInfo as
-    | { name?: string; version?: string }
-    | undefined
+    { name?: string; version?: string } | undefined
 
   // Build headers for subsequent requests — include session ID only if it passes validation
   const sessionEntries: [string, string][] = [...baseEntries]

@@ -333,53 +333,57 @@ validate_configuration() {
         missing_items+=("OS Release Information Missing")
     fi
     
-    # HARD CHECK 2: Kernel 6.14 or 6.17 requirement
-    local kernel_version kernel_major kernel_minor
+    # HARD CHECK 2: Kernel 6.14, 6.17 or 7.0 requirement
+    local kernel_version kernel_series
     kernel_version=$(uname -r 2>/dev/null)
     if [ -n "$kernel_version" ]; then
-        # Extract major.minor version (e.g., "6.14" from "6.14.0-generic")
-        kernel_major=$(echo "$kernel_version" | cut -d. -f1)
-        kernel_minor=$(echo "$kernel_version" | cut -d. -f2)
-        
-        if [ "$kernel_major" = "6" ] && { [ "$kernel_minor" = "14" ] || [ "$kernel_minor" = "17" ]; }; then
-            : # acceptable
-        else
-            validation_passed=false
-            missing_items+=("Kernel 6.14.x or 6.17.x Required (Current: $kernel_version)")
-        fi
+        # Extract major.minor series (e.g., "7.0" from "7.0.0-28-generic")
+        kernel_series=$(echo "$kernel_version" | cut -d. -f1,2)
+
+        case "$kernel_series" in
+            6.14|6.17|7.0)
+                : # acceptable
+                ;;
+            *)
+                validation_passed=false
+                missing_items+=("Kernel 6.14.x, 6.17.x or 7.0.x Required (Current: $kernel_version)")
+                ;;
+        esac
     else
         validation_passed=false
         missing_items+=("Kernel Version Detection Failed")
     fi
     
-    # HARD CHECK 3: HWE kernel requirement with 6.14/6.17 version check
-    local hwe_stack hwe_kernel_output hwe_version hwe_kernel_major hwe_kernel_minor hwe_tag
+    # HARD CHECK 3: HWE kernel requirement with 6.14/6.17/7.0 version check
+    local hwe_stack hwe_kernel_output hwe_version hwe_series hwe_tag
     hwe_kernel_output=$(timeout_cmd 5 apt list -a --installed linux-image-generic-hwe-* 2>/dev/null || true)
     
     if [ -n "$hwe_kernel_output" ]; then
         read -r hwe_version hwe_tag < <(get_installed_hwe_info "$hwe_kernel_output")
         if [ -n "$hwe_version" ]; then
-            # Extract major.minor version from HWE kernel (e.g., "6.14" from "6.14.0-33.33~24.04.1")
-            hwe_kernel_major=$(echo "$hwe_version" | cut -d. -f1)
-            hwe_kernel_minor=$(echo "$hwe_version" | cut -d. -f2)
+            # Extract major.minor series from HWE kernel (e.g., "7.0" from "7.0.0-28.28~24.04.1")
+            hwe_series=$(echo "$hwe_version" | cut -d. -f1,2)
             
-            if [ "$hwe_kernel_major" = "6" ] && { [ "$hwe_kernel_minor" = "14" ] || [ "$hwe_kernel_minor" = "17" ]; }; then
-                if [ -n "$hwe_tag" ]; then
-                    hwe_stack="Installed (6.$hwe_kernel_minor HWE) $hwe_tag"
-                else
-                    hwe_stack="Installed (6.$hwe_kernel_minor HWE)"
-                fi
-                
-                # Check if current running kernel matches HWE kernel version (6.14 or 6.17)
-                if [[ ! "$kernel_version" =~ ^6\.(14|17) ]]; then
+            case "$hwe_series" in
+                6.14|6.17|7.0)
+                    if [ -n "$hwe_tag" ]; then
+                        hwe_stack="Installed ($hwe_series HWE) $hwe_tag"
+                    else
+                        hwe_stack="Installed ($hwe_series HWE)"
+                    fi
+                    
+                    # Check if current running kernel is a supported series
+                    if [[ ! "$kernel_version" =~ ^(6\.14|6\.17|7\.0) ]]; then
+                        validation_passed=false
+                        missing_items+=("Reboot Required: supported HWE kernel installed but not running (Current: $kernel_version)")
+                    fi
+                    ;;
+                *)
+                    hwe_stack="Installed (Wrong Version: $hwe_version)"
                     validation_passed=false
-                    missing_items+=("Reboot Required: HWE 6.14/6.17 kernel installed but not running (Current: $kernel_version)")
-                fi
-            else
-                hwe_stack="Installed (Wrong Version: $hwe_version)"
-                validation_passed=false
-                missing_items+=("HWE Kernel 6.14 or 6.17 Required (Current HWE: $hwe_version)")
-            fi
+                    missing_items+=("HWE Kernel 6.14, 6.17 or 7.0 Required (Current HWE: $hwe_version)")
+                    ;;
+            esac
         else
             hwe_stack="Installed (Version Unknown)"
             validation_passed=false

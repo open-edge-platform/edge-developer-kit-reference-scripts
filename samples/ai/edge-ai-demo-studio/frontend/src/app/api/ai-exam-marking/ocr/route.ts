@@ -34,10 +34,12 @@ export async function POST(request: Request) {
       model: provider(model),
       temperature: 0,
       output: Output.object({
-        schema: z.record(
-          z.string(),
-          z.object({ question: z.string(), answer: z.string() }),
-        ),
+        schema: z
+          .object({
+            student_name: z.string().optional(),
+            student_id: z.string().optional(),
+          })
+          .catchall(z.object({ question: z.string(), answer: z.string() })),
       }),
       messages: [
         {

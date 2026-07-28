@@ -1,0 +1,14 @@
+[project]
+name = "file-watcher"
+version = "0.1.0"
+description = "Real-time file monitoring service"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.135.3",
+    "uvicorn>=0.44.0",
+    "watchdog>=6.0.0",
+    "websockets>=16.0",
+    "idna>=3.15",
+    "starlette>=1.3.1",
+]

@@ -158,6 +158,7 @@ export interface Service {
   type:
     | 'diarization'
     | 'embeddings'
+    | 'file-watcher'
     | 'geti-classifier'
     | 'image-based-video-search'
     | 'image-generation'
@@ -220,6 +221,10 @@ export interface Service {
      * VAD Threshold for Wake Word Detection
      */
     vadThreshold?: number;
+    /**
+     * CPU cores to pin this service to (numactl -C format, e.g. "0-7" or "0,2,4"). Empty / missing = all cores. Linux only.
+     */
+    cpuAffinity?: string;
     [k: string]: unknown;
   };
   status?: ('prepare' | 'active' | 'inactive' | 'restart' | 'error') | null;

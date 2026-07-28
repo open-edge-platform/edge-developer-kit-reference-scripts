@@ -3,38 +3,23 @@
 
 'use client'
 
-import {
-  Brain,
-  ChevronDown,
-  ChevronRight,
-  Database,
-  FileText,
-  FolderPlus,
-  Loader2,
-  Trash2,
-  Upload,
-  X,
-} from 'lucide-react'
-import { useCallback, useRef, useState } from 'react'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { cn } from '@/lib/utils'
+import { ChevronDown, ChevronRight } from 'lucide-react'
+import { useState } from 'react'
 import {
   useConfigureEmbedding,
-  useCreateEmbeddings,
+  useCreateFileEmbeddings,
   useCreateKb,
-  useDeleteFile,
   useDeleteKb,
-  type KbFile,
   useKbFiles,
   useKnowledgeBases,
-  useUploadFile,
   useKbChunks,
 } from '@/services/vectordb/hooks'
 import type { Chunk, KnowledgeBase } from '@/services/vectordb/types'
+import { FileUploadPanel } from './file-upload-panel'
+import { KnowledgeBasesRail } from './knowledge-bases-rail'
 
-const ACCEPTED_FILE_TYPES = '.pdf,.txt,.csv,.json,.html,.docx'
+type EmbedRun = { running: boolean; done: number; total: number }
+const IDLE_RUN: EmbedRun = { running: false, done: 0, total: 0 }
 
 function ChunkViewer({
   chunks,
@@ -120,18 +105,23 @@ export function KnowledgeBasePanel({
 }: KnowledgeBasePanelProps) {
   const [kbName, setKbName] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const kbsQuery = useKnowledgeBases()
   const createKbMutation = useCreateKb()
   const deleteKbMutation = useDeleteKb()
-  const uploadFileMutation = useUploadFile()
-  const { mutate: uploadFile } = uploadFileMutation
-  const deleteFileMutation = useDeleteFile()
-  const createEmbeddingsMutation = useCreateEmbeddings()
+  const embedFileMutation = useCreateFileEmbeddings()
   const configureMutation = useConfigureEmbedding()
+  const [embedRun, setEmbedRun] = useState<EmbedRun>(IDLE_RUN)
+  // Shared with FileUploadPanel via react-query cache; used here only for the
+  // file count shown in the chunk viewer.
   const filesQuery = useKbFiles(selectedKb?.id)
   const chunksQuery = useKbChunks(selectedKb?.id)
+
+  // Reset embed progress whenever the selected KB changes so it can't leak.
+  const selectKb = (kb: KnowledgeBase | null) => {
+    onSelectKb(kb)
+    setEmbedRun(IDLE_RUN)
+  }
 
   const knowledgeBases = kbsQuery.data ?? []
   const files = filesQuery.data ?? []
@@ -143,7 +133,7 @@ export function KnowledgeBasePanel({
     createKbMutation.mutate(kbName.trim(), {
       onSuccess: (kb) => {
         setKbName('')
-        onSelectKb(kb)
+        selectKb(kb)
       },
       onError: (err) =>
         setError(err instanceof Error ? err.message : 'Failed to create KB'),
@@ -154,95 +144,59 @@ export function KnowledgeBasePanel({
     setError(null)
     deleteKbMutation.mutate(id, {
       onSuccess: () => {
-        if (selectedKb?.id === id) onSelectKb(null)
+        if (selectedKb?.id === id) selectKb(null)
       },
       onError: (err) =>
         setError(err instanceof Error ? err.message : 'Failed to delete KB'),
     })
   }
 
-  const handleFileUpload = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      if (!selectedKb || !e.target.files) return
-      setError(null)
-      const fileList = Array.from(e.target.files)
-      for (const file of fileList) {
-        uploadFile(
-          { kbId: selectedKb.id, file },
-          {
-            onError: (err) =>
-              setError(
-                err instanceof Error
-                  ? err.message
-                  : `Failed to upload ${file.name}`,
-              ),
-          },
-        )
-      }
-      if (fileInputRef.current) fileInputRef.current.value = ''
-    },
-    [selectedKb, uploadFile],
-  )
-
-  const handleDeleteFile = (filename: string) => {
-    if (!selectedKb) return
-    setError(null)
-    deleteFileMutation.mutate(
-      { kbId: selectedKb.id, filename },
-      {
-        onSuccess: () => filesQuery.refetch(),
-        onError: (err) =>
-          setError(
-            err instanceof Error ? err.message : 'Failed to delete file',
-          ),
-      },
-    )
-  }
-
-  const handleCreateEmbeddings = () => {
-    if (!selectedKb) return
+  // Configure the embedding service once, then embed only the pending files one
+  // at a time (per-file endpoint is idempotent, so old files aren't duplicated).
+  const handleCreateEmbeddings = async (filenames: string[]) => {
+    if (!selectedKb || filenames.length === 0) return
     setError(null)
 
     if (!embeddingPort || !embeddingModelName) {
       setError('Embeddings service is not configured')
       return
     }
-    configureMutation.mutate(
-      {
+
+    setEmbedRun({ running: true, done: 0, total: filenames.length })
+    try {
+      await configureMutation.mutateAsync({
         embeddingUrl: `http://localhost:${embeddingPort}/v1`,
         embeddingModel: embeddingModelName,
         rerankerUrl: rerankPort
           ? `http://localhost:${rerankPort}/v1`
           : undefined,
         rerankerModel: rerankModelName,
-      },
-      {
-        onSuccess: () => {
-          createEmbeddingsMutation.mutate(
-            { kbId: selectedKb.id },
-            {
-              onSuccess: () => chunksQuery.refetch(),
-              onError: (err) =>
-                setError(
-                  err instanceof Error
-                    ? err.message
-                    : 'Failed to create embeddings',
-                ),
-            },
-          )
-        },
-        onError: (err) =>
-          setError(
-            err instanceof Error
-              ? err.message
-              : 'Failed to configure embedding service',
-          ),
-      },
-    )
+      })
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Failed to configure embedding service',
+      )
+      setEmbedRun(IDLE_RUN)
+      return
+    }
+
+    for (const filename of filenames) {
+      try {
+        await embedFileMutation.mutateAsync({ kbId: selectedKb.id, filename })
+        setEmbedRun((r) => ({ ...r, done: r.done + 1 }))
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : `Failed to embed ${filename}`,
+        )
+      }
+    }
+    setEmbedRun(IDLE_RUN)
+    chunksQuery.refetch()
   }
 
-  const isEmbedding =
-    configureMutation.isPending || createEmbeddingsMutation.isPending
+  const isEmbedding = embedRun.running
 
   return (
     <div className="space-y-4">
@@ -252,159 +206,34 @@ export function KnowledgeBasePanel({
         </div>
       )}
 
-      <div className="border-border bg-muted/10 space-y-3 rounded-xl border p-4">
-        <div className="text-foreground flex items-center gap-2 text-sm font-medium">
-          <Database className="text-primary h-4 w-4" />
-          Knowledge Bases
-        </div>
-
-        <div className="flex gap-2">
-          <Input
-            value={kbName}
-            onChange={(e) => setKbName(e.target.value)}
-            placeholder="New knowledge base…"
-            className="bg-muted/30 text-sm"
-            onKeyDown={(e) => e.key === 'Enter' && handleCreateKb()}
-          />
-          <Button
-            onClick={handleCreateKb}
-            disabled={createKbMutation.isPending || !kbName.trim()}
-            size="icon"
-            className="bg-primary hover:bg-primary-light shrink-0 text-white"
-          >
-            {createKbMutation.isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <FolderPlus className="h-4 w-4" />
-            )}
-          </Button>
-        </div>
-
-        <div className="max-h-[180px] space-y-1.5 overflow-auto">
-          {knowledgeBases.length === 0 ? (
-            <div className="text-muted-foreground py-4 text-center text-xs">
-              {kbsQuery.isLoading ? 'Loading…' : 'No knowledge bases yet'}
-            </div>
-          ) : (
-            knowledgeBases.map((kb) => (
-              <div
-                role="button"
-                tabIndex={0}
-                key={kb.id}
-                className={cn(
-                  'flex w-full cursor-pointer items-center justify-between rounded-lg border p-2 text-left text-sm transition-colors',
-                  selectedKb?.id === kb.id
-                    ? 'border-primary bg-primary/5'
-                    : 'border-border hover:bg-muted/30',
-                )}
-                onClick={() => onSelectKb(kb)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault()
-                    onSelectKb(kb)
-                  }
-                }}
-              >
-                <span className="truncate text-xs">{kb.name}</span>
-                <div className="flex items-center gap-1">
-                  <Badge variant="secondary" className="text-[10px]">
-                    {kb.id}
-                  </Badge>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleDeleteKb(kb.id)
-                    }}
-                  >
-                    <Trash2 className="text-destructive h-3 w-3" />
-                  </Button>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
+      <KnowledgeBasesRail
+        knowledgeBases={knowledgeBases}
+        selectedKb={selectedKb}
+        kbName={kbName}
+        onKbNameChange={setKbName}
+        onCreate={handleCreateKb}
+        isCreating={createKbMutation.isPending}
+        onRefresh={() => kbsQuery.refetch()}
+        isFetching={kbsQuery.isFetching}
+        isLoading={kbsQuery.isLoading}
+        onSelect={selectKb}
+        onDelete={handleDeleteKb}
+      />
 
       {selectedKb && (
-        <div className="border-border bg-muted/10 space-y-3 rounded-xl border p-4">
-          <div className="text-foreground flex items-center gap-2 text-sm font-medium">
-            <FileText className="text-primary h-4 w-4" />
-            Documents
-            <Badge variant="secondary" className="text-[10px]">
-              {selectedKb.name}
-            </Badge>
-          </div>
-
-          <div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept={ACCEPTED_FILE_TYPES}
-              multiple
-              onChange={handleFileUpload}
-              className="hidden"
-            />
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full gap-2 text-xs"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploadFileMutation.isPending}
-            >
-              {uploadFileMutation.isPending ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Upload className="h-3.5 w-3.5" />
-              )}
-              Upload PDF / TXT files
-            </Button>
-          </div>
-
-          {files.length > 0 && (
-            <div className="max-h-[160px] min-h-0 space-y-1 overflow-y-auto pr-0.5">
-              {files.map((f: KbFile) => (
-                <div
-                  key={f.name}
-                  className="border-border bg-muted/20 flex items-center gap-2 rounded-lg border px-2 py-1.5 text-xs"
-                >
-                  <FileText className="text-primary h-3 w-3 shrink-0" />
-                  <span className="text-foreground min-w-0 flex-1 truncate">
-                    {f.name}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteFile(f.name)}
-                    className="text-muted-foreground hover:text-destructive shrink-0"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <Button
-            onClick={handleCreateEmbeddings}
-            disabled={isEmbedding || !embeddingsOnline || files.length === 0}
-            size="sm"
-            className="bg-primary hover:bg-primary-light w-full gap-2 text-white"
-          >
-            {isEmbedding ? (
-              <>
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Embedding…
-              </>
-            ) : (
-              <>
-                <Brain className="h-3.5 w-3.5" />
-                Generate Embeddings
-              </>
-            )}
-          </Button>
-
+        <FileUploadPanel
+          kbId={selectedKb.id}
+          embeddingsOnline={embeddingsOnline}
+          onGenerateEmbeddings={handleCreateEmbeddings}
+          isEmbedding={isEmbedding}
+          embedProgress={
+            embedRun.running
+              ? { done: embedRun.done, total: embedRun.total }
+              : undefined
+          }
+          onError={setError}
+          badge={selectedKb.name}
+        >
           {totalChunks > 0 && (
             <ChunkViewer
               chunks={chunksQuery.data?.chunks ?? []}
@@ -412,13 +241,7 @@ export function KnowledgeBasePanel({
               fileCount={files.length}
             />
           )}
-
-          {!embeddingsOnline && (
-            <p className="text-warning text-xs">
-              Start the Embeddings service to generate embeddings.
-            </p>
-          )}
-        </div>
+        </FileUploadPanel>
       )}
     </div>
   )

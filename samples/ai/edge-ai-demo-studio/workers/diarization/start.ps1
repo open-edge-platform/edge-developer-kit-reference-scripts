@@ -14,11 +14,9 @@ function Test-UV {
 }
 
 Write-Host ""
-Write-Host "NOTE: This worker requires a HuggingFace token (HF_TOKEN) with accepted" -ForegroundColor Yellow
-Write-Host "      license agreements for the following models:" -ForegroundColor Yellow
-Write-Host "        - pyannote/embedding" -ForegroundColor Yellow
-Write-Host "        - pyannote/speaker-diarization-3.1" -ForegroundColor Yellow
-Write-Host "      Visit https://hf.co/pyannote/embedding and https://hf.co/pyannote/speaker-diarization-3.1" -ForegroundColor Yellow
+Write-Host "NOTE: This worker requires a HuggingFace token (HF_TOKEN) with an accepted" -ForegroundColor Yellow
+Write-Host "      license agreement for pyannote/speaker-diarization-community-1." -ForegroundColor Yellow
+Write-Host "      Visit https://hf.co/pyannote/speaker-diarization-community-1" -ForegroundColor Yellow
 Write-Host "      to accept the license, then set HF_TOKEN=<your_token> in your environment." -ForegroundColor Yellow
 Write-Host ""
 

@@ -16,9 +16,15 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
+import { useSystemInfo } from '@/context/system-info-context'
 import { useDevicesQuery, resolveDeviceOptions } from '@/hooks/use-devices'
 import { useUpdateServiceConfig } from '@/hooks/use-service-config'
 import { ClearModelCacheSection } from '@/services/common/demo/components/clear-model-cache-section'
+import {
+  CpuAffinitySection,
+  isCpuAffinityValid,
+  normalizeCpuAffinity,
+} from '@/components/common/cpu-affinity-section'
 import {
   type ConfigurePanelStatus,
   ServiceConfigurePanel,
@@ -35,6 +41,9 @@ interface LipsyncConfigurePanelProps {
 }
 
 export function LipsyncConfigurePanel({ service }: LipsyncConfigurePanelProps) {
+  const { systemInfo } = useSystemInfo()
+  const isLinux = systemInfo?.os === 'linux'
+
   const availableModels = service.config?.availableModels ?? []
   const availableSources = service.config?.availableModelSources ?? []
   const supportsCustomModel = service.config?.supportsCustomModel !== false
@@ -48,6 +57,9 @@ export function LipsyncConfigurePanel({ service }: LipsyncConfigurePanelProps) {
   const currentServerIceServerUrl =
     (service.metadata as { serverIceServerUrl?: string } | undefined)
       ?.serverIceServerUrl ?? ''
+  const currentCpuAffinity =
+    (service.metadata as { cpuAffinity?: string } | undefined)?.cpuAffinity ??
+    ''
 
   const [open, setOpen] = useState(false)
   const [sourceType, setSourceType] = useState<'preset' | 'custom'>('preset')
@@ -61,6 +73,7 @@ export function LipsyncConfigurePanel({ service }: LipsyncConfigurePanelProps) {
   const [draftServerIceServerUrl, setDraftServerIceServerUrl] = useState(
     currentServerIceServerUrl,
   )
+  const [draftCpuAffinity, setDraftCpuAffinity] = useState(currentCpuAffinity)
 
   const availableDevices = useMemo(
     () => getDevicesForModel(service.config, draftModel),
@@ -83,11 +96,13 @@ export function LipsyncConfigurePanel({ service }: LipsyncConfigurePanelProps) {
         setDraftDevice(currentDevice)
         setDraftClientIceServerUrl(currentClientIceServerUrl)
         setDraftServerIceServerUrl(currentServerIceServerUrl)
+        setDraftCpuAffinity(currentCpuAffinity)
       } else {
         setDraftModel(currentModel)
         setDraftDevice(currentDevice)
         setDraftClientIceServerUrl(currentClientIceServerUrl)
         setDraftServerIceServerUrl(currentServerIceServerUrl)
+        setDraftCpuAffinity(currentCpuAffinity)
         setCustomModel('')
         setSourceType('preset')
       }
@@ -98,6 +113,7 @@ export function LipsyncConfigurePanel({ service }: LipsyncConfigurePanelProps) {
       currentDevice,
       currentClientIceServerUrl,
       currentServerIceServerUrl,
+      currentCpuAffinity,
     ],
   )
 
@@ -120,20 +136,27 @@ export function LipsyncConfigurePanel({ service }: LipsyncConfigurePanelProps) {
   const resolvedModel =
     sourceType === 'custom' ? customModel.trim() : draftModel
 
+  const normalizedDraftAffinity = normalizeCpuAffinity(draftCpuAffinity)
+  const cpuAffinityChanged =
+    normalizedDraftAffinity !== normalizeCpuAffinity(currentCpuAffinity)
+  const cpuAffinityValid = isCpuAffinityValid(draftCpuAffinity)
+
   const isDirty =
     open &&
     (resolvedModel !== currentModel ||
       draftDevice.toLowerCase() !== currentDevice.toLowerCase() ||
       draftClientIceServerUrl !== currentClientIceServerUrl ||
-      draftServerIceServerUrl !== currentServerIceServerUrl)
+      draftServerIceServerUrl !== currentServerIceServerUrl ||
+      cpuAffinityChanged)
 
-  const isValid = resolvedModel.length > 0
+  const isValid = resolvedModel.length > 0 && cpuAffinityValid
 
   const handleCancel = useCallback(() => {
     setDraftModel(currentModel)
     setDraftDevice(currentDevice)
     setDraftClientIceServerUrl(currentClientIceServerUrl)
     setDraftServerIceServerUrl(currentServerIceServerUrl)
+    setDraftCpuAffinity(currentCpuAffinity)
     setCustomModel('')
     setSourceType('preset')
   }, [
@@ -141,6 +164,7 @@ export function LipsyncConfigurePanel({ service }: LipsyncConfigurePanelProps) {
     currentDevice,
     currentClientIceServerUrl,
     currentServerIceServerUrl,
+    currentCpuAffinity,
   ])
 
   const handleSave = useCallback(() => {
@@ -159,6 +183,7 @@ export function LipsyncConfigurePanel({ service }: LipsyncConfigurePanelProps) {
           metadata: {
             clientIceServerUrl: draftClientIceServerUrl || null,
             serverIceServerUrl: draftServerIceServerUrl || null,
+            ...(cpuAffinityChanged && { cpuAffinity: normalizedDraftAffinity }),
           },
         },
       },
@@ -173,6 +198,8 @@ export function LipsyncConfigurePanel({ service }: LipsyncConfigurePanelProps) {
     sourceType,
     draftClientIceServerUrl,
     draftServerIceServerUrl,
+    cpuAffinityChanged,
+    normalizedDraftAffinity,
     isValid,
     updateConfig,
   ])
@@ -188,6 +215,14 @@ export function LipsyncConfigurePanel({ service }: LipsyncConfigurePanelProps) {
       label: 'Server ICE server',
       value: currentServerIceServerUrl || 'None',
     },
+    ...(isLinux
+      ? [
+          {
+            label: 'CPU affinity',
+            value: currentCpuAffinity || 'all cores',
+          },
+        ]
+      : []),
   ]
 
   return (
@@ -402,6 +437,17 @@ export function LipsyncConfigurePanel({ service }: LipsyncConfigurePanelProps) {
           </p>
         </div>
       </div>
+
+      {isLinux && (
+        <>
+          <Separator />
+          <CpuAffinitySection
+            value={draftCpuAffinity}
+            onChange={setDraftCpuAffinity}
+            currentServiceId={service.id}
+          />
+        </>
+      )}
 
       <Separator />
 

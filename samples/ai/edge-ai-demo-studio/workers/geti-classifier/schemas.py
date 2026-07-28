@@ -3,8 +3,7 @@
 
 from typing import Any
 from pydantic import BaseModel
-
-DEFAULT_DEVICE = "GPU"
+from core.device_manager import DEFAULT_DEVICE
 
 
 class FeedbackRequest(BaseModel):

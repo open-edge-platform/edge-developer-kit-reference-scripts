@@ -93,6 +93,38 @@ Once started, access the web UI at [http://localhost:8080](http://localhost:8080
 
 ---
 
+## Preset Services with `deployment.json` (Optional)
+
+By default, every service is created with its built-in defaults and stays stopped until you start it from the web UI. To preset service configuration — e.g. change the model, accelerator (device), or port — and auto-start selected services when the app boots, modify the provided [deployment.json](deployment.json) in the project root (next to `setup.sh`) to your needs:
+
+```json
+{
+  "$schema": "./docs/deployment.schema.json",
+  "services": {
+    "text-generation": {
+      "status": "online",
+      "models": {
+        "default": {
+          "name": "OpenVINO/Qwen3.5-4B-int4-ov",
+          "device": "GPU",
+          "backend": "openvino"
+        }
+      }
+    },
+    "speech-to-text": {
+      "status": "online",
+      "models": { "default": { "device": "NPU" } }
+    }
+  }
+}
+```
+
+The file is read on every startup: the default services are loaded first, then your presets overwrite them. Services with `"status": "online"` are started automatically (they move to `prepare` and are promoted to `active` once their health check passes); everything else stays offline.
+
+See [docs/deployment-config.md](docs/deployment-config.md) for the full JSON guidelines — all supported fields plus each service's available models, devices, and engines. The reference (and the [docs/deployment.schema.json](docs/deployment.schema.json) editor schema referenced via `$schema` above) is auto-generated from the service registry, so it always matches the version you are running.
+
+---
+
 ## Exporting Samples
 
 The **Export Samples** feature lets you produce a slim, self-contained copy of Demo Studio that contains only the sample(s) you select, together with the services and workers they depend on. The exported directory includes its own `setup.sh` / `setup_win.bat` and `start.sh` / `start_win.bat` scripts so it can be set up and run independently.

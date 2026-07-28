@@ -33,7 +33,7 @@ export function OcrImageOverlay({
   return (
     <div className="space-y-2">
       <div className="bg-muted/30 relative overflow-hidden rounded-lg border">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
+        {/* eslint-disable-next-line @next/next/no-img-element -- src is an object URL of a user-selected local file; next/image cannot optimize blob: URLs */}
         <img
           src={imageUrl}
           alt="OCR source"

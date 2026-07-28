@@ -20,9 +20,7 @@ export function useOCR() {
       if (!res.ok) {
         throw new Error('Failed to fetch OCR results')
       }
-      return res.json() as Promise<
-        Record<string, { question: string; answer: string }>
-      >
+      return res.json() as Promise<Record<string, unknown>>
     },
   })
 }

@@ -160,14 +160,16 @@ export class StreamStateManager extends EventEmitter {
   }
 }
 
-declare global {
-  // eslint-disable-next-line @typescript-eslint/naming-convention
-  var __avatarStreamStateManager: StreamStateManager | undefined
-}
+// Registry symbol keeps the singleton stable across HMR module reloads
+// without declaring anything on the global namespace.
+const STREAM_STATE_MANAGER_KEY = Symbol.for(
+  'edge-ai-studio.avatar-stream-state-manager',
+)
 
 export function getStreamStateManager(): StreamStateManager {
-  if (!globalThis.__avatarStreamStateManager) {
-    globalThis.__avatarStreamStateManager = new StreamStateManager()
-  }
-  return globalThis.__avatarStreamStateManager
+  const store = globalThis as unknown as Record<
+    symbol,
+    StreamStateManager | undefined
+  >
+  return (store[STREAM_STATE_MANAGER_KEY] ??= new StreamStateManager())
 }

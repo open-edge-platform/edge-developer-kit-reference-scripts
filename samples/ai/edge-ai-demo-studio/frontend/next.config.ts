@@ -17,13 +17,13 @@ const proxyTimeoutSetting = () => {
     const row = db
       .prepare('SELECT proxy_timeout FROM app_settings LIMIT 1')
       .get() as { proxy_timeout?: number } | undefined
-    return row?.proxy_timeout ?? 30
+    return row?.proxy_timeout ?? 300
   } catch (error) {
     logger.warn(
       '[next.config.ts] proxyTimeout read skipped: ',
       error instanceof Error ? error.message : String(error),
     )
-    return 30
+    return 300
   } finally {
     db.close()
   }

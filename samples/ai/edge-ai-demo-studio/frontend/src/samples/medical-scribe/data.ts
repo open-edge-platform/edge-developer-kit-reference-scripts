@@ -15,9 +15,31 @@ export const sample: Sample = {
   category: ['Conversational AI'],
   dependencies: [
     { serviceId: 'medical-scribe-database', role: 'required' },
-    { serviceId: 'speech-to-text', role: 'required' },
-    { serviceId: 'diarization', role: 'required' },
-    { serviceId: 'text-generation', role: 'required', defaultDevice: 'GPU.1' },
+    {
+      serviceId: 'speech-to-text',
+      role: 'required',
+      recommended: {
+        device: 'GPU.0',
+        model: 'openai/whisper-large-v3-turbo',
+      },
+    },
+    {
+      serviceId: 'diarization',
+      role: 'required',
+      recommended: {
+        device: 'xpu:0',
+        model: 'pyannote/speaker-diarization-3.1',
+      },
+    },
+    {
+      serviceId: 'text-generation',
+      role: 'required',
+      recommended: {
+        device: 'GPU.0',
+        model: 'OpenVINO/Qwen3-8B-int8-ov',
+        backend: 'openvino',
+      },
+    },
   ],
   tags: ['Medical', 'Scribe', 'SOAP', 'Diarization', 'Transcription'],
   pipeline: ['speech-to-text', 'diarization', 'text-generation'],

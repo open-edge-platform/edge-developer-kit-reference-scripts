@@ -2,11 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 export type SessionStatus =
-  | 'idle'
-  | 'recording'
-  | 'processing'
-  | 'completed'
-  | 'error'
+  'idle' | 'recording' | 'processing' | 'completed' | 'error'
 
 export interface TranscriptEntry {
   speaker: string

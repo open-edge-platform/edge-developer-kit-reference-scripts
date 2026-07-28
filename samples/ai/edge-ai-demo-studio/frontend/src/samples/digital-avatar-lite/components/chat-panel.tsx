@@ -21,9 +21,9 @@ interface ChatPanelProps {
   disabled?: boolean
   isVlm?: boolean
   isSpeaking?: boolean
-  imagePreview?: string | null
+  imagePreviews?: string[]
   onImageSelect?: (e: React.ChangeEvent<HTMLInputElement>) => void
-  onImageRemove?: () => void
+  onImageRemove?: (index: number) => void
 }
 
 export function ChatPanel({
@@ -38,7 +38,7 @@ export function ChatPanel({
   disabled,
   isVlm,
   isSpeaking,
-  imagePreview,
+  imagePreviews,
   onImageSelect,
   onImageRemove,
 }: ChatPanelProps) {
@@ -58,7 +58,7 @@ export function ChatPanel({
       disabled={disabled}
       sttOnline={sttOnline}
       isVlm={isVlm}
-      imagePreview={imagePreview}
+      imagePreviews={imagePreviews}
       onImageSelect={onImageSelect}
       onImageRemove={onImageRemove}
       emptyStateText="Start a conversation with the avatar"

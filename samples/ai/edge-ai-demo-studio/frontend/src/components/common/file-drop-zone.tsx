@@ -5,7 +5,7 @@
 
 import { AlertCircle, File as FileIcon, Trash2, Upload } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -30,10 +30,36 @@ interface FileDropZoneProps {
   maxSizeHint?: string
   /** Icon shown next to the selected filename (defaults to generic File icon) */
   fileIcon?: LucideIcon
+  /** Render an image thumbnail of the selected file above the filename card. */
+  showImagePreview?: boolean
   /** data-testid for the outer drop zone container */
   testId?: string
   /** data-testid for the hidden file input (useful for programmatic file setting in tests) */
   inputTestId?: string
+}
+
+function ImagePreview({ file }: { file: File }) {
+  const imgRef = useRef<HTMLImageElement | null>(null)
+
+  useEffect(() => {
+    const img = imgRef.current
+    if (!img) return
+    const objectUrl = URL.createObjectURL(file)
+    img.src = objectUrl
+    return () => URL.revokeObjectURL(objectUrl)
+  }, [file])
+
+  return (
+    <div className="bg-muted/30 overflow-hidden rounded-xl border">
+      {/* eslint-disable-next-line @next/next/no-img-element -- src is an object URL assigned imperatively via ref (Strict Mode-safe revocation); next/image requires a src prop and optimizes nothing for local blobs */}
+      <img
+        ref={imgRef}
+        alt={file.name}
+        className="mx-auto object-contain"
+        style={{ maxHeight: '16rem', width: 'auto' }}
+      />
+    </div>
+  )
 }
 
 export function FileDropZone({
@@ -47,6 +73,7 @@ export function FileDropZone({
   hint,
   maxSizeHint,
   fileIcon: SelectedIcon = FileIcon,
+  showImagePreview,
   testId,
   inputTestId,
 }: FileDropZoneProps) {
@@ -168,55 +195,58 @@ export function FileDropZone({
           )}
         </div>
       ) : (
-        <div
-          className={cn(
-            'flex items-center justify-between border-2 border-green-500 bg-green-50 dark:bg-green-950/20',
-            compact ? 'rounded-lg p-3' : 'rounded-xl p-4',
-          )}
-        >
-          <div className="flex min-w-0 flex-1 items-center gap-3">
-            <SelectedIcon
-              className={cn(
-                'flex-shrink-0 text-green-600 dark:text-green-400',
-                compact ? 'h-5 w-5' : 'h-8 w-8',
-              )}
-            />
-            <div className="min-w-0 flex-1">
-              <p
+        <>
+          {showImagePreview && <ImagePreview file={file} />}
+          <div
+            className={cn(
+              'flex items-center justify-between border-2 border-green-500 bg-green-50 dark:bg-green-950/20',
+              compact ? 'rounded-lg p-3' : 'rounded-xl p-4',
+            )}
+          >
+            <div className="flex min-w-0 flex-1 items-center gap-3">
+              <SelectedIcon
                 className={cn(
-                  'text-foreground truncate font-medium',
-                  compact ? 'text-xs' : 'text-sm',
-                )}
-              >
-                {file.name}
-              </p>
-              <p
-                className={cn(
-                  'text-muted-foreground',
-                  compact ? 'text-[10px]' : 'text-xs',
-                )}
-              >
-                {(file.size / 1024 / 1024).toFixed(2)} MB
-              </p>
-            </div>
-          </div>
-          {!disabled && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleRemove}
-              className="flex-shrink-0 hover:bg-red-100 dark:hover:bg-red-950"
-              title="Remove file"
-            >
-              <Trash2
-                className={cn(
-                  'text-red-600 dark:text-red-400',
-                  compact ? 'h-4 w-4' : 'h-5 w-5',
+                  'flex-shrink-0 text-green-600 dark:text-green-400',
+                  compact ? 'h-5 w-5' : 'h-8 w-8',
                 )}
               />
-            </Button>
-          )}
-        </div>
+              <div className="min-w-0 flex-1">
+                <p
+                  className={cn(
+                    'text-foreground truncate font-medium',
+                    compact ? 'text-xs' : 'text-sm',
+                  )}
+                >
+                  {file.name}
+                </p>
+                <p
+                  className={cn(
+                    'text-muted-foreground',
+                    compact ? 'text-[10px]' : 'text-xs',
+                  )}
+                >
+                  {(file.size / 1024 / 1024).toFixed(2)} MB
+                </p>
+              </div>
+            </div>
+            {!disabled && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleRemove}
+                className="flex-shrink-0 hover:bg-red-100 dark:hover:bg-red-950"
+                title="Remove file"
+              >
+                <Trash2
+                  className={cn(
+                    'text-red-600 dark:text-red-400',
+                    compact ? 'h-4 w-4' : 'h-5 w-5',
+                  )}
+                />
+              </Button>
+            )}
+          </div>
+        </>
       )}
 
       {validationError && (

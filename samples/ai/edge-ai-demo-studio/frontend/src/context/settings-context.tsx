@@ -16,7 +16,6 @@ export type Theme = 'light' | 'dark' | 'system'
 
 export interface Settings {
   theme: Theme
-  hfToken: string
   proxyTimeout: number
   activeProxyTimeout?: number
 }
@@ -29,8 +28,7 @@ interface SettingsContextValue {
 
 const defaultSettings: Settings = {
   theme: 'system',
-  hfToken: '',
-  proxyTimeout: 30,
+  proxyTimeout: 300,
 }
 
 const SettingsContext = createContext<SettingsContextValue | null>(null)

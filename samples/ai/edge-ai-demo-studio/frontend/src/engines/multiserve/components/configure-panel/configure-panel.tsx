@@ -53,6 +53,11 @@ import {
   ServiceConfigurePanel,
 } from '@/components/common/service-configure-panel'
 import { getOSLabel } from '@/lib/utils'
+import {
+  CpuAffinitySection,
+  isCpuAffinityValid,
+  normalizeCpuAffinity,
+} from '@/components/common/cpu-affinity-section'
 import { ModelManager } from '../model-manager'
 import { ConfigSection, LabelWithTooltip } from './config-section'
 import { ExtraParamsSection } from './extra-params-section'
@@ -67,6 +72,7 @@ interface ConfigurableService {
   currentBackend?: string
   currentQuant?: string
   currentSource?: string
+  metadata?: unknown
   defaultModel?: {
     name: string
     device: string
@@ -83,14 +89,19 @@ export function MultiserveConfigurePanel({
   service,
 }: MultiserveConfigurePanelProps) {
   const { systemInfo } = useSystemInfo()
+  const isLinux = systemInfo?.os === 'linux'
   const currentModel = service.currentModel ?? service.defaultModel?.name ?? ''
   const currentDevice =
     service.currentDevice ?? service.defaultModel?.device ?? ''
   const currentBackend = service.currentBackend ?? service.defaultModel?.backend
   const currentQuant = service.currentQuant ?? service.defaultModel?.quant
   const currentSource = service.currentSource
+  const currentCpuAffinity =
+    (service.metadata as { cpuAffinity?: string } | undefined)?.cpuAffinity ??
+    ''
 
   const [open, setOpen] = useState(false)
+  const [draftCpuAffinity, setDraftCpuAffinity] = useState(currentCpuAffinity)
   const [draft, setDraft] = useState<ConfigDraft>(() =>
     buildInitialDraft(
       currentModel,
@@ -131,6 +142,7 @@ export function MultiserveConfigurePanel({
             currentSource,
           ),
         )
+        setDraftCpuAffinity(currentCpuAffinity)
       }
       setOpen(newOpen)
     },
@@ -141,6 +153,7 @@ export function MultiserveConfigurePanel({
       systemInfo?.os,
       currentQuant,
       currentSource,
+      currentCpuAffinity,
     ],
   )
 
@@ -187,7 +200,12 @@ export function MultiserveConfigurePanel({
     validateModelName(draft.modelName, 'openvino') &&
     !isOpenVINONativeModel(draft.modelName)
 
-  const isValid = draft.modelName.trim().length > 0
+  const normalizedDraftAffinity = normalizeCpuAffinity(draftCpuAffinity)
+  const cpuAffinityChanged =
+    normalizedDraftAffinity !== normalizeCpuAffinity(currentCpuAffinity)
+  const cpuAffinityValid = isCpuAffinityValid(draftCpuAffinity)
+
+  const isValid = draft.modelName.trim().length > 0 && cpuAffinityValid
 
   // For llamacpp, quant is baked into the stored name (e.g. "repo:Q8_0")
   const storedEffectiveName =
@@ -205,7 +223,8 @@ export function MultiserveConfigurePanel({
     draftEffectiveName !== storedEffectiveName ||
     draft.device.toLowerCase() !== currentDevice.toLowerCase() ||
     (draft.backend !== 'llamacpp' && draft.quant !== (currentQuant ?? '')) ||
-    (currentBackend !== undefined && draft.backend !== currentBackend)
+    (currentBackend !== undefined && draft.backend !== currentBackend) ||
+    cpuAffinityChanged
 
   const updateDraft = useCallback(
     (patch: Partial<ConfigDraft>) =>
@@ -291,6 +310,7 @@ export function MultiserveConfigurePanel({
         currentSource,
       ),
     )
+    setDraftCpuAffinity(currentCpuAffinity)
   }, [
     currentModel,
     currentDevice,
@@ -298,6 +318,7 @@ export function MultiserveConfigurePanel({
     systemInfo?.os,
     currentQuant,
     currentSource,
+    currentCpuAffinity,
   ])
 
   const handleSave = useCallback(() => {
@@ -331,6 +352,9 @@ export function MultiserveConfigurePanel({
           ...(draft.backend !== 'llamacpp' &&
             draft.quant && { quant: draft.quant }),
           ...(params && { params }),
+          ...(cpuAffinityChanged && {
+            metadata: { cpuAffinity: normalizedDraftAffinity },
+          }),
         },
       },
       {
@@ -344,12 +368,22 @@ export function MultiserveConfigurePanel({
     isValid,
     updateConfig,
     needsWeightFormat,
+    cpuAffinityChanged,
+    normalizedDraftAffinity,
   ])
 
   const statusItems: ConfigurePanelStatus[] = [
     { label: 'Current model', value: currentModel || '—' },
     { label: 'Current device', value: currentDevice || '—' },
     { label: 'Backend', value: currentBackend ?? '—' },
+    ...(isLinux
+      ? [
+          {
+            label: 'CPU affinity',
+            value: currentCpuAffinity || 'all cores',
+          },
+        ]
+      : []),
   ]
 
   return (
@@ -592,6 +626,17 @@ export function MultiserveConfigurePanel({
           <ExtraParamsSection
             value={draft.additionalParams}
             onChange={(v) => updateDraft({ additionalParams: v })}
+          />
+        </>
+      )}
+
+      {isLinux && (
+        <>
+          <Separator />
+          <CpuAffinitySection
+            value={draftCpuAffinity}
+            onChange={setDraftCpuAffinity}
+            currentServiceId={service.id}
           />
         </>
       )}

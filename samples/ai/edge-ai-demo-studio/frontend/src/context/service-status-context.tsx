@@ -16,10 +16,6 @@ import {
   useServiceAction,
   useServicesQuery,
 } from '@/hooks/use-services'
-import {
-  type ServiceConfigUpdate,
-  updateServiceConfig,
-} from '@/hooks/use-service-config'
 import { engines } from '@/engines/_generated/meta'
 import { services as staticServices } from '@/services/registry'
 import type { Service, ServiceStatus } from '@/services/types'
@@ -31,10 +27,6 @@ interface ServiceStatusContextValue {
   serviceById: Map<string, Service>
   loading: boolean
   startService: (serviceType: string) => Promise<void>
-  configureAndStartService: (
-    serviceType: string,
-    device: string,
-  ) => Promise<void>
   stopService: (serviceType: string) => Promise<void>
   restartService: (serviceType: string) => Promise<void>
   isActionPending: (serviceType: string) => boolean
@@ -122,51 +114,6 @@ export function ServiceStatusProvider({ children }: { children: ReactNode }) {
     [performAction],
   )
 
-  const configureAndStartService = useCallback(
-    async (serviceType: string, device: string) => {
-      const info = serviceInfoMap[serviceType]
-      if (!info) {
-        throw new Error(
-          `Service "${serviceType}" has no database record. Restart the app to auto-create it.`,
-        )
-      }
-
-      // Validate device string: must be a known base (CPU, GPU, NPU, xpu, cpu)
-      // with an optional index suffix (.N or :N)
-      if (!/^(cpu|gpu|npu|xpu|auto)(([.:])\d+)?$/i.test(device)) {
-        throw new Error(
-          `Invalid device "${device}". Expected a device like CPU, GPU, GPU.1, xpu, xpu:0, NPU, etc.`,
-        )
-      }
-
-      // Resolve model name: prefer current DB value, fall back to static default
-      const staticService = staticServices.find((s) => s.id === serviceType)
-      const modelName =
-        info.currentModel ?? staticService?.defaultModel?.name ?? ''
-      if (!modelName) {
-        // No model to configure — just start as-is
-        return performAction(serviceType, 'start')
-      }
-
-      // Apply device config, then start
-      const configBody: ServiceConfigUpdate = {
-        name: modelName,
-        device,
-      }
-      if (info.currentBackend) configBody.backend = info.currentBackend
-      if (info.currentQuant) configBody.quant = info.currentQuant
-
-      await updateServiceConfig({
-        serviceId: info.id,
-        serviceType,
-        config: configBody,
-      })
-
-      return performAction(serviceType, 'start')
-    },
-    [serviceInfoMap, performAction],
-  )
-
   const stopService = useCallback(
     (serviceType: string) => performAction(serviceType, 'stop'),
     [performAction],
@@ -185,7 +132,6 @@ export function ServiceStatusProvider({ children }: { children: ReactNode }) {
         serviceById,
         loading: isLoading,
         startService,
-        configureAndStartService,
         stopService,
         restartService,
         isActionPending,

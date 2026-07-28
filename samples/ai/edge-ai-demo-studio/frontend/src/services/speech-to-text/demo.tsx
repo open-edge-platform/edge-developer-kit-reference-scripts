@@ -7,6 +7,7 @@ import { Loader2, Mic, MicOff, Square, Upload } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { UploadButton } from '@/components/common/upload-button'
 import { getMicErrorMessage } from '@/lib/media-utils'
 import { cn } from '@/lib/utils'
 import { DemoParameterSidebar } from '@/services/common/demo/components/demo-parameter-sidebar'
@@ -123,15 +124,12 @@ export function SpeechToTextDemo(_props: { service: Service }) {
     mediaRecorderRef.current?.stop()
   }
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+  const handleFileUpload = (file: File) => {
     transcribeMutation.mutate({
       file,
       language: sttValues.language,
       useDenoise: sttValues.useDenoise === 'true',
     })
-    e.target.value = ''
   }
 
   useEffect(() => {
@@ -240,24 +238,16 @@ export function SpeechToTextDemo(_props: { service: Service }) {
                   </>
                 )}
               </Button>
-              <Button
-                variant="outline"
-                className="gap-2"
+              <UploadButton
+                accept="audio/*"
+                onFiles={(files) => handleFileUpload(files[0])}
                 disabled={isRecording || isProcessing}
-                asChild
+                className="gap-2"
+                inputTestId="stt-file-input"
               >
-                <label>
-                  <Upload className="h-4 w-4" />
-                  Upload
-                  <input
-                    data-testid="stt-file-input"
-                    type="file"
-                    accept="audio/*"
-                    className="hidden"
-                    onChange={handleFileUpload}
-                  />
-                </label>
-              </Button>
+                <Upload className="h-4 w-4" />
+                Upload
+              </UploadButton>
             </div>
           </div>
 

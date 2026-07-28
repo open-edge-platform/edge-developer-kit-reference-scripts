@@ -4,117 +4,75 @@
 import json
 import os
 import uuid
-import time
 import argparse
 import logging
-from typing import Optional
 import multiprocessing
+import asyncio
+from typing import Optional
 from contextlib import asynccontextmanager
 
+import requests as http_requests
 import uvicorn
 from fastapi import FastAPI, UploadFile, Form, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import FastAPI, UploadFile
-from fastapi.exceptions import HTTPException
 
-from utils import (
+from modules.stt_ovms import (
+    start_stt_background,
+    wait_for_model_ready,
+    cleanup_ovms_process,
+)
+from modules.util import (
     create_cache_directory,
-    denoise,
-    download_model,
-    export_model,
-    download_omz_model,
-    ensure_wav,
-    load_denoise_model,
-    load_model_pipeline,
-    transcribe,
-    translate,
     validate_and_sanitize_cache_dir,
     validate_and_sanitize_model_id,
+)
+from modules.audio import ensure_wav
+from modules.denoise import (
+    denoise,
+    download_omz_model,
+    load_denoise_model,
 )
 
 logger = logging.getLogger("uvicorn.error")
 
-STT_PIPELINE = None
+OVMS_PROCESS = None
 DENOISE_COMPILED_MODEL = None
 TEMP_DIR = None
 
 CONFIG = {
     "stt_device": "CPU",
-    "stt_model_id": "openai/whisper-tiny",
+    "stt_model_id": "openai/whisper-base",
     "denoise_device": "CPU",
     "denoise_model_id": "noise-suppression-poconetlike-0001",
+    "source": "huggingface",
+    "precision": "fp32",
+    "ovms_port": 5009,
+    "port": 8023,
 }
 
 
-def clean_up():
-    logger.info("Shutting down server ...")
-
-
-def get_model_directories():
-    """Get and validate model directories."""
-    # Set project root as two levels above this script
+def _get_model_directories():
+    """Resolve and validate the model cache directories."""
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.abspath(os.path.join(script_dir, "..", ".."))
-
-    # Set cache directories inside project root
     model_dir = os.path.join(project_root, "models")
-    hf_model_cache_dir = os.path.join(model_dir, "huggingface")
     stt_model_cache_dir = os.path.join(model_dir, "stt")
     intel_model_cache_dir = os.path.join(stt_model_cache_dir, "intel")
 
-    # Validate and sanitize the cache directories
-    hf_model_cache_dir = validate_and_sanitize_cache_dir(hf_model_cache_dir)
     stt_model_cache_dir = validate_and_sanitize_cache_dir(stt_model_cache_dir)
     intel_model_cache_dir = validate_and_sanitize_cache_dir(intel_model_cache_dir)
-
-    # Create the directories if they don't exist
-    create_cache_directory(hf_model_cache_dir)
     create_cache_directory(stt_model_cache_dir)
 
-    return hf_model_cache_dir, stt_model_cache_dir, intel_model_cache_dir
+    return stt_model_cache_dir, intel_model_cache_dir
 
 
-def initialize_stt_model():
-    """Initialize STT model only."""
-    global CONFIG, STT_PIPELINE
-    stt_model_id = CONFIG["stt_model_id"]
-    stt_model_provider = stt_model_id.split("/")[0] if "/" in stt_model_id else "local"
-
-    hf_model_cache_dir, stt_model_cache_dir, _ = get_model_directories()
-    validated_stt_model_id = validate_and_sanitize_model_id(stt_model_id)
-
-    try:
-        stt_model_dir = os.path.join(stt_model_cache_dir, validated_stt_model_id)
-        if not os.path.exists(stt_model_dir):
-
-            if not stt_model_provider == "OpenVINO":
-                export_model(
-                    model_name_or_path=validated_stt_model_id,
-                    output_dir=stt_model_dir,
-                )
-            else:
-                logger.info("OpenVINO model not found. Downloading model ...")
-                path = download_model(
-                    validated_stt_model_id, stt_model_dir, source=CONFIG["source"]
-                )
-        else:
-            logger.info(f"Model already exists at: {stt_model_dir}")
-    except Exception as e:
-        print(f"Error downloading model {validated_stt_model_id}: {e}")
-        raise RuntimeError(f"Failed to download model {validated_stt_model_id}")
-
-    stt_pipeline = load_model_pipeline(stt_model_dir, device=CONFIG["stt_device"])
-    return stt_pipeline
-
-
-def initialize_denoise_model():
-    """Initialize denoise model only (lazy loading)."""
+def _initialize_denoise_model():
+    """Load the OMZ noise-suppression model (lazy)."""
     global CONFIG
     denoise_model = CONFIG["denoise_model_id"]
     validated_denoise_model = validate_and_sanitize_model_id(denoise_model)
 
-    _, stt_model_cache_dir, intel_model_cache_dir = get_model_directories()
-
+    stt_model_cache_dir, intel_model_cache_dir = _get_model_directories()
     denoise_model_precision = "FP32" if CONFIG["denoise_device"] == "CPU" else "FP16"
     denoise_model_xml = os.path.join(
         intel_model_cache_dir,
@@ -124,35 +82,68 @@ def initialize_denoise_model():
     )
 
     if not os.path.exists(denoise_model_xml):
-        logger.info("Denoise model not found. Downloading default model ...")
-        download_omz_model(
-            stt_model_cache_dir, validated_denoise_model, denoise_model_precision
-        )
+        logger.info("Denoise model not found. Downloading ...")
+        download_omz_model(stt_model_cache_dir, validated_denoise_model, denoise_model_precision)
 
-    denoise_compiled_model = load_denoise_model(
-        denoise_model_xml,
-        device=CONFIG["denoise_device"],
-    )
-    return denoise_compiled_model
+    compiled = load_denoise_model(denoise_model_xml, device=CONFIG["denoise_device"])
+    return compiled
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Initializing server services ...")
-    global STT_PIPELINE, DENOISE_COMPILED_MODEL, TEMP_DIR
+    global OVMS_PROCESS, DENOISE_COMPILED_MODEL, TEMP_DIR
+
+    logger.info("Initializing STT server services ...")
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
     TEMP_DIR = os.path.join(script_dir, "tmp")
-    if not os.path.exists(TEMP_DIR):
-        os.makedirs(TEMP_DIR, exist_ok=True)
+    os.makedirs(TEMP_DIR, exist_ok=True)
 
-    # Only initialize STT model on startup
-    STT_PIPELINE = initialize_stt_model()
-    # Denoise model will be initialized lazily when needed
-    DENOISE_COMPILED_MODEL = None
+    validated_model_id = validate_and_sanitize_model_id(CONFIG["stt_model_id"])
+    stt_model_cache_dir, _ = _get_model_directories()
+
+    try:
+        logger.info("Starting OVMS speech2text server ...")
+        OVMS_PROCESS = await asyncio.to_thread(
+            start_stt_background,
+            validated_model_id,
+            validated_model_id,
+            stt_model_cache_dir,
+            CONFIG["precision"],
+            CONFIG["ovms_port"],
+            CONFIG["source"],
+            CONFIG["stt_device"],
+            True,
+        )
+
+        if OVMS_PROCESS and hasattr(OVMS_PROCESS, "pid"):
+            logger.info(f"OVMS server started with PID: {OVMS_PROCESS.pid}")
+
+        logger.info("Waiting for OVMS server to be ready ...")
+        model_ready = await asyncio.to_thread(
+            wait_for_model_ready,
+            CONFIG["ovms_port"],
+            validated_model_id,
+            180,
+        )
+        if not model_ready:
+            raise RuntimeError("OVMS server failed to become ready within timeout")
+
+        logger.info("STT server services initialized successfully")
+
+    except Exception as e:
+        logger.error(f"Failed to initialize STT server services: {e}")
+        if OVMS_PROCESS:
+            OVMS_PROCESS.terminate()
+            OVMS_PROCESS.wait()
+        raise e
 
     yield
-    clean_up()
+
+    logger.info("Stopping STT server services ...")
+    if OVMS_PROCESS:
+        logger.info("Terminating OVMS process ...")
+        cleanup_ovms_process()
 
 
 allowed_cors = json.loads(os.getenv("ALLOWED_CORS", '["http://localhost"]'))
@@ -178,164 +169,179 @@ async def transcription(
     use_denoise: Optional[bool] = Form(False),
     return_timestamps: Optional[bool] = Form(False),
 ):
-    global STT_PIPELINE, DENOISE_COMPILED_MODEL
+    global DENOISE_COMPILED_MODEL
+
+    input_file_path = None
+    file_path = None
+
     try:
-        # save uploaded file
-        if file.filename:
-            base_name, ext = os.path.splitext(file.filename)
-            file_name = base_name
-            input_file_path = os.path.join(TEMP_DIR, f"{file_name}{ext or '.webm'}")
-        else:
-            file_name = str(uuid.uuid4())
-            input_file_path = os.path.join(TEMP_DIR, f"{file_name}.webm")
-
-        with open(input_file_path, "wb") as f:
-            f.write(file.file.read())
-
-        file_path = os.path.join(TEMP_DIR, f"{file_name}.wav")
-
-        # convert to wav robustly (pydub first, ffmpeg fallback)
-        ok = ensure_wav(input_file_path, file_path)
-        if not ok:
-            raise RuntimeError(
-                "Failed to convert uploaded audio to WAV. Please check if ffmpeg is installed."
-            )
+        input_file_path = await _save_upload(file)
+        file_path = _convert_to_wav(input_file_path)
 
         if use_denoise:
-            # Lazy load denoise model if not already loaded
             if DENOISE_COMPILED_MODEL is None:
-                logger.info("Loading denoise model for the first time...")
-                DENOISE_COMPILED_MODEL = initialize_denoise_model()
-
-            logger.info("Denoising audio...")
-            denoised_audio = denoise(DENOISE_COMPILED_MODEL, file_path)
+                logger.info("Loading denoise model for the first time ...")
+                DENOISE_COMPILED_MODEL = _initialize_denoise_model()
+            logger.info("Denoising audio ...")
+            denoised_bytes = denoise(DENOISE_COMPILED_MODEL, file_path)
             with open(file_path, "wb") as f:
-                f.write(denoised_audio)
+                f.write(denoised_bytes)
 
-        if language is None:
-            logger.warning("Language is not set. Default to english.")
-            language = "english"
+        form_data = [
+            ("model", CONFIG["stt_model_id"]),
+            ("language", language if language is not None else "en"),
+        ]
+        if return_timestamps:
+            form_data.append(("timestamp_granularities[]", "segment"))
+
+        ovms_data = await _post_audio_to_ovms("transcriptions", file_path, form_data)
+        text = ovms_data.get("text", "")
 
         if return_timestamps:
-            text, segments = transcribe(
-                pipeline=STT_PIPELINE,
-                audio=file_path,
-                language=language,
-                return_timestamps=True,
-            )
-        else:
-            text = transcribe(pipeline=STT_PIPELINE, audio=file_path, language=language)
-            segments = None
+            return {"text": text, "status": True, "segments": ovms_data.get("segments", [])}
+        return {"text": text, "status": True}
 
     except Exception as error:
-        logger.error(f"Error in STT transcriptions: {str(error)}")
+        logger.error(f"Error in STT transcription: {error}")
         raise HTTPException(
             status_code=500,
             detail=f"Failed to transcribe the voice input. Error: {error}",
         )
     finally:
-        if os.path.exists(input_file_path):
-            os.remove(input_file_path)
-        if os.path.exists(file_path):
-            os.remove(file_path)
-        orig_path = input_file_path + ".orig"
-        if os.path.exists(orig_path):
-            os.remove(orig_path)
-
-    if return_timestamps:
-        return {"text": text, "status": True, "segments": segments}
-    return {"text": text, "status": True}
+        _cleanup_temp_files(input_file_path, file_path)
 
 
 @app.post("/v1/audio/translations")
 async def translation(
-    file: UploadFile = File(...), language: Optional[str] = Form("en")
+    file: UploadFile = File(...),
 ):
+    input_file_path = None
+    file_path = None
+
     try:
-        if file.filename:
-            base_name, ext = os.path.splitext(file.filename)
-            file_name = base_name
-            input_file_path = os.path.join(TEMP_DIR, f"{file_name}{ext or '.webm'}")
-        else:
-            file_name = str(uuid.uuid4())
-            input_file_path = os.path.join(TEMP_DIR, f"{file_name}.webm")
+        input_file_path = await _save_upload(file)
+        file_path = _convert_to_wav(input_file_path)
 
-        with open(input_file_path, "wb") as f:
-            f.write(file.file.read())
-
-        file_path = os.path.join(TEMP_DIR, f"{file_name}.wav")
-
-        ok = ensure_wav(input_file_path, file_path)
-        if not ok:
-            raise RuntimeError(
-                "Failed to convert uploaded audio to WAV. Please check if ffmpeg is installed."
-            )
-
-        if language is None:
-            logger.warning("Language is not set. Default to english.")
-            language = "english"
-
-        text = translate(
-            pipeline=STT_PIPELINE, audio=file_path, source_language=language
-        )
+        form_data = [("model", CONFIG["stt_model_id"])]
+        ovms_data = await _post_audio_to_ovms("translations", file_path, form_data)
+        return {"text": ovms_data.get("text", ""), "status": True}
 
     except Exception as error:
-        logger.error(f"Error in STT translations: {str(error)}")
+        logger.error(f"Error in STT translation: {error}")
         raise HTTPException(
             status_code=500,
             detail=f"Failed to translate the voice input. Error: {error}",
         )
     finally:
-        if os.path.exists(input_file_path):
-            os.remove(input_file_path)
-        if os.path.exists(file_path):
-            os.remove(file_path)
+        _cleanup_temp_files(input_file_path, file_path)
+
+
+def _post_to_ovms(url: str, data: list, files: list):
+    """Blocking POST to OVMS — run via asyncio.to_thread."""
+    return http_requests.post(url, data=data, files=files, timeout=300)
+
+
+async def _save_upload(file: UploadFile) -> str:
+    """Persist an uploaded audio file to TEMP_DIR and return its path."""
+    if file.filename:
+        safe_name = os.path.basename(file.filename)
+        base_name, ext = os.path.splitext(safe_name)
+        if not base_name:
+            base_name = str(uuid.uuid4())
+        input_file_path = os.path.join(TEMP_DIR, f"{base_name}{ext or '.webm'}")
+    else:
+        input_file_path = os.path.join(TEMP_DIR, f"{uuid.uuid4()}.webm")
+    with open(input_file_path, "wb") as f:
+        f.write(await file.read())
+    return input_file_path
+
+
+def _convert_to_wav(input_file_path: str) -> str:
+    """Convert a saved upload to WAV and return the wav path."""
+    file_name = os.path.splitext(os.path.basename(input_file_path))[0]
+    file_path = os.path.join(TEMP_DIR, f"{file_name}.wav")
+    if not ensure_wav(input_file_path, file_path):
+        raise RuntimeError(
+            "Failed to convert uploaded audio to WAV. Please check if ffmpeg is installed."
+        )
+    return file_path
+
+
+async def _post_audio_to_ovms(endpoint: str, file_path: str, form_data: list) -> dict:
+    """POST a WAV file to an OVMS audio endpoint and return the parsed JSON."""
+    url = f"http://localhost:{CONFIG['ovms_port']}/v3/audio/{endpoint}"
+    with open(file_path, "rb") as audio_f:
+        files = [("file", (os.path.basename(file_path), audio_f, "audio/wav"))]
+        ovms_resp = await asyncio.to_thread(_post_to_ovms, url, form_data, files)
+    if not ovms_resp.ok:
+        raise RuntimeError(
+            f"OVMS {endpoint} failed ({ovms_resp.status_code}): {ovms_resp.text}"
+        )
+    return ovms_resp.json()
+
+
+def _cleanup_temp_files(input_file_path: Optional[str], file_path: Optional[str]) -> None:
+    """Remove request-scoped temp files and any '.orig' sidecar left by conversion."""
+    for path in (input_file_path, file_path):
+        if path and os.path.exists(path):
+            os.remove(path)
+    if input_file_path:
         orig_path = input_file_path + ".orig"
         if os.path.exists(orig_path):
             os.remove(orig_path)
 
-    return {"text": text, "status": True}
-
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Embedding Worker")
+    parser = argparse.ArgumentParser(description="Speech-to-Text Worker")
     parser.add_argument(
         "--port",
         type=int,
-        default=5005,
+        default=8023,
         help="Port for the worker to listen on",
     )
     parser.add_argument(
         "--stt-model-id",
         type=str,
         required=True,
-        help="Path to the stt model directory or Hugging Face model name",
+        help="HuggingFace or ModelScope model ID (e.g. openai/whisper-tiny)",
     )
     parser.add_argument(
         "--stt-device",
         type=str,
         default="CPU",
-        help="Device to run the stt model on (e.g., CPU, GPU, NPU)",
+        help="Device for the STT model (CPU, GPU, NPU)",
     )
     parser.add_argument(
         "--denoise-model-id",
         type=str,
-        required=False,
         default="noise-suppression-poconetlike-0001",
-        help="Name of Intel Open Model Zoo denoise models. Only noise-suppression-poconetlike-0001 or noise-suppression-denseunet-ll-0001 is supported.",
+        help="OMZ denoise model ID",
     )
     parser.add_argument(
         "--denoise-device",
         type=str,
         default="CPU",
-        help="Device to run the denoise model on (e.g., CPU, GPU, NPU)",
+        help="Device for the denoise model (CPU, GPU, NPU)",
     )
     parser.add_argument(
         "--source",
         type=str,
         default="huggingface",
         choices=["huggingface", "modelscope"],
-        help="Source to download the model from (e.g., huggingface, modelscope)",
+        help="Model download source",
+    )
+    parser.add_argument(
+        "--precision",
+        type=str,
+        default="fp32",
+        choices=["fp32", "fp16", "int8", "int4"],
+        help="Weight format for model export (default: fp32)",
+    )
+    parser.add_argument(
+        "--ovms-port",
+        type=int,
+        default=5009,
+        help="Internal port for the OVMS subprocess (default: 5009)",
     )
     return parser.parse_args()
 
@@ -350,6 +356,8 @@ def main():
     CONFIG["denoise_model_id"] = args.denoise_model_id
     CONFIG["denoise_device"] = str(args.denoise_device).upper()
     CONFIG["source"] = args.source
+    CONFIG["precision"] = args.precision
+    CONFIG["ovms_port"] = args.ovms_port
 
     multiprocessing.freeze_support()
     uvicorn.run(

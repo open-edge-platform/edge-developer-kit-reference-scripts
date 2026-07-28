@@ -179,11 +179,31 @@ try {
         Write-Host "Llama-cpp binaries already present." -ForegroundColor Green
     }
 
+    # Install uv if not present
+    Write-Host "[5/8] Checking uv installation..." -ForegroundColor Yellow
+    $uvInstalled = $false
+    try {
+        uv --version | Out-Null
+        $uvInstalled = $true
+        Write-Host "uv is already installed." -ForegroundColor Green
+    } catch {
+        Write-Host "Installing uv..." -ForegroundColor Yellow
+        winget install --id=astral-sh.uv -e --silent --accept-package-agreements --accept-source-agreements
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "uv installed successfully." -ForegroundColor Green
+            $env:PATH = "$env:USERPROFILE\.local\bin;" + $env:PATH
+            $uvInstalled = $true
+        } else {
+            throw "Failed to install uv!"
+        }
+    }
+    Write-Host ""
+
     # Check if virtual environment exists, create if not
     Write-Host "[5/8] Setting up virtual environment..." -ForegroundColor Yellow
-    if (-not (Test-Path "venv")) {
-        Write-Host "Creating virtual environment..." -ForegroundColor Yellow
-        python -m venv venv
+    if (-not (Test-Path ".venv")) {
+        Write-Host "Creating virtual environment with uv..." -ForegroundColor Yellow
+        uv venv .venv
         if ($LASTEXITCODE -ne 0) {
             throw "Failed to create virtual environment!"
         }
@@ -195,7 +215,7 @@ try {
 
     # Activate virtual environment
     Write-Host "[6/8] Activating virtual environment..." -ForegroundColor Yellow
-    & "venv\Scripts\Activate.ps1"
+    & ".venv\Scripts\Activate.ps1"
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to activate virtual environment!"
     }
@@ -205,15 +225,9 @@ try {
     # Install/Update dependencies
     Write-Host "[7/8] Installing dependencies..." -ForegroundColor Yellow
     Write-Host "This may take a few minutes on first run..." -ForegroundColor Yellow
-    pip install -r requirements.txt --quiet
+    uv pip install -r requirements.txt
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "ERROR: Failed to install dependencies!" -ForegroundColor Red
-        Write-Host ""
-        Write-Host "Trying to install dependencies with more verbose output..." -ForegroundColor Yellow
-        pip install -r requirements.txt
-        if ($LASTEXITCODE -ne 0) {
-            throw "Failed to install dependencies!"
-        }
+        throw "Failed to install dependencies!"
     }
     Write-Host "Dependencies installed successfully." -ForegroundColor Green
     Write-Host ""
@@ -235,7 +249,7 @@ try {
     Write-Host ""
 
     # Run the Python application
-    python app.py
+    uv run app.py
 
 } catch {
     Write-Host ""

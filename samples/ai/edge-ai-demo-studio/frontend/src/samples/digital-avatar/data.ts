@@ -26,7 +26,13 @@ export const sample: Sample = {
       capabilityKey: 'voice_input',
       impactText: 'Voice input will be disabled.',
     },
-    { serviceId: 'text-generation', role: 'required', defaultDevice: 'GPU.1' },
+    {
+      serviceId: 'text-generation',
+      role: 'required',
+      recommended: {
+        device: 'GPU.1',
+      },
+    },
     {
       serviceId: 'embeddings',
       role: 'optional',
@@ -52,7 +58,7 @@ export const sample: Sample = {
       impactText: 'MCP tool integrations will not be available.',
     },
     { serviceId: 'text-to-speech', role: 'required' },
-    { serviceId: 'lipsync', role: 'required', defaultDevice: 'xpu' },
+    { serviceId: 'lipsync', role: 'required' },
   ],
   pipeline: [
     'wake-word-detection',

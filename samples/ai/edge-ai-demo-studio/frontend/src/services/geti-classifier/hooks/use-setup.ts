@@ -49,7 +49,7 @@ async function setupWorker(payload: SetupPayload): Promise<SetupResult> {
       project_name: payload.projectName ?? null,
       model_id: payload.modelId ?? null,
       verify_ssl: payload.verifySsl ?? false,
-      device: payload.device ?? 'GPU',
+      device: payload.device ?? 'GPU.0',
     }),
     signal: AbortSignal.timeout(120_000),
   })
