@@ -302,6 +302,44 @@ detect_hardware() {
     initialize_package_arrays
     detect_npu
     detect_gpu
+    detect_camera
+}
+
+# Detect the Intel IPU7 GMSL camera interface. The IPU7 driver is an in-tree
+# kernel module (linux-modules-<version>, drivers/staging/media/ipu7) that loads
+# at boot, so there is nothing to install. This only reports status, and only
+# when an IPU7 device is present. On platforms without IPU7 it prints nothing.
+detect_camera() {
+    local ipu_id="8086:b05d"
+    local slot driver_status="Not bound" camera_status sensor_count=0
+
+    slot=$(lspci -nn 2>/dev/null | grep -i "$ipu_id" | awk '{print $1}' | head -1)
+
+    # No IPU7 on this platform: no camera section at all.
+    [ -z "$slot" ] && return 0
+
+    if lspci -k -s "$slot" 2>/dev/null | grep -qi 'in use: intel-ipu7'; then
+        driver_status="intel-ipu7 (in-kernel)"
+    fi
+
+    # "no subdev found in graph" means the ISP is up but no sensor is attached.
+    if dmesg 2>/dev/null | grep -qi 'intel-ipu7.*no subdev found in graph'; then
+        sensor_count=0
+    elif command -v media-ctl >/dev/null 2>&1; then
+        sensor_count=$(media-ctl -d /dev/media0 -p 2>/dev/null \
+            | grep -ciE 'max9296|max96724|isx031|imx390|d4[0-9]{2}|ov[0-9]{4}' || true)
+    fi
+
+    if [ "$sensor_count" -gt 0 ]; then
+        camera_status="Detected ($sensor_count sensor(s))"
+    else
+        camera_status="No camera attached"
+    fi
+
+    printf "%-25s-+-%-40s\n" "${TABLE_HEADER[@]}"
+    printf "%-25s | %-40s\n" "IPU7 Camera Interface" "Present at $slot"
+    printf "%-25s | %-40s\n" "IPU7 Camera Driver" "$driver_status"
+    printf "%-25s | %-40s\n" "GMSL Camera" "$camera_status"
 }
 
 # Detect software components
