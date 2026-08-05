@@ -18,7 +18,7 @@
     "description": "Edge AI Demo Studio - Electron Builder Version",
     "devDependencies": {
         "@electron/fuses": "^2.0.0",
-        "electron": ">=39.2.1",
+        "electron": ">=41.10.3",
         "electron-builder": "^26.2.0"
     },
     "dependencies": {
