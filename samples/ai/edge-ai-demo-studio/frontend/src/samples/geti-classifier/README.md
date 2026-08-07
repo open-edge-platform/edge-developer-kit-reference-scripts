@@ -12,8 +12,7 @@ Geti Inference Pipeline enables AI software vendors (ISV) to rapidly develop, de
 - **Unified Workflow:** End-to-end pipeline from data ingestion → inference → feedback loop for streamlined AI development.
 - **Modular Pipeline:** Supports segmentation and classification tasks through interchangeable, composable pipeline stages.
 - **Reusable Components:** Shared building blocks designed to work across multiple imaging modalities with minimal reconfiguration.
-- **Integrated Model Development & Deployment:** Leverages Intel's Geti™ software and the Geti™ SDK for seamless model training, versioning, and deployment.
-  > **Note:** The Geti™ SDK is deprecated and no longer maintained. It does not support Geti™ software version 3.0 or later. See the [Geti SDK repository](https://github.com/open-edge-platform/geti-sdk) for more information.
+- **Integrated Model Development & Deployment:** Leverages Intel's Geti™ software for seamless model training, versioning, and deployment.
 - **Edge Optimized:** Execution optimized for Intel edge platforms using OpenVINO and Intel hardware acceleration.
 
 ## Architecture Diagram
