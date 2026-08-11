@@ -165,6 +165,16 @@ def parse_arguments():
         help="Model source (default: huggingface)",
     )
     parser.add_argument(
+        "--avatar_model",
+        type=str,
+        default=None,
+        choices=["wav2lip", "musetalk"],
+        help=(
+            "Lipsync model (default: the config file's avatar_type, else "
+            "wav2lip). MuseTalk needs a discrete GPU for realtime."
+        ),
+    )
+    parser.add_argument(
         "--int8",
         action=argparse.BooleanOptionalAction,
         default=None,
@@ -174,6 +184,27 @@ def parse_arguments():
             "Pass --no-int8 to force FP16."
         ),
     )
+    parser.add_argument(
+        "--frame_gen",
+        type=str,
+        default="auto",
+        choices=["auto", "on", "off"],
+        help=(
+            "RIFE frame generation between lipsync frames. 'auto' (default) "
+            "measures Wav2Lip inference FPS at startup and enables frame "
+            "generation only when inference cannot match the avatar video FPS; "
+            "'on' forces it; 'off' disables it."
+        ),
+    )
+    parser.add_argument(
+        "--frame_gen_device",
+        type=str,
+        default=None,
+        help=(
+            "OpenVINO device for the RIFE frame generation model "
+            "(CPU/GPU/GPU.1/NPU). Defaults to --device."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -181,6 +212,10 @@ CHECKPOINT_PATH = "models/wav2lip/checkpoints/wav2lipv2.pth"
 OV_FP16_PATH = "models/wav2lip/checkpoints/wav2lipv2_ov/wav2lip.xml"
 OV_INT8_PATH = "models/wav2lip/checkpoints/wav2lipv2_ov_int8/wav2lip.xml"
 OV_DEVICES = {"cpu", "gpu", "npu", "auto"}
+
+# Frame generation decision made at startup (see setup_frame_generation) and
+# shared with every WebRTC session.
+frame_gen_state = {"plan": None}
 
 
 def download_wav2lip_checkpoint(source: str):
@@ -300,10 +335,131 @@ def preload_ov_model(args):
     compile_wav2lip_model(model_path, args.device, batch_size, image_size)
 
 
+def setup_frame_generation(args):
+    """Measure device speeds and decide the frame generation plan at startup,
+    so the model is downloaded, loaded and warmed before any session starts
+    inferencing."""
+    from modules.base.constants import CONSTANTS
+    from modules.frame_generation.planner import get_avatar_fps, plan_frame_generation
+    from modules.lipsync.wav2lip.wav2lip_avatar import (
+        get_shared_inference,
+        measure_wav2lip_inference_fps,
+    )
+
+    try:
+        with open(Path(args.config).resolve()) as f:
+            cfg = yaml.safe_load(f) or {}
+    except Exception as e:
+        getLogger(__name__).warning(
+            f"Skipping frame generation setup; cannot read config: {e}"
+        )
+        return
+
+    avatar_path = cfg.get("wav2lip", {}).get("avatar_path", "")
+    if not avatar_path:
+        getLogger(__name__).warning(
+            "Skipping frame generation setup; no avatar_path in config."
+        )
+        return
+
+    batch_size = cfg.get("batch_size", 16)
+    image_size = int(str(avatar_path).split("_")[-1])
+    model_path = OV_FP16_PATH
+    if args.int8 and Path(OV_INT8_PATH).exists():
+        model_path = OV_INT8_PATH
+
+    inference_fps = measure_wav2lip_inference_fps(
+        model_path, args.device, batch_size, image_size
+    )
+    plan = plan_frame_generation(
+        mode=args.frame_gen,
+        device=args.frame_gen_device or args.device,
+        avatar_path=avatar_path,
+        avatar_fps=get_avatar_fps(avatar_path),
+        inference_fps=inference_fps,
+        batch_size=batch_size,
+        image_size=image_size,
+        max_output_fps=1.0 / CONSTANTS.VIDEO_PTIME,
+    )
+
+    if plan.enabled:
+        # Precompile the static keyframe-batch Wav2Lip variant sessions will
+        # use, so the first connection doesn't pay compile time.
+        get_shared_inference(model_path, args.device, len(plan.keyframes), image_size)
+
+    frame_gen_state["plan"] = plan
+
+
+def get_avatar_type(args) -> str:
+    if getattr(args, "avatar_model", None):
+        return args.avatar_model
+    try:
+        with open(Path(args.config).resolve()) as f:
+            cfg = yaml.safe_load(f) or {}
+        return cfg.get("avatar_type", "wav2lip")
+    except Exception:
+        return "wav2lip"
+
+
+def initialize_musetalk_models(args):
+    """Download/convert the MuseTalk networks, generate the default avatar and
+    decide the frame generation plan, mirroring the wav2lip startup path."""
+    from modules.base.constants import CONSTANTS
+    from modules.frame_generation.planner import get_avatar_fps, plan_frame_generation
+    from modules.lipsync.musetalk.musetalk_models import (
+        FACE_SIZE,
+        ensure_musetalk_openvino_models,
+        get_shared_musetalk_inference,
+        get_shared_whisper_encoder,
+        measure_musetalk_inference_fps,
+    )
+
+    if args.int8:
+        getLogger(__name__).warning(
+            "INT8 is not available for MuseTalk yet; using FP16."
+        )
+
+    ensure_musetalk_openvino_models(source=args.source)
+    avatar_path = ensure_default_avatar(args)
+    if not avatar_path:
+        getLogger(__name__).warning("Skipping MuseTalk preload; no avatar available.")
+        return
+
+    with open(Path(args.config).resolve()) as f:
+        cfg = yaml.safe_load(f) or {}
+    batch_size = cfg.get("batch_size", 16)
+
+    getLogger(__name__).info(
+        "Precompiling MuseTalk models for faster first connection..."
+    )
+    get_shared_whisper_encoder(args.device)
+    inference_fps = measure_musetalk_inference_fps(args.device, batch_size)
+
+    plan = plan_frame_generation(
+        mode=args.frame_gen,
+        device=args.frame_gen_device or args.device,
+        avatar_path=avatar_path,
+        avatar_fps=get_avatar_fps(avatar_path),
+        inference_fps=inference_fps,
+        batch_size=batch_size,
+        image_size=FACE_SIZE,
+        max_output_fps=1.0 / CONSTANTS.VIDEO_PTIME,
+    )
+    if plan.enabled:
+        # Precompile the static keyframe-batch variant sessions will use.
+        get_shared_musetalk_inference(args.device, len(plan.keyframes))
+    frame_gen_state["plan"] = plan
+
+
 def initialize_models(args):
+    if get_avatar_type(args) == "musetalk":
+        initialize_musetalk_models(args)
+        return
+
     download_wav2lip_checkpoint(args.source)
 
-    is_ov = args.device.lower() in OV_DEVICES
+    # Accept indexed device names like GPU.1 (multi-GPU systems).
+    is_ov = args.device.lower().split(".")[0] in OV_DEVICES
     if is_ov:
         ensure_openvino_model()
 
@@ -320,6 +476,8 @@ def initialize_models(args):
 
         preload_ov_model(args)
         getLogger(__name__).info(f"Deleted original checkpoint: {CHECKPOINT_PATH}")
+
+        setup_frame_generation(args)
 
 
 def create_app(args):
@@ -777,6 +935,9 @@ def setup_routes(
         with open(sanitized_config_path) as f:
             configs = yaml.safe_load(f)
 
+        # --avatar_model overrides the config file's avatar_type.
+        configs["avatar_type"] = get_avatar_type(args)
+
         session_id = configs.get("session_id", "")
         if session_id == "":
             session_id = str(uuid4())[:4]
@@ -837,6 +998,11 @@ def setup_routes(
                 getLogger(__name__).info(
                     f"WebRTC connection successfully established for Avatar {session_id}"
                 )
+                # Start producing frames only now: producing during ICE
+                # gathering/connecting builds a video backlog nothing is
+                # draining yet, which delays every later utterance.
+                # (Idempotent — the stream thread is created only once.)
+                avatar_streamer.start()
 
         @pc.on("icegatheringstatechange")
         async def on_icegatheringstatechange():
@@ -871,11 +1037,13 @@ def setup_routes(
             device=args.device,
             ws_manager=manager,
             use_int8=args.int8,
+            frame_gen_plan=frame_gen_state["plan"],
         )
         audio, video = avatar_streamer.get_av_tracks()
         _ = pc.addTrack(audio)
         _ = pc.addTrack(video)
-        avatar_streamer.start()
+        # The stream starts from on_connectionstatechange("connected"); audio
+        # posted before that just waits in the input queue.
 
         avatars[session_id] = avatar_streamer
 

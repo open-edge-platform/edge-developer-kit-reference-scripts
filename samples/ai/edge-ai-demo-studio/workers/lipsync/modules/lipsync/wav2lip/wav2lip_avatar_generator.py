@@ -60,6 +60,14 @@ def _torch_device(device: str) -> str:
     return "cpu"
 
 
+def getVideoFps(video_path):
+    """Frame rate of the source video, or None if it cannot be read."""
+    cap = cv2.VideoCapture(video_path)
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    cap.release()
+    return fps if fps and fps > 0 else None
+
+
 def extractImagesFromVideo(video_path, save_path, frame_count=128):
     cap = cv2.VideoCapture(video_path)
     count = 0
@@ -233,6 +241,9 @@ def generate_wav2lip_avatar(
         meta = {
             "skin_id": avatar_id,
             "skin_name": skin_name,
+            # Source video frame rate; used at startup to decide whether frame
+            # generation is needed to match it.
+            "fps": getVideoFps(str(video_path)),
         }
         (base_avatar_dir / avatar_id / "config.json").write_text(
             json.dumps(meta, ensure_ascii=False), encoding="utf-8"

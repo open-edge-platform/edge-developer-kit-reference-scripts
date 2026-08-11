@@ -25,8 +25,15 @@ import { logger } from './logger'
 
 const STATUS_VALUES = ['online', 'offline'] as const
 
+/** Metadata keys that only apply to specific services; unlisted keys apply to all. */
+const METADATA_KEY_SCOPE: Record<string, string[]> = {
+  frameGeneration: ['lipsync'],
+}
+
 /** Metadata property descriptions pulled from the Services collection schema. */
-function getMetadataProperties(): Record<string, { description?: string }> {
+function getMetadataProperties(
+  serviceType?: string,
+): Record<string, { description?: string }> {
   const field = Services.fields.find(
     (f) => 'name' in f && f.name === 'metadata',
   )
@@ -34,7 +41,15 @@ function getMetadataProperties(): Record<string, { description?: string }> {
     const schema = field.jsonSchema.schema as {
       properties?: Record<string, { description?: string }>
     }
-    return schema.properties ?? {}
+    const properties = schema.properties ?? {}
+    if (!serviceType) return properties
+    return Object.fromEntries(
+      Object.entries(properties).filter(
+        ([key]) =>
+          !METADATA_KEY_SCOPE[key] ||
+          METADATA_KEY_SCOPE[key].includes(serviceType),
+      ),
+    )
   }
   return {}
 }
@@ -98,7 +113,7 @@ function buildModelSchema(meta: ServiceMeta, isDefault: boolean): object {
 
 function buildServiceSchema(meta: ServiceMeta): object {
   const engines = getAllowedEngines(meta)
-  const metadataProperties = getMetadataProperties()
+  const metadataProperties = getMetadataProperties(meta.id)
 
   return {
     type: 'object',

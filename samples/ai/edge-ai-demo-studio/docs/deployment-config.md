@@ -76,6 +76,7 @@ Metadata keys:
 | `languageCode` | Language Code for TTS |
 | `vadThreshold` | VAD Threshold for Wake Word Detection |
 | `cpuAffinity` | CPU cores to pin this service to (numactl -C format, e.g. "0-7" or "0,2,4"). Empty / missing = all cores. Linux only. |
+| `frameGeneration` | Allow lipsync frame generation (interpolation). Only activates when the accelerator cannot infer enough frames per second on its own. |
 
 ## Service reference
 
@@ -184,7 +185,7 @@ Known models:
 
 ### `lipsync` — Lipsync
 
-Real-time avatar lip-syncing with Wav2Lip, streamed over WebRTC.
+Real-time avatar lip-syncing with Wav2Lip or MuseTalk, streamed over WebRTC.
 
 | Field | Value |
 | --- | --- |
@@ -201,6 +202,7 @@ Known models:
 | Model (`models.default.name`) | Devices | Backend |
 | --- | --- | --- |
 | `Wav2Lip` | `CPU`, `GPU`, `NPU` | `openvino` |
+| `MuseTalk` | `CPU`, `GPU`, `NPU` | `openvino` |
 
 ### `loss-prevention` — Loss Prevention
 

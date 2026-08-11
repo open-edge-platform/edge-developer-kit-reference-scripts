@@ -1,29 +1,17 @@
 # Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
-import torch
-import pickle  # nosec B403 -- reading the pickle file created by another script only
-import os
-import cv2
-import copy
 import time
 import numpy as np
-import io
 
 import openvino as ov
 
-from threading import Thread, Lock
-from tqdm import tqdm
+from threading import Lock
 from pathlib import Path
-from queue import Queue
-from glob import glob
 from modules.base.logger import getLogger
-from modules.base.avatar import Avatar, text_wrapper
-from modules.base.constants import CONSTANTS
+from modules.lipsync.lipsync_avatar import LipsyncAvatar
 
-from modules.lipsync.wav2lip.wav2lip256.models import Wav2Lip as Wav2Lip256
 from modules.lipsync.wav2lip.wav2lip256 import audio as audio256
-from modules.texttospeech.kokoro_tts import AudioState
 
 _COMPILED_MODEL_CACHE = {}
 _CACHE_LOCK = Lock()
@@ -43,13 +31,15 @@ def compile_wav2lip_model(model_path, ov_device, batch_size, image_size):
         getLogger(__file__).info(f"Loading OpenVINO Wav2Lip model on {ov_device}...")
         core = ov.Core()
         ov_model = core.read_model(model_path)
-        if ov_device == "NPU":
-            ov_model.reshape(
-                {
-                    "audio_sequences": [batch_size, 1, 80, 16],
-                    "face_sequences": [batch_size, 6, image_size, image_size],
-                }
-            )
+        # The batch is fixed per compiled entry, so always reshape to a static
+        # batch: NPU requires it, and the GPU plugin is dramatically slower
+        # with dynamic shapes.
+        ov_model.reshape(
+            {
+                "audio_sequences": [batch_size, 1, 80, 16],
+                "face_sequences": [batch_size, 6, image_size, image_size],
+            }
+        )
         compiled = core.compile_model(ov_model, ov_device)
         infer_request = compiled.create_infer_request()
         _warm_up_request(infer_request, batch_size, image_size)
@@ -82,151 +72,62 @@ def _warm_up_request(infer_request, batch_size, image_size):
     infer_request.infer({"audio_sequences": mel_batch, "face_sequences": img_batch})
 
 
-class SafeUnpickler(pickle.Unpickler):
+def measure_wav2lip_inference_fps(model_path, ov_device, batch_size, image_size, runs=5):
+    """Median frames/sec of the shared compiled Wav2Lip model at full batch.
+
+    Uses (and warms) the same shared inference request the sessions will use,
+    so the number reflects what lip_sync actually gets on this device.
     """
-    A safe unpickler that restricts the types that can be loaded during deserialization.
-    This prevents arbitrary code execution vulnerabilities in pickle.load().
+    _, infer_request, lock = get_shared_inference(
+        model_path, ov_device, batch_size, image_size
+    )
+    img_batch = np.random.rand(batch_size, 6, image_size, image_size).astype(np.float32)
+    mel_batch = np.random.rand(batch_size, 1, 80, 16).astype(np.float32)
+    inputs = {"audio_sequences": mel_batch, "face_sequences": img_batch}
 
-    Only allows basic Python types that are expected for coordinate data:
-    - Numbers (int, float)
-    - Collections (list, tuple)
-    - Basic Python builtins
-    """
+    with lock:
+        infer_request.infer(inputs)
+        times = []
+        for _ in range(runs):
+            start = time.perf_counter()
+            infer_request.infer(inputs)
+            times.append(time.perf_counter() - start)
 
-    def find_class(self, module, name):
-        # Only allow safe builtins for coordinate data
-        safe_builtins = {
-            "list",
-            "tuple",
-            "int",
-            "float",
-            "bool",
-            "str",
-            "dict",
-            "set",
-            "frozenset",
-            "complex",
-        }
-
-        if module == "builtins" and name in safe_builtins:
-            return getattr(__builtins__, name)
-
-        # Allow numpy types that might be in coordinate data
-        # This includes both public API and internal types needed for deserialization
-        numpy_modules = {
-            "numpy",
-            "numpy.core",
-            "numpy._core",
-            "numpy.core.multiarray",
-            "numpy._core.multiarray",
-            "numpy.core.numeric",
-            "numpy._core.numeric",
-        }
-
-        safe_numpy_types = {
-            "ndarray",
-            "dtype",
-            "int64",
-            "float64",
-            "int32",
-            "float32",
-            "int8",
-            "int16",
-            "uint8",
-            "uint16",
-            "uint32",
-            "uint64",
-            "scalar",
-            "_reconstruct",
-            "_flagdict",
-            "flagsobj",
-        }
-
-        if module in numpy_modules and name in safe_numpy_types:
-            import numpy as np
-
-            # Handle internal numpy types that may not be directly accessible
-            if hasattr(np, name):
-                return getattr(np, name)
-            elif module in ["numpy._core.multiarray", "numpy.core.multiarray"]:
-                # For internal multiarray types, import the specific module
-                try:
-                    import numpy.core.multiarray as ma
-
-                    if hasattr(ma, name):
-                        return getattr(ma, name)
-                except ImportError:
-                    pass
-                try:
-                    import numpy._core.multiarray as ma
-
-                    if hasattr(ma, name):
-                        return getattr(ma, name)
-                except ImportError:
-                    pass
-
-        # Forbid everything else to prevent arbitrary code execution
-        raise pickle.UnpicklingError(
-            f"Global '{module}.{name}' is forbidden for security reasons"
-        )
+    batch_time = sorted(times)[len(times) // 2]
+    fps = batch_size / batch_time
+    getLogger(__file__).info(
+        f"Wav2Lip inference on {ov_device}: {batch_time:.3f}s per batch of "
+        f"{batch_size} => {fps:.1f} FPS"
+    )
+    return fps
 
 
-def safe_pickle_load(file_path):
-    """Safely load a pickle file using the restricted unpickler."""
-    with open(file_path, "rb") as f:
-        return SafeUnpickler(f).load()
+class Wav2lipAvatar(LipsyncAvatar):
+    """Wav2Lip lipsync session: mel-spectrogram audio features and a single
+    image-to-image OpenVINO model."""
 
+    # 2 audio chunks (one video frame) of mel context on each side.
+    audio_left_stride = 2
+    audio_right_stride = 2
 
-class Wav2lipAvatar(Avatar):
-    def __init__(self, avatar_id, configs, device, use_int8=False):
-        super().__init__(avatar_id=avatar_id)
-
-        self.configs = configs
-
-        self.language_code = "en_us"
-        self.device = device
-        self.ov_device = device.upper()
+    def __init__(self, avatar_id, configs, device, use_int8=False, frame_gen_plan=None):
         self.use_int8 = use_int8
-        self.batch_size = self.configs.get("batch_size", 16)
-        self.image_width = self.configs.get("image", {}).get("width", 868)
-        self.image_height = self.configs.get("image", {}).get("height", 1080)
-
-        self.audio_fps = CONSTANTS.AUDIO_FPS * 2
-        self.audio_chunk_size = CONSTANTS.AUDIO_CHUNK_SIZE
-
-        self.result_frame_queue = Queue(self.batch_size * 2)
-        self.combined_frame_queue = Queue()
-        self.message_queue = Queue()
-
-        self.audio_input_queue = Queue()
-        self.audio_output_queue = Queue()
-        self.audio_feature_queue = Queue(2)
-        self.audio_left_stride = 2
-        self.audio_right_stride = 2
-        self.audio_frames = []
-
-        self.wav2lip_avatar_path = self.configs.get("wav2lip", {}).get(
-            "avatar_path", "./data/avatars/wav2lip_avatar1"
-        )
-        self.image_size = int(self.wav2lip_avatar_path.split("_")[-1])
         self.checkpoint_path = "models/wav2lip/checkpoints/wav2lipv2.pth"
         self.ov_model_path = "models/wav2lip/checkpoints/wav2lipv2_ov/wav2lip.xml"
         self.int8_model_path = (
             "models/wav2lip/checkpoints/wav2lipv2_ov_int8/wav2lip.xml"
         )
 
-        self.stop_infer = False
-
         self.ov_compiled_model = None
         self.infer_request = None
         self.infer_lock = None
-        self.load_model()
 
-        self.cv_frames, self.face_frames, self.face_frames_len, self.coords_list = (
-            self.load_avatar(self.wav2lip_avatar_path)
+        super().__init__(
+            avatar_id=avatar_id,
+            configs=configs,
+            device=device,
+            frame_gen_plan=frame_gen_plan,
         )
-
-        assert self.face_frames_len > 0, "No face frames found in the avatar directory."
 
     def unload_models(self):
         # Only drop this session's references; the compiled model, its shared
@@ -235,16 +136,24 @@ class Wav2lipAvatar(Avatar):
         self.infer_request = None
         self.infer_lock = None
         self.ov_compiled_model = None
-
-    def __del__(self):
-        getLogger(__file__).info("Avatar deleted")
-        self.unload_models()
+        self.kf_model = None
+        self.kf_request = None
+        self.kf_lock = None
+        self.frame_gen_plan = None
 
     def _convert_to_openvino(self):
-        """Convert PyTorch checkpoint to OpenVINO IR if not already done."""
+        """Convert PyTorch checkpoint to OpenVINO IR if not already done.
+
+        The only place this session code touches PyTorch; imported lazily so
+        the running service stays OpenVINO-only once the IR exists.
+        """
         ov_path = Path(self.ov_model_path)
         if ov_path.exists():
             return
+
+        import torch
+
+        from modules.lipsync.wav2lip.wav2lip256.models import Wav2Lip as Wav2Lip256
 
         getLogger(__file__).info("Converting Wav2Lip model to OpenVINO IR...")
         pt_model = Wav2Lip256()
@@ -297,79 +206,43 @@ class Wav2lipAvatar(Avatar):
                 )
 
         getLogger(__file__).info(f"Using OpenVINO Wav2Lip {precision} model.")
+        self.model_path = model_path
         self.ov_compiled_model, self.infer_request, self.infer_lock = (
             get_shared_inference(
                 model_path, self.ov_device, self.batch_size, self.image_size
             )
         )
 
-    def load_avatar(self, avatar_path):
-        getLogger(__file__).info("Reading Avatar Images")
+    def _prepare_keyframe_inference(self):
+        # Every compiled entry has a static batch, so keyframe-only inference
+        # uses a dedicated model sized to the keyframe batch; that is what
+        # makes it cheaper than a full batch.
+        self.kf_model, self.kf_request, self.kf_lock = get_shared_inference(
+            self.model_path,
+            self.ov_device,
+            len(self.frame_gen_plan.keyframes),
+            self.image_size,
+        )
 
-        def _read_cv_images(images_path):
-            image_pattern = f"{images_path}/*.[jpJP][pnPN]*[gG]"
-            input_images_list = sorted(
-                glob(image_pattern),
-                key=lambda x: int(os.path.splitext(os.path.basename(x))[0]),
+    def _run_lipsync_inference(self, feature_batch, start_index, debug=False, positions=None):
+        if positions is None:
+            positions = range(self.batch_size)
+            mel_batch = self._pad_feature_batch(feature_batch)
+            compiled_model, infer_request, infer_lock = (
+                self.ov_compiled_model,
+                self.infer_request,
+                self.infer_lock,
             )
-            frames = [cv2.imread(image_path) for image_path in tqdm(input_images_list)]
-            return frames
-
-        self.full_images_path = f"{avatar_path}/full_images"
-        self.face_images_path = f"{avatar_path}/face_images"
-        self.coords_path = f"{avatar_path}/coords.pkl"
-
-        full_cv_frame_list = _read_cv_images(self.full_images_path)
-        face_cv_frame_list = _read_cv_images(self.face_images_path)
-        coords_list = safe_pickle_load(self.coords_path)
-
-        return (
-            full_cv_frame_list,
-            face_cv_frame_list,
-            len(face_cv_frame_list),
-            coords_list,
-        )
-
-    def reload_avatar(self, avatar_path):
-        """Hot-swap the avatar skin on a running session.
-
-        The lip_sync / merge threads keep reading while we swap, so the new
-        lists are assigned in one statement and those threads take local
-        snapshots before indexing (see _run_lipsync_inference /
-        merge_video_audio).
-        """
-        new_size = int(avatar_path.split("_")[-1])
-        if new_size != self.image_size:
-            raise ValueError(
-                f"Avatar size {new_size} does not match loaded model size "
-                f"{self.image_size}; cannot hot-reload."
+        else:
+            # Keyframe-only inference for frame generation: feature_batch
+            # already holds exactly one chunk per position, and the request is
+            # sized (or dynamic enough) for that batch.
+            mel_batch = feature_batch
+            compiled_model, infer_request, infer_lock = (
+                self.kf_model,
+                self.kf_request,
+                self.kf_lock,
             )
-
-        cv_frames, face_frames, face_frames_len, coords_list = self.load_avatar(
-            avatar_path
-        )
-        if face_frames_len == 0:
-            raise ValueError(f"No face frames found in {avatar_path}")
-
-        self.wav2lip_avatar_path = avatar_path
-        self.cv_frames, self.face_frames, self.face_frames_len, self.coords_list = (
-            cv_frames,
-            face_frames,
-            face_frames_len,
-            coords_list,
-        )
-        getLogger(__file__).info(f"Avatar hot-reloaded from {avatar_path}")
-
-    def _run_lipsync_inference(self, mel_batch, start_index, debug=False):
-        # The audio pipeline can yield fewer mel chunks than batch_size (e.g.
-        # 14 on the very first talking batch, before the stride leftover
-        # stabilizes). The model concatenates audio and face embeddings, so the
-        # two batches must match — and NPU is compiled for a static batch.
-        # Pad by repeating the last chunk; extra frames still pair with real
-        # audio frames downstream.
-        mel_batch = list(mel_batch)[: self.batch_size]
-        if len(mel_batch) < self.batch_size:
-            mel_batch += [mel_batch[-1]] * (self.batch_size - len(mel_batch))
 
         # Snapshot the frame list so a concurrent reload_avatar can't change
         # the list length between the reflection() index math and the lookup.
@@ -377,7 +250,7 @@ class Wav2lipAvatar(Avatar):
         face_frames_len = len(face_frames)
 
         img_batch = []
-        for i in range(self.batch_size):
+        for i in positions:
             idx = self.reflection(face_frames_len, start_index + i)
             face = face_frames[idx]
             img_batch.append(face)
@@ -399,13 +272,11 @@ class Wav2lipAvatar(Avatar):
         # Serialize NPU access: the shared InferRequest is used by every session,
         # and its output tensors stay valid only until the next infer() call, so
         # both the call and the result read must happen under the lock.
-        with self.infer_lock:
-            result = self.infer_request.infer(
+        with infer_lock:
+            result = infer_request.infer(
                 {"audio_sequences": mel_np, "face_sequences": img_np}
             )
-            pred = (
-                result[self.ov_compiled_model.output(0)].transpose(0, 2, 3, 1) * 255.0
-            )
+            pred = result[compiled_model.output(0)].transpose(0, 2, 3, 1) * 255.0
         inf_time = time.perf_counter() - t_start if debug else 0
 
         if debug:
@@ -416,7 +287,7 @@ class Wav2lipAvatar(Avatar):
 
         return pred
 
-    def process_audio_to_mel_chunks(self, audio_frames):
+    def extract_audio_features(self, audio_frames):
         if len(audio_frames) <= self.audio_left_stride + self.audio_right_stride:
             return []
 
@@ -439,138 +310,3 @@ class Wav2lipAvatar(Avatar):
             i += 1
 
         return mel_chunks
-
-    def text_to_speech(self):
-        if self.stop_infer == True:
-            for _ in range(self.batch_size * 2):
-                (audio_frame, metadata), state = (
-                    np.zeros(self.audio_chunk_size, dtype=np.float32),
-                    None,
-                ), AudioState.SILENT
-
-                with self.audio_input_queue.mutex:
-                    self.audio_input_queue.queue.clear()
-
-                self.audio_output_queue.put((audio_frame, state, metadata))
-                self.audio_frames.append(audio_frame)
-            self.stop_infer = False
-
-        else:
-            for _ in range(self.batch_size * 2):
-                try:
-                    (audio_frame, metadata), state = (
-                        self.audio_input_queue.get(block=False, timeout=1),
-                        AudioState.TALKING,
-                    )
-                except Exception:
-                    (audio_frame, metadata), state = (
-                        np.zeros(self.audio_chunk_size, dtype=np.float32),
-                        None,
-                    ), AudioState.SILENT
-
-                self.audio_output_queue.put((audio_frame, state, metadata))
-                self.audio_frames.append(audio_frame)
-
-        mel_chunks = self.process_audio_to_mel_chunks(self.audio_frames)
-
-        if mel_chunks:
-            self.audio_feature_queue.put(mel_chunks)
-            self.audio_frames = self.audio_frames[
-                -(self.audio_left_stride + self.audio_right_stride) :
-            ]
-
-    def lip_sync(self, signal_event, debug=False):
-        index = 0
-
-        while not signal_event.is_set():
-            mel_batch = []
-
-            try:
-                mel_batch = self.audio_feature_queue.get(block=True, timeout=1)
-            except Exception:
-                continue
-
-            audio_frames, is_no_speech = [], True
-            for _ in range(self.batch_size * 2):
-                audio_frame, state, metadata = self.audio_output_queue.get()
-                audio_frames.append((audio_frame, state, metadata))
-                if state == AudioState.TALKING:
-                    is_no_speech = False
-
-            if is_no_speech == True:
-                for i in range(self.batch_size):
-                    batched_audio_frames = audio_frames[i * 2 : i * 2 + 2]
-                    self.result_frame_queue.put(
-                        (
-                            None,
-                            self.reflection(self.face_frames_len, index),
-                            batched_audio_frames,
-                        )
-                    )
-                    index = index + 1
-            else:
-                pred = self._run_lipsync_inference(mel_batch, index, debug)
-
-                for i, res_frame in enumerate(pred):
-                    batched_audio_frames = audio_frames[i * 2 : i * 2 + 2]
-                    self.result_frame_queue.put(
-                        (
-                            res_frame,
-                            self.reflection(self.face_frames_len, index),
-                            batched_audio_frames,
-                        )
-                    )
-                    index = index + 1
-
-    def merge_video_audio(self, signal_event):
-        while not signal_event.is_set():
-            try:
-                res_frame, idx, audio_frame = self.result_frame_queue.get(
-                    block=True, timeout=1
-                )
-            except:
-                continue
-
-            # Snapshot lists and clamp idx: a hot-reload may have swapped in a
-            # skin with fewer frames than the idx computed at enqueue time.
-            cv_frames = self.cv_frames
-            coords_list = self.coords_list
-            if idx >= len(cv_frames):
-                idx %= len(cv_frames)
-
-            first_af, second_af = audio_frame[:2]
-            if first_af[1] != AudioState.TALKING and second_af[1] != AudioState.TALKING:
-                combine_frame = cv_frames[idx]
-            else:
-                bbox = coords_list[min(idx, len(coords_list) - 1)]
-                combine_frame = copy.deepcopy(cv_frames[idx])
-                y1, y2, x1, x2 = bbox
-                try:
-                    res_frame = cv2.resize(
-                        res_frame.astype(np.uint8), (x2 - x1, y2 - y1)
-                    )
-                except:
-                    continue
-
-                combine_frame[y1:y2, x1:x2] = res_frame
-
-                _, _, metadata = audio_frame[0]
-
-                if metadata is not None:
-                    message = metadata.get("message", "")
-                    language_code = metadata.get("language_code", "en-US")
-                    combine_frame = text_wrapper(
-                        combine_frame, message, language_code, self.image_width
-                    )
-
-            self.combined_frame_queue.put((combine_frame, audio_frame))
-
-    def start(self, signal_event):
-        Thread(target=self.lip_sync, args=(signal_event,)).start()
-        Thread(target=self.merge_video_audio, args=(signal_event,)).start()
-
-    def reset(self):
-        self.stop_infer = False
-
-    def stop(self):
-        self.stop_infer = True

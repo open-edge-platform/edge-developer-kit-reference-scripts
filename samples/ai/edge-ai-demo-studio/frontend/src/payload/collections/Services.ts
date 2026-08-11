@@ -117,6 +117,12 @@ export const Services: CollectionConfig = {
               description:
                 'CPU cores to pin this service to (numactl -C format, e.g. "0-7" or "0,2,4"). Empty / missing = all cores. Linux only.',
             },
+            frameGeneration: {
+              type: 'boolean',
+              default: true,
+              description:
+                'Allow lipsync frame generation (interpolation). Only activates when the accelerator cannot infer enough frames per second on its own.',
+            },
           },
         },
       },

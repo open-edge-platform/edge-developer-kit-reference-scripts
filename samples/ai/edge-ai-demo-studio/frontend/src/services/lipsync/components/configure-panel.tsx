@@ -3,11 +3,18 @@
 
 'use client'
 
-import { Cpu, Network, Upload } from 'lucide-react'
+import { AlertTriangle, Cpu, Film, Info, Network, Upload } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import {
   Select,
   SelectContent,
@@ -30,14 +37,21 @@ import {
   ServiceConfigurePanel,
 } from '@/components/common/service-configure-panel'
 import {
+  type ModelWeight,
   type Service,
   getBackendForModel,
   getDevicesForModel,
+  getWeightForModel,
   isDeviceMatch,
 } from '@/services/types'
 
 interface LipsyncConfigurePanelProps {
   service: Service
+}
+
+const MODEL_WEIGHT_HINTS: Record<ModelWeight, string> = {
+  lightweight: 'Lightweight — fast, runs in real time even on CPU',
+  heavy: 'Heavy — clearer, more accurate lips; GPU recommended',
 }
 
 export function LipsyncConfigurePanel({ service }: LipsyncConfigurePanelProps) {
@@ -60,6 +74,9 @@ export function LipsyncConfigurePanel({ service }: LipsyncConfigurePanelProps) {
   const currentCpuAffinity =
     (service.metadata as { cpuAffinity?: string } | undefined)?.cpuAffinity ??
     ''
+  const currentFrameGeneration =
+    (service.metadata as { frameGeneration?: boolean } | undefined)
+      ?.frameGeneration ?? true
 
   const [open, setOpen] = useState(false)
   const [sourceType, setSourceType] = useState<'preset' | 'custom'>('preset')
@@ -74,6 +91,9 @@ export function LipsyncConfigurePanel({ service }: LipsyncConfigurePanelProps) {
     currentServerIceServerUrl,
   )
   const [draftCpuAffinity, setDraftCpuAffinity] = useState(currentCpuAffinity)
+  const [draftFrameGeneration, setDraftFrameGeneration] = useState(
+    currentFrameGeneration,
+  )
 
   const availableDevices = useMemo(
     () => getDevicesForModel(service.config, draftModel),
@@ -97,12 +117,14 @@ export function LipsyncConfigurePanel({ service }: LipsyncConfigurePanelProps) {
         setDraftClientIceServerUrl(currentClientIceServerUrl)
         setDraftServerIceServerUrl(currentServerIceServerUrl)
         setDraftCpuAffinity(currentCpuAffinity)
+        setDraftFrameGeneration(currentFrameGeneration)
       } else {
         setDraftModel(currentModel)
         setDraftDevice(currentDevice)
         setDraftClientIceServerUrl(currentClientIceServerUrl)
         setDraftServerIceServerUrl(currentServerIceServerUrl)
         setDraftCpuAffinity(currentCpuAffinity)
+        setDraftFrameGeneration(currentFrameGeneration)
         setCustomModel('')
         setSourceType('preset')
       }
@@ -114,6 +136,7 @@ export function LipsyncConfigurePanel({ service }: LipsyncConfigurePanelProps) {
       currentClientIceServerUrl,
       currentServerIceServerUrl,
       currentCpuAffinity,
+      currentFrameGeneration,
     ],
   )
 
@@ -136,6 +159,13 @@ export function LipsyncConfigurePanel({ service }: LipsyncConfigurePanelProps) {
   const resolvedModel =
     sourceType === 'custom' ? customModel.trim() : draftModel
 
+  // Heavy models (e.g. MuseTalk's single-step diffusion UNet + VAE) are
+  // realtime on a GPU, but only ~1-2 FPS on CPU/NPU.
+  const isHeavyModel =
+    getWeightForModel(service.config, resolvedModel) === 'heavy'
+  const isSlowHeavyModelDevice =
+    isHeavyModel && /^(cpu|npu)/i.test(selectedDeviceValue)
+
   const normalizedDraftAffinity = normalizeCpuAffinity(draftCpuAffinity)
   const cpuAffinityChanged =
     normalizedDraftAffinity !== normalizeCpuAffinity(currentCpuAffinity)
@@ -147,6 +177,7 @@ export function LipsyncConfigurePanel({ service }: LipsyncConfigurePanelProps) {
       draftDevice.toLowerCase() !== currentDevice.toLowerCase() ||
       draftClientIceServerUrl !== currentClientIceServerUrl ||
       draftServerIceServerUrl !== currentServerIceServerUrl ||
+      draftFrameGeneration !== currentFrameGeneration ||
       cpuAffinityChanged)
 
   const isValid = resolvedModel.length > 0 && cpuAffinityValid
@@ -157,6 +188,7 @@ export function LipsyncConfigurePanel({ service }: LipsyncConfigurePanelProps) {
     setDraftClientIceServerUrl(currentClientIceServerUrl)
     setDraftServerIceServerUrl(currentServerIceServerUrl)
     setDraftCpuAffinity(currentCpuAffinity)
+    setDraftFrameGeneration(currentFrameGeneration)
     setCustomModel('')
     setSourceType('preset')
   }, [
@@ -165,6 +197,7 @@ export function LipsyncConfigurePanel({ service }: LipsyncConfigurePanelProps) {
     currentClientIceServerUrl,
     currentServerIceServerUrl,
     currentCpuAffinity,
+    currentFrameGeneration,
   ])
 
   const handleSave = useCallback(() => {
@@ -183,6 +216,7 @@ export function LipsyncConfigurePanel({ service }: LipsyncConfigurePanelProps) {
           metadata: {
             clientIceServerUrl: draftClientIceServerUrl || null,
             serverIceServerUrl: draftServerIceServerUrl || null,
+            frameGeneration: draftFrameGeneration,
             ...(cpuAffinityChanged && { cpuAffinity: normalizedDraftAffinity }),
           },
         },
@@ -198,6 +232,7 @@ export function LipsyncConfigurePanel({ service }: LipsyncConfigurePanelProps) {
     sourceType,
     draftClientIceServerUrl,
     draftServerIceServerUrl,
+    draftFrameGeneration,
     cpuAffinityChanged,
     normalizedDraftAffinity,
     isValid,
@@ -207,6 +242,10 @@ export function LipsyncConfigurePanel({ service }: LipsyncConfigurePanelProps) {
   const statusItems: ConfigurePanelStatus[] = [
     { label: 'Current model', value: currentModel || '—' },
     { label: 'Current device', value: currentDevice || '—' },
+    {
+      label: 'Frame generation',
+      value: currentFrameGeneration ? 'Auto' : 'Off',
+    },
     {
       label: 'Client ICE server',
       value: currentClientIceServerUrl || 'None',
@@ -276,16 +315,38 @@ export function LipsyncConfigurePanel({ service }: LipsyncConfigurePanelProps) {
                 id="ls-cfg-model-select"
                 className="w-full text-xs"
               >
-                <SelectValue />
+                {/* Explicit children: keep the weight hint out of the closed trigger */}
+                <SelectValue>
+                  {availableModels.find((m) => m.value === draftModel)?.label ??
+                    draftModel}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {availableModels.map((m) => (
-                  <SelectItem key={m.value} value={m.value} className="text-xs">
-                    {m.label}
+                  <SelectItem
+                    key={m.value}
+                    value={m.value}
+                    textValue={m.label}
+                    className="text-xs"
+                  >
+                    <div className="flex flex-col items-start gap-0.5">
+                      <span>{m.label}</span>
+                      {m.weight && (
+                        <span className="text-muted-foreground text-[10px] font-normal">
+                          {MODEL_WEIGHT_HINTS[m.weight]}
+                        </span>
+                      )}
+                    </div>
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            {isHeavyModel && (
+              <p className="text-muted-foreground text-[10px]">
+                {resolvedModel} is a heavy model that produces higher-quality
+                lipsync — a GPU is recommended for real-time playback.
+              </p>
+            )}
           </div>
         )}
 
@@ -387,6 +448,49 @@ export function LipsyncConfigurePanel({ service }: LipsyncConfigurePanelProps) {
               running.
             </p>
           )}
+          {isSlowHeavyModelDevice && (
+            <p className="text-warning flex items-start gap-1 text-[10px]">
+              <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+              <span>
+                {resolvedModel} is a heavy model — it works on{' '}
+                {selectedDeviceValue.toUpperCase()} but far below real time.
+                Expect very low FPS and choppy playback. Select a GPU for smooth
+                streaming.
+              </span>
+            </p>
+          )}
+        </div>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label
+              htmlFor="ls-cfg-frame-gen"
+              className="text-muted-foreground text-xs"
+            >
+              <Film className="mr-1 inline-block h-3 w-3" />
+              Frame generation
+              <TooltipProvider delayDuration={250}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="text-muted-foreground ml-1 inline-block h-3 w-3" />
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-60 text-[11px]">
+                    Fills in-between frames with AI interpolation. It only
+                    activates when the selected accelerator cannot infer enough
+                    frames per second to match the avatar video on its own.
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </Label>
+            <Switch
+              id="ls-cfg-frame-gen"
+              checked={draftFrameGeneration}
+              onCheckedChange={setDraftFrameGeneration}
+            />
+          </div>
+          <p className="text-muted-foreground text-[10px]">
+            Only runs if the accelerator cannot process as many frames per
+            second as the avatar video requires.
+          </p>
         </div>
       </div>
 

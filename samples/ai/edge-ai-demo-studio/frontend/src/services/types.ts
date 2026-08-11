@@ -10,6 +10,7 @@ import type {
   HttpMethod,
   LogSource,
   ModelSource,
+  ModelWeight,
   OS,
   ServiceConfig,
 } from '@/types/common'
@@ -23,6 +24,7 @@ export type {
   LogSource,
   ModelOption,
   ModelSource,
+  ModelWeight,
   SelectOption,
   ServiceConfig,
 } from '@/types/common'
@@ -108,6 +110,16 @@ export function getBackendForModel(
 ): DeviceBackend | undefined {
   const model = config?.availableModels?.find((m) => m.value === modelValue)
   return model?.backend
+}
+
+export function getWeightForModel(
+  config: ServiceConfig | undefined,
+  modelValue: string,
+): ModelWeight | undefined {
+  const model = config?.availableModels?.find(
+    (m) => m.value.toLowerCase() === modelValue.toLowerCase(),
+  )
+  return model?.weight
 }
 
 export interface ServiceMeta {
