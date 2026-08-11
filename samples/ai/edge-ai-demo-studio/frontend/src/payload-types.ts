@@ -225,6 +225,10 @@ export interface Service {
      * CPU cores to pin this service to (numactl -C format, e.g. "0-7" or "0,2,4"). Empty / missing = all cores. Linux only.
      */
     cpuAffinity?: string;
+    /**
+     * Allow lipsync frame generation (interpolation). Only activates when the accelerator cannot infer enough frames per second on its own.
+     */
+    frameGeneration?: boolean;
     [k: string]: unknown;
   };
   status?: ('prepare' | 'active' | 'inactive' | 'restart' | 'error') | null;

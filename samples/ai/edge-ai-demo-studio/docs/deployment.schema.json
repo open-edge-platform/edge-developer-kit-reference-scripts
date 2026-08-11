@@ -876,7 +876,7 @@
         "lipsync": {
           "type": "object",
           "additionalProperties": false,
-          "description": "Real-time avatar lip-syncing with Wav2Lip, streamed over WebRTC.",
+          "description": "Real-time avatar lip-syncing with Wav2Lip or MuseTalk, streamed over WebRTC.",
           "properties": {
             "status": {
               "type": "string",
@@ -911,7 +911,8 @@
                       "type": "string",
                       "description": "Model identifier (e.g. Hugging Face repo id)",
                       "enum": [
-                        "Wav2Lip"
+                        "Wav2Lip",
+                        "MuseTalk"
                       ]
                     },
                     "device": {
@@ -1006,6 +1007,11 @@
                 "cpuAffinity": {
                   "type": "string",
                   "description": "CPU cores to pin this service to (numactl -C format, e.g. \"0-7\" or \"0,2,4\"). Empty / missing = all cores. Linux only."
+                },
+                "frameGeneration": {
+                  "type": "boolean",
+                  "default": true,
+                  "description": "Allow lipsync frame generation (interpolation). Only activates when the accelerator cannot infer enough frames per second on its own."
                 }
               }
             }

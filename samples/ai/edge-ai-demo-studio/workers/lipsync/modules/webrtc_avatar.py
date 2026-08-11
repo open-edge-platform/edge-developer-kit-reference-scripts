@@ -16,11 +16,25 @@ from modules.base.logger import getLogger
 from modules.base.webrtc import WebRTCStreamer
 
 from modules.lipsync.wav2lip.wav2lip_avatar import Wav2lipAvatar
+from modules.lipsync.musetalk.musetalk_avatar import MuseTalkAvatar
 from modules.texttospeech.openaicompatible_tts import OpenAICompatibleTTSModule
+
+AVATAR_MODELS = {
+    "wav2lip": Wav2lipAvatar,
+    "musetalk": MuseTalkAvatar,
+}
 
 
 class WebRTCAvatar(WebRTCStreamer):
-    def __init__(self, avatar_id, configs, device, ws_manager=None, use_int8=False):
+    def __init__(
+        self,
+        avatar_id,
+        configs,
+        device,
+        ws_manager=None,
+        use_int8=False,
+        frame_gen_plan=None,
+    ):
         super().__init__()
 
         self.configs = configs
@@ -32,13 +46,18 @@ class WebRTCAvatar(WebRTCStreamer):
         self.queue_check_interval = 0.5  # Check every 500ms
         self.loop = None  # Event loop will be set when stream starts
 
-        if self.configs.get("avatar_type", "wav2lip") == "wav2lip":
-            self.avatar = Wav2lipAvatar(
-                avatar_id=avatar_id, configs=configs, device=device, use_int8=use_int8
-            )
-        else:
-            getLogger().error("Lipsync model not supported!")
+        avatar_type = self.configs.get("avatar_type", "wav2lip")
+        avatar_cls = AVATAR_MODELS.get(avatar_type)
+        if avatar_cls is None:
+            getLogger().error(f"Lipsync model '{avatar_type}' not supported!")
             exit(1)
+        self.avatar = avatar_cls(
+            avatar_id=avatar_id,
+            configs=configs,
+            device=device,
+            use_int8=use_int8,
+            frame_gen_plan=frame_gen_plan,
+        )
 
         self.tts = OpenAICompatibleTTSModule(
             message_queue=self.avatar.message_queue,
@@ -97,6 +116,10 @@ class WebRTCAvatar(WebRTCStreamer):
     def echo(self, text, voice, model, speed, tts_url=None):
         if tts_url:
             self.tts.server_url = tts_url
+        # Keep counting across overlapping requests; stats reset only once
+        # the previous utterance finished (processing_complete reported).
+        if not self.is_processing:
+            self.avatar.reset_frame_stats()
         self._notify_status("processing_started")
         self.is_processing = True
         self.tts.speak(text, {"voice": voice, "model": model, "speed": speed})
@@ -122,7 +145,11 @@ class WebRTCAvatar(WebRTCStreamer):
                 chunk = padded_chunk
             audio_chunks.append(chunk)
 
-        # Queue the audio chunks for processing
+        # Queue the audio chunks for processing. Keep counting across
+        # overlapping requests; stats reset only once the previous utterance
+        # finished (processing_complete reported).
+        if not self.is_processing:
+            self.avatar.reset_frame_stats()
         self._notify_status("processing_started")
         self.is_processing = True
         for chunk in audio_chunks:
@@ -160,7 +187,7 @@ class WebRTCAvatar(WebRTCStreamer):
                 new_frame.sample_rate = 16000
                 asyncio.run_coroutine_threadsafe(audio_track.queue.put(new_frame), loop)
 
-    def _notify_status(self, status: str):
+    def _notify_status(self, status: str, extra: dict = None):
         """Send status update via WebSocket if manager is available."""
         if self.ws_manager and self.session_id and self.loop:
             try:
@@ -169,6 +196,7 @@ class WebRTCAvatar(WebRTCStreamer):
                         "type": "lipsync_status",
                         "status": status,
                         "timestamp": time.time(),
+                        **(extra or {}),
                     }
                 )
                 asyncio.run_coroutine_threadsafe(
@@ -190,16 +218,31 @@ class WebRTCAvatar(WebRTCStreamer):
         if not self.is_processing:
             return
 
-        # Check if all queues are empty
+        # All work ingested, none still travelling through the pipeline's
+        # internal queues (tracked by pending_talk_chunks — the visible
+        # queues alone can be momentarily empty while batches are still
+        # being inferred), and everything handed to the WebRTC tracks.
         audio_empty = self.avatar.audio_input_queue.empty()
         message_empty = self.avatar.message_queue.empty()
         frame_empty = self.avatar.combined_frame_queue.empty()
+        talking_done = self.avatar.pending_talk_chunks == 0
 
-        if audio_empty and message_empty and frame_empty:
+        if audio_empty and message_empty and frame_empty and talking_done:
             self.is_processing = False
-            self._notify_status("processing_complete")
+            inferred = self.avatar.frames_inferred
+            interpolated = self.avatar.frames_interpolated
+            self._notify_status(
+                "processing_complete",
+                {
+                    "frames_total": inferred + interpolated,
+                    "frames_inferred": inferred,
+                    "frames_interpolated": interpolated,
+                },
+            )
             getLogger(__name__).info(
-                f"Lipsync processing complete for session {self.session_id}"
+                f"Lipsync processing complete for session {self.session_id}: "
+                f"{inferred + interpolated} frames total "
+                f"({inferred} inferred, {interpolated} interpolated)"
             )
 
     def stream(self, signal_event, loop=None, video_track=None, audio_track=None):

@@ -85,8 +85,9 @@ class VideoTrack(MediaStreamTrack):
         return frame
 
     def sleep(self, batch_size) -> None:
-        if self.queue.qsize() >= 1.5 * batch_size:
-            time.sleep(0.04 * self.queue.qsize() * 0.8)
+        excess = self.queue.qsize() - int(1.5 * batch_size)
+        if excess > 0:
+            time.sleep(excess * CONSTANTS.VIDEO_PTIME)
 
 
 class WebRTCStreamer:

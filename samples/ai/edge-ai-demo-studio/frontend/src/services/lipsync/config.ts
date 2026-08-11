@@ -13,6 +13,14 @@ export const serviceConfig: ServiceConfig = {
       label: 'Wav2Lip',
       availableDevices: LIPSYNC_DEVICES,
       backend: 'openvino',
+      weight: 'lightweight',
+    },
+    {
+      value: 'MuseTalk',
+      label: 'MuseTalk',
+      availableDevices: LIPSYNC_DEVICES,
+      backend: 'openvino',
+      weight: 'heavy',
     },
   ],
   availableModelSources: [

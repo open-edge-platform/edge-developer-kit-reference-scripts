@@ -29,12 +29,15 @@ export interface SelectOption {
 
 export type ModelSource = 'huggingface' | 'modelscope'
 
+export type ModelWeight = 'lightweight' | 'heavy'
+
 export interface ModelOption {
   value: string
   label: string
   availableDevices?: string[]
   backend?: DeviceBackend
   gated?: ModelSource[]
+  weight?: ModelWeight
 }
 
 export type DeviceBackend = 'openvino' | 'pytorch' | 'vulkan' | 'llamacpp'
