@@ -459,7 +459,7 @@ install_npu() {
    print_info ""
    # Record the reason instead of a vague "recommended". main_installer.sh
    # shows one banner at the end. See issue #987.
-   if [ -w /run ] 2>/dev/null; then
+   if [ "${DEVKIT_POST_REBOOT_PASS:-0}" != "1" ] && [ -w /run ] 2>/dev/null; then
       echo "*** System restart required ***" > "${REBOOT_REQUIRED_FILE:-/run/reboot-required}" 2>/dev/null || true
       grep -qxF "Intel NPU driver installed (/dev/accel appears after restart)" \
          "${REBOOT_REQUIRED_REASONS:-/run/reboot-required.pkgs}" 2>/dev/null || \
