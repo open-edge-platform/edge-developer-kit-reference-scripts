@@ -1,0 +1,13 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index f80f9ccd..e8fde478 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -147,7 +147,7 @@ if (Eigen3_DIR)
+   set (_Ceres_Eigen3_DIR "${Eigen3_DIR}")
+ endif (Eigen3_DIR)
+ 
+-find_package(Eigen3 3.3.4...5 NO_MODULE)
++find_package(Eigen3 3.3.4 NO_MODULE)
+ if (NOT Eigen3_FOUND)
+   if (_Ceres_Eigen3_DIR)
+     set (Eigen3_DIR "${_Ceres_Eigen3_DIR}")

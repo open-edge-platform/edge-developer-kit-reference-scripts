@@ -1,0 +1,24 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+# RealSense node parameters forwarded to realsense2_camera_node via the
+# rs_launch.py 'config_file' launch argument.
+#
+# NOTE on format: this MUST be a FLAT key:value mapping (no node name / no
+# 'ros__parameters:' nesting). rs_launch.py loads it with yaml.safe_load and
+# passes the resulting dict straight to the node's `parameters=[...]`.
+# See: realsense2_camera/examples/launch_params_from_file/config/config.yaml
+#
+# Why this file exists:
+# The Nav2 STVL (spatio_temporal_voxel_layer) costmap layer subscribes to the
+# depth pointcloud with a RELIABLE QoS. RealSense publishes the pointcloud with
+# SENSOR_DATA (BEST_EFFORT) QoS by default, which is INCOMPATIBLE with a
+# reliable subscriber -> the costmap never receives the cloud and the planner
+# cannot see low obstacles (only the collision_monitor, which subscribes
+# best-effort, reacts). Publishing SYSTEM_DEFAULT (reliable) makes the cloud
+# compatible with BOTH the reliable STVL subscriber and the best-effort
+# collision_monitor subscriber.
+#
+# 'DEFAULT' is NOT a valid realsense QoS string. Valid options are:
+#   SYSTEM_DEFAULT, SENSOR_DATA, SERVICES_DEFAULT, PARAMETERS, PARAMETER_EVENTS
+pointcloud.pointcloud_qos: SYSTEM_DEFAULT

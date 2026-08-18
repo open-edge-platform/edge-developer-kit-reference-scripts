@@ -1,0 +1,37 @@
+# ROS 2 workspace outputs
+**/build/
+**/install/
+**/log/
+
+# External repositories cloned by the setup script
+/src/ydlidar_ros2_driver/
+/src/velodyne/
+/src/slam_toolbox/
+/src/robot_localization/
+/src/navigation2-*/
+/src/nav2_minimal_turtlebot_simulation/
+/src/cyclonedds/
+/src/rmw_cyclonedds/
+
+# Setup-script staging files
+/.sources.lock.*
+/src/*.incomplete.*
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# CMake artifacts
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+install_manifest.txt
+
+# Local files
+*.log
+*.swp
+.DS_Store

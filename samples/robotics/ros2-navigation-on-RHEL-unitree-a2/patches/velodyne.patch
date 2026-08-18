@@ -1,0 +1,97 @@
+diff --git a/velodyne_pointcloud/include/velodyne_pointcloud/datacontainerbase.hpp b/velodyne_pointcloud/include/velodyne_pointcloud/datacontainerbase.hpp
+index 06cd621..bf8b43a 100644
+--- a/velodyne_pointcloud/include/velodyne_pointcloud/datacontainerbase.hpp
++++ b/velodyne_pointcloud/include/velodyne_pointcloud/datacontainerbase.hpp
+@@ -33,10 +33,10 @@
+ #ifndef VELODYNE_POINTCLOUD__DATACONTAINERBASE_HPP_
+ #define VELODYNE_POINTCLOUD__DATACONTAINERBASE_HPP_
+ 
+-#include <tf2/LinearMath/Quaternion.h>
+-#include <tf2/LinearMath/Vector3.h>
+-#include <tf2/buffer_core.h>
+-#include <tf2/exceptions.h>
++#include <tf2/LinearMath/Quaternion.hpp>
++#include <tf2/LinearMath/Vector3.hpp>
++#include <tf2/buffer_core.hpp>
++#include <tf2/exceptions.hpp>
+ #include <tf2_ros/buffer.h>
+ #include <tf2_ros/transform_listener.h>
+ 
+diff --git a/velodyne_pointcloud/include/velodyne_pointcloud/organized_cloudXYZIRT.hpp b/velodyne_pointcloud/include/velodyne_pointcloud/organized_cloudXYZIRT.hpp
+index 87a286c..0e95a60 100644
+--- a/velodyne_pointcloud/include/velodyne_pointcloud/organized_cloudXYZIRT.hpp
++++ b/velodyne_pointcloud/include/velodyne_pointcloud/organized_cloudXYZIRT.hpp
+@@ -33,7 +33,7 @@
+ #ifndef VELODYNE_POINTCLOUD__ORGANIZED_CLOUDXYZIRT_HPP_
+ #define VELODYNE_POINTCLOUD__ORGANIZED_CLOUDXYZIRT_HPP_
+ 
+-#include <tf2/buffer_core.h>
++#include <tf2/buffer_core.hpp>
+ 
+ #include <memory>
+ #include <string>
+diff --git a/velodyne_pointcloud/include/velodyne_pointcloud/pointcloudXYZIRT.hpp b/velodyne_pointcloud/include/velodyne_pointcloud/pointcloudXYZIRT.hpp
+index 81fd9b2..fbb2e3d 100644
+--- a/velodyne_pointcloud/include/velodyne_pointcloud/pointcloudXYZIRT.hpp
++++ b/velodyne_pointcloud/include/velodyne_pointcloud/pointcloudXYZIRT.hpp
+@@ -33,7 +33,7 @@
+ #ifndef VELODYNE_POINTCLOUD__POINTCLOUDXYZIRT_HPP_
+ #define VELODYNE_POINTCLOUD__POINTCLOUDXYZIRT_HPP_
+ 
+-#include <tf2/buffer_core.h>
++#include <tf2/buffer_core.hpp>
+ 
+ #include <memory>
+ #include <string>
+diff --git a/velodyne_pointcloud/include/velodyne_pointcloud/transform.hpp b/velodyne_pointcloud/include/velodyne_pointcloud/transform.hpp
+index 1f7ef7b..530193a 100644
+--- a/velodyne_pointcloud/include/velodyne_pointcloud/transform.hpp
++++ b/velodyne_pointcloud/include/velodyne_pointcloud/transform.hpp
+@@ -33,7 +33,7 @@
+ #ifndef VELODYNE_POINTCLOUD__TRANSFORM_HPP_
+ #define VELODYNE_POINTCLOUD__TRANSFORM_HPP_
+ 
+-#include <message_filters/subscriber.h>
++#include <message_filters/subscriber.hpp>
+ #include <tf2_ros/buffer.h>
+ #include <tf2_ros/message_filter.h>
+ #include <tf2_ros/transform_listener.h>
+diff --git a/velodyne_pointcloud/src/lib/organized_cloudXYZIRT.cpp b/velodyne_pointcloud/src/lib/organized_cloudXYZIRT.cpp
+index 429f80d..6da53c8 100644
+--- a/velodyne_pointcloud/src/lib/organized_cloudXYZIRT.cpp
++++ b/velodyne_pointcloud/src/lib/organized_cloudXYZIRT.cpp
+@@ -30,7 +30,7 @@
+ // ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ // POSSIBILITY OF SUCH DAMAGE.
+ 
+-#include <tf2/buffer_core.h>
++#include <tf2/buffer_core.hpp>
+ 
+ #include <cmath>
+ #include <memory>
+diff --git a/velodyne_pointcloud/src/lib/pointcloudXYZIRT.cpp b/velodyne_pointcloud/src/lib/pointcloudXYZIRT.cpp
+index 25979c3..ab10300 100644
+--- a/velodyne_pointcloud/src/lib/pointcloudXYZIRT.cpp
++++ b/velodyne_pointcloud/src/lib/pointcloudXYZIRT.cpp
+@@ -30,7 +30,7 @@
+ // ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ // POSSIBILITY OF SUCH DAMAGE.
+ 
+-#include <tf2/buffer_core.h>
++#include <tf2/buffer_core.hpp>
+ 
+ #include <memory>
+ #include <string>
+diff --git a/velodyne_pointcloud/tests/test_row_step.cpp b/velodyne_pointcloud/tests/test_row_step.cpp
+index dc9df9a..15a83c2 100644
+--- a/velodyne_pointcloud/tests/test_row_step.cpp
++++ b/velodyne_pointcloud/tests/test_row_step.cpp
+@@ -32,7 +32,7 @@
+ 
+ #include <gtest/gtest.h>
+ 
+-#include <tf2/buffer_core.h>
++#include <tf2/buffer_core.hpp>
+ 
+ #include <memory>
+ 

@@ -1,0 +1,75 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index af4e2b2..dd6c0c8 100755
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -34,40 +34,55 @@ include_directories(
+ #link library directories
+ link_directories(${YDLIDAR_SDK_LIBRARY_DIRS})
+ 
++set(ROS_DEPENDENCIES
++    rclcpp::rclcpp
++    sensor_msgs::sensor_msgs
++    visualization_msgs::visualization_msgs
++    geometry_msgs::geometry_msgs
++    std_srvs::std_srvs
++)
++
+ #---------------------------------------------------------------------------------------
+ # generate excutable and add libraries
+ #---------------------------------------------------------------------------------------
+ add_executable(${PROJECT_NAME}_node
+     src/${PROJECT_NAME}_node.cpp)
++
+ #---------------------------------------------------------------------------------------
+ # link libraries
+ #--------------------------------------------------------------------------------------
+-ament_target_dependencies(${PROJECT_NAME}_node
+-    "rclcpp"
+-    "sensor_msgs"
+-    "visualization_msgs"
+-    "geometry_msgs"
+-    "std_srvs"
+-    )
++#ament_target_dependencies(${PROJECT_NAME}_node
++#    "rclcpp"
++#    "sensor_msgs"
++#    "visualization_msgs"
++#    "geometry_msgs"
++#    "std_srvs"
++#    )
+ 
+ target_link_libraries(${PROJECT_NAME}_node
+-    ${YDLIDAR_SDK_LIBRARIES})
++    ${ROS_DEPENDENCIES}
++    ${YDLIDAR_SDK_LIBRARIES}
++)
+ 
+ #---------------------------------------------------------------------------------------
+ # generate excutable and add libraries
+ #---------------------------------------------------------------------------------------
+ add_executable(${PROJECT_NAME}_client
+     src/${PROJECT_NAME}_client.cpp)
++
++target_link_libraries(${PROJECT_NAME}_client
++    ${ROS_DEPENDENCIES}   
++)
+ #---------------------------------------------------------------------------------------
+ # link libraries
+ #--------------------------------------------------------------------------------------
+-ament_target_dependencies(${PROJECT_NAME}_client
+-    "rclcpp"
+-    "sensor_msgs"
+-    "visualization_msgs"
+-    "geometry_msgs"
+-    "std_srvs"
+-    )
++#ament_target_dependencies(${PROJECT_NAME}_client
++#    "rclcpp"
++#    "sensor_msgs"
++#    "visualization_msgs"
++#    "geometry_msgs"
++#    "std_srvs"
++#    )
+ 
+ #---------------------------------------------------------------------------------------
+ # Install

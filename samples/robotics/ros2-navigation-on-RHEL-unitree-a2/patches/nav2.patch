@@ -1,0 +1,24 @@
+diff -ruN navigation2-1.5.0/nav2_rviz_plugins/src/docking_panel.cpp src/navigation2-1.5.0/nav2_rviz_plugins/src/docking_panel.cpp
+--- navigation2-1.5.0/nav2_rviz_plugins/src/docking_panel.cpp	2026-08-05 05:20:06.000000000 +0800
++++ src/navigation2-1.5.0/nav2_rviz_plugins/src/docking_panel.cpp	2026-08-12 09:50:00.246410046 +0800
+@@ -266,7 +266,7 @@
+     use_dock_id_checkbox_, &QCheckBox::checkStateChanged, this, &DockingPanel::dockIdCheckbox);
+   #else
+   QObject::connect(
+-    use_dock_id_checkbox_, &QCheckBox::stateChanged, this, &DockingPanel::dockIdCheckbox);
++    use_dock_id_checkbox_, &QCheckBox::checkStateChanged, this, &DockingPanel::dockIdCheckbox);
+   #endif
+ }
+ 
+diff -ruN navigation2-1.5.0/nav2_rviz_plugins/src/nav2_panel.cpp src/navigation2-1.5.0/nav2_rviz_plugins/src/nav2_panel.cpp
+--- navigation2-1.5.0/nav2_rviz_plugins/src/nav2_panel.cpp	2026-08-05 05:20:06.000000000 +0800
++++ src/navigation2-1.5.0/nav2_rviz_plugins/src/nav2_panel.cpp	2026-08-12 09:50:09.427291152 +0800
+@@ -423,7 +423,7 @@
+   #else
+   QObject::connect(
+     store_initial_pose_checkbox_,
+-    &QCheckBox::stateChanged,
++    &QCheckBox::checkStateChanged,
+     this,
+     &Nav2Panel::initialStateHandler);
+   #endif
