@@ -1,0 +1,11 @@
+# source-name|url|branch|commit
+ydlidar_ros2_driver|https://github.com/YDLIDAR/ydlidar_ros2_driver.git|humble|4ef70d3f32a85704ade0be54b214f3763b1ab3e8
+velodyne|https://github.com/ros-drivers/velodyne.git|ros2|56fc178d2dad4b6d38c6a69aeb2435ff75503e52
+slam_toolbox|https://github.com/SteveMacenski/slam_toolbox.git|lyrical|6953058b8994c7e750277fd8f39b984453abf63c
+robot_localization|https://github.com/cra-ros-pkg/robot_localization.git|rolling-devel|7dfb6aa97b2082185d2fac3420888ae8474bfc1a
+nav2_minimal_turtlebot_simulation|https://github.com/ros-navigation/nav2_minimal_turtlebot_simulation.git|lyrical|1eeeae4f4d2b8af3abcb93b972d959a3a9b50ff7
+cyclonedds|https://github.com/eclipse-cyclonedds/cyclonedds.git|releases/0.10.x|5041f3560c088c99e5088b2b8520b69169621196
+rmw_cyclonedds|https://github.com/ros2/rmw_cyclonedds.git|lyrical|529017d6f727e1f7db92fc37ed7130b5b44b32bd
+ydlidar_sdk|https://github.com/YDLIDAR/YDLidar-SDK.git|master|01cdda4f2b36dff2a706d0535c64228d863c7411
+ceres|https://github.com/ceres-solver/ceres-solver.git|master|0b03102b090dfcbdffe99e957d7561f9056b2969
+geographiclib|https://github.com/geographiclib/geographiclib.git|main|48959dfc4a581ad29f76b526726a801473767c98

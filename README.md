@@ -120,6 +120,9 @@ The Edge Developer Kit Reference Scripts project and its components is licensed 
 |:----------|:--------|
 | Real Time | BSD-3-Clause |
 | GStreamer | [LGPL](https://gstreamer.freedesktop.org/documentation/frequently-asked-questions/licensing.html) |
+| nlohmann/json | [MIT](https://github.com/nlohmann/json/blob/v3.11.2/LICENSE.MIT) |
+| Unitree ROS 2 | [BSD-3-Clause](./samples/robotics/ros2-navigation-on-RHEL-unitree-a2/src/unitree_ros2/src/LICENSE) |
+
 
 
 ### Contributing

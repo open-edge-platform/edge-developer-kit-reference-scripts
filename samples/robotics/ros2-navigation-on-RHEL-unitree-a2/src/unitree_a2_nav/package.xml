@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<!--
+Copyright (C) 2026 Intel Corporation
+SPDX-License-Identifier: Apache-2.0
+-->
+<package format="3">
+  <name>unitree_a2_nav</name>
+  <version>0.1.0</version>
+  <description>ROS 2 Unitree A2 Nav</description>
+  <maintainer email="you@example.com">you</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_python</buildtool_depend>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
