@@ -210,6 +210,34 @@ function parseServiceInfo(id) {
   }
 }
 
+/**
+ * Parse a top-level worker's pyproject.toml for `[tool.uv.sources]` local
+ * path dependencies (e.g. `foo = { path = "../foo" }`), resolving each to a
+ * `workers/`-relative subdir name. Returns [] if the worker has no
+ * pyproject.toml, no `[tool.uv.sources]` table, or only non-path sources
+ * (git/url/workspace deps aren't followed — they aren't local worker dirs).
+ */
+function uvPathSourceDirs(workerSubDir) {
+  const pyprojectPath = join(WORKERS_DIR, workerSubDir, 'pyproject.toml')
+  if (!existsSync(pyprojectPath)) return []
+  const src = readFileSync(pyprojectPath, 'utf8')
+  const tableMatch = src.match(/\[tool\.uv\.sources\]([\s\S]*?)(?:\n\[|$)/)
+  if (!tableMatch) return []
+  const table = tableMatch[1]
+  const dirs = []
+  const pathRe = /path\s*=\s*['"]([^'"]+)['"]/g
+  let m
+  while ((m = pathRe.exec(table)) !== null) {
+    const abs = resolve(join(WORKERS_DIR, workerSubDir), m[1])
+    const rel = relative(WORKERS_DIR, abs).split(sep).join('/')
+    // Only follow deps that resolve to another dir directly under workers/
+    // (skip anything that escapes workers/ or is nested deeper, which this
+    // simple resolver doesn't need to support today).
+    if (rel && !rel.startsWith('..') && !rel.includes('/')) dirs.push(rel)
+  }
+  return dirs
+}
+
 // ─── Module-graph reachability ────────────────────────────────────
 //
 // To decide which services a set of samples really needs, we walk the
@@ -500,6 +528,18 @@ for (const id of includedServiceIds) {
   // 'none' => no worker
 }
 if (needsMultiserve) workerDirs.add('engine/multiserve')
+
+// Follow local uv path dependencies (`[tool.uv.sources] foo = { path = "../foo" }`)
+// declared in each included worker's pyproject.toml, so a worker that imports
+// another as a local package (e.g. speech-to-text -> audio-input-stream) has
+// that package copied too. Iterate to a fixpoint in case of transitive deps.
+for (;;) {
+  const before = workerDirs.size
+  for (const wd of [...workerDirs]) {
+    for (const dep of uvPathSourceDirs(wd)) workerDirs.add(dep)
+  }
+  if (workerDirs.size === before) break
+}
 
 // Combined list for human-readable / manifest reporting.
 const reportedWorkerDirs = [...workerDirs, ...suiteWorkerDirs].sort()

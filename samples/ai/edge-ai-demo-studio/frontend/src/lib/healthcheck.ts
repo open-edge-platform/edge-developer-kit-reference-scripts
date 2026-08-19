@@ -309,7 +309,7 @@ const fetchHealthEndpoint = async (
   }
 }
 
-// Builds a localhost health check URL from port and relative path
+// Builds a loopback health check URL from port and relative path
 const buildHealthCheckUrl = (port: number, healthUrl: string) => {
   const allowedPorts = Object.values(getServicesPortMap())
   if (!port || !allowedPorts.includes(port)) {
@@ -323,7 +323,7 @@ const buildHealthCheckUrl = (port: number, healthUrl: string) => {
   if (!sanitized) return null
 
   const cleanPath = sanitized.replace(/^\/+/, '')
-  return new URL(cleanPath, `http://localhost:${port}`).toString()
+  return new URL(cleanPath, `http://127.0.0.1:${port}`).toString()
 }
 
 // Performs a health check with retries against a service's configured endpoint

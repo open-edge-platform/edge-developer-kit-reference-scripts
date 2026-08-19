@@ -116,6 +116,10 @@ def create_ovms_openai_proxy_router(ovms_manager: OVMSManagerCLI) -> APIRouter:
                             yield chunk
                         yield b"\n"
                 except httpx.HTTPStatusError as e:
+                    # The response is streamed, so its body has not been read yet.
+                    # Accessing .text without this raises httpx.ResponseNotRead and
+                    # hides the actual upstream error.
+                    await e.response.aread()
                     error_detail = f"Upstream Server Error ({e.response.status_code}): {e.response.text}"
                     yield f'data: {json.dumps({"error": error_detail})}'
                 except httpx.RequestError as e:
