@@ -566,7 +566,9 @@ main() {
       exit 1
    fi
    if [ $DRIVER_INSTALL_OK -eq 1 ] && [ $DRIVER_VERIFY_OK -eq 1 ]; then
-      record_gpu_reboot_reason
+      if [ "${DEVKIT_POST_REBOOT_PASS:-0}" != "1" ]; then
+         record_gpu_reboot_reason
+      fi
       echo -e "\n# $S_VALID GPU installation completed successfully"
    else
       echo -e "\n# $S_ERROR GPU installation incomplete (install_ok=$DRIVER_INSTALL_OK verify_ok=$DRIVER_VERIFY_OK)."

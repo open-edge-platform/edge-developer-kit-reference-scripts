@@ -18,12 +18,10 @@
 # reasons in /run/reboot-required.pkgs. Each installer now records why, and one
 # banner is shown at the end, only when a restart is genuinely needed.
 #
-# #986: a kernel upgrade stopped the installer, so the user had to reboot and
-# run it again. Nothing in the GPU or NPU installers needs the new kernel to be
-# running: every package is user-space, the kernel drivers ship inside the
-# kernel package, and its headers are installed alongside so DKMS builds
-# against the new kernel. Only verification needs it, since clinfo cannot
-# enumerate a device the running kernel does not support.
+# #986: the installer now records restart requirements once, then lets the
+# component installers decide whether a reboot is needed. GPU/NPU steps may
+# request a restart, but the main flow should not hardcode a specific kernel
+# series or duplicate that policy.
 #
 # DEVKIT_AUTO_INSTALL=1 therefore installs everything in one pass, defers
 # verification, RESTARTS THE MACHINE, and prints the summary on the next boot.
@@ -35,11 +33,14 @@ REBOOT_REQUIRED_FILE="/run/reboot-required"
 REBOOT_REQUIRED_REASONS="/run/reboot-required.pkgs"
 export REBOOT_REQUIRED_FILE REBOOT_REQUIRED_REASONS
 
+REBOOT_MARKER_DIR="/var/lib/intel-devkit"
+REBOOT_MARKER_FILE="${REBOOT_MARKER_DIR}/pending-reboot.boot_id"
+export REBOOT_MARKER_FILE
+
 DEVKIT_AUTO_INSTALL="${DEVKIT_AUTO_INSTALL:-0}"
 export DEVKIT_AUTO_INSTALL
 
 readonly REBOOT_GRACE_SECONDS=10
-KERNEL_CHANGED=0
 
 SUMMARY_STATE_DIR="/var/lib/intel-devkit"
 SUMMARY_UNIT="intel-devkit-summary.service"
@@ -104,6 +105,27 @@ EXTRAS_FAILED=()
 
 # Log file configuration
 LOG_FILE="/var/log/intel-platform-installer.log"
+
+current_boot_id() {
+    cat /proc/sys/kernel/random/boot_id 2>/dev/null || echo "unknown"
+}
+
+mark_reboot_pending() {
+    mkdir -p "$REBOOT_MARKER_DIR" 2>/dev/null || return 0
+    current_boot_id > "$REBOOT_MARKER_FILE" 2>/dev/null || true
+}
+
+clear_reboot_pending() {
+    rm -f "$REBOOT_MARKER_FILE" 2>/dev/null || true
+}
+
+is_post_reboot_pass() {
+    [ -f "$REBOOT_MARKER_FILE" ] || return 1
+    local marker_boot_id current_id
+    marker_boot_id=$(cat "$REBOOT_MARKER_FILE" 2>/dev/null || echo "")
+    current_id=$(current_boot_id)
+    [ -n "$marker_boot_id" ] && [ "$marker_boot_id" != "$current_id" ]
+}
 
 # Initialize logging
 setup_logging() {
@@ -286,48 +308,7 @@ verify_ubuntu_24() {
         exit 1
     fi
 
-    # Kernel policy: Accept 6.17
-    local kernel_major kernel_minor running_kernel
-    running_kernel=$(uname -r)
-    kernel_major=$(echo "$running_kernel" | cut -d'.' -f1)
-    kernel_minor=$(echo "$running_kernel" | cut -d'.' -f2)
-
-    if { [ "$kernel_major" = "6" ] && [ "$kernel_minor" = "17" ]; }; then
-        echo "$S_VALID Ubuntu 24.04 LTS with supported HWE kernel $running_kernel detected"
-    else
-        echo "$S_WARNING Unsupported kernel version: $running_kernel"
-        echo "Updating kernel to 6.17"
-        apt update && apt install -y linux-image-6.17.0-19-generic \
-        linux-modules-6.17.0-19-generic \
-        linux-modules-extra-6.17.0-19-generic \
-        linux-headers-6.17.0-19-generic
-        echo "$S_VALID HWE kernel installed"
-        KERNEL_CHANGED=1
-        flag_reboot_required "Kernel 6.17 installed (currently running $running_kernel)"
-
-        # Unattended: carry on and restart at the end instead of stopping here
-        if [ "$DEVKIT_AUTO_INSTALL" = "1" ]; then
-            echo "$S_WARNING Continuing on the current kernel; verification is deferred"
-            return 0
-        fi
-
-        echo ""
-        echo -e "${YELLOW}########################################################################${NC}"
-        echo -e "${YELLOW}#              RESTART REQUIRED BEFORE SETUP CAN CONTINUE              #${NC}"
-        echo -e "${YELLOW}########################################################################${NC}"
-        echo ""
-        echo "  Kernel 6.17 has been installed but is not running yet."
-        echo "  The GPU and NPU steps cannot verify their devices until it is."
-        echo ""
-        echo -e "  1. Restart:   ${GREEN}sudo reboot${NC}"
-        echo -e "  2. Re-run:    ${GREEN}sudo $0${NC}"
-        echo ""
-        echo "  To do this in one pass instead, without stopping here:"
-        echo -e "     ${GREEN}sudo DEVKIT_AUTO_INSTALL=1 $0${NC}"
-        echo ""
-        echo -e "${YELLOW}########################################################################${NC}"
-        exit 0
-    fi
+    echo "$S_VALID Ubuntu 24.04 LTS detected"
 }
 
 # Install NPU drivers (NPU-capable platforms only)
@@ -1125,6 +1106,8 @@ flag_reboot_required() {
 # One prominent, conditional banner. Printing nothing when no restart is needed
 # is what makes the banner mean something when it appears. (#987)
 print_reboot_banner() {
+    mark_reboot_pending
+
     if [ ! -f "$REBOOT_REQUIRED_FILE" ]; then
         echo ""
         echo "$S_VALID No restart required. The platform is ready to use."
@@ -1207,6 +1190,8 @@ UNIT_EOF
 
 # Restart the machine, after a short grace period so it can be interrupted (#986)
 auto_reboot() {
+    mark_reboot_pending
+
     echo ""
     echo -e "${YELLOW}########################################################################${NC}"
     echo -e "${YELLOW}#           THIS SYSTEM WILL RESTART TO FINISH SETUP                   #${NC}"
@@ -1327,6 +1312,10 @@ main() {
     parse_args "$@"
     check_privileges
 
+    if is_post_reboot_pass; then
+        export DEVKIT_POST_REBOOT_PASS=1
+    fi
+
     # Ask before logging is redirected through tee, so the menu reaches the
     # terminal, and before the drivers run, so the machine can be left alone.
     resolve_extras
@@ -1432,9 +1421,14 @@ main() {
     echo "Log file saved: $LOG_FILE"
     echo "========================================================================"
 
-    # Unattended mode restarts the machine itself, so the manual banner would
-    # contradict it. Exactly one of these runs.
-    if [ "$KERNEL_CHANGED" = "1" ] && [ "$DEVKIT_AUTO_INSTALL" = "1" ]; then
+    if [ "${DEVKIT_POST_REBOOT_PASS:-0}" = "1" ]; then
+        clear_reboot_pending
+    fi
+
+    # If any component requested a restart, unattended mode reboots once here
+    # and the summary is appended after boot. Otherwise show the conditional
+    # banner only when a restart is actually required.
+    if [ -f "$REBOOT_REQUIRED_FILE" ] && [ "$DEVKIT_AUTO_INSTALL" = "1" ]; then
         if arm_summary_after_reboot; then
             echo "Verification runs automatically after the restart and is appended to"
             echo "${LOG_FILE:-/var/log/intel-platform-installer.log}"
