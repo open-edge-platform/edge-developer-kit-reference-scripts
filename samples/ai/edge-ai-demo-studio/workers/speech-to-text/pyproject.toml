@@ -5,8 +5,10 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11, <3.12"
 dependencies = [
+    "audio-input-stream",
     "fastapi[all]>=0.128.0",
     "ffmpeg-python==0.2.0",
+    "numpy>=1.26.0",
     "openvino==2026.2",
     "pydub==0.25.1",
     "requests>=2.31.0",
@@ -15,3 +17,7 @@ dependencies = [
     "scipy>=1.13.0",
     "huggingface-hub>=1.22.0",
 ]
+
+[tool.uv.sources]
+audio-input-stream = { path = "../audio-input-stream" }
+

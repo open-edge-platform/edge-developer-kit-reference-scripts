@@ -10,12 +10,15 @@ import multiprocessing
 import asyncio
 from typing import Optional
 from contextlib import asynccontextmanager
+from urllib.parse import urlparse
 
+import numpy as np
 import requests as http_requests
 import uvicorn
-from fastapi import FastAPI, UploadFile, Form, File, HTTPException
+from fastapi import FastAPI, UploadFile, Form, File, HTTPException, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 
+from audio_input_stream import get_silero_model, handle_audio_stream, pcm_to_wav_bytes
 from modules.stt_ovms import (
     start_stt_background,
     wait_for_model_ready,
@@ -38,6 +41,10 @@ logger = logging.getLogger("uvicorn.error")
 OVMS_PROCESS = None
 DENOISE_COMPILED_MODEL = None
 TEMP_DIR = None
+VAD_MODEL = None
+
+# Reused across requests so the TCP connection to OVMS stays warm.
+OVMS_SESSION = http_requests.Session()
 
 CONFIG = {
     "stt_device": "CPU",
@@ -91,7 +98,7 @@ def _initialize_denoise_model():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global OVMS_PROCESS, DENOISE_COMPILED_MODEL, TEMP_DIR
+    global OVMS_PROCESS, DENOISE_COMPILED_MODEL, TEMP_DIR, VAD_MODEL
 
     logger.info("Initializing STT server services ...")
 
@@ -129,6 +136,9 @@ async def lifespan(app: FastAPI):
         if not model_ready:
             raise RuntimeError("OVMS server failed to become ready within timeout")
 
+        logger.info("Loading VAD model for live audio streaming ...")
+        VAD_MODEL = await asyncio.to_thread(get_silero_model)
+
         logger.info("STT server services initialized successfully")
 
     except Exception as e:
@@ -160,6 +170,34 @@ app.add_middleware(
 @app.get("/healthcheck", status_code=200)
 def get_healthcheck():
     return "OK"
+
+
+def _transcribe_pcm_sync(pcm: np.ndarray, language: str) -> str:
+    """Transcribe one live-stream utterance in-process — run via asyncio.to_thread.
+
+    Skips the temp-file round trip used by the batch endpoint: the WAV is
+    built in memory and posted straight to OVMS.
+    """
+    wav_bytes = pcm_to_wav_bytes(pcm)
+    url = urlparse(f"http://127.0.0.1:{CONFIG['ovms_port']}/v3/audio/transcriptions").geturl()
+    form_data = [
+        ("model", CONFIG["stt_model_id"]),
+        ("language", language or "en"),
+    ]
+    files = [("file", ("utterance.wav", wav_bytes, "audio/wav"))]
+    resp = _post_to_ovms(url, form_data, files)
+    if not resp.ok: 
+        raise RuntimeError(f"OVMS transcriptions failed ({resp.status_code}): {resp.text}")
+    return resp.json().get("text", "")
+
+
+@app.websocket("/v1/audio/stream")
+async def audio_stream(websocket: WebSocket) -> None:
+    await handle_audio_stream(
+        websocket,
+        vad_model=VAD_MODEL,
+        transcribe=_transcribe_pcm_sync,
+    )
 
 
 @app.post("/v1/audio/transcriptions")
@@ -238,17 +276,15 @@ async def translation(
 
 def _post_to_ovms(url: str, data: list, files: list):
     """Blocking POST to OVMS — run via asyncio.to_thread."""
-    return http_requests.post(url, data=data, files=files, timeout=300)
+    return OVMS_SESSION.post(url, data=data, files=files, timeout=300)
 
 
 async def _save_upload(file: UploadFile) -> str:
     """Persist an uploaded audio file to TEMP_DIR and return its path."""
     if file.filename:
         safe_name = os.path.basename(file.filename)
-        base_name, ext = os.path.splitext(safe_name)
-        if not base_name:
-            base_name = str(uuid.uuid4())
-        input_file_path = os.path.join(TEMP_DIR, f"{base_name}{ext or '.webm'}")
+        _, ext = os.path.splitext(safe_name)
+        input_file_path = os.path.join(TEMP_DIR, f"{uuid.uuid4()}{ext or '.webm'}")
     else:
         input_file_path = os.path.join(TEMP_DIR, f"{uuid.uuid4()}.webm")
     with open(input_file_path, "wb") as f:
@@ -269,7 +305,9 @@ def _convert_to_wav(input_file_path: str) -> str:
 
 async def _post_audio_to_ovms(endpoint: str, file_path: str, form_data: list) -> dict:
     """POST a WAV file to an OVMS audio endpoint and return the parsed JSON."""
-    url = f"http://localhost:{CONFIG['ovms_port']}/v3/audio/{endpoint}"
+    # Always dial 127.0.0.1, never "localhost": on Windows the name resolves to ::1
+    # first and OVMS listens on IPv4 only, so every connection burns ~2s failing over.
+    url = f"http://127.0.0.1:{CONFIG['ovms_port']}/v3/audio/{endpoint}"
     with open(file_path, "rb") as audio_f:
         files = [("file", (os.path.basename(file_path), audio_f, "audio/wav"))]
         ovms_resp = await asyncio.to_thread(_post_to_ovms, url, form_data, files)

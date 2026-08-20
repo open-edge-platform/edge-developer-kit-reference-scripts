@@ -61,7 +61,7 @@ const nextConfig: NextConfig = {
     return [
       ...Object.entries(getServicesPortMap()).map(([name, port]) => ({
         source: `/api/${name}/:path*`,
-        destination: `http://localhost:${port}/:path*`,
+        destination: `http://127.0.0.1:${port}/:path*`,
       })),
     ]
   },

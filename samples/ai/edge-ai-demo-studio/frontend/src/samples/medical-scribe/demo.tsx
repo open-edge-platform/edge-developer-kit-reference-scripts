@@ -13,6 +13,7 @@ import {
 import { SampleParamsSlot } from '@/samples/common/sample-params-slot'
 import { DIARIZATION_DEFAULTS, useDiarize } from '@/services/diarization/hooks'
 import { useTranscribe } from '@/services/speech-to-text/hooks'
+import { useLiveStream } from '@/services/speech-to-text/hooks'
 import type { Sample } from '../types'
 import { DialoguePanel } from './components/dialogue-panel'
 import { DoctorProfileSheet } from './components/doctor-profile-sheet'
@@ -24,6 +25,7 @@ import {
   useSessions,
   useSoapReport,
 } from './hooks'
+import type { TranscriptEntry } from './types'
 import { alignTranscriptWithSegments, formatTimestamp } from './utils'
 import { logger } from '@/lib/logger'
 import { SOAP_SYSTEM_PROMPT } from './hooks/use-soap-report'
@@ -59,6 +61,11 @@ function MedicalScribeDemoInner({ sample: _sample }: { sample: Sample }) {
   const { sessions, isFetched, createSession, updateSession, deleteSession } =
     useSessions()
   const { isRecording, startRecording, stopRecording } = useRecording()
+  const liveTranscription = useLiveStream()
+  const [liveTranscripts, setLiveTranscripts] = useState<TranscriptEntry[]>([])
+  // Mirror of `liveTranscripts` for callbacks that must read the latest value
+  // without being re-created on every incoming utterance.
+  const liveTranscriptsRef = useRef<TranscriptEntry[]>([])
   const [recordingDuration, setRecordingDuration] = useState<number | null>(
     null,
   )
@@ -143,11 +150,21 @@ function MedicalScribeDemoInner({ sample: _sample }: { sample: Sample }) {
   const selectedSession = sessions.find((s) => s.id === selectedSessionId)
 
   const processAudioRef = useRef<
-    (sessionId: string, audio: Blob, knownDuration?: number) => Promise<void>
+    (
+      sessionId: string,
+      audio: Blob,
+      knownDuration?: number,
+      liveSegments?: TranscriptEntry[],
+    ) => Promise<void>
   >(() => Promise.resolve())
 
   const processAudio = useCallback(
-    async (sessionId: string, audio: Blob, knownDuration?: number) => {
+    async (
+      sessionId: string,
+      audio: Blob,
+      knownDuration?: number,
+      liveSegments?: TranscriptEntry[],
+    ) => {
       const session = sessions.find((s) => s.id === sessionId)
       if (!session) return
 
@@ -177,13 +194,35 @@ function MedicalScribeDemoInner({ sample: _sample }: { sample: Sample }) {
           (p) => p.id === session.doctorProfileId,
         )
 
+        // The live pass already transcribed this audio utterance by utterance.
+        // Reuse it and run diarization alone rather than transcribing the whole
+        // recording a second time.
+        const reusable = (liveSegments ?? []).filter((s) => s.text.trim())
+        const liveResult =
+          reusable.length > 0
+            ? {
+                text: reusable.map((s) => s.text.trim()).join(' '),
+                segments: reusable.map((s) => ({
+                  start: s.start,
+                  end: s.end,
+                  text: s.text.trim(),
+                })),
+              }
+            : null
+        if (liveResult) {
+          logger.info(
+            `Reusing ${reusable.length} live utterance(s); skipping batch transcription`,
+          )
+        }
+
         const [transcriptResult, diarizeResult] = await Promise.all([
-          transcribe.mutateAsync({
-            file: audio,
-            language: session.language,
-            useDenoise: false,
-            returnTimestamps: true,
-          }),
+          liveResult ??
+            transcribe.mutateAsync({
+              file: audio,
+              language: session.language,
+              useDenoise: false,
+              returnTimestamps: true,
+            }),
           diarizationGroup.enabled
             ? diarize.mutateAsync({
                 file: audio,
@@ -206,14 +245,18 @@ function MedicalScribeDemoInner({ sample: _sample }: { sample: Sample }) {
               diarizeResult.segments,
               transcriptResult.segments,
             )
-          : [
-              {
-                speaker: 'Speaker',
-                text: transcriptResult.text,
-                start: transcriptResult.segments?.[0]?.start ?? 0,
-                end: transcriptResult.segments?.at(-1)?.end ?? 0,
-              },
-            ]
+          : liveResult
+            ? // No diarization: keep the natural per-utterance split the live
+              // pass already produced instead of collapsing it into one block.
+              liveResult.segments.map((s) => ({ speaker: 'Speaker', ...s }))
+            : [
+                {
+                  speaker: 'Speaker',
+                  text: transcriptResult.text,
+                  start: transcriptResult.segments?.[0]?.start ?? 0,
+                  end: transcriptResult.segments?.at(-1)?.end ?? 0,
+                },
+              ]
 
         updateSession(sessionId, {
           status: 'completed',
@@ -249,9 +292,34 @@ function MedicalScribeDemoInner({ sample: _sample }: { sample: Sample }) {
   const handleStartRecording = useCallback(async () => {
     if (!selectedSessionId) return
     const sessionId = selectedSessionId
+    const session = sessions.find((s) => s.id === sessionId)
     try {
       updateSession(sessionId, { status: 'recording' })
-      await startRecording()
+      setLiveTranscripts([])
+      liveTranscriptsRef.current = []
+      const timeOrigin = await startRecording()
+      // The live pass is the source of truth for the transcript text; batch
+      // transcription only runs as a fallback when it is unavailable.
+      try {
+        await liveTranscription.start({
+          language: session?.language ?? 'en',
+          timeOrigin,
+          onTranscript: (t) => {
+            const entry: TranscriptEntry = {
+              speaker: '',
+              text: t.text,
+              start: t.start,
+              end: t.end,
+            }
+            liveTranscriptsRef.current = [...liveTranscriptsRef.current, entry]
+            setLiveTranscripts(liveTranscriptsRef.current)
+          },
+        })
+      } catch {
+        logger.warn(
+          'Live transcription unavailable; falling back to batch only',
+        )
+      }
       setRecordingDuration(0)
       if (recordingIntervalRef.current)
         clearInterval(recordingIntervalRef.current)
@@ -262,7 +330,13 @@ function MedicalScribeDemoInner({ sample: _sample }: { sample: Sample }) {
       updateSession(sessionId, { status: 'idle' })
       toast.error('Failed to access microphone')
     }
-  }, [selectedSessionId, startRecording, updateSession])
+  }, [
+    selectedSessionId,
+    sessions,
+    startRecording,
+    liveTranscription,
+    updateSession,
+  ])
 
   const handleStopRecording = useCallback(async () => {
     if (recordingIntervalRef.current) {
@@ -271,14 +345,36 @@ function MedicalScribeDemoInner({ sample: _sample }: { sample: Sample }) {
     }
     const duration = recordingDuration
     setRecordingDuration(null)
-    const blob = await stopRecording()
+    // Mark the session as processing up front: flushing the final utterance
+    // takes a moment, and without this the dialogue panel would briefly fall
+    // back to the (still empty) stored transcripts.
+    if (selectedSessionId) {
+      updateSession(selectedSessionId, { status: 'processing' })
+    }
+    // Wait for the worker to transcribe the final pending utterance, otherwise
+    // the last thing said would be missing from the reused transcript.
+    const [, blob] = await Promise.all([
+      liveTranscription.stop(),
+      stopRecording(),
+    ])
     if (!selectedSessionId) return
     if (blob.size > 0) {
-      processAudioRef.current(selectedSessionId, blob, duration ?? undefined)
+      processAudioRef.current(
+        selectedSessionId,
+        blob,
+        duration ?? undefined,
+        liveTranscriptsRef.current,
+      )
     } else {
       updateSession(selectedSessionId, { status: 'idle' })
     }
-  }, [stopRecording, selectedSessionId, recordingDuration, updateSession])
+  }, [
+    stopRecording,
+    liveTranscription,
+    selectedSessionId,
+    recordingDuration,
+    updateSession,
+  ])
 
   const handleUploadAudio = useCallback(
     (file: File) => {
@@ -360,7 +456,11 @@ function MedicalScribeDemoInner({ sample: _sample }: { sample: Sample }) {
         />
 
         <DialoguePanel
-          transcripts={selectedSession?.transcripts ?? []}
+          transcripts={
+            isRecording || (isProcessing && liveTranscripts.length > 0)
+              ? liveTranscripts
+              : (selectedSession?.transcripts ?? [])
+          }
           dialogueCreatedAt={selectedSession?.dialogueCreatedAt ?? ''}
           isRecording={isRecording}
           isProcessing={isProcessing}

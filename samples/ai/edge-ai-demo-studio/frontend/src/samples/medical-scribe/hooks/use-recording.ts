@@ -32,6 +32,9 @@ export function useRecording() {
     mediaRecorder.start(1000)
     setIsRecording(true)
     setAudioBlob(null)
+    // `performance.now()` at t=0 of the recorded blob, so other capture paths
+    // can express their timestamps on the same timeline.
+    return performance.now()
   }, [])
 
   const stopRecording = useCallback((): Promise<Blob> => {

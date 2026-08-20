@@ -7,11 +7,14 @@ import { Loader2, Mic, MicOff, Square, Upload } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { UploadButton } from '@/components/common/upload-button'
 import { getMicErrorMessage } from '@/lib/media-utils'
 import { cn } from '@/lib/utils'
 import { DemoParameterSidebar } from '@/services/common/demo/components/demo-parameter-sidebar'
 import type { Service } from '@/services/types'
+import type { LiveTranscript } from './hooks'
+import { useLiveStream } from './hooks'
 import { useSttParams } from './hooks/use-params'
 import { useTranscribe } from './hooks/use-transcribe'
 
@@ -25,12 +28,18 @@ const PROCESSING_ANIM_DURATIONS = [
 ]
 
 export function SpeechToTextDemo(_props: { service: Service }) {
+  const [mode, setMode] = useState<'batch' | 'live'>('batch')
   const [isRecording, setIsRecording] = useState(false)
   const [micError, setMicError] = useState<string | null>(null)
   const [recordDuration, setRecordDuration] = useState(0)
   const [barHeights, setBarHeights] = useState<number[]>(() =>
     Array(24).fill(4),
   )
+
+  const [isLiveActive, setIsLiveActive] = useState(false)
+  const [isLiveFlushing, setIsLiveFlushing] = useState(false)
+  const [liveTranscripts, setLiveTranscripts] = useState<LiveTranscript[]>([])
+  const [liveError, setLiveError] = useState<string | null>(null)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
@@ -39,14 +48,57 @@ export function SpeechToTextDemo(_props: { service: Service }) {
   const analyserRef = useRef<AnalyserNode | null>(null)
   const animFrameRef = useRef<number | null>(null)
   const smoothedDataRef = useRef<Float32Array>(new Float32Array(24))
+  const visualizerStreamRef = useRef<MediaStream | null>(null)
 
   const transcribeMutation = useTranscribe()
+  const { start: startLiveStream, stop: stopLiveStream } = useLiveStream()
   const { values: sttValues, params } = useSttParams()
 
   const bars = useMemo(
     () => Array.from({ length: 24 }, (_, i) => `bar-${i}`),
     [],
   )
+
+  const startVisualizer = (stream: MediaStream) => {
+    const audioContext = new AudioContext()
+    audioContextRef.current = audioContext
+    const analyser = audioContext.createAnalyser()
+    analyser.fftSize = 64
+    analyserRef.current = analyser
+    audioContext.createMediaStreamSource(stream).connect(analyser)
+    const loop = () => {
+      if (!analyserRef.current) return
+      const freqData = new Uint8Array(analyserRef.current.frequencyBinCount)
+      analyserRef.current.getByteFrequencyData(freqData)
+      const heights: number[] = []
+      for (let i = 0; i < 24; i++) {
+        const startBin = Math.floor((i * 32) / 24)
+        const endBin = Math.max(startBin + 1, Math.floor(((i + 1) * 32) / 24))
+        let sum = 0
+        for (let b = startBin; b < endBin; b++) sum += freqData[b]
+        const avg = sum / (endBin - startBin)
+        smoothedDataRef.current[i] += (avg - smoothedDataRef.current[i]) * 0.3
+        heights.push(4 + (smoothedDataRef.current[i] / 255) * 52)
+      }
+      setBarHeights(heights)
+      animFrameRef.current = requestAnimationFrame(loop)
+    }
+    animFrameRef.current = requestAnimationFrame(loop)
+  }
+
+  const stopVisualizer = () => {
+    if (animFrameRef.current !== null) {
+      cancelAnimationFrame(animFrameRef.current)
+      animFrameRef.current = null
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close()
+      audioContextRef.current = null
+    }
+    analyserRef.current = null
+    smoothedDataRef.current.fill(0)
+    setBarHeights(Array(24).fill(4))
+  }
 
   const startRecording = async () => {
     setMicError(null)
@@ -70,37 +122,13 @@ export function SpeechToTextDemo(_props: { service: Service }) {
         })
       }
 
-      const audioContext = new AudioContext()
-      audioContextRef.current = audioContext
-      const analyser = audioContext.createAnalyser()
-      analyser.fftSize = 64
-      analyserRef.current = analyser
-      audioContext.createMediaStreamSource(stream).connect(analyser)
-      const loop = () => {
-        if (!analyserRef.current) return
-        const freqData = new Uint8Array(analyserRef.current.frequencyBinCount)
-        analyserRef.current.getByteFrequencyData(freqData)
-        const heights: number[] = []
-        for (let i = 0; i < 24; i++) {
-          const startBin = Math.floor((i * 32) / 24)
-          const endBin = Math.max(startBin + 1, Math.floor(((i + 1) * 32) / 24))
-          let sum = 0
-          for (let b = startBin; b < endBin; b++) sum += freqData[b]
-          const avg = sum / (endBin - startBin)
-          smoothedDataRef.current[i] += (avg - smoothedDataRef.current[i]) * 0.3
-          heights.push(4 + (smoothedDataRef.current[i] / 255) * 52)
-        }
-        setBarHeights(heights)
-        animFrameRef.current = requestAnimationFrame(loop)
-      }
-
       mediaRecorder.start()
       setIsRecording(true)
       setRecordDuration(0)
       durationRef.current = setInterval(() => {
         setRecordDuration((d) => d + 100)
       }, 100)
-      animFrameRef.current = requestAnimationFrame(loop)
+      startVisualizer(stream)
     } catch (error) {
       setMicError(getMicErrorMessage(error))
     }
@@ -110,17 +138,7 @@ export function SpeechToTextDemo(_props: { service: Service }) {
     setIsRecording(false)
     if (durationRef.current) clearInterval(durationRef.current)
     durationRef.current = null
-    if (animFrameRef.current !== null) {
-      cancelAnimationFrame(animFrameRef.current)
-      animFrameRef.current = null
-    }
-    if (audioContextRef.current) {
-      audioContextRef.current.close()
-      audioContextRef.current = null
-    }
-    analyserRef.current = null
-    smoothedDataRef.current.fill(0)
-    setBarHeights(Array(24).fill(4))
+    stopVisualizer()
     mediaRecorderRef.current?.stop()
   }
 
@@ -132,6 +150,54 @@ export function SpeechToTextDemo(_props: { service: Service }) {
     })
   }
 
+  const startLive = async () => {
+    setMicError(null)
+    setLiveError(null)
+    setLiveTranscripts([])
+    try {
+      const vizStream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+      })
+      visualizerStreamRef.current = vizStream
+      startVisualizer(vizStream)
+      await startLiveStream({
+        language: sttValues.language,
+        onTranscript: (t) => setLiveTranscripts((prev) => [...prev, t]),
+        onError: (message) => setLiveError(message),
+      })
+      setIsLiveActive(true)
+    } catch (error) {
+      stopVisualizer()
+      if (visualizerStreamRef.current) {
+        for (const t of visualizerStreamRef.current.getTracks()) t.stop()
+        visualizerStreamRef.current = null
+      }
+      setMicError(getMicErrorMessage(error))
+    }
+  }
+
+  const stopLive = async () => {
+    setIsLiveActive(false)
+    setIsLiveFlushing(true)
+    stopVisualizer()
+    if (visualizerStreamRef.current) {
+      for (const t of visualizerStreamRef.current.getTracks()) t.stop()
+      visualizerStreamRef.current = null
+    }
+    await stopLiveStream()
+    setIsLiveFlushing(false)
+  }
+
+  const handleRecordToggle = () => {
+    if (mode === 'batch') {
+      if (isRecording) stopRecording()
+      else startRecording()
+    } else {
+      if (isLiveActive) stopLive()
+      else startLive()
+    }
+  }
+
   useEffect(() => {
     return () => {
       if (durationRef.current) clearInterval(durationRef.current)
@@ -140,8 +206,11 @@ export function SpeechToTextDemo(_props: { service: Service }) {
       if (animFrameRef.current !== null)
         cancelAnimationFrame(animFrameRef.current)
       if (audioContextRef.current) audioContextRef.current.close()
+      const vizTracks = visualizerStreamRef.current?.getTracks()
+      if (vizTracks) for (const t of vizTracks) t.stop()
+      stopLiveStream()
     }
-  }, [])
+  }, [stopLiveStream])
 
   const formatDuration = (ms: number) => {
     const s = Math.floor(ms / 1000)
@@ -150,13 +219,34 @@ export function SpeechToTextDemo(_props: { service: Service }) {
   }
 
   const isProcessing = transcribeMutation.isPending
+  const isBatchMode = mode === 'batch'
+  const isActive = isBatchMode ? isRecording : isLiveActive
+  const isBusy = isBatchMode ? isProcessing : isLiveFlushing
+  const isCapturing = isRecording || isLiveActive
+  const canSwitchMode =
+    !isRecording && !isProcessing && !isLiveActive && !isLiveFlushing
 
   return (
     <div className="flex flex-col gap-6 xl:flex-row">
       <div className="min-w-0 flex-1 space-y-6">
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <div className="space-y-3">
-            <p className="text-foreground text-sm font-medium">Audio Input</p>
+            <div className="flex items-center justify-between">
+              <p className="text-foreground text-sm font-medium">Audio Input</p>
+              <Tabs
+                value={mode}
+                onValueChange={(value) => setMode(value as 'batch' | 'live')}
+              >
+                <TabsList>
+                  <TabsTrigger value="batch" disabled={!canSwitchMode}>
+                    Batch
+                  </TabsTrigger>
+                  <TabsTrigger value="live" disabled={!canSwitchMode}>
+                    Live
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
             <div className="border-border bg-muted/20 flex flex-col items-center justify-center rounded-xl border p-8">
               {micError && (
                 <div className="text-destructive mb-4 flex items-center gap-2 text-xs">
@@ -166,17 +256,17 @@ export function SpeechToTextDemo(_props: { service: Service }) {
               )}
               <button
                 type="button"
-                onClick={isRecording ? stopRecording : startRecording}
-                disabled={isProcessing}
+                onClick={handleRecordToggle}
+                disabled={isBusy}
                 className={cn(
                   'flex h-20 w-20 items-center justify-center rounded-full transition-all',
-                  isRecording
+                  isActive
                     ? 'scale-110 bg-red-500/20 text-red-400 ring-4 ring-red-500/30'
                     : 'bg-primary/15 text-primary hover:bg-primary/25',
-                  isProcessing && 'cursor-not-allowed opacity-50',
+                  isBusy && 'cursor-not-allowed opacity-50',
                 )}
               >
-                {isRecording ? (
+                {isActive ? (
                   <Square className="h-7 w-7" />
                 ) : (
                   <Mic className="h-8 w-8" />
@@ -184,11 +274,17 @@ export function SpeechToTextDemo(_props: { service: Service }) {
               </button>
 
               <p className="text-muted-foreground mt-3 text-sm">
-                {isRecording
-                  ? `Recording... ${formatDuration(recordDuration)}`
-                  : isProcessing
-                    ? 'Transcribing...'
-                    : 'Click to start recording'}
+                {isBatchMode
+                  ? isRecording
+                    ? `Recording... ${formatDuration(recordDuration)}`
+                    : isProcessing
+                      ? 'Transcribing...'
+                      : 'Click to start recording'
+                  : isLiveActive
+                    ? 'Listening...'
+                    : isLiveFlushing
+                      ? 'Finishing...'
+                      : 'Click to start live transcription'}
               </p>
 
               <div className="mt-4 flex h-12 items-end gap-[3px]">
@@ -197,20 +293,20 @@ export function SpeechToTextDemo(_props: { service: Service }) {
                     key={barId}
                     className={cn(
                       'w-1 rounded-full transition-all duration-150',
-                      isRecording
+                      isCapturing
                         ? 'bg-red-400'
-                        : isProcessing
+                        : isBusy
                           ? 'bg-secondary'
                           : 'bg-muted-foreground/20',
                     )}
                     style={{
-                      height: isRecording
+                      height: isCapturing
                         ? `${barHeights[i]}px`
-                        : isProcessing
+                        : isBusy
                           ? `${PROCESSING_BAR_HEIGHTS[i]}px`
                           : '4px',
-                      transition: isRecording ? 'none' : undefined,
-                      animation: isProcessing
+                      transition: isCapturing ? 'none' : undefined,
+                      animation: isBusy
                         ? `pulse-status ${PROCESSING_ANIM_DURATIONS[i]}s ease-in-out infinite`
                         : 'none',
                     }}
@@ -221,33 +317,35 @@ export function SpeechToTextDemo(_props: { service: Service }) {
 
             <div className="flex gap-2">
               <Button
-                variant={isRecording ? 'destructive' : 'outline'}
+                variant={isActive ? 'destructive' : 'outline'}
                 className="flex-1 gap-2"
-                onClick={isRecording ? stopRecording : startRecording}
-                disabled={isProcessing}
+                onClick={handleRecordToggle}
+                disabled={isBusy}
               >
-                {isRecording ? (
+                {isActive ? (
                   <>
                     <Square className="h-4 w-4" />
-                    Stop Recording
+                    {isBatchMode ? 'Stop Recording' : 'Stop'}
                   </>
                 ) : (
                   <>
                     <Mic className="h-4 w-4" />
-                    Record
+                    {isBatchMode ? 'Record' : 'Go Live'}
                   </>
                 )}
               </Button>
-              <UploadButton
-                accept="audio/*"
-                onFiles={(files) => handleFileUpload(files[0])}
-                disabled={isRecording || isProcessing}
-                className="gap-2"
-                inputTestId="stt-file-input"
-              >
-                <Upload className="h-4 w-4" />
-                Upload
-              </UploadButton>
+              {isBatchMode && (
+                <UploadButton
+                  accept="audio/*"
+                  onFiles={(files) => handleFileUpload(files[0])}
+                  disabled={isRecording || isProcessing}
+                  className="gap-2"
+                  inputTestId="stt-file-input"
+                >
+                  <Upload className="h-4 w-4" />
+                  Upload
+                </UploadButton>
+              )}
             </div>
           </div>
 
@@ -256,39 +354,73 @@ export function SpeechToTextDemo(_props: { service: Service }) {
               <p className="text-foreground text-sm font-medium">
                 Transcription
               </p>
-              {transcribeMutation.isSuccess && (
+              {isBatchMode && transcribeMutation.isSuccess && (
                 <Badge variant="secondary" className="text-[10px]">
                   Completed
+                </Badge>
+              )}
+              {!isBatchMode && isLiveActive && (
+                <Badge variant="secondary" className="text-[10px]">
+                  Live
                 </Badge>
               )}
             </div>
             <div
               className={cn(
                 'border-border bg-muted/20 min-h-[260px] overflow-auto rounded-xl border p-4 text-sm leading-relaxed whitespace-pre-wrap',
-                transcribeMutation.data?.text
+                (
+                  isBatchMode
+                    ? transcribeMutation.data?.text
+                    : liveTranscripts.length
+                )
                   ? 'text-foreground'
                   : 'text-muted-foreground',
               )}
             >
-              {isProcessing && (
-                <div className="text-muted-foreground flex items-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Transcribing audio...
-                </div>
+              {isBatchMode ? (
+                <>
+                  {isProcessing && (
+                    <div className="text-muted-foreground flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Transcribing audio...
+                    </div>
+                  )}
+                  {transcribeMutation.isError && (
+                    <p className="text-destructive">
+                      Error: {transcribeMutation.error.message}
+                    </p>
+                  )}
+                  {transcribeMutation.isSuccess && (
+                    <span data-testid="stt-result-text">
+                      {transcribeMutation.data.text ||
+                        'No speech detected in the audio.'}
+                    </span>
+                  )}
+                  {transcribeMutation.isIdle &&
+                    'Transcription will appear here after recording...'}
+                </>
+              ) : (
+                <>
+                  {liveError && (
+                    <p className="text-destructive">Error: {liveError}</p>
+                  )}
+                  {isLiveFlushing && (
+                    <div className="text-muted-foreground mb-2 flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Finishing...
+                    </div>
+                  )}
+                  {liveTranscripts.length > 0 ? (
+                    <span data-testid="stt-result-text">
+                      {liveTranscripts.map((t) => t.text).join(' ')}
+                    </span>
+                  ) : isLiveActive ? (
+                    'Listening for speech...'
+                  ) : (
+                    'Live transcript will appear here as you speak...'
+                  )}
+                </>
               )}
-              {transcribeMutation.isError && (
-                <p className="text-destructive">
-                  Error: {transcribeMutation.error.message}
-                </p>
-              )}
-              {transcribeMutation.isSuccess && (
-                <span data-testid="stt-result-text">
-                  {transcribeMutation.data.text ||
-                    'No speech detected in the audio.'}
-                </span>
-              )}
-              {transcribeMutation.isIdle &&
-                'Transcription will appear here after recording...'}
             </div>
           </div>
         </div>
