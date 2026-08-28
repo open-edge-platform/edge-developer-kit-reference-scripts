@@ -267,6 +267,44 @@ copy_scripts() {
   echo "✓ Scripts copied successfully."
 }
 
+# Copy deployment.json (and its editor schema) into the build directory so
+# electron-builder bundles them into resources/ (see extraResources in
+# electron/package.json). The packaged frontend then picks the presets up from
+# resources/deployment.json on startup.
+copy_deployment_config() {
+  echo "Copying deployment.json to temporary directory..."
+
+  if [ -f "$PROJECT_DIR/deployment.json" ]; then
+    cp "$PROJECT_DIR/deployment.json" "$TEMP_DIR/" || {
+        echo "Error: Failed to copy deployment.json to $TEMP_DIR"
+        echo "Check file permissions and available disk space."
+        exit 1
+    }
+    echo "✓ deployment.json copied successfully."
+  else
+    echo "Warning: deployment.json not found at $PROJECT_DIR/deployment.json - the package will use built-in service defaults."
+  fi
+
+  # Ship the deployment docs alongside it: the schema keeps the
+  # "$schema": "./docs/deployment.schema.json" reference working for editor
+  # validation, and shipping deployment-config.md means the startup doc
+  # regeneration (frontend/src/lib/deployment-docs.ts) finds identical content
+  # in resources/docs and skips rewriting it.
+  local DOC_FILE
+  for DOC_FILE in deployment.schema.json deployment-config.md; do
+    if [ -f "$PROJECT_DIR/docs/$DOC_FILE" ]; then
+      mkdir -p "$TEMP_DIR/docs" || {
+          echo "Error: Failed to create docs folder at $TEMP_DIR/docs"
+          exit 1
+      }
+      cp "$PROJECT_DIR/docs/$DOC_FILE" "$TEMP_DIR/docs/" || {
+          echo "Warning: Failed to copy $DOC_FILE - continuing without it."
+      }
+      echo "✓ $DOC_FILE copied successfully."
+    fi
+  done
+}
+
 finalize_package() {
   echo "Finalizing package..."
   
@@ -692,6 +730,7 @@ main() {
   setup_node_env || exit 1
   copy_workers || exit 1
   copy_scripts || exit 1
+  copy_deployment_config || exit 1
   setup_frontend_package || exit 1
   run_electron_package || exit 1
   prune_native_binaries || exit 1

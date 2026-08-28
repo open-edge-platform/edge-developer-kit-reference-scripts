@@ -19,6 +19,7 @@ export function LipsyncDemo({ service }: { service: Service }) {
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [isConnecting, setIsConnecting] = useState(false)
   const [isMediaConnected, setIsMediaConnected] = useState(false)
+  const [frameGeneration, setFrameGeneration] = useState(false)
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const pcRef = useRef<RTCPeerConnection | null>(null)
@@ -174,11 +175,19 @@ export function LipsyncDemo({ service }: { service: Service }) {
         </TabsList>
 
         <TabsContent value="chat" className="space-y-3">
-          <ChatTab sessionId={sessionId} />
+          <ChatTab
+            sessionId={sessionId}
+            frameGeneration={frameGeneration}
+            onFrameGenerationChange={setFrameGeneration}
+          />
         </TabsContent>
 
         <TabsContent value="audio" className="space-y-4">
-          <AudioLipsyncTab sessionId={sessionId} />
+          <AudioLipsyncTab
+            sessionId={sessionId}
+            frameGeneration={frameGeneration}
+            onFrameGenerationChange={setFrameGeneration}
+          />
         </TabsContent>
 
         <TabsContent value="avatars" className="space-y-4">

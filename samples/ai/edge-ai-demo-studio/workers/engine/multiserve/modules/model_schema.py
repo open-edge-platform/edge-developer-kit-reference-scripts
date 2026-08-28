@@ -34,7 +34,7 @@ class HybridModelRequest(BaseModel):
         example="openvino:OpenVINO/Qwen3-8B-int4-ov",
     )
     task: str = Field(..., example="text_generation")
-    context_size: Optional[int] = Field(default=4096, example=4096)
+    context_size: Optional[int] = Field(default=0, example=4096)
     device: Optional[str] = Field(None, example="GPU")
 
     model_path: Optional[str] = Field(None, example="")

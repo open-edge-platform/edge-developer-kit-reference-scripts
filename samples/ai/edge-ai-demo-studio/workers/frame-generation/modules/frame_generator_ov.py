@@ -5,14 +5,40 @@
 
 import math
 import os
+import secrets
+import shutil
 import time
 
 import numpy as np
 import openvino as ov
 
-from modules.base.logger import getLogger
+from modules.logger import getLogger
 
 DEFAULT_MODEL_PATH = "models/rife/flownet.safetensors"
+
+
+def download_rife_model(model_path=DEFAULT_MODEL_PATH, source="huggingface"):
+    """Fetch the RIFE flownet safetensors weights if not already present."""
+    if os.path.exists(model_path):
+        return model_path
+
+    getLogger(__file__).info("Downloading RIFE frame generation model...")
+    if source == "modelscope":
+        from modelscope import snapshot_download
+
+        repo_dir = snapshot_download(
+            "TensorForger/RIFE-safetensors", allow_patterns=["flownet.safetensors"]
+        )
+        src = os.path.join(repo_dir, "flownet.safetensors")
+    else:
+        from huggingface_hub import hf_hub_download
+
+        src = hf_hub_download("TensorForger/RIFE-safetensors", "flownet.safetensors")
+
+    os.makedirs(os.path.dirname(model_path), exist_ok=True)
+    shutil.copy(src, model_path)
+    getLogger(__file__).info(f"RIFE model ready at {model_path}")
+    return model_path
 
 
 def convert_rife_to_openvino(model_path=DEFAULT_MODEL_PATH, output_path=None):
@@ -29,7 +55,7 @@ def convert_rife_to_openvino(model_path=DEFAULT_MODEL_PATH, output_path=None):
     import torch
     from safetensors.torch import load_file
 
-    from modules.frame_generation.interpolation_model import IFNet
+    from modules.interpolation_model import IFNet
 
     model = IFNet()
     model.load_state_dict(load_file(model_path))
@@ -57,8 +83,7 @@ def convert_rife_to_openvino(model_path=DEFAULT_MODEL_PATH, output_path=None):
 class OpenVINOFrameGenerator:
     """RIFE (IFNet) frame interpolator running on OpenVINO (CPU/GPU/NPU).
 
-    Drop-in replacement for FrameGenerator: same warm_up() and
-    interpolate_gaps() contract, frames as HxWx3 arrays in 0..255.
+    Frames are HxWx3 arrays in 0..255; see warm_up() and interpolate_gaps().
     """
 
     def __init__(self, device, model_path=DEFAULT_MODEL_PATH, max_batch=16):
@@ -174,8 +199,10 @@ class OpenVINOFrameGenerator:
         """
         Fill several keyframe gaps with interpolated frames in batched passes.
 
-        Same recursive, level-synchronous binary subdivision as
-        FrameGenerator.interpolate_gaps; see that docstring for details.
+        Recursive, level-synchronous binary subdivision: every pass computes
+        the RIFE midpoints of all outstanding (a, b) pairs across all gaps in
+        one batched model call, then subdivides until each gap's slot tree is
+        full, and finally picks the evenly-spaced slots each gap needs.
 
         Args:
             gaps: list of (frame_a, frame_b, n_frames) tuples, where frames are
@@ -227,3 +254,30 @@ class OpenVINOFrameGenerator:
             chosen = np.concatenate([slots[gi][i] for i in indices])
             results.append(self._array_to_frames(chosen, h, w))
         return results
+
+
+def measure_framegen_fps(generator, image_size, gap_sizes, rounds=3):
+    """Median interpolated frames/sec on an exact gap schedule.
+
+    Also serves as the schedule-specific warmup: it primes any lazily-compiled
+    static shapes (GPU/NPU) before the first real batch arrives.
+    """
+    frames = [
+        np.frombuffer(
+            secrets.token_bytes(image_size * image_size * 3), dtype=np.uint8
+        )
+        .reshape(image_size, image_size, 3)
+        .astype(np.float32)
+        for _ in range(len(gap_sizes) + 1)
+    ]
+    gaps = [(frames[i], frames[i + 1], n) for i, n in enumerate(gap_sizes)]
+
+    generator.interpolate_gaps(gaps)
+    times = []
+    for _ in range(rounds):
+        start = time.perf_counter()
+        results = generator.interpolate_gaps(gaps)
+        times.append(time.perf_counter() - start)
+
+    produced = sum(len(r) for r in results)
+    return produced / sorted(times)[len(times) // 2]

@@ -271,6 +271,7 @@ def create_llamacpp_openai_proxy_router(llmcpp_manager: LlamaManagerCLI) -> APIR
         except json.JSONDecodeError:
             raise HTTPException(status_code=400, detail="Invalid JSON body")
 
+        task = ""
         headers = {"Content-Type": "application/json"}
         provider, repo_id = model_name_parser(model_id)
         if provider != None and repo_id != None:
@@ -316,7 +317,9 @@ def create_llamacpp_openai_proxy_router(llmcpp_manager: LlamaManagerCLI) -> APIR
         else:
             raise HTTPException(status_code=400, detail="Invalid Model Id")
 
-        if task == "multimodal":
+        # Vision support follows the projector the server was started with, so
+        # a VLM registered under text_generation still gets its images inlined.
+        if task == "multimodal" or llmcpp_manager.has_multimodal_projector(task):
             await process_request_images(request_body)
 
         is_streaming = request_body.get("stream", False)

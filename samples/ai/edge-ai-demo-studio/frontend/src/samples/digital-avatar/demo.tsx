@@ -58,6 +58,11 @@ export function DigitalAvatarDemo({ sample }: { sample: Sample }) {
   const lipsyncService = useGetService('lipsync')
   const ttsService = useGetService('text-to-speech')
   const textGenService = useGetService('text-generation')
+  // Optional service: when it is running, ask lipsync for frame generation
+  // on every utterance; the worker only interpolates when its inference
+  // cannot match the avatar frame rate on its own.
+  const frameGenService = useGetService('frame-generation')
+  const frameGenerationAvailable = frameGenService?.status === 'online'
   const isMultimodal = textGenService?.currentModelType === 'multimodal'
   const clientIceServerUrl = (
     lipsyncService?.metadata as { clientIceServerUrl?: string } | undefined
@@ -186,6 +191,7 @@ export function DigitalAvatarDemo({ sample }: { sample: Sample }) {
           voice: tts.values.voice,
           speed: String(tts.values.speed),
           ttsUrl,
+          frameGeneration: frameGenerationAvailable,
         },
       }
     : {}

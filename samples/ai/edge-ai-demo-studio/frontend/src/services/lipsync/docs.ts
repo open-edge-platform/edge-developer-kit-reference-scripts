@@ -75,6 +75,12 @@ export const getDocsData = ({ host }: { host: string }): ServiceDocsData => ({
           required: false,
           desc: 'Speech speed',
         },
+        {
+          name: 'frame_generation',
+          type: 'boolean',
+          required: false,
+          desc: 'Fill in-between frames with AI interpolation (needs the Frame Generation service; only activates when inference cannot match the avatar frame rate)',
+        },
       ],
     },
     {
@@ -105,6 +111,12 @@ export const getDocsData = ({ host }: { host: string }): ServiceDocsData => ({
           type: 'string',
           required: false,
           desc: "Language code for text overlay (default: 'en-US')",
+        },
+        {
+          name: 'frame_generation',
+          type: 'boolean',
+          required: false,
+          desc: 'Fill in-between frames with AI interpolation (needs the Frame Generation service; only activates when inference cannot match the avatar frame rate)',
         },
       ],
     },

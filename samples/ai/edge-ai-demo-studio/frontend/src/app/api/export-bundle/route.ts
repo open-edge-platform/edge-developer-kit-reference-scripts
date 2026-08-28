@@ -8,9 +8,9 @@ import {
   cleanupBundle,
   ExportError,
   exportFileName,
-  parseSampleIds,
+  parseExportSelection,
   resolveExportPlan,
-} from '@/lib/export-samples'
+} from '@/lib/export-bundle'
 import { logger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'
@@ -33,15 +33,18 @@ function parseIncludeOptional(value: string | null | undefined): boolean {
   return value === 'true' || value === '1'
 }
 
-/** GET /api/export-samples?samples=a,b&includeOptional=false → resolved plan. */
+/** GET /api/export-bundle?samples=a,b&services=c&includeOptional=false → resolved plan. */
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
-    const sampleIds = parseSampleIds(searchParams.get('samples'))
+    const selection = parseExportSelection(
+      searchParams.get('samples'),
+      searchParams.get('services'),
+    )
     const includeOptional = parseIncludeOptional(
       searchParams.get('includeOptional'),
     )
-    const plan = await resolveExportPlan(sampleIds, includeOptional)
+    const plan = await resolveExportPlan(selection, includeOptional)
     return NextResponse.json(plan)
   } catch (err) {
     return errorResponse(err)
@@ -67,24 +70,25 @@ function zipDirectory(dir: string, rootDir: string): Promise<Buffer> {
   })
 }
 
-/** POST /api/export-samples { samples, includeOptional } → zip download. */
+/** POST /api/export-bundle { samples, services, includeOptional } → zip download. */
 export async function POST(request: NextRequest) {
   let bundleTmpDir: string | undefined
   try {
     const body = (await request.json().catch(() => ({}))) as {
       samples?: unknown
+      services?: unknown
       includeOptional?: unknown
     }
-    const sampleIds = parseSampleIds(body.samples)
+    const selection = parseExportSelection(body.samples, body.services)
     const includeOptional = body.includeOptional === true
 
     const { outDir, tmpDir } = await buildExportBundle(
-      sampleIds,
+      selection,
       includeOptional,
     )
     bundleTmpDir = tmpDir
 
-    const fileName = exportFileName(sampleIds)
+    const fileName = exportFileName(selection)
     // Use the zip's base name (sans `.zip`) as the single wrapping folder.
     const rootDir = fileName.replace(/\.zip$/, '')
     const zip = await zipDirectory(outDir, rootDir)

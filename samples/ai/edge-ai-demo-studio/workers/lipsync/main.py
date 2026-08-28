@@ -47,6 +47,7 @@ from modules.webrtc_avatar import WebRTCAvatar
 from modules.lipsync.wav2lip.wav2lip_avatar_generator import generate_wav2lip_avatar
 
 from pathlib import Path
+from threading import Lock
 import psutil
 import asyncio
 from fastapi.responses import StreamingResponse
@@ -63,6 +64,9 @@ class Chat(BaseModel):
     model: Optional[str] = None
     speed: Optional[str] = None
     tts_url: Optional[str] = None
+    # Fill in-between frames with RIFE interpolation (needs the frame
+    # generation service; only activates when inference can't keep up).
+    frame_generation: bool = False
 
 
 class ChatOption(BaseModel):
@@ -185,24 +189,16 @@ def parse_arguments():
         ),
     )
     parser.add_argument(
-        "--frame_gen",
-        type=str,
-        default="auto",
-        choices=["auto", "on", "off"],
-        help=(
-            "RIFE frame generation between lipsync frames. 'auto' (default) "
-            "measures Wav2Lip inference FPS at startup and enables frame "
-            "generation only when inference cannot match the avatar video FPS; "
-            "'on' forces it; 'off' disables it."
-        ),
-    )
-    parser.add_argument(
-        "--frame_gen_device",
+        "--frame_gen_url",
         type=str,
         default=None,
         help=(
-            "OpenVINO device for the RIFE frame generation model "
-            "(CPU/GPU/GPU.1/NPU). Defaults to --device."
+            "Base URL of the frame generation service "
+            "(default: http://localhost:8031). Frame generation is requested "
+            "per lipsync request (frame_generation=true); it only activates "
+            "when Wav2Lip inference alone cannot match the avatar video FPS, "
+            "and requires the frame generation service to be running. The "
+            "interpolation device is configured on that service."
         ),
     )
     return parser.parse_args()
@@ -213,9 +209,15 @@ OV_FP16_PATH = "models/wav2lip/checkpoints/wav2lipv2_ov/wav2lip.xml"
 OV_INT8_PATH = "models/wav2lip/checkpoints/wav2lipv2_ov_int8/wav2lip.xml"
 OV_DEVICES = {"cpu", "gpu", "npu", "auto"}
 
-# Frame generation decision made at startup (see setup_frame_generation) and
-# shared with every WebRTC session.
-frame_gen_state = {"plan": None}
+# Frame generation planning state. The Wav2Lip inference FPS is always
+# measured at startup (setup_frame_generation) so a per-request
+# frame_generation flag can be honored at any time — the planner needs it to
+# know how many frames must be filled. The plan itself additionally needs the
+# frame generation service (for its interpolation benchmark), which may start
+# after this worker, so it is built at startup when that service is already
+# reachable and otherwise lazily by the first request that asks for it
+# (ensure_frame_gen_plan).
+frame_gen_state = {"plan": None, "context": None, "url": None, "lock": Lock()}
 
 
 def download_wav2lip_checkpoint(source: str):
@@ -336,15 +338,13 @@ def preload_ov_model(args):
 
 
 def setup_frame_generation(args):
-    """Measure device speeds and decide the frame generation plan at startup,
-    so the model is downloaded, loaded and warmed before any session starts
-    inferencing."""
+    """Measure the Wav2Lip inference FPS at startup and, when the frame
+    generation service is already reachable, build the frame generation plan
+    right away so the remote interpolator is benchmarked and warmed before
+    any session starts inferencing."""
     from modules.base.constants import CONSTANTS
-    from modules.frame_generation.planner import get_avatar_fps, plan_frame_generation
-    from modules.lipsync.wav2lip.wav2lip_avatar import (
-        get_shared_inference,
-        measure_wav2lip_inference_fps,
-    )
+    from modules.frame_generation.planner import get_avatar_fps
+    from modules.lipsync.wav2lip.wav2lip_avatar import measure_wav2lip_inference_fps
 
     try:
         with open(Path(args.config).resolve()) as f:
@@ -371,23 +371,107 @@ def setup_frame_generation(args):
     inference_fps = measure_wav2lip_inference_fps(
         model_path, args.device, batch_size, image_size
     )
-    plan = plan_frame_generation(
-        mode=args.frame_gen,
-        device=args.frame_gen_device or args.device,
-        avatar_path=avatar_path,
-        avatar_fps=get_avatar_fps(avatar_path),
-        inference_fps=inference_fps,
-        batch_size=batch_size,
-        image_size=image_size,
-        max_output_fps=1.0 / CONSTANTS.VIDEO_PTIME,
-    )
+    frame_gen_state["url"] = args.frame_gen_url
+    frame_gen_state["context"] = {
+        "avatar_type": "wav2lip",
+        "avatar_fps": get_avatar_fps(avatar_path),
+        "inference_fps": inference_fps,
+        "batch_size": batch_size,
+        "image_size": image_size,
+        "max_output_fps": 1.0 / CONSTANTS.VIDEO_PTIME,
+        "model_path": model_path,
+        "device": args.device,
+    }
 
-    if plan.enabled:
-        # Precompile the static keyframe-batch Wav2Lip variant sessions will
-        # use, so the first connection doesn't pay compile time.
-        get_shared_inference(model_path, args.device, len(plan.keyframes), image_size)
+    ensure_frame_gen_plan()
 
-    frame_gen_state["plan"] = plan
+
+def ensure_frame_gen_plan():
+    """Return the frame generation plan, building it on first use.
+
+    The plan needs the frame generation service for its interpolation
+    benchmark, and that service may start after the lipsync worker, so a
+    missing plan is retried whenever a request asks for frame generation.
+    Once built (enabled or not) it is reused for the lifetime of the worker.
+    """
+    from modules.frame_generation.client import check_frame_gen_service
+    from modules.frame_generation.planner import plan_frame_generation
+
+    with frame_gen_state["lock"]:
+        if frame_gen_state["plan"] is not None:
+            return frame_gen_state["plan"]
+
+        ctx = frame_gen_state["context"]
+        if ctx is None:
+            # Startup measurement was skipped (non-OpenVINO device or missing
+            # config); frame generation cannot be planned.
+            return None
+
+        client = check_frame_gen_service(frame_gen_state["url"])
+        if client is None:
+            return None
+
+        plan = plan_frame_generation(
+            client=client,
+            avatar_fps=ctx["avatar_fps"],
+            inference_fps=ctx["inference_fps"],
+            batch_size=ctx["batch_size"],
+            image_size=ctx["image_size"],
+            max_output_fps=ctx["max_output_fps"],
+        )
+        if plan.enabled:
+            # Precompile the static keyframe-batch model variant sessions
+            # will use, so the first frame-generated batch doesn't pay
+            # compile time.
+            if ctx["avatar_type"] == "musetalk":
+                from modules.lipsync.musetalk.musetalk_models import (
+                    get_shared_musetalk_inference,
+                )
+
+                get_shared_musetalk_inference(ctx["device"], len(plan.keyframes))
+            else:
+                from modules.lipsync.wav2lip.wav2lip_avatar import (
+                    get_shared_inference,
+                )
+
+                get_shared_inference(
+                    ctx["model_path"],
+                    ctx["device"],
+                    len(plan.keyframes),
+                    ctx["image_size"],
+                )
+        frame_gen_state["plan"] = plan
+        return plan
+
+
+def apply_frame_generation(streamer, requested):
+    """Toggle frame generation on a session for its upcoming utterance.
+
+    Returns whether frame generation is actually active: the request may ask
+    for it while the frame generation service is down (no plan) or while
+    inference alone already reaches the avatar frame rate (plan disabled).
+    """
+    plan = ensure_frame_gen_plan() if requested else None
+    active = streamer.avatar.set_frame_generation(requested, plan)
+    if requested and not active:
+        if plan is None:
+            reason = (
+                "the frame generation service is unreachable or frame "
+                "generation setup was skipped at startup"
+            )
+        elif not plan.enabled:
+            reason = (
+                "inference alone already matches the avatar frame rate "
+                f"({plan.inference_fps:.1f} vs {plan.target_fps:.1f} FPS; "
+                f"frame generation benchmarked at {plan.framegen_fps:.1f} "
+                "FPS, 0 interpolated frames needed)"
+            )
+        else:
+            reason = "the avatar model does not support frame generation"
+        getLogger(__name__).warning(
+            f"Frame generation was requested but is not active: {reason}."
+        )
+    return active
 
 
 def get_avatar_type(args) -> str:
@@ -403,13 +487,13 @@ def get_avatar_type(args) -> str:
 
 def initialize_musetalk_models(args):
     """Download/convert the MuseTalk networks, generate the default avatar and
-    decide the frame generation plan, mirroring the wav2lip startup path."""
+    measure the inference FPS for frame generation planning, mirroring the
+    wav2lip startup path (setup_frame_generation)."""
     from modules.base.constants import CONSTANTS
-    from modules.frame_generation.planner import get_avatar_fps, plan_frame_generation
+    from modules.frame_generation.planner import get_avatar_fps
     from modules.lipsync.musetalk.musetalk_models import (
         FACE_SIZE,
         ensure_musetalk_openvino_models,
-        get_shared_musetalk_inference,
         get_shared_whisper_encoder,
         measure_musetalk_inference_fps,
     )
@@ -435,20 +519,19 @@ def initialize_musetalk_models(args):
     get_shared_whisper_encoder(args.device)
     inference_fps = measure_musetalk_inference_fps(args.device, batch_size)
 
-    plan = plan_frame_generation(
-        mode=args.frame_gen,
-        device=args.frame_gen_device or args.device,
-        avatar_path=avatar_path,
-        avatar_fps=get_avatar_fps(avatar_path),
-        inference_fps=inference_fps,
-        batch_size=batch_size,
-        image_size=FACE_SIZE,
-        max_output_fps=1.0 / CONSTANTS.VIDEO_PTIME,
-    )
-    if plan.enabled:
-        # Precompile the static keyframe-batch variant sessions will use.
-        get_shared_musetalk_inference(args.device, len(plan.keyframes))
-    frame_gen_state["plan"] = plan
+    frame_gen_state["url"] = args.frame_gen_url
+    frame_gen_state["context"] = {
+        "avatar_type": "musetalk",
+        "avatar_fps": get_avatar_fps(avatar_path),
+        "inference_fps": inference_fps,
+        "batch_size": batch_size,
+        "image_size": FACE_SIZE,
+        "max_output_fps": 1.0 / CONSTANTS.VIDEO_PTIME,
+        "model_path": None,
+        "device": args.device,
+    }
+
+    ensure_frame_gen_plan()
 
 
 def initialize_models(args):
@@ -624,8 +707,16 @@ def setup_routes(
             return JSONResponse({"status": "invalid session id"})
 
         if chat.chat_type == "echo":
+            # Building the plan on first use benchmarks the interpolator, so
+            # keep it off the event loop.
+            frame_gen_active = await asyncio.to_thread(
+                apply_frame_generation, avatars[session_id], chat.frame_generation
+            )
             avatars[session_id].echo(
                 chat.text, chat.voice, chat.model, chat.speed, chat.tts_url
+            )
+            return JSONResponse(
+                {"status": "success", "frame_generation": frame_gen_active}
             )
 
         elif chat.chat_type == "clear":
@@ -654,6 +745,7 @@ def setup_routes(
         session_id: str = Form(...),
         text_overlay: str = Form(None),
         language_code: str = Form("en-US"),
+        frame_generation: bool = Form(False),
     ):
         if not session_id or session_id not in avatars:
             raise HTTPException(status_code=400, detail="Invalid or missing session_id")
@@ -684,12 +776,18 @@ def setup_routes(
             if text_overlay:
                 metadata = {"message": text_overlay, "language_code": language_code}
 
+            # Building the plan on first use benchmarks the interpolator, so
+            # keep it off the event loop.
+            frame_gen_active = await asyncio.to_thread(
+                apply_frame_generation, avatar_streamer, frame_generation
+            )
             avatar_streamer.process_audio(audio_array, metadata)
 
             return JSONResponse(
                 {
                     "status": "success",
                     "session_id": session_id,
+                    "frame_generation": frame_gen_active,
                     "audio_info": {
                         "filename": file.filename,
                         "duration_seconds": len(audio_array) / sample_rate,

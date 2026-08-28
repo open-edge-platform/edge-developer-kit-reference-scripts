@@ -30,12 +30,19 @@ import {
 import { getVoicesForModel } from '@/services/text-to-speech/config'
 import { useTtsVoiceStatus } from '@/services/text-to-speech/hooks/use-voice-status'
 import { useLipsyncChat } from '../hooks'
+import { FrameGenerationSwitch } from './frame-generation-switch'
 
 export interface ChatTabProps {
   sessionId: string | null
+  frameGeneration: boolean
+  onFrameGenerationChange: (checked: boolean) => void
 }
 
-export function ChatTab({ sessionId }: ChatTabProps) {
+export function ChatTab({
+  sessionId,
+  frameGeneration,
+  onFrameGenerationChange,
+}: ChatTabProps) {
   const [chatText, setChatText] = useState('Hello, welcome to the demo!')
   const [speed, setSpeed] = useState('1.0')
 
@@ -82,6 +89,7 @@ export function ChatTab({ sessionId }: ChatTabProps) {
         voice,
         speed,
         tts_url: ttsUrl,
+        frame_generation: frameGeneration,
       },
       {
         onSuccess: () => {
@@ -92,7 +100,15 @@ export function ChatTab({ sessionId }: ChatTabProps) {
           toast.error(e instanceof Error ? e.message : 'Failed to send chat'),
       },
     )
-  }, [sessionId, chatText, voice, speed, chatMutate, ttsService])
+  }, [
+    sessionId,
+    chatText,
+    voice,
+    speed,
+    frameGeneration,
+    chatMutate,
+    ttsService,
+  ])
 
   if (!isTtsOnline) {
     return (
@@ -233,6 +249,11 @@ export function ChatTab({ sessionId }: ChatTabProps) {
           </Select>
         </div>
       </div>
+
+      <FrameGenerationSwitch
+        checked={frameGeneration}
+        onCheckedChange={onFrameGenerationChange}
+      />
 
       {!isConnected && (
         <p className="text-muted-foreground text-xs">

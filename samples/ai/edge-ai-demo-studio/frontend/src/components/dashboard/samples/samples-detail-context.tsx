@@ -24,7 +24,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useState } from 'react'
 import { Streamdown } from 'streamdown'
-import { ExportSamplesDialog } from '@/components/dashboard/samples/export-samples-dialog'
+import { ExportBundleDialog } from '@/components/dashboard/samples/export-bundle-dialog'
 import { RecommendedConfigDialog } from '@/components/dashboard/samples/recommended-config-dialog'
 import { StartAllServicesButton } from '@/components/dashboard/samples/start-all-services-button'
 import {
@@ -717,7 +717,7 @@ export function SampleDetailContent({
         </Tabs>
       </div>
 
-      <ExportSamplesDialog
+      <ExportBundleDialog
         sampleIds={[sample.id]}
         open={exportOpen}
         onOpenChange={setExportOpen}

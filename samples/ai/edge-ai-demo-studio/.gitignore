@@ -1,5 +1,6 @@
 # Python environment
 .venv
+.export-venv
 __pycache__
 .cache
 

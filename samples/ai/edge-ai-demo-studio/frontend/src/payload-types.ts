@@ -158,7 +158,9 @@ export interface Service {
   type:
     | 'diarization'
     | 'embeddings'
+    | 'face-recognition'
     | 'file-watcher'
+    | 'frame-generation'
     | 'geti-classifier'
     | 'image-based-video-search'
     | 'image-generation'

@@ -18,7 +18,7 @@ const compat = new FlatCompat({
 //
 // Optional service integrations are wired through the generated feature-provider
 // registry (`@/services/_generated/feature-providers`) so the export tool
-// (scripts/export-samples.mjs) can prune their folders with `--no-optional`.
+// (scripts/export-bundle.mjs) can prune their folders with `--no-optional`.
 // The export walks the *static* import graph and force-includes any service
 // folder it reaches — so a sample that statically imports a service it declares
 // `optional` drags that folder back in and silently defeats `--no-optional`.
@@ -26,7 +26,7 @@ const compat = new FlatCompat({
 // See docs/OPTIONAL-SERVICES.md.
 
 const SAMPLES_DIR = join(import.meta.dirname, "src", "samples");
-// Mirrors the dependency parser in scripts/export-samples.mjs (serviceId before
+// Mirrors the dependency parser in scripts/export-bundle.mjs (serviceId before
 // role, no nested braces — matches the shape of ServiceDependency literals).
 const DEP_RE =
   /\{\s*serviceId\s*:\s*['"]([\w-]+)['"][^{}]*?role\s*:\s*['"](required|optional)['"][^{}]*?\}/gs;

@@ -53,28 +53,28 @@ class LlamaManagerCLI:
             "active_models": {
                 "text_generation": {
                     "repo_id": None,
-                    "n_ctx": 4096,
+                    "n_ctx": 0,
                     "n_gpu_layers": 35,
                     "model_path": None,
                     "mmproj_path": None,
                 },
                 "embeddings": {
                     "repo_id": None,
-                    "n_ctx": 4096,
+                    "n_ctx": 0,
                     "n_gpu_layers": 35,
                     "model_path": None,
                     "mmproj_path": None,
                 },
                 "rerank": {
                     "repo_id": None,
-                    "n_ctx": 4096,
+                    "n_ctx": 0,
                     "n_gpu_layers": 35,
                     "model_path": None,
                     "mmproj_path": None,
                 },
                 "multimodal": {
                     "repo_id": None,
-                    "n_ctx": 4096,
+                    "n_ctx": 0,
                     "n_gpu_layers": 35,
                     "model_path": None,
                     "mmproj_path": None,
@@ -310,7 +310,7 @@ class LlamaManagerCLI:
         self,
         repo_id,
         task,
-        context_size: int = 4096,
+        context_size: int = 0,
         device: str = "GPU",
         model_path: str = "",
         mmproj_path: str = "",
@@ -359,6 +359,9 @@ class LlamaManagerCLI:
             return False
 
         return False
+
+    def has_multimodal_projector(self, task: str) -> bool:
+        return self.manager.has_multimodal_projector(task)
 
     def is_active_model(self, task, model_id: str):
         current_model = self.manager.get_current_active_model(task)

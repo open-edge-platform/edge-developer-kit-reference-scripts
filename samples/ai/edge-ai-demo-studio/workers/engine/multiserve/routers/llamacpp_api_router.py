@@ -48,7 +48,7 @@ class ModelRequest(BaseModel):
 class ModelWithTaskStartRequest(BaseModel):
     repo_id: str = Field(..., example="Qwen/Qwen3-1.7B-GGUF")
     task: str = Field(..., example="text_generation")
-    context_size: Optional[int] = Field(..., example=4096)
+    context_size: Optional[int] = Field(0, example=4096)
     device: Optional[str] = Field(None, example="GPU")
     model_path: Optional[str] = Field(
         None,
@@ -297,7 +297,8 @@ def create_llamacpp_api_router(llmcpp_manager: LlamaManagerCLI) -> APIRouter:
 
     @router.post("/start", tags=["Server Control"])
     def start_model_server(request: ModelWithTaskStartRequest):
-        if request.context_size < 0:
+        context_size = request.context_size or 0
+        if context_size < 0:
             raise HTTPException(
                 status_code=500, detail=f"Context Size cannot be negative."
             )
@@ -308,7 +309,16 @@ def create_llamacpp_api_router(llmcpp_manager: LlamaManagerCLI) -> APIRouter:
                 if llmcpp_manager.start_or_swap_model(
                     repo_id, request.device, request.timeout
                 ):
-                    return {"context_size": request.context_size}
+                    # Report what the server actually negotiated -- with no
+                    # requested size there is nothing to echo back.
+                    try:
+                        running_ctx = llmcpp_manager.get_task_metadata(
+                            request.task
+                        ).get("context_size", context_size)
+                    except Exception:
+                        running_ctx = context_size
+
+                    return {"context_size": running_ctx}
                 else:
                     raise HTTPException(
                         status_code=500,
@@ -318,14 +328,14 @@ def create_llamacpp_api_router(llmcpp_manager: LlamaManagerCLI) -> APIRouter:
                 recommended_ctx = llmcpp_manager.start_local_model(
                     repo_id,
                     request.task,
-                    request.context_size,
+                    context_size,
                     request.device,
                     request.model_path,
                     request.mmproj_path,
                     request.extra_args,
                     request.timeout,
                 )
-                if recommended_ctx != request.context_size:
+                if recommended_ctx != context_size:
                     return recommended_ctx
                 return "OK"
 

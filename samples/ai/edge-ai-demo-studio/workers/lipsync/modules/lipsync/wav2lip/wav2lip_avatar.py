@@ -140,6 +140,7 @@ class Wav2lipAvatar(LipsyncAvatar):
         self.kf_request = None
         self.kf_lock = None
         self.frame_gen_plan = None
+        self.frame_gen_active = False
 
     def _convert_to_openvino(self):
         """Convert PyTorch checkpoint to OpenVINO IR if not already done.
