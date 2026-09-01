@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "The window only ever shows the kiosk's own pages; it calls no Tauri commands.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

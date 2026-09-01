@@ -1,0 +1,18 @@
+{
+  "name": "kiosk-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Tauri shell that runs the kiosk's Next.js server as a child process and shows it in a window.",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "dev": "node scripts/build.mjs --dev",
+    "stage": "node scripts/build.mjs --stage-only",
+    "setup": "./scripts/setup-linux.sh",
+    "icons": "node scripts/make-icons.mjs --force"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.9.1",
+    "esbuild": "^0.25.10"
+  }
+}

@@ -1,0 +1,96 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+# --- API ---------------------------------------------------------------------
+api:
+  base_url: /api
+
+# --- Terminal mode -----------------------------------------------------------
+terminal:
+  mode: chat
+
+# --- Country & language ------------------------------------------------------
+#country:
+#  pack: malaysia
+#locale:
+#  language: en
+
+# --- Local service timing and fee tuning -------------------------------------
+mock:
+  currency: MYR
+  processing_fee: 2
+  latency_ms: 0
+  identity:
+    read_ms: 2800
+    scan_ms: 2300
+    citizen: 1
+
+# --- ID card reader (PC/SC / NFC) --------------------------------------------
+nfc:
+  simulate: never
+
+# --- Payload CMS (citizen registry persisted in db.sqlite) -------------------
+# A blank admin_password is generated into config.yaml on the first run, and a
+# blank payload_secret into .payload-secret beside the database on the first boot.
+cms:
+  kiosk_key: dev-kiosk-key
+  payload_secret:
+  database_url: file:./db.sqlite
+  admin_email: admin@demo.local
+  admin_password:
+
+# --- Document analysis (the LLM verdict on an uploaded document) -------------
+llm:
+  mock: false
+  base_url: http://localhost:8080/api/text-generation/v1
+  model: openvino:OpenVINO/Qwen3.5-4B-int4-ov
+  timeout_ms: 120000
+  extra_body:
+    chat_template_kwargs:
+      enable_thinking: false
+
+# --- OCR ---------------------------------------------------------------------
+ocr:
+  base_url: http://localhost:8080/api/ocr
+  health_path: /healthcheck
+
+# --- Face recognition (the identity step's face check) -----------------------
+face:
+  base_url: http://localhost:8080/api/face-recognition
+  health_path: /healthcheck
+  require_match: true
+
+# --- Voice: speech-to-text + text-to-speech (assistant kiosk only) -----------
+voice:
+  stt:
+    base_url: http://localhost:8080/api/speech-to-text/v1
+    health_path: /../healthcheck
+  tts:
+    base_url: http://localhost:8080/api/text-to-speech/v1
+    health_path: /../healthcheck
+    voice: af_heart
+  # Every Kokoro language, one voice each — spoken-language detection is on (docs/i18n.md):
+  languages:
+    en: af_heart
+    es: ef_dora
+    fr: ff_siwis
+    hi: hf_alpha
+    it: if_sara
+    ja: jf_alpha
+    pt: pf_dora
+    zh: zf_xiaobei
+  wait_for_speech: false
+  barge_in: true
+
+# --- Supporting documents ----------------------------------------------------
+documents:
+  source: scanner
+  uploads_dir: ../assets/pdf
+  mocks_dir: ../assets/mocks/citizens/1-nadia-rahman/good
+
+  # --- Scanner ---
+  scanner:
+    mode: Color
+    source: Adf-duplex
+    args: --page-auto=yes --multifeed-detection Stop --blank-page-skip=yes
+    simulate: never

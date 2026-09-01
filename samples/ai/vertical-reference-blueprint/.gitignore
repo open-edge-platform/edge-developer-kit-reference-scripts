@@ -1,0 +1,19 @@
+# Scanner inbox: transient scan drops, keep the folder but not the files
+assets/
+
+# Portable Node.js, downloaded by ./setup.sh when the machine has none
+thirdparty/
+
+# Launcher-script local state (setup / start / build / dev)
+.kioskrc
+.studio.log
+.studio.log.err
+.prime.log
+.prime.pid
+
+# Screenshots, logs and state from the run-vertical-reference-blueprint skill driver
+.kiosk-run/
+.studio-deployment.installed
+build/
+/tests/coverity/*
+!/tests/coverity/coverity_scan.sh
