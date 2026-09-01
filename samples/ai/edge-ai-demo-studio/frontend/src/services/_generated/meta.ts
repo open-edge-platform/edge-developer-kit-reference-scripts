@@ -4,7 +4,9 @@
 
 import { service as diarizationMeta } from '../diarization/data'
 import { service as embeddingsMeta } from '../embeddings/data'
+import { service as faceRecognitionMeta } from '../face-recognition/data'
 import { service as fileWatcherMeta } from '../file-watcher/data'
+import { service as frameGenerationMeta } from '../frame-generation/data'
 import { service as getiClassifierMeta } from '../geti-classifier/data'
 import { service as imageBasedVideoSearchMeta } from '../suites/metro-ai-suite/image-based-video-search/data'
 import { service as imageGenerationMeta } from '../image-generation/data'
@@ -28,7 +30,9 @@ import { service as wakeWordDetectionMeta } from '../wake-word-detection/data'
 export const metaMap = {
   diarization: diarizationMeta,
   embeddings: embeddingsMeta,
+  'face-recognition': faceRecognitionMeta,
   'file-watcher': fileWatcherMeta,
+  'frame-generation': frameGenerationMeta,
   'geti-classifier': getiClassifierMeta,
   'image-based-video-search': imageBasedVideoSearchMeta,
   'image-generation': imageGenerationMeta,

@@ -6,7 +6,7 @@
 import { CheckSquare, Download, Sparkles, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ExportSamplesDialog } from '@/components/dashboard/samples/export-samples-dialog'
+import { ExportBundleDialog } from '@/components/dashboard/samples/export-bundle-dialog'
 import { SampleCard } from '@/components/dashboard/samples/sample-card'
 import {
   type OSFilter,
@@ -331,7 +331,7 @@ export default function SamplesPage() {
           document.body,
         )}
 
-      <ExportSamplesDialog
+      <ExportBundleDialog
         sampleIds={[...selectedIds]}
         open={exportOpen}
         onOpenChange={setExportOpen}

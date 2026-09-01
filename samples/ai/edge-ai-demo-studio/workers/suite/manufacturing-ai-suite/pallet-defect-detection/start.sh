@@ -344,6 +344,8 @@ HEADER
 
 generate_override
 
+mkdir -p "$SUITE_DIR/apps/$SAMPLE_APP/Certificates/ssl"
+
 # ── Step 6: Bring up the docker compose stack ─────────────────────
 COMPOSE_ARGS=(--env-file "$ENV_FILE" -f "$COMPOSE_FILE")
 if [ -f "$OVERRIDE_FILE" ] && [ -s "$OVERRIDE_FILE" ] && ! grep -q '^{}$' "$OVERRIDE_FILE"; then

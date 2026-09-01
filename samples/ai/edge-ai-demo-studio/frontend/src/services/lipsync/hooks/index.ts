@@ -106,6 +106,7 @@ export function useLipsyncChat() {
       voice?: string
       speed?: string
       tts_url?: string
+      frame_generation?: boolean
     }) => {
       const res = await fetch(`${API_BASE}/v1/lipsync/chat`, {
         method: 'POST',
@@ -125,6 +126,7 @@ export function useAudioLipsync() {
       sessionId: string
       textOverlay?: string
       languageCode?: string
+      frameGeneration?: boolean
     }) => {
       const formData = new FormData()
       formData.append('file', params.audioFile)
@@ -134,6 +136,9 @@ export function useAudioLipsync() {
       }
       if (params.languageCode) {
         formData.append('language_code', params.languageCode)
+      }
+      if (params.frameGeneration) {
+        formData.append('frame_generation', 'true')
       }
 
       const res = await fetch(`${API_BASE}/v1/lipsync`, {

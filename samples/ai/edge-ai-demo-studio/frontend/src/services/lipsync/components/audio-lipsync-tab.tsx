@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useAudioLipsync } from '../hooks'
+import { FrameGenerationSwitch } from './frame-generation-switch'
 
 const SUPPORTED_AUDIO_FORMATS = '.wav,.mp3'
 
@@ -32,9 +33,15 @@ const LANGUAGE_OPTIONS = [
 
 export interface AudioLipsyncTabProps {
   sessionId: string | null
+  frameGeneration: boolean
+  onFrameGenerationChange: (checked: boolean) => void
 }
 
-export function AudioLipsyncTab({ sessionId }: AudioLipsyncTabProps) {
+export function AudioLipsyncTab({
+  sessionId,
+  frameGeneration,
+  onFrameGenerationChange,
+}: AudioLipsyncTabProps) {
   const [selectedAudioFile, setSelectedAudioFile] = useState<File | null>(null)
   const [textOverlay, setTextOverlay] = useState('')
   const [languageCode, setLanguageCode] = useState('en-US')
@@ -52,6 +59,7 @@ export function AudioLipsyncTab({ sessionId }: AudioLipsyncTabProps) {
         sessionId,
         textOverlay: textOverlay.trim() || undefined,
         languageCode,
+        frameGeneration,
       },
       {
         onSuccess: () => {
@@ -138,6 +146,12 @@ export function AudioLipsyncTab({ sessionId }: AudioLipsyncTabProps) {
           />
         </div>
       </div>
+
+      <FrameGenerationSwitch
+        checked={frameGeneration}
+        onCheckedChange={onFrameGenerationChange}
+        disabled={audioLipsync.isPending}
+      />
 
       <Button
         data-testid="lipsync-process-button"

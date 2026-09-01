@@ -89,6 +89,7 @@ generate_override() {
   local config_host_path="$SUITE_DIR/src/dlstreamer-pipeline-server/configs/filter-pipeline/$selected_config"
   local models_public_path="$SUITE_DIR/src/dlstreamer-pipeline-server/models/public"
   local models_resnet_path="$SUITE_DIR/src/dlstreamer-pipeline-server/models/resnet-50-pytorch"
+  local broker_config_path="$SUITE_DIR/src/broker"
 
   emit_proxy_env() {
     local indent="$1"
@@ -111,7 +112,7 @@ services:
 HEADER
 
     if $has_proxy; then
-      for service in milvus-ui feature-matching streaming-pipeline rtsp-server broker app; do
+      for service in milvus-ui feature-matching streaming-pipeline rtsp-server app; do
         printf '  %s:\n    environment:\n' "$service"
         emit_proxy_env "      "
       done
@@ -163,6 +164,12 @@ HEADER
     fi
 
     printf '  milvus-db:\n    healthcheck:\n      start_period: 5m\n      retries: 10\n'
+    if $has_proxy; then
+      printf '    environment:\n'
+      emit_proxy_env "      "
+    fi
+
+    printf '  broker:\n    volumes: !override\n      - "%s:/mosquitto/config:ro"\n' "$broker_config_path"
     if $has_proxy; then
       printf '    environment:\n'
       emit_proxy_env "      "
@@ -302,6 +309,7 @@ ensure_models() {
   docker run --rm --user=root \
     -e http_proxy="${http_proxy:-}" -e https_proxy="${https_proxy:-}" -e no_proxy="${no_proxy:-}" \
     -e HTTP_PROXY="${HTTP_PROXY:-}" -e HTTPS_PROXY="${HTTPS_PROXY:-}" \
+    -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
     -v "$MODELS_PATH:/output" \
     intel/dlstreamer:2026.0.0-ubuntu24 bash -c '
       mkdir -p /output/public
@@ -318,6 +326,7 @@ ensure_models() {
           sleep 2
         done
       fi
+      chown -R "$HOST_UID:$HOST_GID" /output
     '
 
   touch "$SETUP_SENTINEL"

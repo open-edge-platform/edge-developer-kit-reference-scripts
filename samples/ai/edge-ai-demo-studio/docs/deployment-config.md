@@ -13,6 +13,22 @@ it to `active`).
 The file location can be overridden with the `DEPLOYMENT_CONFIG_PATH` environment variable.
 Add `"$schema": "./docs/deployment.schema.json"` for editor validation and autocompletion.
 
+## Packaged (Electron) builds
+
+The packaging scripts (`scripts/bash/package.sh` / `scripts/win/package.ps1`)
+bundle the project-root `deployment.json` (plus `docs/deployment.schema.json`)
+into the Electron package automatically, so presets set before packaging ship
+with the app. Inside the packaged app the file lives in the `resources`
+directory next to the bundled frontend:
+
+- Linux (zip): `EdgeAIDemoStudio/linux-unpacked/resources/deployment.json`
+- Windows (installer): `<install dir>\resources\deployment.json`
+
+To change the presets of an already packaged build, edit that file and
+restart the app; delete it to fall back to the built-in defaults. Setting
+the `DEPLOYMENT_CONFIG_PATH` environment variable before launching the app
+overrides the bundled file.
+
 ## Example
 
 ```json
@@ -122,6 +138,27 @@ Known models:
 | `OpenVINO/Qwen3-Embedding-0.6B-int8-ov` | `CPU`, `GPU`, `NPU` | — |
 | `Qwen/Qwen3-Embedding-0.6B-GGUF` | `CPU`, `GPU` | — |
 
+### `face-recognition` — Face Recognition
+
+Detect and identify faces against a reference gallery using Open Model Zoo or OpenCV Zoo pipelines.
+
+| Field | Value |
+| --- | --- |
+| Default port | 8031 |
+| Engines | `worker` |
+| Default model | `omz-retail` on `CPU` |
+| Devices | `CPU`, `GPU` |
+| Custom models | no |
+| Supported OS | `linux`, `windows` |
+
+Known models:
+
+| Model (`models.default.name`) | Devices | Backend |
+| --- | --- | --- |
+| `omz-retail` | `CPU`, `GPU` | `openvino` |
+| `omz-adas` | `CPU`, `GPU` | `openvino` |
+| `yunet-sface` | `CPU`, `GPU` | `openvino` |
+
 ### `file-watcher` — File Watcher
 
 Watches a folder for new image files and broadcasts them over WebSocket for real-time processing.
@@ -134,6 +171,26 @@ Watches a folder for new image files and broadcasts them over WebSocket for real
 | Devices | — |
 | Custom models | no |
 | Supported OS | `linux`, `windows` |
+
+### `frame-generation` — Frame Generation
+
+RIFE video frame interpolation: fill in-between frames or upscale video FPS.
+
+| Field | Value |
+| --- | --- |
+| Default port | 8031 |
+| Engines | `worker` |
+| Default model | `RIFE` on `CPU` |
+| Devices | `CPU`, `GPU` |
+| Custom models | no |
+| Model sources | `huggingface`, `modelscope` |
+| Supported OS | `linux`, `windows` |
+
+Known models:
+
+| Model (`models.default.name`) | Devices | Backend |
+| --- | --- | --- |
+| `RIFE` | `CPU`, `GPU` | `openvino` |
 
 ### `geti-classifier` — Geti Image Classifier
 

@@ -58,7 +58,20 @@ export const sample: Sample = {
       impactText: 'MCP tool integrations will not be available.',
     },
     { serviceId: 'text-to-speech', role: 'required' },
-    { serviceId: 'lipsync', role: 'required' },
+    {
+      serviceId: 'lipsync',
+      role: 'required',
+      recommended: {
+        device: 'xpu',
+      },
+    },
+    {
+      serviceId: 'frame-generation',
+      role: 'optional',
+      capabilityKey: 'frame_generation',
+      impactText:
+        'Lipsync frame generation (smoother avatar video on slower devices) will be unavailable.',
+    },
   ],
   pipeline: [
     'wake-word-detection',

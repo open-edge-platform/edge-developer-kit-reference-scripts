@@ -203,9 +203,7 @@ const startModel = async (
       task: taskType.replace('-', '_'),
       device: modelConfig.device,
     }
-    if (backend === 'llamacpp') {
-      body.context_size = 4096
-    } else {
+    if (backend !== 'llamacpp') {
       body.model_path = ''
     }
 

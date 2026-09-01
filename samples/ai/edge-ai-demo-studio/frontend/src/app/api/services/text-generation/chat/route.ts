@@ -136,6 +136,7 @@ interface LipsyncConfig {
   sessionId: string
   voice: string
   speed: string
+  frameGeneration?: boolean
 }
 
 function dispatchSentenceToLipsync(
@@ -158,6 +159,7 @@ function dispatchSentenceToLipsync(
       chat_type: 'echo',
       voice: lipsync.voice,
       speed: lipsync.speed,
+      frame_generation: lipsync.frameGeneration ?? false,
       ...(ttsUrl ? { tts_url: ttsUrl } : {}),
     }),
   }).catch((err) => {

@@ -1,0 +1,23 @@
+[project]
+name = "face-recognition"
+version = "0.1.0"
+description = "Face recognition FastAPI worker (Open Model Zoo and OpenCV Zoo pipelines on OpenVINO)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.111.0",
+    "uvicorn>=0.29.0",
+    "python-multipart>=0.0.9",
+    # Use opencv-python (not headless) so it works on Windows desktop too.
+    "opencv-python>=4.10",
+    "numpy>=1.24,<2.2",
+    "openvino>=2025.2",
+    "requests>=2.31",
+    "tqdm>=4.66",
+]
+
+[tool.uv]
+environments = [
+    "sys_platform == 'win32'",
+    "sys_platform == 'linux'",
+]

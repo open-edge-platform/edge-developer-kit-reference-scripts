@@ -4,6 +4,7 @@
 import { Video } from 'lucide-react'
 import type { Service as PayloadService } from '@/payload-types'
 import type { ServiceMeta, WorkerConfig } from '@/services/types'
+import { service as frameGenerationService } from '../frame-generation/data'
 import { serviceConfig } from './config'
 
 export const service: ServiceMeta = {
@@ -50,12 +51,15 @@ export const worker: WorkerConfig = {
       args.push('--ice_server', serverIceServerUrl)
     }
 
-    // 'auto' lets the worker enable frame generation only when measured
-    // inference FPS cannot reach the avatar frame rate.
-    const frameGeneration =
-      (doc.metadata as { frameGeneration?: boolean } | undefined)
-        ?.frameGeneration ?? true
-    args.push('--frame_gen', frameGeneration ? 'auto' : 'off')
+    // Frame generation is requested per lipsync request (frame_generation
+    // in the chat/audio payload), so the worker always gets the Frame
+    // Generation service URL. It measures its inference FPS at startup and
+    // only interpolates when inference alone cannot reach the avatar frame
+    // rate; requests degrade gracefully while that service is unreachable.
+    args.push(
+      '--frame_gen_url',
+      `http://localhost:${frameGenerationService.port}`,
+    )
 
     return args
   },

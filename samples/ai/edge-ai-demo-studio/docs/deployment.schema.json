@@ -328,6 +328,150 @@
             }
           }
         },
+        "face-recognition": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Detect and identify faces against a reference gallery using Open Model Zoo or OpenCV Zoo pipelines.",
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "online",
+                "offline"
+              ],
+              "description": "'online' starts the service when the app boots; 'offline' (default) leaves it stopped."
+            },
+            "engine": {
+              "type": "string",
+              "enum": [
+                "worker"
+              ],
+              "description": "Execution engine for this service"
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535,
+              "description": "Port to expose the service on (default: 8031)"
+            },
+            "models": {
+              "type": "object",
+              "description": "Partial per-model overrides, merged over the defaults. 'default' is the primary model.",
+              "properties": {
+                "default": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "description": "Model identifier (e.g. Hugging Face repo id)",
+                      "enum": [
+                        "omz-retail",
+                        "omz-adas",
+                        "yunet-sface"
+                      ]
+                    },
+                    "device": {
+                      "type": "string",
+                      "description": "Accelerator to run on (e.g. CPU, GPU, NPU)",
+                      "examples": [
+                        "CPU",
+                        "GPU"
+                      ]
+                    },
+                    "source": {
+                      "type": "string",
+                      "enum": [
+                        "huggingface",
+                        "modelscope",
+                        "custom"
+                      ]
+                    },
+                    "quant": {
+                      "type": "string",
+                      "description": "Weight format / quantization"
+                    },
+                    "params": {
+                      "type": "string"
+                    },
+                    "backend": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "Model identifier (e.g. Hugging Face repo id)"
+                  },
+                  "device": {
+                    "type": "string",
+                    "description": "Accelerator to run on (e.g. CPU, GPU, NPU)"
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "huggingface",
+                      "modelscope",
+                      "custom"
+                    ]
+                  },
+                  "quant": {
+                    "type": "string",
+                    "description": "Weight format / quantization"
+                  },
+                  "params": {
+                    "type": "string"
+                  },
+                  "backend": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "metadata": {
+              "type": "object",
+              "description": "Service metadata, merged over existing values",
+              "properties": {
+                "clientIceServerUrl": {
+                  "type": "string",
+                  "description": "Client-side ICE server URL (default: STUN)"
+                },
+                "serverIceServerUrl": {
+                  "type": "string",
+                  "description": "Server-side ICE server URL (default: TURN)"
+                },
+                "turnServerIp": {
+                  "type": "string",
+                  "description": "Deprecated: Use clientIceServerUrl / serverIceServerUrl instead"
+                },
+                "languageCode": {
+                  "type": "string",
+                  "description": "Language Code for TTS"
+                },
+                "vadThreshold": {
+                  "type": "number",
+                  "default": 0.2,
+                  "description": "VAD Threshold for Wake Word Detection"
+                },
+                "cpuAffinity": {
+                  "type": "string",
+                  "description": "CPU cores to pin this service to (numactl -C format, e.g. \"0-7\" or \"0,2,4\"). Empty / missing = all cores. Linux only."
+                }
+              }
+            }
+          }
+        },
         "file-watcher": {
           "type": "object",
           "additionalProperties": false,
@@ -369,6 +513,148 @@
                     "device": {
                       "type": "string",
                       "description": "Accelerator to run on (e.g. CPU, GPU, NPU)"
+                    },
+                    "source": {
+                      "type": "string",
+                      "enum": [
+                        "huggingface",
+                        "modelscope",
+                        "custom"
+                      ]
+                    },
+                    "quant": {
+                      "type": "string",
+                      "description": "Weight format / quantization"
+                    },
+                    "params": {
+                      "type": "string"
+                    },
+                    "backend": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "Model identifier (e.g. Hugging Face repo id)"
+                  },
+                  "device": {
+                    "type": "string",
+                    "description": "Accelerator to run on (e.g. CPU, GPU, NPU)"
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "huggingface",
+                      "modelscope",
+                      "custom"
+                    ]
+                  },
+                  "quant": {
+                    "type": "string",
+                    "description": "Weight format / quantization"
+                  },
+                  "params": {
+                    "type": "string"
+                  },
+                  "backend": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "metadata": {
+              "type": "object",
+              "description": "Service metadata, merged over existing values",
+              "properties": {
+                "clientIceServerUrl": {
+                  "type": "string",
+                  "description": "Client-side ICE server URL (default: STUN)"
+                },
+                "serverIceServerUrl": {
+                  "type": "string",
+                  "description": "Server-side ICE server URL (default: TURN)"
+                },
+                "turnServerIp": {
+                  "type": "string",
+                  "description": "Deprecated: Use clientIceServerUrl / serverIceServerUrl instead"
+                },
+                "languageCode": {
+                  "type": "string",
+                  "description": "Language Code for TTS"
+                },
+                "vadThreshold": {
+                  "type": "number",
+                  "default": 0.2,
+                  "description": "VAD Threshold for Wake Word Detection"
+                },
+                "cpuAffinity": {
+                  "type": "string",
+                  "description": "CPU cores to pin this service to (numactl -C format, e.g. \"0-7\" or \"0,2,4\"). Empty / missing = all cores. Linux only."
+                }
+              }
+            }
+          }
+        },
+        "frame-generation": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "RIFE video frame interpolation: fill in-between frames or upscale video FPS.",
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "online",
+                "offline"
+              ],
+              "description": "'online' starts the service when the app boots; 'offline' (default) leaves it stopped."
+            },
+            "engine": {
+              "type": "string",
+              "enum": [
+                "worker"
+              ],
+              "description": "Execution engine for this service"
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535,
+              "description": "Port to expose the service on (default: 8031)"
+            },
+            "models": {
+              "type": "object",
+              "description": "Partial per-model overrides, merged over the defaults. 'default' is the primary model.",
+              "properties": {
+                "default": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "description": "Model identifier (e.g. Hugging Face repo id)",
+                      "enum": [
+                        "RIFE"
+                      ]
+                    },
+                    "device": {
+                      "type": "string",
+                      "description": "Accelerator to run on (e.g. CPU, GPU, NPU)",
+                      "examples": [
+                        "CPU",
+                        "GPU"
+                      ]
                     },
                     "source": {
                       "type": "string",

@@ -11,7 +11,7 @@
     "lint:fix": "eslint . --fix",
     "codegen": "node ./scripts/generate-registries.mjs && eslint . --fix",
     "db:reset": "node ./scripts/reset-db.mjs",
-    "export-samples": "node ../scripts/export-samples.mjs",
+    "export-bundle": "node ../scripts/export-bundle.mjs",
     "test": "playwright test",
     "test:ui": "playwright test --ui --ui-port 8081",
     "knip": "NODE_OPTIONS='--require tsconfig-paths/register' knip"

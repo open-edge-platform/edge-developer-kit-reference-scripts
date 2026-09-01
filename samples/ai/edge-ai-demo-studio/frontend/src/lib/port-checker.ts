@@ -51,6 +51,8 @@ const ALLOWED_PROCESS_IDENTIFIERS = {
     'python3.exe',
     'node',
     'node.exe',
+    'ovms',
+    'ovms.exe',
   ],
   scriptNames: ['main.py', 'uvicorn'],
   frameworkMarkers: ['fastapi'],

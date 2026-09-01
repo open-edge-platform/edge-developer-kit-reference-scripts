@@ -35,13 +35,16 @@ interface ExportPlan {
     id: string
     deps: { serviceId: string; role: 'required' | 'optional' }[]
   }[]
+  requestedServices: string[]
   services: { required: string[]; optional: string[]; included: string[] }
   workers: string[]
   includeOptional: boolean
 }
 
-interface ExportSamplesDialogProps {
+interface ExportBundleDialogProps {
   sampleIds: string[]
+  /** Services to export directly — may be used alone with no samples. */
+  serviceIds?: string[]
   open: boolean
   onOpenChange: (open: boolean) => void
   /** Called after a successful export download. */
@@ -56,12 +59,13 @@ function sampleTitle(id: string): string {
   return getSampleById(id)?.title ?? id
 }
 
-export function ExportSamplesDialog({
+export function ExportBundleDialog({
   sampleIds,
+  serviceIds = [],
   open,
   onOpenChange,
   onExported,
-}: ExportSamplesDialogProps) {
+}: ExportBundleDialogProps) {
   const [includeOptional, setIncludeOptional] = useState(false)
   const [plan, setPlan] = useState<ExportPlan | null>(null)
   const [planLoading, setPlanLoading] = useState(false)
@@ -69,23 +73,26 @@ export function ExportSamplesDialog({
   const [exporting, setExporting] = useState(false)
 
   const samplesKey = sampleIds.join(',')
+  const servicesKey = serviceIds.join(',')
+  const selectionCount = sampleIds.length + serviceIds.length
 
   // Resolve the plan whenever the dialog opens, the selection changes, or the
   // optional toggle flips — the API mirrors exactly what an export produces.
   useEffect(() => {
-    if (!open || sampleIds.length === 0) return
+    if (!open || selectionCount === 0) return
     const controller = new AbortController()
 
     const params = new URLSearchParams({
-      samples: samplesKey,
       includeOptional: String(includeOptional),
     })
+    if (samplesKey) params.set('samples', samplesKey)
+    if (servicesKey) params.set('services', servicesKey)
 
     const loadPlan = async () => {
       setPlanLoading(true)
       setPlanError(null)
       try {
-        const res = await fetch(`/api/export-samples?${params.toString()}`, {
+        const res = await fetch(`/api/export-bundle?${params.toString()}`, {
           signal: controller.signal,
         })
         if (!res.ok) {
@@ -107,15 +114,19 @@ export function ExportSamplesDialog({
     loadPlan()
 
     return () => controller.abort()
-  }, [open, samplesKey, sampleIds.length, includeOptional])
+  }, [open, samplesKey, servicesKey, selectionCount, includeOptional])
 
   const handleExport = useCallback(async () => {
     setExporting(true)
     try {
-      const res = await fetch('/api/export-samples', {
+      const res = await fetch('/api/export-bundle', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ samples: sampleIds, includeOptional }),
+        body: JSON.stringify({
+          samples: sampleIds,
+          services: serviceIds,
+          includeOptional,
+        }),
       })
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { error?: string }
@@ -147,7 +158,7 @@ export function ExportSamplesDialog({
     } finally {
       setExporting(false)
     }
-  }, [sampleIds, includeOptional, onExported, onOpenChange])
+  }, [sampleIds, serviceIds, includeOptional, onExported, onOpenChange])
 
   // Declared optional services that the resolved plan actually keeps.
   const declaredOptional = plan
@@ -163,6 +174,22 @@ export function ExportSamplesDialog({
     : []
 
   const isSingle = sampleIds.length === 1
+  const samplesOnly = serviceIds.length === 0
+  const servicesOnly = sampleIds.length === 0
+
+  const title = servicesOnly
+    ? serviceIds.length === 1
+      ? `Export “${serviceName(serviceIds[0])}”`
+      : `Export ${serviceIds.length} services`
+    : samplesOnly
+      ? isSingle
+        ? `Export “${sampleTitle(sampleIds[0])}”`
+        : `Export ${sampleIds.length} samples`
+      : `Export ${selectionCount} items`
+
+  const description = servicesOnly
+    ? `Build a self-contained copy of Demo Studio with only the selected service${serviceIds.length === 1 ? '' : 's'} and no samples.`
+    : `Build a self-contained copy of Demo Studio with only the selected ${samplesOnly ? `sample${isSingle ? '' : 's'}` : 'samples and services'} and the services they depend on.`
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -175,37 +202,54 @@ export function ExportSamplesDialog({
               <span className="bg-primary/10 ring-primary/15 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ring-1">
                 <Package className="text-primary h-5 w-5" />
               </span>
-              <span className="truncate">
-                {isSingle
-                  ? `Export “${sampleTitle(sampleIds[0])}”`
-                  : `Export ${sampleIds.length} samples`}
-              </span>
+              <span className="truncate">{title}</span>
             </DialogTitle>
             <DialogDescription className="leading-relaxed">
-              Build a self-contained copy of Demo Studio with only the selected
-              sample{isSingle ? '' : 's'} and the services they depend on.
+              {description}
             </DialogDescription>
           </DialogHeader>
         </div>
 
         <div className="space-y-5 px-6 pt-1 pb-5">
           {/* Selected samples */}
-          <div className="space-y-2">
-            <p className="text-muted-foreground flex items-center gap-1.5 text-[11px] font-medium tracking-wider uppercase">
-              <Layers className="h-3.5 w-3.5" />
-              Sample{isSingle ? '' : 's'}
-              <span className="text-muted-foreground/60 normal-case">
-                ({sampleIds.length})
-              </span>
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {sampleIds.map((id) => (
-                <Badge key={id} variant="secondary" className="text-[11px]">
-                  {sampleTitle(id)}
-                </Badge>
-              ))}
+          {sampleIds.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-muted-foreground flex items-center gap-1.5 text-[11px] font-medium tracking-wider uppercase">
+                <Layers className="h-3.5 w-3.5" />
+                Sample{isSingle ? '' : 's'}
+                <span className="text-muted-foreground/60 normal-case">
+                  ({sampleIds.length})
+                </span>
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {sampleIds.map((id) => (
+                  <Badge key={id} variant="secondary" className="text-[11px]">
+                    {sampleTitle(id)}
+                  </Badge>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* Directly selected services */}
+          {serviceIds.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-muted-foreground flex items-center gap-1.5 text-[11px] font-medium tracking-wider uppercase">
+                <Server className="h-3.5 w-3.5" />
+                Service{serviceIds.length === 1 ? '' : 's'}
+                <span className="text-muted-foreground/60 normal-case">
+                  ({serviceIds.length})
+                </span>
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {serviceIds.map((id) => (
+                  <Badge key={id} variant="secondary" className="text-[11px]">
+                    {serviceName(id)}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Optional toggle */}
           <label

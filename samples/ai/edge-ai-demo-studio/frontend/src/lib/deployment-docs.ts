@@ -295,6 +295,40 @@ export function buildDeploymentMarkdown(): string {
     'Add `"$schema": "./docs/deployment.schema.json"` for editor validation and autocompletion.',
   )
   lines.push('')
+  lines.push('## Packaged (Electron) builds')
+  lines.push('')
+  lines.push(
+    'The packaging scripts (`scripts/bash/package.sh` / `scripts/win/package.ps1`)',
+  )
+  lines.push(
+    'bundle the project-root `deployment.json` (plus `docs/deployment.schema.json`)',
+  )
+  lines.push(
+    'into the Electron package automatically, so presets set before packaging ship',
+  )
+  lines.push(
+    'with the app. Inside the packaged app the file lives in the `resources`',
+  )
+  lines.push('directory next to the bundled frontend:')
+  lines.push('')
+  lines.push(
+    '- Linux (zip): `EdgeAIDemoStudio/linux-unpacked/resources/deployment.json`',
+  )
+  lines.push(
+    '- Windows (installer): `<install dir>\\resources\\deployment.json`',
+  )
+  lines.push('')
+  lines.push(
+    'To change the presets of an already packaged build, edit that file and',
+  )
+  lines.push(
+    'restart the app; delete it to fall back to the built-in defaults. Setting',
+  )
+  lines.push(
+    'the `DEPLOYMENT_CONFIG_PATH` environment variable before launching the app',
+  )
+  lines.push('overrides the bundled file.')
+  lines.push('')
   lines.push('## Example')
   lines.push('')
   lines.push('```json')

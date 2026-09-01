@@ -427,7 +427,9 @@ async function runInstaller(splash) {
 
   const projectRoot = getEnvironmentPath(path.join(__dirname, ".."), process.resourcesPath);
   const installerPath = path.join(projectRoot, "scripts", "install_dependencies.sh");
-  const installMarker = path.join(app.getPath("userData"), ".installed");
+  const installMarker = fileURLToPath(
+    new URL(`file://${path.join(app.getPath("userData"), ".installed")}`)
+  );
 
   updateSplashProgress(splash, "Checking system dependencies...", 0);
 
@@ -502,6 +504,40 @@ function getFrontendPath() {
 }
 
 /**
+ * Gets the deployment.json path based on environment.
+ * In packaged builds the file is bundled into resources/ by
+ * scripts/bash/package.sh / scripts/win/package.ps1; in development it
+ * lives in the project root. A user-provided DEPLOYMENT_CONFIG_PATH
+ * @returns {string} The deployment.json path to pass to the frontend
+ */
+function getDeploymentConfigPath() {
+  const defaultPath = getEnvironmentPath(
+    path.join(__dirname, "..", "deployment.json"),
+    path.join(process.resourcesPath, "deployment.json")
+  );
+
+  const override = process.env.DEPLOYMENT_CONFIG_PATH;
+  if (!override) {
+    return defaultPath;
+  }
+
+  const resolvedOverride = fileURLToPath(new URL(`file://${path.resolve(override)}`));
+  const isValid =
+    path.extname(resolvedOverride).toLowerCase() === ".json" &&
+    fs.existsSync(resolvedOverride) &&
+    fs.statSync(resolvedOverride).isFile();
+
+  if (!isValid) {
+    console.error(
+      `Ignoring invalid DEPLOYMENT_CONFIG_PATH "${override}": file does not exist or is not a .json file.`
+    );
+    return defaultPath;
+  }
+
+  return resolvedOverride;
+}
+
+/**
  * Starts the Next.js server
  * @returns {Promise<never>} A rejection-only promise that rejects if the server exits before being declared ready
  */
@@ -520,7 +556,12 @@ function startNextServer() {
   const serverProcess = spawn(nodePath, ["server.js"], {
     cwd: frontendPath,
     stdio: "pipe",
-    env: { ...process.env, PORT: "8080", NEXT_MANUAL_SIG_HANDLE: "true" },
+    env: {
+      ...process.env,
+      PORT: "8080",
+      NEXT_MANUAL_SIG_HANDLE: "true",
+      DEPLOYMENT_CONFIG_PATH: getDeploymentConfigPath(),
+    },
   });
 
   childProcesses.push(serverProcess);

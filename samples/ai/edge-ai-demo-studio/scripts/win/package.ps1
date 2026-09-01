@@ -255,6 +255,41 @@ function Add-ScriptFiles {
     }
 }
 
+# Copy deployment.json (and its editor schema) into the build directory so
+# electron-builder bundles them into resources/ (see extraResources in
+# electron/package.json). The packaged frontend then picks the presets up from
+# resources/deployment.json on startup.
+function Add-DeploymentConfig {
+    Write-Host "Copying deployment.json to temporary directory..." -ForegroundColor Green
+
+    try {
+        $deploymentConfig = Join-Path $PROJECT_ROOT "deployment.json"
+        if (Test-Path $deploymentConfig -PathType Leaf) {
+            Copy-Item $deploymentConfig "$TEMP_DIR/" -Force -ErrorAction Stop
+            Write-Host "deployment.json copied successfully." -ForegroundColor Green
+        } else {
+            Write-Host "Warning: deployment.json not found at $deploymentConfig - the package will use built-in service defaults." -ForegroundColor Yellow
+        }
+
+        # Ship the deployment docs alongside it: the schema keeps the
+        # "$schema": "./docs/deployment.schema.json" reference working for editor
+        # validation, and shipping deployment-config.md means the startup doc
+        # regeneration (frontend/src/lib/deployment-docs.ts) finds identical content
+        # in resources/docs and skips rewriting it.
+        foreach ($docFile in @("deployment.schema.json", "deployment-config.md")) {
+            $docPath = Join-Path $PROJECT_ROOT "docs/$docFile"
+            if (Test-Path $docPath -PathType Leaf) {
+                New-Item -ItemType Directory -Path "$TEMP_DIR/docs" -Force -ErrorAction Stop | Out-Null
+                Copy-Item $docPath "$TEMP_DIR/docs/" -Force -ErrorAction Stop
+                Write-Host "$docFile copied successfully." -ForegroundColor Green
+            }
+        }
+    } catch {
+        Write-Host "Error copying deployment config: $_" -ForegroundColor Red
+        throw
+    }
+}
+
 function Invoke-FrontendBuild {
     # Build the frontend application
     Write-Host "Building frontend application..." -ForegroundColor Green
@@ -455,6 +490,7 @@ try {
     Add-TempDir
     Add-WorkerFiles
     Add-ScriptFiles
+    Add-DeploymentConfig
     Invoke-FrontendBuild
     Start-ElectronPackage
     Invoke-FinalizePackage

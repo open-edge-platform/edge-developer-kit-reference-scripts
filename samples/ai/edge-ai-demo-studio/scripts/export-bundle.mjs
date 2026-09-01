@@ -5,11 +5,13 @@
 
 /**
  * Export a slim subset of Demo Studio that contains only the requested
- * samples plus the services and workers they depend on.
+ * samples plus the services and workers they depend on. Services can also be
+ * requested directly (with or without any samples) via --services.
  *
  * Usage:
- *   node scripts/export-samples.mjs --samples=rag-chatbot,medical-scribe [--out=out/my-export] [--include-optional]
- *   node scripts/export-samples.mjs --list
+ *   node scripts/export-bundle.mjs --samples=rag-chatbot,medical-scribe [--out=out/my-export] [--include-optional]
+ *   node scripts/export-bundle.mjs --services=text-to-speech,ocr
+ *   node scripts/export-bundle.mjs --list
  *
  * The output directory is self-contained: it has its own setup.sh /
  * setup_win.bat and start.sh / start_win.bat, with only the necessary
@@ -45,6 +47,7 @@ function parseArgs(argv) {
   // --no-optional to exclude them.
   const out = {
     samples: [],
+    services: [],
     includeOptional: true,
     list: false,
     out: null,
@@ -68,6 +71,12 @@ function parseArgs(argv) {
         .split(',')
         .map((s) => s.trim())
         .filter(Boolean)
+    } else if (arg.startsWith('--services=')) {
+      out.services = arg
+        .slice('--services='.length)
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
     } else if (arg.startsWith('--out=')) {
       out.out = arg.slice('--out='.length)
     } else if (arg === '--help' || arg === '-h') {
@@ -83,23 +92,28 @@ function parseArgs(argv) {
 }
 
 function printHelp() {
-  console.log(`Usage: node scripts/export-samples.mjs --samples=<id1,id2,...> [options]
+  console.log(`Usage: node scripts/export-bundle.mjs --samples=<id1,id2,...> [options]
 
 Options:
-  --samples=<ids>      Comma-separated sample IDs to export (required)
+  --samples=<ids>      Comma-separated sample IDs to export
+  --services=<ids>     Comma-separated service IDs to export directly (can be
+                       used alone for a services-only export with no samples)
   --no-optional        Exclude each sample's optional service deps
                        (optional deps are INCLUDED by default)
   --include-optional   Explicitly include optional deps (default behavior)
-  --out=<path>         Output directory (default: out/<sample-ids>)
+  --out=<path>         Output directory (default: out/<ids>)
   --dry-run, --plan    Resolve the export plan and exit without writing files
   --json               Emit machine-readable JSON (with --list or --dry-run)
-  --list, -l           List available samples and exit
+  --list, -l           List available samples and services, then exit
   --help, -h           Show this help
 
+At least one of --samples / --services is required.
+
 Examples:
-  node scripts/export-samples.mjs --samples=rag-chatbot
-  node scripts/export-samples.mjs --samples=rag-chatbot --no-optional
-  node scripts/export-samples.mjs --samples=medical-scribe,rag-chatbot
+  node scripts/export-bundle.mjs --samples=rag-chatbot
+  node scripts/export-bundle.mjs --samples=rag-chatbot --no-optional
+  node scripts/export-bundle.mjs --samples=medical-scribe,rag-chatbot
+  node scripts/export-bundle.mjs --services=text-to-speech,ocr
 `)
 }
 
@@ -381,16 +395,26 @@ const args = parseArgs(process.argv.slice(2))
 
 if (args.list) {
   if (args.json) {
-    console.log(JSON.stringify({ samples: listSamples() }, null, 2))
+    console.log(
+      JSON.stringify(
+        { samples: listSamples(), services: listServiceFolders() },
+        null,
+        2,
+      ),
+    )
   } else {
     console.log('Available samples:')
     for (const s of listSamples()) console.log(`  - ${s}`)
+    console.log('Available services:')
+    for (const s of listServiceFolders()) console.log(`  - ${s}`)
   }
   process.exit(0)
 }
 
-if (args.samples.length === 0) {
-  console.error('Error: --samples=<ids> is required (or use --list)')
+if (args.samples.length === 0 && args.services.length === 0) {
+  console.error(
+    'Error: --samples=<ids> or --services=<ids> is required (or use --list)',
+  )
   printHelp()
   process.exit(1)
 }
@@ -405,8 +429,17 @@ if (unknown.length > 0) {
   process.exit(1)
 }
 
-// Resolve services
-const requiredServiceIds = new Set()
+const unknownServices = args.services.filter((s) => !allServices.includes(s))
+if (unknownServices.length > 0) {
+  console.error(`Unknown service(s): ${unknownServices.join(', ')}`)
+  console.error('Run with --list to see available services.')
+  process.exit(1)
+}
+
+// Resolve services. Explicitly requested services are treated as required so
+// a services-only export (no samples) still resolves workers and transitive
+// service deps exactly like a sample-driven one.
+const requiredServiceIds = new Set(args.services)
 const optionalServiceIds = new Set()
 const sampleSummaries = []
 for (const sampleId of args.samples) {
@@ -549,6 +582,7 @@ const reportedWorkerDirs = [...workerDirs, ...suiteWorkerDirs].sort()
 // matches what an actual export would produce.
 const exportPlan = {
   samples: sampleSummaries,
+  requestedServices: [...args.services].sort(),
   services: {
     required: [...requiredServiceIds].sort(),
     optional: [...optionalServiceIds].sort(),
@@ -558,33 +592,64 @@ const exportPlan = {
   includeOptional: args.includeOptional,
 }
 
+/**
+ * Human-readable plan. Only mentions what was actually requested: a
+ * services-only export talks about services, a sample export lists each
+ * sample with the services being exported for it.
+ */
+function printPlan(header) {
+  console.log(header)
+  if (args.samples.length > 0) {
+    console.log('  Samples:')
+    for (const s of sampleSummaries) {
+      const svcs = s.deps
+        .filter((d) => includedServiceIds.has(d.serviceId))
+        .map((d) =>
+          d.role === 'optional' ? `${d.serviceId} (optional)` : d.serviceId,
+        )
+      console.log(`    - ${s.id} (services: ${svcs.join(', ') || 'none'})`)
+    }
+  }
+  if (args.services.length > 0) {
+    const label =
+      args.samples.length > 0 ? 'Services (requested directly)' : 'Services'
+    console.log(`  ${label}: ${[...args.services].sort().join(', ')}`)
+  }
+  // Services pulled in transitively (via imports of the ones above) that
+  // haven't been mentioned yet.
+  const mentioned = new Set(args.services)
+  for (const s of sampleSummaries) {
+    for (const d of s.deps) mentioned.add(d.serviceId)
+  }
+  const extra = [...includedServiceIds]
+    .filter((id) => !mentioned.has(id))
+    .sort()
+  if (extra.length > 0) {
+    console.log(`  Services (transitive deps): ${extra.join(', ')}`)
+  }
+  console.log(`  Workers:  ${reportedWorkerDirs.join(', ')}`)
+}
+
 // Dry run: resolve the plan and stop before touching the filesystem.
 if (args.dryRun) {
   if (args.json) {
     console.log(JSON.stringify(exportPlan, null, 2))
   } else {
-    console.log(`Export plan (dry run)`)
-    console.log(`  Samples:  ${args.samples.join(', ')}`)
-    console.log(`  Services: ${exportPlan.services.included.join(', ') || '(none)'}`)
-    console.log(`  Workers:  ${exportPlan.workers.join(', ')}`)
+    printPlan('Export plan (dry run)')
   }
   process.exit(0)
 }
 
 // Output directory — resolved relative to the user's cwd so that paths like
 // `--out=out/foo` work whether the script is invoked from the repo root or
-// from frontend/ via `npm run export-samples`.
-const outDirRel = args.out ?? `out/${args.samples.join('_')}`
+// from frontend/ via `npm run export-bundle`.
+const outDirRel = args.out ?? `out/${[...args.samples, ...args.services].join('_')}`
 const outDir = args.out
   ? resolve(process.cwd(), outDirRel)
   : resolve(REPO_ROOT, outDirRel)
 
-console.log(`\nExport plan`)
-console.log(`  Samples:  ${args.samples.join(', ')}`)
-console.log(
-  `  Services: ${[...includedServiceIds].sort().join(', ') || '(none)'}`,
-)
-console.log(`  Workers:  ${reportedWorkerDirs.join(', ')}`)
+console.log('')
+printPlan('Export plan')
 console.log(`  Output:   ${relative(REPO_ROOT, outDir)}\n`)
 
 // Wipe & recreate output

@@ -21,7 +21,8 @@ Edge AI Demo Studio is a modern toolkit for deploying, managing, and serving AI 
   - **Image Generation** — Generate images from text prompts using diffusion models accelerated with OpenVINO.
   - **MCP Manager** — Manage Model Context Protocol servers and their tool integrations.
   - **Wake Word Detection** — Detect custom wake words from microphone input and send webhook notifications on detection events.
-- **Samples:** Sample use cases that implement the AI services (see [Exporting Samples](#exporting-samples) to package a subset for standalone deployment)
+  - **OCR** — Optical character recognition — extract text and its location from images using OCR models on OpenVINO.
+- **Samples:** Sample use cases that implement the AI services (see [Exporting Samples & Services](#exporting-samples--services) to package a subset for standalone deployment)
   - **Digital Avatar** — Interact with an AI-powered avatar that combines real-time video with intelligent conversation.
   - **Digital Avatar Lite** — A lightweight animated robot avatar that brings conversations to life with responsive movements and expressions.
   - **RAG Chatbot** — Upload documents and chat with an AI that retrieves relevant context to answer your questions.
@@ -121,17 +122,19 @@ By default, every service is created with its built-in defaults and stays stoppe
 
 The file is read on every startup: the default services are loaded first, then your presets overwrite them. Services with `"status": "online"` are started automatically (they move to `prepare` and are promoted to `active` once their health check passes); everything else stays offline.
 
+The Electron packaging scripts (`scripts/bash/package.sh` / `scripts/win/package.ps1`) bundle the project-root `deployment.json` into the package, so presets set before packaging ship with the app. In a packaged build the file lives at `resources/deployment.json` (next to the bundled frontend) — edit it there and restart the app to change the presets of an existing package, or point the `DEPLOYMENT_CONFIG_PATH` environment variable at a file elsewhere. See [docs/deployment-config.md](docs/deployment-config.md#packaged-electron-builds) for details.
+
 See [docs/deployment-config.md](docs/deployment-config.md) for the full JSON guidelines — all supported fields plus each service's available models, devices, and engines. The reference (and the [docs/deployment.schema.json](docs/deployment.schema.json) editor schema referenced via `$schema` above) is auto-generated from the service registry, so it always matches the version you are running.
 
 ---
 
-## Exporting Samples
+## Exporting Samples & Services
 
-The **Export Samples** feature lets you produce a slim, self-contained copy of Demo Studio that contains only the sample(s) you select, together with the services and workers they depend on. The exported directory includes its own `setup.sh` / `setup_win.bat` and `start.sh` / `start_win.bat` scripts so it can be set up and run independently.
+The **Export Bundle** feature (`scripts/export-bundle.mjs`) lets you produce a slim, self-contained copy of Demo Studio that contains only the sample(s) and/or service(s) you select, together with the services and workers they depend on. You can export samples (their services are resolved automatically), specific services on their own with no samples at all, or a mix of both. The exported directory includes its own `setup.sh` / `setup_win.bat` and `start.sh` / `start_win.bat` scripts so it can be set up and run independently.
 
 ### Via the Launcher Script
 
-Run from the repository root — Node.js is bootstrapped automatically from `thirdparty/` if not already installed. The script lists all available samples, lets you pick one or more by number, then prompts for output directory, optional dependencies, and dry-run preference.
+Run from the repository root — Node.js is bootstrapped automatically from `thirdparty/` if not already installed. The script lists all available samples and services, lets you pick any combination by number (leave a prompt blank to skip that category — e.g. pick only services for a samples-free export), then prompts for output directory, optional dependencies, and dry-run preference.
 
 For Linux:
 ```bash
@@ -141,6 +144,16 @@ For Linux:
 For Windows (PowerShell/Command Prompt):
 ```bat
 .\export.bat
+```
+
+Arguments are forwarded to `scripts/export-bundle.mjs` for non-interactive use:
+
+```bash
+./export.sh --samples=rag-chatbot                    # sample + its service deps
+./export.sh --services=text-to-speech,ocr            # services only, no samples
+./export.sh --samples=rag-chatbot --services=ocr     # mix of both
+./export.sh --list                                   # list available ids
+./export.sh --samples=rag-chatbot --dry-run          # preview the plan only
 ```
 
 ### Via the Frontend GUI
@@ -191,3 +204,35 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for deployment guidelines.
 **Q: Why is Electron Skipped by default**
 
 This is because Electron is being used to create a packaged release only. If you need a packaged release, please refer to [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
+
+**Q: Unable to Start Text Generation service (possibly due to Long Paths Issue) on Windows**
+
+The model could not be downloaded because the path is too long, causing the service to fail to start. Move the `edge-ai-demo-studio` project folder to a shorter path (e.g. `C:\edge-ai-demo-studio`) and try again.
+
+**Q: Unable to start Speech-to-Text service (or other services) on Windows**
+
+If you are behind a private/corporate network, check whether `NO_PROXY` is set in the terminal (CMD prompt/PowerShell) that you start Edge AI Demo Studio from, e.g.:
+
+```powershell
+echo %NO_PROXY%
+```
+
+or in PowerShell:
+
+```powershell
+echo $env:NO_PROXY
+```
+
+The terminal may not have picked up a `NO_PROXY` value that was set via the GUI (Settings > Network & internet > Proxy). Try setting `NO_PROXY` directly in the same terminal session before starting Edge AI Demo Studio:
+
+- CMD prompt (session-only):
+
+  ```cmd
+  set NO_PROXY=localhost,127.0.0.1
+  ```
+
+- PowerShell (session-only):
+
+  ```powershell
+  $env:NO_PROXY = "localhost,127.0.0.1"
+  ```

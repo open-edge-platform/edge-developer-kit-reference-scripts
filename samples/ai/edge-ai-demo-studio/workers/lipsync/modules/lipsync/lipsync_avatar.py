@@ -181,13 +181,17 @@ class LipsyncAvatar(Avatar):
 
         self.load_model()
 
-        # Frame generation: infer only the plan's keyframe positions and fill
-        # the frames in between with RIFE interpolation.
-        self.frame_gen_plan = (
-            frame_gen_plan if frame_gen_plan and frame_gen_plan.enabled else None
-        )
-        if self.frame_gen_plan:
-            self._prepare_keyframe_inference()
+        # Frame generation: when active, infer only the plan's keyframe
+        # positions and fill the frames in between with RIFE interpolation.
+        # The plan is adopted here when it already exists, or later through
+        # set_frame_generation() (the plan may only get built after this
+        # session connected, once the frame generation service is up).
+        # Whether an utterance actually uses it is the per-request
+        # frame_gen_active flag.
+        self.frame_gen_plan = None
+        self.frame_gen_active = False
+        if frame_gen_plan and frame_gen_plan.enabled:
+            self._adopt_frame_gen_plan(frame_gen_plan)
 
         self.cv_frames, self.face_frames, self.face_frames_len, self.coords_list = (
             self.load_avatar(self.avatar_path)
@@ -257,6 +261,26 @@ class LipsyncAvatar(Avatar):
     # ------------------------------------------------------------------
     # Shared pipeline
     # ------------------------------------------------------------------
+
+    def _adopt_frame_gen_plan(self, plan):
+        self.frame_gen_plan = plan
+        self._prepare_keyframe_inference()
+
+    def set_frame_generation(self, active, plan=None):
+        """Toggle frame generation for this session's upcoming utterances.
+
+        Called per lipsync request. Adopts `plan` on first activation when
+        the session was created before the plan existed. The flag is read at
+        batch granularity by lip_sync, so overlapping requests with different
+        flags resolve to whichever was set last. Returns whether frame
+        generation is now active.
+        """
+        if active and self.frame_gen_plan is None and plan and plan.enabled:
+            self._adopt_frame_gen_plan(plan)
+        # _prepare_keyframe_inference may have vetoed the plan (unsupported
+        # model), so re-check it before activating.
+        self.frame_gen_active = bool(active) and self.frame_gen_plan is not None
+        return self.frame_gen_active
 
     def __del__(self):
         getLogger(__file__).info("Avatar deleted")
@@ -459,7 +483,7 @@ class LipsyncAvatar(Avatar):
                     )
                     index = index + 1
             else:
-                if self.frame_gen_plan:
+                if self.frame_gen_plan and self.frame_gen_active:
                     pred = self._run_keyframed_inference(feature_batch, index, debug)
                     n_keyframes = len(self.frame_gen_plan.keyframes)
                     self.frames_inferred += n_keyframes

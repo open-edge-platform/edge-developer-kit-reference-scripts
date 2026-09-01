@@ -260,7 +260,7 @@ class LlamaCPPManager:
         logical_bz = 2048
         physical_bz = 512
         ngl = 0 if device == "CPU" else -1
-        model_context_size = 4096
+        model_context_size = 0
 
         if gguf_metadata:
             logical_bz = gguf_metadata.get("estimate", {}).get("logicalBatchSize", 2048)
@@ -276,7 +276,7 @@ class LlamaCPPManager:
                 ngl = min(int(items[0].get("offloadLayers")), ngl)
 
             model_context_size = gguf_metadata.get("estimate", {}).get(
-                "contextSize", 4096
+                "contextSize", 0
             )
 
         logical_bz = min(2048, logical_bz)
@@ -302,20 +302,16 @@ class LlamaCPPManager:
                 "-ub",
                 str(largest_bz),
             ]
-        elif task == "multimodal":
-            server_executable = get_resource_path(self.CUSTOM_SERVER_EXECUTABLE)
-            extra_args = [
-                "--mmproj",
-                mmproj_path,
-                "--jinja",
-                "--reasoning_format",
-                "deepseek",
-            ]
-            if self.config_file != None:
-                extra_args.extend(["--config-file", str(self.config_file)])
         else:
             server_executable = get_resource_path(self.CUSTOM_SERVER_EXECUTABLE)
             extra_args = ["--jinja", "--reasoning_format", "deepseek"]
+
+            # A GGUF is a VLM because it ships a projector, not because of the
+            # task folder it was registered under. Load whatever projector was
+            # resolved so vision models added as text_generation still see
+            # images, and never emit a bare --mmproj when there is none.
+            if mmproj_path:
+                extra_args.extend(["--mmproj", str(mmproj_path)])
 
             if self.config_file != None:
                 extra_args.extend(["--config-file", str(self.config_file)])
@@ -324,20 +320,21 @@ class LlamaCPPManager:
         if chat_template_file.exists():
             extra_args.extend(["--chat-template-file", str(chat_template_file)])
 
-        suggested_ctx_size, oom = optimize_context_size(
-            model_path, model_context_size, bypass_oom=skip_oom
-        )
-        if oom:
-            raise RuntimeError(f"Failed to start server for {task}: Out of Memory")
+        # No explicit context size means no -c at all: llama-server then picks
+        # the model's own context from the GGUF instead of being pinned to a
+        # number we made up. Probing VRAM is only worth it when we are actually
+        # going to clamp a requested size against it.
+        context_size = 0
+        if n_ctx > 0:
+            # Without GGUF metadata, cap the search at what was asked for
+            # rather than at an invented ceiling that would clamp the request.
+            suggested_ctx_size, oom = optimize_context_size(
+                model_path, model_context_size or n_ctx, bypass_oom=skip_oom
+            )
+            if oom:
+                raise RuntimeError(f"Failed to start server for {task}: Out of Memory")
 
-        if n_ctx > -1:
-            context_size = n_ctx
-
-            if context_size > 0:
-                context_size = min(context_size, suggested_ctx_size)
-            else:
-                context_size = min(model_context_size, suggested_ctx_size)
-
+            context_size = min(n_ctx, suggested_ctx_size) if suggested_ctx_size > 0 else n_ctx
             extra_args.extend(["-c", str(context_size)])
 
         if "-ngl" not in extra_args:
@@ -444,16 +441,22 @@ class LlamaCPPManager:
                 f"Model file not found locally: {local_path}. Please download it first."
             )
 
-        if task == "multimodal":
-            mmproj_path = Path(self.models_base_dir) / task / hf_repo / mmproj_filename
-            if not mmproj_path.exists():
+        mmproj_path = ""
+        if mmproj_filename:
+            candidate = Path(self.models_base_dir) / task / hf_repo / mmproj_filename
+            if candidate.exists():
+                mmproj_path = str(candidate)
+            elif task == "multimodal":
                 raise FileNotFoundError(
-                    f"Multimodal projection file not found locally: {mmproj_path}. Please download it first."
+                    f"Multimodal projection file not found locally: {candidate}. Please download it first."
                 )
-        else:
-            mmproj_path = ""
+        elif task == "multimodal":
+            raise FileNotFoundError(
+                f"No multimodal projection file is published for {hf_repo_with_tag}. "
+                f"This model cannot be served as a multimodal model."
+            )
 
-        return str(local_path), str(mmproj_path)
+        return str(local_path), mmproj_path
 
     def start_server(self, hf_repo_with_tag: str, **kwargs):
         task = self.downloader.get_model_info_for_repo(
@@ -528,6 +531,7 @@ class LlamaCPPManager:
                 "batch_size": logical_bz,
                 "ubatch_size": physical_bz,
                 "ngl": ngl,
+                "mmproj_path": mmproj_path or "",
             }
 
             props = self._wait_for_server(server_url, timeout=timeout)
@@ -710,6 +714,7 @@ class LlamaCPPManager:
                 "batch_size": logical_bz,
                 "ubatch_size": physical_bz,
                 "ngl": ngl,
+                "mmproj_path": mmproj_path or "",
             }
 
             props = self._wait_for_server(server_url, timeout=timeout)
@@ -793,6 +798,13 @@ class LlamaCPPManager:
 
     def get_server_info(self) -> Dict:
         return self.running_servers
+
+    def has_multimodal_projector(self, task: str) -> bool:
+        server_info = self.running_servers.get(task)
+        if not server_info:
+            return False
+
+        return bool(server_info.get("mmproj_path"))
 
     def get_current_active_model(self, task: str) -> str:
         if task in self.running_servers:

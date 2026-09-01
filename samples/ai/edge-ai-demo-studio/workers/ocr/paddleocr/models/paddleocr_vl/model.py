@@ -101,6 +101,12 @@ class PaddleOCRVLModel(BaseOCRModel):
     # ── Loading / conversion ───────────────────────────────────────────────
 
     def load(self) -> None:
+        if self.device.split(".")[0].upper() == "NPU":
+            raise RuntimeError(
+                f"{self.name} does not support NPU. Load it on CPU or GPU, or "
+                f"pick a PP-OCR preset (ppocrv5 / ppocrv5-server / ppocrv3) to "
+                f"run OCR on the NPU."
+            )
         _ensure_vendor_on_path()
         try:
             import ov_paddleocr_vl as vl  # noqa: WPS433 (vendored module)

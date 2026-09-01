@@ -85,6 +85,7 @@ class MuseTalkAvatar(LipsyncAvatar):
         self.whisper_entry = None
         self.kf_entry = None
         self.frame_gen_plan = None
+        self.frame_gen_active = False
 
     def _prepare_keyframe_inference(self):
         # Keyframe-only inference uses a dedicated UNet + VAE decoder pair

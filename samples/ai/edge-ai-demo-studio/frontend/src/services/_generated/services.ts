@@ -7,7 +7,9 @@ import type { Service as ServiceType } from '@/payload-types'
 // Data imports
 import { service as diarizationMeta } from '../diarization/data'
 import { service as embeddingsMeta } from '../embeddings/data'
+import { service as faceRecognitionMeta } from '../face-recognition/data'
 import { service as fileWatcherMeta } from '../file-watcher/data'
+import { service as frameGenerationMeta } from '../frame-generation/data'
 import { service as getiClassifierMeta } from '../geti-classifier/data'
 import { service as imageBasedVideoSearchMeta } from '../suites/metro-ai-suite/image-based-video-search/data'
 import { service as imageGenerationMeta } from '../image-generation/data'
@@ -30,7 +32,9 @@ import { service as wakeWordDetectionMeta } from '../wake-word-detection/data'
 // Demo imports
 import { DiarizationDemo } from '../diarization/demo'
 import { EmbeddingDemo } from '../embeddings/demo'
+import { FaceRecognitionDemo } from '../face-recognition/demo'
 import { FileWatcherDemo } from '../file-watcher/demo'
+import { FrameGenerationDemo } from '../frame-generation/demo'
 import { ImageGenerationDemo } from '../image-generation/demo'
 import { LipsyncDemo } from '../lipsync/demo'
 import { McpDemo } from '../mcp/demo'
@@ -56,10 +60,20 @@ export const serviceMap: Record<ServiceType['type'], Service> = {
     status: 'offline',
     demo: EmbeddingDemo,
   },
+  'face-recognition': {
+    ...faceRecognitionMeta,
+    status: 'offline',
+    demo: FaceRecognitionDemo,
+  },
   'file-watcher': {
     ...fileWatcherMeta,
     status: 'offline',
     demo: FileWatcherDemo,
+  },
+  'frame-generation': {
+    ...frameGenerationMeta,
+    status: 'offline',
+    demo: FrameGenerationDemo,
   },
   'geti-classifier': {
     ...getiClassifierMeta,

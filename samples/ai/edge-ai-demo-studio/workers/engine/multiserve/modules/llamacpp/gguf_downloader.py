@@ -6,6 +6,7 @@ import os
 import requests
 import sys
 import hashlib
+import shutil
 import threading
 import yaml
 from pathlib import Path
@@ -352,16 +353,30 @@ class GGUFDownloader:
         hf_repo_id = hf_repo_with_tag.split(":")[0]
         possible_tasks = ["text_generation", "embeddings", "rerank", "multimodal"]
 
+        empty_task_dir = None
         for task in possible_tasks:
             local_path = Path(self.models_base_dir) / task / hf_repo_id
-            if local_path.is_dir():
+            if not local_path.is_dir():
+                continue
+
+            # A directory left behind by a deleted model or an interrupted
+            # download (it keeps a .cache/ but no weights) must not claim the
+            # model, or it hijacks the lookup from the task that actually
+            # holds the GGUF.
+            if any(local_path.glob("*.gguf")):
                 return task
+
+            if empty_task_dir is None:
+                empty_task_dir = task
 
         if hf_repo_with_tag in self.verified_models:
             return self.verified_models[hf_repo_with_tag].get("task", None)
 
         if hf_repo_id in self.verified_models.keys():
             return self.verified_models[hf_repo_id].get("task", None)
+
+        if empty_task_dir:
+            return empty_task_dir
 
         raise ValueError(
             f"Model {hf_repo_with_tag} not found locally or in the verified list."
@@ -541,8 +556,11 @@ class GGUFDownloader:
             if files_removed:
                 repo_dir = Path(self.models_base_dir) / task / manifest["hf_repo"]
                 try:
-                    if not any(repo_dir.iterdir()):
-                        repo_dir.rmdir()
+                    # Drop the whole repo dir once no weights remain. Leaving it
+                    # for the sake of huggingface_hub's .cache/ would make this
+                    # task shadow the one the model is later downloaded into.
+                    if not any(repo_dir.glob("*.gguf")):
+                        shutil.rmtree(repo_dir, ignore_errors=True)
                     return True
                 except OSError:
                     return False

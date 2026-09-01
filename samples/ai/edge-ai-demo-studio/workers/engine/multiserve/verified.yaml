@@ -39,6 +39,11 @@ models:
     quant: [Q4_K_M]
     source: ["huggingface", "modelscope"]
 
+  unsloth/gemma-4-E4B-it-GGUF:
+    task: multimodal
+    quant: [Q4_K_M]
+    source: ["huggingface", "modelscope"]
+
 ov_models:
   OpenVINO/Qwen3.5-4B-int4-ov:
     task: text_generation
