@@ -1,5 +1,5 @@
 import platform
-import subprocess
+import subprocess  # nosec B404
 import json
 import re
 import sys
