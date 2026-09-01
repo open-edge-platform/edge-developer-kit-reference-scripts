@@ -1,0 +1,33 @@
+{
+  "$schema": "./docs/deployment.schema.json",
+  "services": {
+    "text-generation": {
+      "status": "online",
+      "models": {
+        "default": {
+          "name": "OpenVINO/Qwen3.5-4B-int4-ov",
+          "backend": "openvino",
+          "quant": "int4",
+          "source": "huggingface",
+          "device": "GPU"
+        }
+      }
+    },
+    "ocr": {
+      "status": "online",
+      "models": { "default": { "device": "CPU" } }
+    },
+    "face-recognition": {
+      "status": "online",
+      "models": { "default": { "device": "CPU" } }
+    },
+    "speech-to-text": {
+      "status": "online",
+      "models": { "default": { "device": "CPU" } }
+    },
+    "text-to-speech": {
+      "status": "online",
+      "models": { "default": { "device": "CPU" } }
+    }
+  }
+}

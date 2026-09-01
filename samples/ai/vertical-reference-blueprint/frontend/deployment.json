@@ -1,0 +1,64 @@
+{
+  "$schema": "./docs/deployment.schema.json",
+  "services": {
+    "face-recognition": {
+      "status": "online",
+      "engine": "worker",
+      "port": 8031,
+      "models": {
+        "default": {
+          "name": "omz-retail",
+          "device": "CPU"
+        }
+      }
+    },
+    "ocr": {
+      "status": "online",
+      "engine": "worker",
+      "port": 8029,
+      "models": {
+        "default": {
+          "name": "ppocrv5",
+          "device": "GPU"
+        }
+      }
+    },
+    "speech-to-text": {
+      "status": "online",
+      "engine": "worker",
+      "port": 8023,
+      "models": {
+        "default": {
+          "name": "openai/whisper-base",
+          "device": "NPU",
+          "source": "huggingface"
+        }
+      }
+    },
+    "text-generation": {
+      "status": "online",
+      "engine": "multiserve",
+      "port": 8001,
+      "models": {
+        "default": {
+          "name": "OpenVINO/Qwen3.5-4B-int4-ov",
+          "device": "GPU.0",
+          "backend": "openvino",
+          "source": "huggingface",
+          "type": "default"
+        }
+      }
+    },
+    "text-to-speech": {
+      "status": "online",
+      "engine": "worker",
+      "port": 8020,
+      "models": {
+        "default": {
+          "name": "kokoro",
+          "device": "CPU"
+        }
+      }
+    }
+  }
+}

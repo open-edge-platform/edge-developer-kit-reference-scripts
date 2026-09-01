@@ -1,0 +1,67 @@
+{
+  "name": "frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "node scripts/with-kiosk-env.mjs next dev",
+    "build": "node scripts/with-kiosk-env.mjs next build",
+    "start": "node scripts/with-kiosk-env.mjs next start",
+    "lint": "eslint",
+    "test": "playwright test",
+    "test:report": "playwright show-report",
+    "mocks:gen": "node scripts/gen-mock-docs.mjs",
+    "nfc:probe": "node scripts/nfc-probe.mjs",
+    "drivers:install": "bash scripts/install-drivers.sh",
+    "db:reset": "rm -f db.sqlite db.sqlite-shm db.sqlite-wal",
+    "payload": "PAYLOAD_CONFIG_PATH=src/payload/payload.config.ts payload"
+  },
+  "dependencies": {
+    "@ai-sdk/openai-compatible": "^3.0.30",
+    "@ai-sdk/react": "^4.0.65",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/server": "^2.0.0",
+    "@payloadcms/db-sqlite": "^3.87.1",
+    "@payloadcms/next": "^3.87.1",
+    "@tanstack/react-query": "^5.101.0",
+    "ai": "^7.0.62",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "dompurify": "^3.4.14",
+    "lucide-react": "^1.21.0",
+    "mcp-handler": "^2.1.0",
+    "next": "16.2.12",
+    "payload": "^3.87.1",
+    "pdfkit": "^0.19.1",
+    "radix-ui": "^1.6.0",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "shadcn": "^4.11.0",
+    "tailwind-merge": "^3.6.0",
+    "tw-animate-css": "^1.4.0",
+    "yaml": "^2.9.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/pdfkit": "^0.17.6",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "babel-plugin-react-compiler": "1.0.0",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.9",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  },
+  "optionalDependencies": {
+    "pcsc-mini": "^0.1.3"
+  },
+  "overrides": {
+    "esbuild": "^0.28.1",
+    "undici": "^7.27.2",
+    "sharp": "0.35.3",
+    "postcss": "^8.5.10",
+    "dompurify": "^3.4.14"
+  }
+}

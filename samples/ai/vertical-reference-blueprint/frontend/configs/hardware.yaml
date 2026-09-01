@@ -1,0 +1,89 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+# Strict hardware-backed kiosk profile — every peripheral and AI worker must be live.
+
+api:
+  base_url: /api
+
+terminal:
+  mode: chat
+
+mock:
+  currency: MYR
+  processing_fee: 2
+  latency_ms: 0
+  identity:
+    read_ms: 2800
+    scan_ms: 2300
+
+nfc:
+  # Set to `tap` for a contactless pad; `insert` is for a contact slot.
+  gesture: insert
+  driver: pcsc
+  simulate: never
+  timeout_ms: 30000
+  uid_command: FFCA000000
+  unknown_card: reject
+  # reader: ACR122U
+
+cms:
+  kiosk_key: dev-kiosk-key
+  payload_secret:
+  database_url: file:./db.sqlite
+  admin_email: admin@demo.local
+
+llm:
+  mock: false
+  base_url: http://localhost:8080/api/text-generation/v1
+  model: openvino:OpenVINO/Qwen3.5-4B-int4-ov
+  timeout_ms: 120000
+  extra_body:
+    chat_template_kwargs:
+      enable_thinking: false
+
+ocr:
+  base_url: http://localhost:8080/api/ocr
+  health_path: /healthcheck
+  timeout_ms: 60000
+  dpi: 300
+
+face:
+  base_url: http://localhost:8080/api/face-recognition
+  health_path: /healthcheck
+  require_match: true
+  timeout_ms: 30000
+
+voice:
+  stt:
+    base_url: http://localhost:8080/api/speech-to-text/v1
+    health_path: /../healthcheck
+    timeout_ms: 60000
+  tts:
+    base_url: http://localhost:8080/api/text-to-speech/v1
+    health_path: /../healthcheck
+    timeout_ms: 60000
+    voice: af_heart
+    format: mp3
+  hands_free: false
+  read_aloud: false
+  wait_for_speech: false
+  barge_in: true
+
+documents:
+  source: scanner
+  require_verification: true
+  uploads_dir: ../assets/pdf
+  mocks_dir: ../assets/mocks/citizens/4-hao-rahman/good
+  scanner:
+    driver: sane
+    profile: fi-800r
+    mode: Color
+    source: Adf-duplex
+    args: --page-auto=yes --multifeed-detection Stop --blank-page-skip=yes
+    simulate: never
+    timeout_ms: 120000
+    wait_ms: 30000
+    poll_ms: 2000
+    # device: pfufs:fi-800R:003:004
+    # status_bin: pfufsgetscstatus

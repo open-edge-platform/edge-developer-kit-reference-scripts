@@ -1,0 +1,500 @@
+/*
+ * Copyright (C) 2026 Intel Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-sans);
+  --font-heading: var(--font-heading);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-ink: var(--ink);
+  --color-field: var(--field);
+  --color-selected: var(--selected);
+  --color-cyan: var(--cyan);
+  --color-violet: var(--violet);
+  --color-pink: var(--pink);
+  --color-on-accent: var(--on-accent);
+  --color-dash: var(--dash);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  /* Public Service Kiosk palette — light theme (default). */
+  --background: #e9f1fa;
+  --foreground: #0e1626;
+  --card: rgba(255, 255, 255, 0.78);
+  --card-foreground: #0b1220;
+  --popover: #ffffff;
+  --popover-foreground: #0e1626;
+  --primary: #0068b5;
+  --primary-foreground: #ffffff;
+  --secondary: rgba(255, 255, 255, 0.66);
+  --secondary-foreground: #374357;
+  --muted: rgba(255, 255, 255, 0.52);
+  --muted-foreground: #55637e;
+  --accent: rgba(0, 104, 181, 0.09);
+  --accent-foreground: #0068b5;
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: rgba(16, 27, 58, 0.1);
+  --input: rgba(255, 255, 255, 0.92);
+  --ring: #0068b5;
+  --success: #159a57;
+  --warning: #a9760b;
+  /* Body copy inside notices and info panels — softer than --foreground. */
+  --ink: #374357;
+  /* Input / tappable-tile fill, a shade off --card. */
+  --field: rgba(255, 255, 255, 0.92);
+  /* Blue tint marking a selected tap target. */
+  --selected: rgba(0, 104, 181, 0.09);
+  /* Spot hues for icon tints and small accents. */
+  --cyan: #0068b5;
+  --violet: #004a86;
+  --pink: #00a3e8;
+  /* Text color that sits on the accent gradient. */
+  --on-accent: #ffffff;
+  /* Dashed border for empty upload targets. */
+  --dash: rgba(16, 27, 58, 0.2);
+  --radius: 0.875rem;
+
+  /* Signature gradients. */
+  --gradient-accent: linear-gradient(120deg, #00a3e8, #0068b5 60%, #004a86);
+  --gradient-hero: linear-gradient(100deg, #00a3e8, #0068b5 55%, #004a86);
+  --gradient-success: linear-gradient(140deg, #22c55e, var(--success));
+  /* Ambient aurora wash behind every screen. */
+  --aurora: radial-gradient(1100px 900px at 92% -6%, rgba(0, 199, 253, 0.3), transparent 62%),
+    radial-gradient(1050px 900px at -8% 88%, rgba(0, 104, 181, 0.26), transparent 62%),
+    radial-gradient(900px 760px at 34% 42%, rgba(0, 163, 232, 0.12), transparent 66%);
+  /* Translucent veils for chrome and the welcome screen. */
+  --header-veil: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.6));
+  --footer-veil: linear-gradient(0deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.55));
+  --welcome-veil: linear-gradient(
+    180deg,
+    rgba(233, 241, 250, 0.1) 0%,
+    rgba(233, 241, 250, 0.38) 58%,
+    rgba(233, 241, 250, 0.72) 100%
+  );
+  --grid-line: rgba(16, 27, 58, 0.3);
+  /* Modal scrim. */
+  --overlay: rgba(20, 28, 48, 0.4);
+  /* Elevation. */
+  --shadow-rest: 0 10px 28px rgba(16, 27, 58, 0.07);
+  --shadow-lift: 0 16px 34px rgba(16, 27, 58, 0.12);
+  --shadow-accent: 0 18px 40px rgba(0, 104, 181, 0.26);
+}
+
+.dark {
+  --background: #070b18;
+  --foreground: #edf1fb;
+  --card: rgba(255, 255, 255, 0.05);
+  --card-foreground: #f0f4fd;
+  --popover: #141c33;
+  --popover-foreground: #edf1fb;
+  --primary: #4da3ff;
+  --primary-foreground: #08101f;
+  --secondary: rgba(255, 255, 255, 0.06);
+  --secondary-foreground: #c4d0e8;
+  --muted: rgba(255, 255, 255, 0.03);
+  --muted-foreground: #93a2c2;
+  --accent: rgba(0, 199, 253, 0.09);
+  --accent-foreground: #00c7fd;
+  --border: rgba(255, 255, 255, 0.11);
+  --input: rgba(255, 255, 255, 0.04);
+  --ring: #00c7fd;
+  --success: #4ade80;
+  --warning: #fbbf24;
+  --ink: #c4d0e8;
+  --field: rgba(255, 255, 255, 0.04);
+  --selected: rgba(0, 199, 253, 0.09);
+  --cyan: #00c7fd;
+  --violet: #4da3ff;
+  --pink: #8ec9ff;
+  --on-accent: #08101f;
+  --dash: rgba(255, 255, 255, 0.2);
+
+  --gradient-accent: linear-gradient(120deg, #00c7fd, #4da3ff 60%, #8ec9ff);
+  --gradient-hero: linear-gradient(100deg, #00c7fd, #4da3ff 55%, #8ec9ff);
+  --gradient-success: linear-gradient(140deg, #22c55e, var(--success));
+  --aurora: radial-gradient(1100px 900px at 92% -6%, rgba(0, 199, 253, 0.3), transparent 62%),
+    radial-gradient(1050px 900px at -8% 88%, rgba(77, 163, 255, 0.35), transparent 62%),
+    radial-gradient(900px 760px at 34% 42%, rgba(0, 163, 232, 0.16), transparent 66%);
+  --header-veil: linear-gradient(180deg, rgba(10, 15, 32, 0.92), rgba(10, 15, 32, 0.55));
+  --footer-veil: linear-gradient(0deg, rgba(10, 15, 32, 0.92), rgba(10, 15, 32, 0.5));
+  --welcome-veil: linear-gradient(
+    180deg,
+    rgba(7, 11, 24, 0.06) 0%,
+    rgba(7, 11, 24, 0.34) 58%,
+    rgba(7, 11, 24, 0.74) 100%
+  );
+  --grid-line: rgba(255, 255, 255, 0.6);
+  --overlay: rgba(4, 7, 16, 0.72);
+  --shadow-rest: 0 0 rgba(0, 0, 0, 0);
+  --shadow-lift: 0 16px 34px rgba(0, 0, 0, 0.4);
+  --shadow-accent: 0 18px 44px rgba(0, 133, 214, 0.34);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+/* Signature bright-blue → deep-blue accent gradient used on brand marks, CTAs and active steps. */
+@utility ks-gradient {
+  background-image: var(--gradient-accent);
+}
+
+/* Gradient-filled display text for hero headlines and case references. */
+@utility ks-hero-text {
+  background-image: var(--gradient-hero);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Ambient aurora backdrop behind full screens. */
+@utility ks-aurora {
+  background-color: var(--background);
+  background-image: var(--aurora);
+}
+
+/* Faint blueprint grid overlay, fading out radially (welcome screen). */
+@utility ks-grid {
+  background-image: linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-size: 120px 120px;
+  mask-image: radial-gradient(circle at 50% 42%, #000, transparent 74%);
+  -webkit-mask-image: radial-gradient(circle at 50% 42%, #000, transparent 74%);
+}
+
+/* Translucent chrome veils for the flow header and footer. */
+@utility ks-veil-header {
+  background-image: var(--header-veil);
+}
+@utility ks-veil-footer {
+  background-image: var(--footer-veil);
+}
+
+/* Resting and raised elevation for tap targets (hovered or selected). */
+@utility ks-rest {
+  box-shadow: var(--shadow-rest);
+}
+@utility ks-lift {
+  box-shadow: var(--shadow-lift);
+}
+/* Colored glow under accent-gradient CTAs. */
+@utility ks-glow {
+  box-shadow: var(--shadow-accent);
+}
+
+/* Periodic light sweep across a gradient CTA. */
+@utility ks-sheen {
+  position: relative;
+  overflow: hidden;
+  &::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 38%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5), transparent);
+    transform: skewX(-18deg);
+    animation: ks-sheen 3.4s ease-in-out infinite;
+  }
+  &:disabled::after {
+    display: none;
+  }
+}
+
+/* Slow "breathing" of the welcome CTA: gentle scale plus an expanding cyan ring. */
+@keyframes ks-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--cyan) 30%, transparent);
+  }
+  50% {
+    transform: scale(1.028);
+    box-shadow: 0 0 0 34px color-mix(in srgb, var(--cyan) 0%, transparent);
+  }
+}
+@keyframes ks-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes ks-spin-rev {
+  to { transform: rotate(-360deg); }
+}
+/* Ambient aurora orbs: diagonal drift with a scale "breath", two phases. */
+@keyframes ks-drift-a {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  33% { transform: translate3d(6%, -5%, 0) scale(1.12); }
+  66% { transform: translate3d(-5%, 4%, 0) scale(0.94); }
+}
+@keyframes ks-drift-b {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1.05); }
+  40% { transform: translate3d(-7%, 6%, 0) scale(0.92); }
+  75% { transform: translate3d(5%, -4%, 0) scale(1.14); }
+}
+@keyframes ks-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-14px); }
+}
+/* One-way biometric sweep, fading in and out at the edges. */
+@keyframes ks-scanline {
+  0% { top: 6%; opacity: 0; }
+  12% { opacity: 1; }
+  88% { opacity: 1; }
+  100% { top: 92%; opacity: 0; }
+}
+@keyframes ks-fade {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+/* Staggered entrance for hero content: rises a little further than ks-fade. */
+@keyframes ks-rise {
+  from { opacity: 0; transform: translateY(26px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+/* Expanding ring echoing out of a success badge. */
+@keyframes ks-halo {
+  0% { transform: scale(0.9); opacity: 0.75; }
+  100% { transform: scale(1.9); opacity: 0; }
+}
+/* Checkmark stroke drawing itself in (pair with stroke-dasharray/offset 30). */
+@keyframes ks-draw {
+  to { stroke-dashoffset: 0; }
+}
+/* Gentle bobbing of the welcome logo tile. */
+@keyframes ks-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-9px); }
+}
+@keyframes ks-sheen {
+  0% { transform: translateX(-140%) skewX(-18deg); }
+  55%, 100% { transform: translateX(320%) skewX(-18deg); }
+}
+@keyframes ks-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+@keyframes ks-pop {
+  0% { opacity: 0; transform: scale(0.82); }
+  60% { transform: scale(1.05); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes ks-flow {
+  to { background-position: 220% 0; }
+}
+
+@theme {
+  --animate-ks-pulse: ks-pulse 3s ease-in-out infinite;
+  --animate-ks-spin: ks-spin 1.5s linear infinite;
+  --animate-ks-spin-rev: ks-spin-rev 2.2s linear infinite;
+  --animate-ks-drift-a: ks-drift-a 22s ease-in-out infinite;
+  --animate-ks-drift-b: ks-drift-b 27s ease-in-out infinite;
+  --animate-ks-float-slow: ks-float 9s ease-in-out infinite;
+  --animate-ks-float-slower: ks-float 11s ease-in-out infinite;
+  --animate-ks-scanline: ks-scanline 1.9s ease-in-out infinite;
+  --animate-ks-fade: ks-fade 0.35s ease-out both;
+  --animate-ks-rise: ks-rise 0.55s ease-out both;
+  --animate-ks-blink: ks-blink 2.4s ease-in-out infinite;
+  --animate-ks-pop: ks-pop 0.35s ease-out both;
+  --animate-ks-flow: ks-flow 2.4s linear infinite;
+  --animate-ks-halo: ks-halo 2.4s ease-out infinite;
+  --animate-ks-draw: ks-draw 0.5s ease-out 0.3s forwards;
+  --animate-ks-bob: ks-bob 6s ease-in-out infinite;
+}
+
+/* ─── Guidance & capture animations ────────────────────────────────────── */
+
+/* Bobbing nudge for the arrow/hand that points at the next thing to touch. */
+@keyframes ks-nudge {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(7px); }
+}
+/* Same idea, sideways — for hints that point at a control to their right. */
+@keyframes ks-nudge-x {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(7px); }
+}
+/* Expanding ring drawing the eye to the one control the step is waiting on. */
+@keyframes ks-attention {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ring) 45%, transparent); }
+  70% { box-shadow: 0 0 0 20px color-mix(in srgb, var(--ring) 0%, transparent); }
+  100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ring) 0%, transparent); }
+}
+/* Full-height capture sweep across a camera or scanner viewport. */
+@keyframes ks-sweep {
+  0% { top: -6%; opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { top: 100%; opacity: 0; }
+}
+/* Marching dashes around the face-alignment oval while it waits for a face. */
+@keyframes ks-dash {
+  to { stroke-dashoffset: -1000; }
+}
+/* An ID card sliding down into the reader slot, over and over. */
+@keyframes ks-insert {
+  0% { transform: translateY(-46px) rotate(-3deg); opacity: 0; }
+  22% { opacity: 1; }
+  60% { transform: translateY(6px) rotate(0deg); opacity: 1; }
+  82% { transform: translateY(22px) rotate(0deg); opacity: 0.25; }
+  100% { transform: translateY(22px) rotate(0deg); opacity: 0; }
+}
+/* The card settling into the reader after a successful read — one-shot end of ks-insert. */
+@keyframes ks-seat {
+  from { transform: translateY(-10px); }
+  to { transform: translateY(0); }
+}
+/* A contactless card tapping onto the payment terminal. */
+@keyframes ks-tap {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  45% { transform: translate3d(0, 10px, 0) scale(0.96); }
+  60% { transform: translate3d(0, 10px, 0) scale(0.96); }
+}
+/* Contactless waves radiating off a tapped card / an active reader. */
+@keyframes ks-wave {
+  0% { transform: scale(0.6); opacity: 0; }
+  35% { opacity: 0.8; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+/* Text caret blinking beside "type your answer here". */
+@keyframes ks-caret {
+  0%, 45% { opacity: 1; }
+  55%, 100% { opacity: 0; }
+}
+/* Sequential dots under a "waiting for you" caption. */
+@keyframes ks-dot {
+  0%, 60%, 100% { opacity: 0.25; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-4px); }
+}
+/* Bar filling left-to-right over the length of a hardware detection window. */
+@keyframes ks-fill {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+/* Equalizer bars bouncing beside the avatar's "saying now" caption. */
+@keyframes ks-equalize {
+  0%, 100% { transform: scaleY(0.35); }
+  50% { transform: scaleY(1); }
+}
+/* The drawn assistant figure: a slow blink, and the head-tilt it talks with. */
+@keyframes ks-eye-blink {
+  0%, 91%, 100% { transform: scaleY(1); }
+  94% { transform: scaleY(0.08); }
+  97% { transform: scaleY(1); }
+}
+@keyframes ks-tilt {
+  0%, 100% { transform: rotate(0deg); }
+  30% { transform: rotate(-1.6deg); }
+  70% { transform: rotate(1.6deg); }
+}
+/* The figure's arms, rotating about the shoulder joint each is drawn under. */
+@keyframes ks-arm-wave {
+  0%, 100% { transform: rotate(-104deg); }
+  50% { transform: rotate(-134deg); }
+}
+@keyframes ks-arm-talk-l {
+  0%, 100% { transform: rotate(10deg); }
+  50% { transform: rotate(-16deg); }
+}
+@keyframes ks-arm-talk-r {
+  0%, 100% { transform: rotate(-10deg); }
+  50% { transform: rotate(16deg); }
+}
+@keyframes ks-arm-point {
+  0%, 100% { transform: rotate(-58deg); }
+  50% { transform: rotate(-66deg); }
+}
+@keyframes ks-think-dot {
+  0%, 60%, 100% { opacity: 0.25; }
+  30% { opacity: 1; }
+}
+
+@theme {
+  --animate-ks-nudge: ks-nudge 1.5s ease-in-out infinite;
+  --animate-ks-nudge-x: ks-nudge-x 1.5s ease-in-out infinite;
+  --animate-ks-attention: ks-attention 2.2s ease-out infinite;
+  --animate-ks-sweep: ks-sweep 2.4s ease-in-out infinite;
+  --animate-ks-dash: ks-dash 28s linear infinite;
+  --animate-ks-insert: ks-insert 2.8s ease-in-out infinite;
+  --animate-ks-seat: ks-seat 0.35s ease-out both;
+  --animate-ks-tap: ks-tap 2.2s ease-in-out infinite;
+  --animate-ks-wave: ks-wave 2.2s ease-out infinite;
+  --animate-ks-caret: ks-caret 1.1s step-end infinite;
+  --animate-ks-dot: ks-dot 1.4s ease-in-out infinite;
+  --animate-ks-fill: ks-fill 2s linear forwards;
+  --animate-ks-equalize: ks-equalize 0.9s ease-in-out infinite;
+  --animate-ks-eye-blink: ks-eye-blink 5.4s ease-in-out infinite;
+  --animate-ks-tilt: ks-tilt 3.4s ease-in-out infinite;
+  --animate-ks-arm-wave: ks-arm-wave 1.1s ease-in-out infinite;
+  --animate-ks-arm-talk-l: ks-arm-talk-l 1.7s ease-in-out infinite;
+  --animate-ks-arm-talk-r: ks-arm-talk-r 1.7s ease-in-out 0.85s infinite;
+  --animate-ks-arm-point: ks-arm-point 1.5s ease-in-out infinite;
+  --animate-ks-think-dot: ks-think-dot 1.4s ease-in-out infinite;
+}
+
+/* Staggered entrance for a list of tap targets; capped so long lists stay snappy. */
+@utility ks-stagger {
+  & > * {
+    animation: ks-rise 0.5s ease-out both;
+  }
+  & > *:nth-child(1) { animation-delay: 0ms; }
+  & > *:nth-child(2) { animation-delay: 60ms; }
+  & > *:nth-child(3) { animation-delay: 120ms; }
+  & > *:nth-child(4) { animation-delay: 180ms; }
+  & > *:nth-child(5) { animation-delay: 240ms; }
+  & > *:nth-child(6) { animation-delay: 300ms; }
+  & > *:nth-child(n + 7) { animation-delay: 360ms; }
+}
+
+/* Pulsing halo on a pseudo-element so it composes with the card's own box-shadow. */
+@utility ks-attention-ring {
+  position: relative;
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--ring) 45%, transparent);
+    animation: ks-attention 2.2s ease-out infinite;
+    pointer-events: none;
+  }
+}

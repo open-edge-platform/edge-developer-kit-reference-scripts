@@ -1,0 +1,68 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files — kiosk settings live in config.yaml; .env still overrides it
+.env*
+
+# the live config: copied from configs/ by the launchers, then filled in
+/config.yaml
+
+# per-machine overrides layered over config.yaml
+config.local.yaml
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+db.sqlite
+
+# the Payload signing key, minted on the first boot beside the database
+.payload-secret
+.venv
+
+# Playwright
+node_modules/
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/
+
+# Reference portraits uploaded into the CMS — per-install runtime state,
+# reseeded from data/faces/ when the database is reset.
+/face-photos
+
+# Seed portraits are user-supplied; the kit ships none.
+/data/faces/
