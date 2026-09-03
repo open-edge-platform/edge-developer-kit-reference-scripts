@@ -1,0 +1,188 @@
+<!doctype html>
+<!-- Copyright (C) 2026 Intel Corporation -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
+<html lang="en" data-state="starting">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Vertical Reference Solutions Blueprint</title>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+      html { color-scheme: dark; }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        background: #0b0c10;
+        background-image: radial-gradient(ellipse 60% 50% at 50% 38%, rgba(0, 70, 200, 0.12) 0%, transparent 70%);
+        color: #fff;
+        overflow: hidden;
+        animation: pageIn 0.6s ease-out both;
+        -webkit-user-select: none;
+        user-select: none;
+        cursor: default;
+      }
+
+      @keyframes pageIn {
+        from { opacity: 0; }
+        to   { opacity: 1; }
+      }
+      @keyframes riseIn {
+        from { opacity: 0; transform: translateY(12px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+
+      .logo-wrap {
+        animation: riseIn 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.1s both;
+      }
+      .logo-wrap svg {
+        width: 88px;
+        height: auto;
+        filter: drop-shadow(0 0 18px rgba(0, 113, 197, 0.35));
+      }
+
+      .title {
+        margin-top: 14px;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 4.5px;
+        text-transform: uppercase;
+        color: rgba(255, 255, 255, 0.55);
+        animation: riseIn 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.2s both;
+      }
+
+      .progress-section {
+        width: 72%;
+        margin-top: 40px;
+        animation: riseIn 0.6s ease-out 0.35s both;
+      }
+
+      #progress-label {
+        display: block;
+        font-size: 11.5px;
+        font-weight: 400;
+        color: rgba(255, 255, 255, 0.48);
+        margin-bottom: 10px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        text-align: center;
+      }
+
+      #progress-container {
+        width: 100%;
+        height: 3px;
+        background: rgba(255, 255, 255, 0.08);
+        border-radius: 3px;
+        overflow: hidden;
+        position: relative;
+      }
+
+      #progress-bar {
+        height: 100%;
+        width: 0%;
+        border-radius: 3px;
+        background: linear-gradient(90deg, #0046c8 0%, #0071c5 50%, #00a3e0 100%);
+        box-shadow: 0 0 10px rgba(0, 113, 197, 0.5), 0 0 3px rgba(0, 113, 197, 0.3);
+        transition: width 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+        position: relative;
+        overflow: hidden;
+      }
+
+      #progress-bar::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+          90deg,
+          transparent 0%,
+          rgba(255, 255, 255, 0.25) 50%,
+          transparent 100%
+        );
+        animation: shimmer 1.8s ease-in-out infinite;
+      }
+
+      @keyframes shimmer {
+        0%   { transform: translateX(-100%); }
+        100% { transform: translateX(100%); }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        #progress-bar::after { animation: none; }
+      }
+
+      .note {
+        display: block;
+        margin-top: 10px;
+        font-size: 10.5px;
+        color: rgba(255, 255, 255, 0.3);
+        text-align: center;
+      }
+
+      /* The shell flips this when the server never answered. */
+      [data-state="failed"] .progress-section,
+      [data-state="failed"] .starting-note { display: none; }
+      [data-state="starting"] .failed { display: none; }
+
+      .failed {
+        max-width: 34rem;
+        margin-top: 40px;
+        text-align: center;
+        display: grid;
+        gap: 0.75rem;
+        animation: riseIn 0.6s ease-out both;
+      }
+      .failed .headline { font-size: 0.95rem; font-weight: 600; color: rgba(255, 255, 255, 0.85); }
+      .failed p { font-size: 0.8rem; line-height: 1.5; color: rgba(255, 255, 255, 0.48); }
+    </style>
+  </head>
+  <body>
+    <!-- Intel logo (white variant, inline SVG) -->
+    <div class="logo-wrap">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 30">
+        <rect fill="#0046c8" x="4.55" y="2.1" width="4.96" height="4.96"/>
+        <path fill="#ffffff" d="M9.37,27.9V10.06h-4.7v17.84h4.7ZM40.52,28.08v-4.37c-.69,0-1.26-.04-1.7-.11-.48-.08-.86-.24-1.1-.49-.25-.25-.41-.61-.49-1.07-.07-.44-.11-1.02-.11-1.72v-6.24h3.4v-4.02h-3.4V3.11h-4.7v17.24c0,1.45.13,2.69.38,3.68.25.97.67,1.77,1.25,2.37.58.6,1.36,1.03,2.29,1.29.95.26,2.15.39,3.58.39h.59ZM67.45,27.9V1.74h-4.7v26.16h4.7ZM27.89,11.82c-1.3-1.41-3.14-2.12-5.47-2.12-1.12,0-2.16.23-3.08.69-.92.46-1.71,1.1-2.33,1.9l-.26.33v-.3s0-2.26,0-2.26h-4.63v17.84h4.67v-8.84c0-.11,0-.22,0-.32.05-1.67.46-2.91,1.24-3.7.83-.84,1.83-1.27,2.98-1.27,1.36,0,2.39.42,3.08,1.23.67.8,1.01,1.95,1.02,3.42h0s0,.04,0,.04c0,0,0,0,0,0h0s0,9.43,0,9.43h4.74v-10.13c0-2.54-.66-4.55-1.97-5.95ZM60.31,18.95c0-1.28-.23-2.49-.68-3.61-.45-1.11-1.09-2.1-1.89-2.94-.8-.84-1.78-1.51-2.91-1.98-1.12-.47-2.38-.71-3.73-.71-1.28,0-2.5.25-3.62.73-1.13.49-2.12,1.15-2.95,1.98-.83.83-1.5,1.82-1.98,2.95-.49,1.12-.73,2.34-.73,3.62s.23,2.5.7,3.62c.46,1.13,1.11,2.12,1.93,2.94.82.83,1.82,1.5,2.98,1.98,1.16.49,2.45.73,3.82.73,3.98,0,6.46-1.81,7.94-3.5l-3.38-2.58c-.71.85-2.4,1.99-4.52,1.99-1.33,0-2.42-.31-3.24-.91-.83-.61-1.4-1.44-1.7-2.48l-.05-.17h14.01v-1.68ZM46.33,17.31c0-1.31,1.5-3.59,4.73-3.59,3.23,0,4.73,2.28,4.73,3.58h-9.47Z"/>
+      </svg>
+    </div>
+
+    <div class="title">Vertical Reference Solutions Blueprint</div>
+
+    <div class="progress-section">
+      <span id="progress-label">Starting the kiosk...</span>
+
+      <div id="progress-container">
+        <div id="progress-bar"></div>
+      </div>
+
+      <span class="note starting-note">This takes a moment the first time &mdash; the database is being prepared.</span>
+    </div>
+
+    <div class="failed">
+      <p class="headline">The kiosk did not start.</p>
+      <p>The server was given three minutes and never answered. Run the app from a terminal to see what it reported.</p>
+    </div>
+
+    <script>
+      // The shell reports nothing until the server answers, so the bar eases
+      // toward 90% on its own; the window is replaced outright once Next is up.
+      (function () {
+        var bar = document.getElementById('progress-bar');
+        var start = Date.now();
+        var timer = setInterval(function () {
+          if (document.documentElement.dataset.state === 'failed') {
+            clearInterval(timer);
+            return;
+          }
+          var elapsed = (Date.now() - start) / 1000;
+          bar.style.width = 90 * (1 - Math.exp(-elapsed / 20)) + '%';
+        }, 500);
+      })();
+    </script>
+  </body>
+</html>

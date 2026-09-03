@@ -1,0 +1,19 @@
+{
+  "name": "kiosk-desktop",
+  "version": "0.8.0",
+  "productName": "Vertical Reference Solutions Blueprint",
+  "private": true,
+  "description": "Electron shell that runs the kiosk's Next.js server as a child process and shows it in a window.",
+  "main": "main.js",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "dev": "node scripts/build.mjs --dev",
+    "stage": "node scripts/build.mjs --stage-only"
+  },
+  "devDependencies": {
+    "@electron/fuses": "^2.0.0",
+    "electron": "^39.2.1",
+    "electron-builder": "^26.2.0",
+    "esbuild": "^0.25.10"
+  }
+}
