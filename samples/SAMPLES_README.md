@@ -27,7 +27,7 @@ Refer to below samples to kickstart you own demo or application.
   - [Video Summarization](./ai/video_summarization/README.md)
   - [Visual Textual Query Document Reasoning Engine](./ai/visual-textual-query-driven-document-reasoning-engine/README.md)
   - [VLM Video Summarization & Interactive Chat](./ai/vlm-video-summarization-and-interactive-chat/README.md)
-  - [Vertical Reference Blueprint](./ai/vertical-reference-blueprint/README.md)
+  - [Vertical Reference Solutions Blueprint](./ai/vertical-reference-solutions-blueprint/README.md)
 - **Camera**
   - [MIPI and GMSL Setup Tutorial](./camera/README.md)
 - **Real-Time**

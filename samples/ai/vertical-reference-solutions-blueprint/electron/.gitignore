@@ -1,0 +1,6 @@
+node_modules/
+/out
+/icons
+/resources
+/shell.json
+/electron-builder.config.json

@@ -1,0 +1,16 @@
+{
+  "$schema": "./docs/deployment.schema.json",
+  "services": {
+    "text-generation": { "status": "offline" },
+    "ocr": {
+      "status": "online",
+      "models": { "default": { "device": "NPU" } }
+    },
+    "face-recognition": {
+      "status": "online",
+      "models": { "default": { "device": "CPU" } }
+    },
+    "speech-to-text": { "status": "offline" },
+    "text-to-speech": { "status": "offline" }
+  }
+}
