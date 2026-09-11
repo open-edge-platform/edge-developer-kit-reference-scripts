@@ -2446,11 +2446,11 @@ wheels = [
 
 [[package]]
 name = "pypdf"
-version = "6.15.0"
+version = "6.16.1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/17/17/ee75a92718ec7212de831e71454d702225aa5e474a805cce169806044453/pypdf-6.15.0.tar.gz", hash = "sha256:d39c4d955a76409284a905e2d65b40076d77ab76129e0faaeeb6612403ecfc79", size = 6993794, upload-time = "2026-08-06T13:06:49.929Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b6/5a/df92d1c1ef8806ca28f20f978ee059894868d93de797a7e2edebe7fe1a43/pypdf-6.16.1.tar.gz", hash = "sha256:c4d1b43ddae921387321cf63936cd16a7743b91d2da92f165c149a195c972ba9", size = 7003737, upload-time = "2026-08-14T12:24:04.531Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/af/72/ce3067ac31e214a66388159f8462ddb8c13dd00170f24d555a1f1ae8ee91/pypdf-6.15.0-py3-none-any.whl", hash = "sha256:14e001d6504822cb1ca9c7ed9a69bccb320f59b320730f55af804361abe4d5ee", size = 378123, upload-time = "2026-08-06T13:06:47.709Z" },
+    { url = "https://files.pythonhosted.org/packages/33/a1/724b18d6757ab7253a8fecd3a430eb8d980ed26872ba16651e7b5ddfc63f/pypdf-6.16.1-py3-none-any.whl", hash = "sha256:63fec31c4092ae50b6729beedcb469055b60d20c834bde1c402df241f371f644", size = 382924, upload-time = "2026-08-14T12:24:02.854Z" },
 ]
 
 [[package]]
@@ -3399,7 +3399,7 @@ wheels = [
 
 [[package]]
 name = "unstructured"
-version = "0.23.1"
+version = "0.24.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "beautifulsoup4" },
@@ -3426,9 +3426,9 @@ dependencies = [
     { name = "unstructured-client" },
     { name = "wrapt" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d8/2b/764c89dbbdb2807c0e6e7a3ccf51cd50c11c00dbe90efb1c25a28a07f419/unstructured-0.23.1.tar.gz", hash = "sha256:22fb5d3f3fb9a8ea1ce816482200520c63eb555d24cb1029735256af591c8b9a", size = 1529194, upload-time = "2026-06-11T23:26:34.381Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/62/a6/50f7dbc289bf617ae2850a7c16a3c4a8c5566599053a5cdabaeb6fd38a32/unstructured-0.24.0.tar.gz", hash = "sha256:23824fc1628109aa8c3fd03ac1423c5056e1d80e8357bfd76c03aa5b5b614837", size = 1535977, upload-time = "2026-07-06T22:43:07.724Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1c/71/8384e23839c8589eae202143927681adfbfacccc1e79826e5c090cf95943/unstructured-0.23.1-py3-none-any.whl", hash = "sha256:d017c18cbd93f36fbe2d2041e4d1a87d858335e479cdcfa58fba56acec42df62", size = 1586848, upload-time = "2026-06-11T23:26:32.455Z" },
+    { url = "https://files.pythonhosted.org/packages/f6/83/8f23fa23ea8c0c507e7896dc32662b18f0e9244b5fdedcbc0321d8d87089/unstructured-0.24.0-py3-none-any.whl", hash = "sha256:8f98b2f1be057acff67df7be3a8a2b69a3e09c4543beb923ffa42d15d057d1b0", size = 1594662, upload-time = "2026-07-06T22:43:05.855Z" },
 ]
 
 [[package]]

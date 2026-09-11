@@ -17,8 +17,8 @@ UV_DIR="$THIRDPARTY_DIR/uv"
 UV_PATH="$UV_DIR/uv"
 
 OVMS_ZIP_PATH="$THIRDPARTY_DIR/ovms.tar.gz"
-OVMS_ZIP_URL_UBUNTU22="https://github.com/openvinotoolkit/model_server/releases/download/v2026.2/ovms_ubuntu22_2026.2.0_python_off.tar.gz"
-OVMS_ZIP_URL_UBUNTU24="https://github.com/openvinotoolkit/model_server/releases/download/v2026.2/ovms_ubuntu24_2026.2.0_python_off.tar.gz"
+OVMS_ZIP_URL_UBUNTU22="https://github.com/openvinotoolkit/model_server/releases/download/v2026.3/ovms_ubuntu22_2026.3.0_python_off.tar.gz"
+OVMS_ZIP_URL_UBUNTU24="https://github.com/openvinotoolkit/model_server/releases/download/v2026.3/ovms_ubuntu24_2026.3.0_python_off.tar.gz"
 OVMS_DIR="$THIRDPARTY_DIR/ovms"
 
 # FFmpeg is installed at project root thirdparty directory

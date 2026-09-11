@@ -3,19 +3,19 @@ revision = 3
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'win32'",
-    "python_full_version == '3.13.*' and sys_platform == 'win32'",
-    "python_full_version < '3.13' and sys_platform == 'win32'",
     "python_full_version >= '3.14' and sys_platform == 'linux'",
-    "python_full_version == '3.13.*' and sys_platform == 'linux'",
-    "python_full_version < '3.13' and sys_platform == 'linux'",
     "python_full_version >= '3.14' and sys_platform != 'linux' and sys_platform != 'win32'",
+    "python_full_version == '3.13.*' and sys_platform == 'win32'",
+    "python_full_version == '3.13.*' and sys_platform == 'linux'",
     "python_full_version == '3.13.*' and sys_platform != 'linux' and sys_platform != 'win32'",
+    "python_full_version < '3.13' and sys_platform == 'win32'",
+    "python_full_version < '3.13' and sys_platform == 'linux'",
     "python_full_version < '3.13' and sys_platform != 'linux' and sys_platform != 'win32'",
 ]
 
 [[package]]
 name = "accelerate"
-version = "1.12.0"
+version = "1.15.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "huggingface-hub" },
@@ -26,9 +26,9 @@ dependencies = [
     { name = "safetensors" },
     { name = "torch" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4a/8e/ac2a9566747a93f8be36ee08532eb0160558b07630a081a6056a9f89bf1d/accelerate-1.12.0.tar.gz", hash = "sha256:70988c352feb481887077d2ab845125024b2a137a5090d6d7a32b57d03a45df6", size = 398399, upload-time = "2025-11-21T11:27:46.973Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f5/b5/1d3ed029ac71d3f2961346829a268da923698e9fd63f218f78841f216bfd/accelerate-1.15.0.tar.gz", hash = "sha256:5654f8c5eaa0d4fa68b33e287a97765da6849bf6d51dcac874e73fbbddfb6134", size = 422615, upload-time = "2026-09-09T13:04:49.078Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/9f/d2/c581486aa6c4fbd7394c23c47b83fa1a919d34194e16944241daf9e762dd/accelerate-1.12.0-py3-none-any.whl", hash = "sha256:3e2091cd341423207e2f084a6654b1efcd250dc326f2a37d6dde446e07cabb11", size = 380935, upload-time = "2025-11-21T11:27:44.522Z" },
+    { url = "https://files.pythonhosted.org/packages/8a/4c/34f0450479d01195027260da68d8a3880683f1640c3ca5adf64acb3185f1/accelerate-1.15.0-py3-none-any.whl", hash = "sha256:97eacca0b73e45cb867dbf8c5d5d4dc32219544300e0c8992c7334dc2ef33cec", size = 394295, upload-time = "2026-09-09T13:04:47.331Z" },
 ]
 
 [[package]]
@@ -68,16 +68,16 @@ version = "0.49.2"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'win32'",
-    "python_full_version == '3.13.*' and sys_platform == 'win32'",
-    "python_full_version < '3.13' and sys_platform == 'win32'",
     "python_full_version >= '3.14' and sys_platform != 'linux' and sys_platform != 'win32'",
+    "python_full_version == '3.13.*' and sys_platform == 'win32'",
     "python_full_version == '3.13.*' and sys_platform != 'linux' and sys_platform != 'win32'",
+    "python_full_version < '3.13' and sys_platform == 'win32'",
     "python_full_version < '3.13' and sys_platform != 'linux' and sys_platform != 'win32'",
 ]
 dependencies = [
-    { name = "numpy", marker = "sys_platform != 'linux'" },
-    { name = "packaging", marker = "sys_platform != 'linux'" },
-    { name = "torch", marker = "sys_platform != 'linux'" },
+    { name = "numpy" },
+    { name = "packaging" },
+    { name = "torch" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d8/7d/f1fe0992334b18cd8494f89aeec1dcc674635584fcd9f115784fea3a1d05/bitsandbytes-0.49.2-py3-none-macosx_14_0_arm64.whl", hash = "sha256:87be5975edeac5396d699ecbc39dfc47cf2c026daaf2d5852a94368611a6823f", size = 131940, upload-time = "2026-02-16T21:26:04.572Z" },
@@ -86,7 +86,7 @@ wheels = [
 
 [[package]]
 name = "bitsandbytes"
-version = "0.50.0.dev0"
+version = "0.50.3.dev0"
 source = { url = "https://github.com/bitsandbytes-foundation/bitsandbytes/releases/download/continuous-release_main/bitsandbytes-1.33.7.preview-py3-none-manylinux_2_24_x86_64.whl" }
 resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'linux'",
@@ -94,12 +94,12 @@ resolution-markers = [
     "python_full_version < '3.13' and sys_platform == 'linux'",
 ]
 dependencies = [
-    { name = "numpy", marker = "sys_platform == 'linux'" },
-    { name = "packaging", marker = "sys_platform == 'linux'" },
-    { name = "torch", marker = "sys_platform == 'linux'" },
+    { name = "numpy" },
+    { name = "packaging" },
+    { name = "torch" },
 ]
 wheels = [
-    { url = "https://github.com/bitsandbytes-foundation/bitsandbytes/releases/download/continuous-release_main/bitsandbytes-1.33.7.preview-py3-none-manylinux_2_24_x86_64.whl", hash = "sha256:158f0e0411541c1765b7047f8b45bbbddfa11f7c0f56c64ba3e098a281f41b21" },
+    { url = "https://github.com/bitsandbytes-foundation/bitsandbytes/releases/download/continuous-release_main/bitsandbytes-1.33.7.preview-py3-none-manylinux_2_24_x86_64.whl", hash = "sha256:e8551a5e7f57206be7f0ebfc9abc30d5bf3057373929168bdcfa0248b0c509fe" },
 ]
 
 [package.metadata]
@@ -1024,8 +1024,8 @@ name = "oneccl"
 version = "2022.0.0"
 source = { registry = "https://download.pytorch.org/whl/xpu" }
 dependencies = [
-    { name = "impi-rt", marker = "sys_platform == 'linux'" },
-    { name = "intel-sycl-rt", marker = "sys_platform == 'linux'" },
+    { name = "impi-rt" },
+    { name = "intel-sycl-rt" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/94/cb/c8918376dfba8392db992ac9cfac7f201b4ebb09178de3b7f33d98e3d745/oneccl-2022.0.0-py2.py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:31a122f0b46da841bf73ab6ccac1bd11e7d2b9d9ec7b84c8cf645d48c2095e8d" },
@@ -1036,7 +1036,7 @@ name = "oneccl-devel"
 version = "2022.0.0"
 source = { registry = "https://download.pytorch.org/whl/xpu" }
 dependencies = [
-    { name = "oneccl", marker = "sys_platform == 'linux'" },
+    { name = "oneccl" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c7/39/152a30df6945ac4e37f72e5f7d45f03aafcbf481857796aaa38645292333/oneccl_devel-2022.0.0-py2.py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:b5117136771cda275ddc4124ec3cf7eb6fdb96dea3792d3e83b161b771ea601f" },
@@ -1894,7 +1894,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "accelerate" },
     { name = "bitsandbytes", version = "0.49.2", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux'" },
-    { name = "bitsandbytes", version = "0.50.0.dev0", source = { url = "https://github.com/bitsandbytes-foundation/bitsandbytes/releases/download/continuous-release_main/bitsandbytes-1.33.7.preview-py3-none-manylinux_2_24_x86_64.whl" }, marker = "sys_platform == 'linux'" },
+    { name = "bitsandbytes", version = "0.50.3.dev0", source = { url = "https://github.com/bitsandbytes-foundation/bitsandbytes/releases/download/continuous-release_main/bitsandbytes-1.33.7.preview-py3-none-manylinux_2_24_x86_64.whl" }, marker = "sys_platform == 'linux'" },
     { name = "certifi" },
     { name = "diffusers" },
     { name = "fastapi", extra = ["all"] },
@@ -1913,7 +1913,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "accelerate", specifier = "==1.12.0" },
+    { name = "accelerate", specifier = ">=1.12.0" },
     { name = "bitsandbytes", marker = "sys_platform != 'linux'", specifier = ">=0.49.2" },
     { name = "bitsandbytes", marker = "sys_platform == 'linux'", url = "https://github.com/bitsandbytes-foundation/bitsandbytes/releases/download/continuous-release_main/bitsandbytes-1.33.7.preview-py3-none-manylinux_2_24_x86_64.whl" },
     { name = "certifi", specifier = ">=2026.2.25", index = "https://pypi.org/simple" },
@@ -1927,7 +1927,7 @@ requires-dist = [
     { name = "setuptools", specifier = ">=81.0.0", index = "https://pypi.org/simple" },
     { name = "torch", marker = "sys_platform != 'linux' and sys_platform != 'win32'", specifier = ">=2.13.0" },
     { name = "torch", marker = "sys_platform == 'linux' or sys_platform == 'win32'", specifier = ">=2.13.0", index = "https://download.pytorch.org/whl/xpu" },
-    { name = "transformers", specifier = "==5.5.0" },
+    { name = "transformers", specifier = "==5.10.0" },
     { name = "ultralytics", specifier = "==8.4.19" },
     { name = "urllib3", specifier = ">=2.6.3", index = "https://pypi.org/simple" },
     { name = "uvicorn", specifier = ">=0.41.0" },
@@ -2062,7 +2062,7 @@ wheels = [
 
 [[package]]
 name = "transformers"
-version = "5.5.0"
+version = "5.10.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "huggingface-hub" },
@@ -2075,9 +2075,9 @@ dependencies = [
     { name = "tqdm" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ff/9d/fb46e729b461985f41a5740167688b924a4019141e5c164bea77548d3d9e/transformers-5.5.0.tar.gz", hash = "sha256:c8db656cf51c600cd8c75f06b20ef85c72e8b8ff9abc880c5d3e8bc70e0ddcbd", size = 8237745, upload-time = "2026-04-02T16:13:08.113Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b1/5d/a0e414257ebd6d24925fb3080e00523eb35c9e6c9063ffc50360286ed152/transformers-5.10.0.tar.gz", hash = "sha256:206c54d6d992bc35fef90f1252ac3f2746cdf549928b76e7c8c4f182684cee60", size = 8738868, upload-time = "2026-06-03T15:16:05.857Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e7/28/35f7411ff80a3640c1f4fc907dcbb6a65061ebb82f66950e38bfc9f7f740/transformers-5.5.0-py3-none-any.whl", hash = "sha256:821a9ff0961abbb29eb1eb686d78df1c85929fdf213a3fe49dc6bd94f9efa944", size = 10245591, upload-time = "2026-04-02T16:13:03.462Z" },
+    { url = "https://files.pythonhosted.org/packages/d9/19/448dd8054ac95d61718105bea048ded00a60551824e08b4280cd31770039/transformers-5.10.0-py3-none-any.whl", hash = "sha256:eae143e46d8e521da604bc4fdc45af7dd90e96eacbbc27f68d2754150aa5175a", size = 10923423, upload-time = "2026-06-03T15:16:02.505Z" },
 ]
 
 [[package]]
@@ -2119,8 +2119,9 @@ wheels = [
 name = "typing-extensions"
 version = "4.15.0"
 source = { registry = "https://download.pytorch.org/whl/xpu" }
+sdist = { url = "https://files.pythonhosted.org/packages/72/94/1a15dd82efb362ac84269196e94cf00f187f7ed21c242792a923cdb1c61f/typing_extensions-4.15.0.tar.gz", hash = "sha256:0cea48d173cc12fa28ecabc3b837ea3cf6f38c6d1136f85cbaaf598984861466" }
 wheels = [
-    { url = "https://download.pytorch.org/whl/typing_extensions-4.15.0-py3-none-any.whl" },
+    { url = "https://files.pythonhosted.org/packages/18/67/36e9267722cc04a6b9f15c7f3441c2363321a3ea07da7ae0c0707beb2a9c/typing_extensions-4.15.0-py3-none-any.whl", hash = "sha256:f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548" },
 ]
 
 [[package]]

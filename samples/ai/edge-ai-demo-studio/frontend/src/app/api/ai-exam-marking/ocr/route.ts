@@ -46,8 +46,9 @@ export async function POST(request: Request) {
           role: 'user',
           content: [
             {
-              type: 'image',
-              image: Buffer.from(image, 'base64'),
+              type: 'file',
+              mediaType: 'image',
+              data: Buffer.from(image, 'base64'),
             },
             {
               type: 'text',

@@ -33,7 +33,7 @@ check_ovms() {
 check_uv
 check_ovms
 
-OVMS_VERSION="v2026.2"
+OVMS_VERSION="v2026.3"
 OPTIMUM_VENV_DIR="$SCRIPT_DIR/thirdparty/.venv"
 OPTIMUM_EXPORT_MODEL_URL="https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/tags/${OVMS_VERSION}/demos/common/export_models"
 OPTIMUM_EXPORT_MODEL_REQUIREMENTS="requirements.txt"

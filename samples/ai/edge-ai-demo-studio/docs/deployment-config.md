@@ -144,7 +144,7 @@ Detect and identify faces against a reference gallery using Open Model Zoo or Op
 
 | Field | Value |
 | --- | --- |
-| Default port | 8031 |
+| Default port | 8032 |
 | Engines | `worker` |
 | Default model | `omz-retail` on `CPU` |
 | Devices | `CPU`, `GPU` |
@@ -183,7 +183,7 @@ RIFE video frame interpolation: fill in-between frames or upscale video FPS.
 | Default model | `RIFE` on `CPU` |
 | Devices | `CPU`, `GPU` |
 | Custom models | no |
-| Model sources | `huggingface`, `modelscope` |
+| Model sources | `huggingface` |
 | Supported OS | `linux`, `windows` |
 
 Known models:
@@ -402,6 +402,7 @@ Known models:
 
 | Model (`models.default.name`) | Devices | Backend |
 | --- | --- | --- |
+| `Qwen/Qwen3-ASR-1.7B-hf` | `CPU`, `GPU` | `openvino` |
 | `openai/whisper-large-v3-turbo` | `CPU`, `GPU`, `NPU` | `openvino` |
 | `openai/whisper-large-v3` | `CPU`, `GPU`, `NPU` | `openvino` |
 | `openai/whisper-medium` | `CPU`, `GPU`, `NPU` | `openvino` |

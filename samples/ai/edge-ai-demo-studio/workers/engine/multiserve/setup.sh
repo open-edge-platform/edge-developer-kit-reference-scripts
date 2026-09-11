@@ -30,7 +30,7 @@ GGUF_PARSER_INSTALL_DIR="engine"
 
 SHARED_OVMS_DIR="../../thirdparty/ovms"
 
-OPTIMUM_EXPORT_MODEL_URL="https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/tags/v2026.2/demos/common/export_models"
+OPTIMUM_EXPORT_MODEL_URL="https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/tags/v2026.3/demos/common/export_models"
 OPTIMUM_EXPORT_MODEL_REQUIREMENTS_URL="requirements.txt"
 
 # --- Utility Functions ---

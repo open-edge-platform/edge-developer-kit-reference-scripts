@@ -17,7 +17,7 @@ export const service: ServiceMeta = {
   longDescription:
     'Face recognition service with selectable pipelines on OpenVINO. The Open Model Zoo presets follow the face_recognition_demo chain — an SSD face detector (retail-0004 or adas-0001), landmarks-regression-retail-0009 for five-point alignment and face-reidentification-retail-0095 for 256-d descriptors; the OpenCV Zoo preset pairs YuNet detection with SFace 128-d embeddings. Enroll people with one or more reference images, then identify faces in uploads or webcam captures; the gallery is re-embedded automatically when the model is switched.',
   icon: ScanFace,
-  port: 8031,
+  port: 8032,
   supportedOS: ['linux', 'windows'],
   execution: { mode: 'worker' },
   defaultModel: {

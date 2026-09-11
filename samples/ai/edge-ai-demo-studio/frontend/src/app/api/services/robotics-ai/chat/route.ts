@@ -9,7 +9,7 @@ import {
   createUIMessageStream,
   createUIMessageStreamResponse,
   extractReasoningMiddleware,
-  stepCountIs,
+  isStepCount,
   streamText,
   wrapLanguageModel,
   type ToolSet,
@@ -139,10 +139,10 @@ export async function POST(req: Request) {
     execute: async ({ writer }) => {
       const result = streamText({
         model: wrappedModel,
-        system: systemPrompt,
+        instructions: systemPrompt,
         messages: modelMessages,
-        ...(hasMcpTools ? { tools: mcpTools, stopWhen: stepCountIs(5) } : {}),
-        onFinish: async () => {
+        ...(hasMcpTools ? { tools: mcpTools, stopWhen: isStepCount(5) } : {}),
+        onEnd: async () => {
           await mcpClient?.close()
         },
       })

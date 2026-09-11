@@ -42,7 +42,7 @@ set "SHARED_OVMS_DIR=..\..\thirdparty\ovms"
 
 set "UV_HTTP_TIMEOUT=180"
 
-set "OPTIMUM_EXPORT_MODEL_URL=https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/tags/v2026.2/demos/common/export_models"
+set "OPTIMUM_EXPORT_MODEL_URL=https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/tags/v2026.3/demos/common/export_models"
 set "OPTIMUM_EXPORT_MODEL_SCRIPT=export_model.py"
 set "OPTIMUM_EXPORT_MODEL_REQUIREMENTS_URL=requirements.txt"
 

@@ -20,7 +20,7 @@ export const sample: Sample = {
       role: 'required',
       recommended: {
         device: 'GPU.0',
-        model: 'openai/whisper-large-v3-turbo',
+        model: 'Qwen/Qwen3-ASR-1.7B-hf',
       },
     },
     {
