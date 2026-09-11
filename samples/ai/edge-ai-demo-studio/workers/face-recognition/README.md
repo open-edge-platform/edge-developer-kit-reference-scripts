@@ -44,5 +44,5 @@ default).
 ## Run
 
 ```bash
-./start.sh --port 8031 --model omz-retail --device AUTO
+./start.sh --port 8032 --model omz-retail --device AUTO
 ```

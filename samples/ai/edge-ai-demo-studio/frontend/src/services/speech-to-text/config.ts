@@ -8,6 +8,12 @@ const STT_DEVICES = ['CPU', 'GPU', 'NPU']
 export const serviceConfig: ServiceConfig = {
   availableModels: [
     {
+      value: 'Qwen/Qwen3-ASR-1.7B-hf',
+      label: 'Qwen3 ASR 1.7B (Hugging Face)',
+      availableDevices: ['CPU', 'GPU'],
+      backend: 'openvino',
+    },
+    {
       value: 'openai/whisper-large-v3-turbo',
       label: 'Whisper Large v3 Turbo',
       availableDevices: STT_DEVICES,

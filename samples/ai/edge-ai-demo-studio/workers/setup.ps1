@@ -78,7 +78,7 @@ $uvDir = Join-Path $thirdpartyDir "uv"
 $uvPath = Join-Path $uvDir "uv.exe"
 
 $ovmsZipPath = Join-Path $thirdpartyDir "ovms_windows.zip"
-$ovmsZipUrl = 'https://github.com/openvinotoolkit/model_server/releases/download/v2026.2/ovms_windows_2026.2.0_python_on.zip'
+$ovmsZipUrl = 'https://github.com/openvinotoolkit/model_server/releases/download/v2026.3/ovms_windows_2026.3.0_python_on.zip'
 $ovmsDir = Join-Path $thirdpartyDir "ovms"
 $ovmsPath = Join-Path $ovmsDir "ovms.exe"
 

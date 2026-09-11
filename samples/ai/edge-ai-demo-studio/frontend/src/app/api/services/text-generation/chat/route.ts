@@ -7,7 +7,7 @@ import {
   createUIMessageStream,
   createUIMessageStreamResponse,
   extractReasoningMiddleware,
-  stepCountIs,
+  isStepCount,
   streamText,
   type UIMessage,
   wrapLanguageModel,
@@ -114,22 +114,6 @@ function getLastUserText(messages: UIMessage[]): string {
     }
   }
   return ''
-}
-
-function cleanupImageMessage(messages: UIMessage[]): UIMessage[] {
-  return messages.map((msg) => {
-    if (msg.role !== 'user') return msg
-    return {
-      ...msg,
-      parts: msg.parts.map((p) => {
-        if (p.type === 'file') {
-          const [, base64] = p.url.split(',', 2)
-          return { ...p, url: base64 }
-        }
-        return p
-      }),
-    }
-  })
 }
 
 interface LipsyncConfig {
@@ -275,23 +259,21 @@ export async function POST(req: Request) {
   })
   const stream = createUIMessageStream({
     execute: async ({ writer }) => {
-      const modelMessages = await convertToModelMessages(
-        cleanupImageMessage(messages),
-      )
+      const modelMessages = await convertToModelMessages(messages)
 
       // Initialize sentence processor for lipsync sentence-by-sentence streaming
       const sentenceProcessor = lipsync ? new SentenceProcessor() : null
 
       const result = streamText({
         model: wrappedModel,
-        system: systemPrompt,
+        instructions: systemPrompt,
         messages: modelMessages,
         maxOutputTokens: maxTokens,
         temperature,
         topP,
         topK,
         ...(mcpTools && Object.keys(mcpTools.tools).length > 0
-          ? { tools: mcpTools.tools, stopWhen: stepCountIs(5) }
+          ? { tools: mcpTools.tools, stopWhen: isStepCount(5) }
           : {}),
         onChunk({ chunk }) {
           if (chunk.type === 'text-delta' && sentenceProcessor && lipsync) {
@@ -301,7 +283,7 @@ export async function POST(req: Request) {
             }
           }
         },
-        onFinish: async () => {
+        onEnd: async () => {
           if (sentenceProcessor && lipsync) {
             const finalSentences = sentenceProcessor.flush()
             for (const sentence of finalSentences) {

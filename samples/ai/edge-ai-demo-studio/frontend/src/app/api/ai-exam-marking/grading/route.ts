@@ -33,6 +33,7 @@ export async function POST(request: Request) {
     const { output } = await generateText({
       model: provider(model),
       temperature: 0,
+      instructions: prompt,
       output: Output.object({
         schema: z.object({
           student_answer: z.string(),
@@ -42,10 +43,6 @@ export async function POST(request: Request) {
         }),
       }),
       messages: [
-        {
-          role: 'system',
-          content: prompt,
-        },
         {
           role: 'user',
           content: `Evaluate the student's answer:\n\n${answer?.trim() ? answer : 'Empty answer'}`,

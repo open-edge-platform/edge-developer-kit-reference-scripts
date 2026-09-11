@@ -37,8 +37,9 @@ Test-UV
 Test-FFmpeg
 Test-OVMS
 
-$OVMS_VERSION = "v2026.2"
+$OVMS_VERSION = "v2026.3"
 $OPTIMUM_VENV_DIR = Join-Path $SCRIPT_DIR "thirdparty\.venv"
+$OPTIMUM_VENV_PROFILE_FILE = Join-Path $SCRIPT_DIR "thirdparty\.venv-profile"
 $OPTIMUM_EXPORT_MODEL_URL = "https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/tags/$OVMS_VERSION/demos/common/export_models"
 $OPTIMUM_EXPORT_MODEL_REQUIREMENTS = "requirements.txt"
 $OPTIMUM_EXPORT_MODEL_SCRIPT = "export_model.py"
@@ -95,11 +96,64 @@ function Install-OptimumVenv {
     & $UV_CMD pip install --python $OPTIMUM_VENV_DIR modelscope datasets Jinja2==3.1.6 MarkupSafe==3.0.2
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+    "base" | Set-Content -Path $OPTIMUM_VENV_PROFILE_FILE -NoNewline
+
     Write-Host "Optimum venv setup completed."
+}
+
+# Swap optimum-intel/transformers in the Optimum venv depending on the selected
+# STT model. Qwen3-ASR needs a forked optimum-intel + transformers>=5.13; every
+# other model needs the versions pinned in requirements.txt. Tracked via a
+# profile marker file so we only reinstall when the profile actually changes.
+function Set-OptimumProfile {
+    param([string]$ModelId)
+
+    $DesiredProfile = if ($ModelId -eq "Qwen/Qwen3-ASR-1.7B-hf") { "qwen3" } else { "base" }
+
+    $CurrentProfile = ""
+    if (Test-Path $OPTIMUM_VENV_PROFILE_FILE) {
+        $CurrentProfile = (Get-Content -Path $OPTIMUM_VENV_PROFILE_FILE -Raw).Trim()
+    }
+
+    if ($CurrentProfile -eq $DesiredProfile) {
+        Write-Host "Optimum venv already on '$DesiredProfile' profile. Skipping dependency swap."
+        return
+    }
+
+    $RequirementsPath = Join-Path (Join-Path $SCRIPT_DIR "thirdparty") $OPTIMUM_EXPORT_MODEL_REQUIREMENTS
+
+    if ($DesiredProfile -eq "qwen3") {
+        Write-Host "Switching Optimum venv to 'qwen3' profile (forked optimum-intel + transformers 5.13)..."
+        & $UV_CMD pip install --python $OPTIMUM_VENV_DIR git+https://github.com/openvino-dev-samples/optimum-intel.git@add-qwen3-asr-hf-and-forced-aligner
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        & $UV_CMD pip install --python $OPTIMUM_VENV_DIR --pre "transformers>=5.13,<5.14" "safetensors>=0.8.0"
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    } else {
+        Write-Host "Switching Optimum venv to 'base' profile (requirements.txt versions)..."
+        & $UV_CMD pip install --python $OPTIMUM_VENV_DIR --prerelease allow --index-strategy unsafe-best-match `
+            --reinstall-package optimum-intel --reinstall-package transformers -r $RequirementsPath
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    }
+
+    $DesiredProfile | Set-Content -Path $OPTIMUM_VENV_PROFILE_FILE -NoNewline
+    Write-Host "Optimum venv now on '$DesiredProfile' profile."
+}
+
+function Get-SttModelId {
+    param([string[]]$Arguments)
+
+    for ($i = 0; $i -lt $Arguments.Length - 1; $i++) {
+        if ($Arguments[$i] -eq "--stt-model-id") {
+            return $Arguments[$i + 1]
+        }
+    }
+    return ""
 }
 
 Set-Location $SCRIPT_DIR
 Install-OvmsJinja
 Install-OptimumVenv
+$SttModelId = Get-SttModelId -Arguments $args
+Set-OptimumProfile -ModelId $SttModelId
 & $UV_CMD run main.py @args
 exit $LASTEXITCODE

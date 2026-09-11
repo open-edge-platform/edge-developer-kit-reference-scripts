@@ -352,7 +352,7 @@
               "type": "integer",
               "minimum": 1,
               "maximum": 65535,
-              "description": "Port to expose the service on (default: 8031)"
+              "description": "Port to expose the service on (default: 8032)"
             },
             "models": {
               "type": "object",
@@ -2461,6 +2461,7 @@
                       "type": "string",
                       "description": "Model identifier (e.g. Hugging Face repo id)",
                       "enum": [
+                        "Qwen/Qwen3-ASR-1.7B-hf",
                         "openai/whisper-large-v3-turbo",
                         "openai/whisper-large-v3",
                         "openai/whisper-medium",

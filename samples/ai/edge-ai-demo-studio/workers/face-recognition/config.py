@@ -24,7 +24,7 @@ MODELS_DIR = Path(
 
 DEFAULT_DEVICE = os.environ.get("FACE_RECOGNITION_DEVICE", "AUTO")
 DEFAULT_MODEL = os.environ.get("FACE_RECOGNITION_MODEL", "omz-retail")
-DEFAULT_PORT = int(os.environ.get("FACE_RECOGNITION_PORT", "8031"))
+DEFAULT_PORT = int(os.environ.get("FACE_RECOGNITION_PORT", "8032"))
 CORS_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
