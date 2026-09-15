@@ -1,0 +1,50 @@
+# Auto-reply and maintainer reminder for newly opened issues
+name: "Issue Bot"
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Comment triage request and assign maintainer
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue_number = context.issue.number;
+
+            const body = [
+              "Thank you for raising the issue on the edge-developer-kit GitHub.",
+              "The issue is currently being assigned to an Intel representative.",
+              "",
+              "Please help fill in the following information:",
+              "- Kernel version",
+              "- Platform",
+              "- OS version",
+              "- BKC or samples used"
+            ].join("\n");
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+              body,
+            });
+
+            // addAssignees triggers GitHub's built-in assignment notification email
+            await github.rest.issues.addAssignees({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+              assignees: [
+                "syazaath",
+                "jelyoussefi",
+                "weithchoong",
+                "chunsheong",
+              ],
+            });
