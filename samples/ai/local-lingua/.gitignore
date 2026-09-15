@@ -1,0 +1,23 @@
+/models/
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+dist/
+build/
+data/
+*.db
+.env
+docker-compose.override.yml
+/samples/
+/voice_samples/
+/mission-cues/
+design-app.png
+LOCAL_CHANGELOG.md
+.pytest_cache/
+# tests/tests.sh's generated reports, logs, and demo-scenario GIF — see
+# tests/README.md § Test reports.
+/tests/reports/
+/tests/logs/
+/tests/test-artifacts/
+

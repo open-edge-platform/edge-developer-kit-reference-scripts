@@ -1,0 +1,15 @@
+.venv/
+models/
+data/
+samples/
+__pycache__/
+*.pyc
+.git/
+.github/
+tests/
+*.md
+.env
+design-app.png
+setup.sh
+download_models.sh
+Makefile

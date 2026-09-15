@@ -1,0 +1,100 @@
+services:
+  local-lingua:
+    build: .
+    image: local-lingua:latest
+    # Run as the invoking host user so anything written into the bind-mounted
+    # ./data and ./models stays user-owned instead of root-owned.
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    ports:
+      # Loopback-only: never bind 0.0.0.0
+      - "127.0.0.1:7860:7860"
+    volumes:
+      - ./models:/app/models
+      # DATA_DIR override lets tests point this at an isolated copy so they
+      # never write into a real user's conversation/sentiment history.
+      - ${DATA_DIR:-./data}:/app/data
+      - ./voice_samples:/app/voice_samples
+      - ./mission-cues:/app/mission-cues
+      - ${HF_HOME:-${HOME}/.cache/huggingface}:/app/hf_cache
+    environment:
+      # Overridden by scripts/detect_metrics_manager.sh (via .env) when a
+      # metrics-manager from another app (e.g. uav-mission-compute-sdk) is
+      # already running on this host — reused instead of starting a second one.
+      - METRICS_MANAGER_URL=${METRICS_MANAGER_URL:-http://metrics-manager:9090}
+      - OPENVINO_CACHE_DIR=/app/data/model_cache
+      - HF_HOME=/app/hf_cache
+      # The non-root UID has no home directory in the image.
+      - HOME=/tmp
+      - PYTHONDONTWRITEBYTECODE=1
+      # hf_xet's Rust transfer client ignores HTTP(S)_PROXY and hangs behind a
+      # corporate proxy — force the plain HTTP download path instead.
+      - HF_HUB_DISABLE_XET=1
+      # Host-level proxy env vars (HTTP(S)_PROXY) are provided by the Docker
+      # daemon's own proxy config, not set here — only NO_PROXY is set, to
+      # ensure in-cluster traffic still bypasses any such proxy.
+      - NO_PROXY=${NO_PROXY:-}
+      - no_proxy=${no_proxy:-},metrics-manager,host.docker.internal
+    # /dev/dri (GPU) and /dev/accel (NPU) are added only when present on the
+    # host, via docker-compose.override.yml — see scripts/generate_device_overrides.sh.
+    # Mounting a device path that doesn't exist makes the daemon refuse to
+    # create the container at all, instead of the app's own CPU fallback.
+    group_add:
+      - "${RENDER_GROUP_ID:-109}"
+    extra_hosts:
+      # Lets the app reach a metrics-manager owned by another Compose project
+      # and only published on the host, when METRICS_MANAGER_SCALE=0.
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      metrics-manager:
+        condition: service_healthy
+        # Not required when METRICS_MANAGER_SCALE=0 (an external instance is reused).
+        required: false
+    restart: unless-stopped
+
+  metrics-manager:
+    image: docker.io/intel/metrics-manager:2026.2.0
+    container_name: metrics-manager
+    # Scaled to 0 by `make run` when scripts/detect_metrics_manager.sh finds an
+    # existing, healthy metrics-manager from another app already on this host.
+    scale: ${METRICS_MANAGER_SCALE:-1}
+    ports:
+      # Loopback-only: never bind 0.0.0.0
+      - "127.0.0.1:9090:9090"
+    # Least-privilege in place of privileged: true/apparmor:unconfined.
+    # pid: host (PID namespace visibility, not a capability) lets qmassa see
+    # the app container's GPU-using process — required for its per-engine
+    # DRM stats, which it reads from every host process's /proc/<pid>/fdinfo
+    # (see https://github.com/ulissesf/qmassa#fields-description). SYS_PTRACE
+    # is separately required to actually read another UID's /proc/<pid>/fd*
+    # (the app container runs as HOST_UID, not root) — DAC_OVERRIDE does not
+    # cover this kernel ptrace_may_access() check. Missing either one fails
+    # silently: healthcheck stays green and gpu_frequency/gpu_power (global
+    # sysfs/hwmon) look fine, but gpu_engine_usage_* stays at 0.
+    pid: host
+    cap_drop:
+      - ALL
+    cap_add:
+      - SYS_ADMIN
+      - DAC_OVERRIDE
+      - SYS_PTRACE
+    # /dev/dri (GPU) is added only when present on the host — see
+    # scripts/generate_device_overrides.sh / docker-compose.override.yml.
+    volumes:
+      - /sys:/sys:ro
+      - /run:/run:ro
+    environment:
+      METRICS_PORT: "9090"
+      LOG_LEVEL: INFO
+      CORS_ORIGINS: "*"
+      METRICS_RETENTION_SECONDS: "300"
+      METRICS_MANAGER_HOSTNAME: ${METRICS_MANAGER_HOSTNAME:-ptl}
+    restart: on-failure:5
+    healthcheck:
+      test: [
+        "CMD", "python3", "-c",
+        "import urllib.request; urllib.request.urlopen('http://localhost:9090/health', timeout=3)"
+      ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s

@@ -21,6 +21,7 @@ Refer to below samples to kickstart you own demo or application.
   - [AI Video Analytics](./ai/ai-video-analytics/README.md)
   - [Edge AI Demo Studio](./ai/edge-ai-demo-studio/README.md)
   - [LLM DB Query](./ai/llm_dbquery/README.md)
+  - [Local Lingua](./ai/local-lingua/README.md)
   - [Manufacturing HMI LLM GenAI](./ai/manufacturing-hmi-llm-genai/README.md)
   - [OpenVINO](./ai/openvino/README.md)
   - [Smart Parking](./ai/smart-parking/README.md)

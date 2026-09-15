@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Local Lingua</title>
+<link rel="stylesheet" href="/css/style.css?v=35">
+</head>
+<body>
+
+<!-- Consent Modal -->
+<div class="modal-overlay hidden" id="consentModal">
+  <div class="modal-card">
+    <h2 id="consentTitle">Permission Required</h2>
+    <p id="consentMessage">This app needs your permission to continue.</p>
+    <div class="modal-actions">
+      <button class="btn-modal btn-modal-deny" id="consentDeny">Deny</button>
+      <button class="btn-modal btn-modal-allow" id="consentAllow">Allow</button>
+    </div>
+  </div>
+</div>
+
+<!-- Type-Text Sentiment Modal -->
+<div class="modal-overlay hidden" id="textSentimentModal">
+  <div class="modal-card modal-card-wide">
+    <h2>Analyze Typed Text</h2>
+    <p>Type or paste text below to run sentiment analysis on it directly, using whichever model is currently assigned to the Sentiment stage in Settings.</p>
+    <textarea id="textSentimentInput" class="modal-textarea" placeholder="Type text to analyze..." rows="5"></textarea>
+    <div class="modal-actions">
+      <button class="btn-modal btn-modal-deny" id="textSentimentCancel">Cancel</button>
+      <button class="btn-modal btn-modal-allow" id="textSentimentSubmit">Analyze</button>
+    </div>
+  </div>
+</div>
+
+<div class="app-container">
+
+  <!-- Tab Navigation -->
+  <nav class="tab-bar">
+    <button class="tab-btn active" data-tab="main">Main</button>
+    <button class="tab-btn" data-tab="settings">Settings</button>
+    <button class="tab-btn" data-tab="prerequisites">Prerequisites</button>
+    <button class="tab-btn" data-tab="architecture">Architecture</button>
+    <button class="demo-run-btn hidden" id="btnDemoScenarios" title="Run a scripted demo conversation">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+      <span>Demo</span>
+    </button>
+    <div class="split-toggle" id="splitToggle" role="group" aria-label="Right panel layout" title="Sentiment History / Mission Cues layout">
+      <button class="split-toggle-btn active" data-split="side" title="Side by side" aria-pressed="true">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="7" height="16" rx="1"/><rect x="14" y="4" width="7" height="16" rx="1"/></svg>
+      </button>
+      <button class="split-toggle-btn" data-split="stacked" title="Stacked" aria-pressed="false">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="7" rx="1"/><rect x="4" y="14" width="16" height="7" rx="1"/></svg>
+      </button>
+    </div>
+    <button class="theme-toggle" id="themeToggle" title="Toggle light/dark theme">
+      <svg id="themeIconSun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+      <svg id="themeIconMoon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </button>
+  </nav>
+
+  <!-- ==================== TAB 1: Main Usage ==================== -->
+  <div class="tab-content active" id="tab-main">
+    <div class="main-layout">
+
+      <!-- Section 1: Top-Left — Local Conversation Area -->
+      <div class="section-top-left">
+        <!-- 3rd Party Input Bar -->
+        <div class="input-bar">
+          <span class="input-bar-label">Local Speaker</span>
+          <button class="btn-icon btn-mic" id="btnLocalMic" title="Record from microphone">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1-9c0-.55.45-1 1-1s1 .45 1 1v6c0 .55-.45 1-1 1s-1-.45-1-1V5z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
+          </button>
+          <button class="btn-icon btn-file" id="btnLocalFile" title="Upload audio file">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11z"/></svg>
+          </button>
+          <input type="file" id="localFileInput" class="hidden" accept="audio/*,.wav,.mp3,.ogg,.webm,.flac,.m4a">
+          <span id="localProcessing" class="processing-indicator hidden">Processing...</span>
+        </div>
+
+        <!-- Conversation Search & Clear -->
+        <div class="search-bar">
+          <input type="text" id="conversationSearch" placeholder="Search conversation..." class="search-input">
+          <button class="btn-clear-small" id="btnClearConversation" title="Clear conversation history">Clear</button>
+        </div>
+
+        <!-- Chat: Local/Native Language -->
+        <div class="chat-section">
+          <div class="chat-header">
+            <span>Local Language</span>
+            <select id="srcLang" class="lang-select-inline">
+              <option value="auto">Auto-detect</option>
+            </select>
+          </div>
+          <div class="chat-area" id="chatNonEnglish"></div>
+        </div>
+
+        <!-- Chat: User Language -->
+        <div class="chat-section">
+          <div class="chat-header">
+            <span id="userLangLabel">Your Language</span>
+            <select id="tgtLang" class="lang-select-inline">
+              <option value="en">English</option>
+            </select>
+          </div>
+          <div class="chat-area" id="chatEnglish"></div>
+        </div>
+
+      </div>
+
+      <!-- Section 2: Top-Right — Sentiment History + Mission Cues -->
+      <!-- Layout toggle (side/stacked) lives in the top tab bar (#splitToggle). -->
+      <div class="section-top-right">
+        <div class="right-split" id="rightSplit">
+          <!-- Pane: Sentiment History -->
+          <section class="split-pane" id="paneSentiment">
+            <div class="sentiment-history-header">
+              <button class="btn-collapse" id="btnToggleSentimentHistory" aria-expanded="true" aria-controls="sentimentHistoryBody" title="Collapse sentiment history">
+                <svg class="collapse-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                <h4>Sentiment History</h4>
+              </button>
+            </div>
+            <div class="sentiment-history-body" id="sentimentHistoryBody">
+              <div class="search-bar search-bar-compact">
+                <input type="text" id="sentimentSearch" placeholder="Search sentiment history..." class="search-input">
+              </div>
+              <div class="sentiment-history" id="sentimentHistory"></div>
+            </div>
+          </section>
+
+          <!-- Pane: Mission Cues -->
+          <section class="split-pane" id="paneMissionCues">
+            <div class="mission-cues-header">
+              <button class="btn-collapse" id="btnToggleMissionCues" aria-expanded="true" aria-controls="missionCuesBody" title="Collapse mission cues">
+                <svg class="collapse-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                <h4>Mission Cues</h4>
+              </button>
+              <div class="mc-upload-controls">
+                <select class="mc-parse-mode" id="cueParseModeSelect" title="PDF format type">
+                  <option value="formatted">Formatted (table)</option>
+                  <option value="unformatted">Unformatted (LLM)</option>
+                </select>
+                <label class="btn-upload-pdf" id="btnUploadCuePdf" title="Upload mission cues PDF">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11zM8 15.01l1.41 1.41L11 14.84V19h2v-4.16l1.59 1.59L16 15.01 12.01 11z"/></svg>
+                  Upload PDF
+                  <input type="file" id="cuePdfInput" class="hidden" accept=".pdf">
+                </label>
+              </div>
+            </div>
+            <div class="mission-cues-body" id="missionCuesBody">
+              <div class="mission-cues-documents" id="missionCuesDocs"></div>
+              <div class="mc-llm-status hidden" id="mcLlmStatus">
+                <span class="mc-llm-spinner"></span>
+                <span id="mcLlmStatusText">LLM parsing document...</span>
+              </div>
+              <div class="mission-cues-detections" id="missionCuesDetections">
+                <div class="mission-cues-empty">No hotwords detected yet. Speak or type to begin.</div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <!-- User Response Bar -->
+        <div class="user-response-bar">
+          <button class="btn-icon btn-mic" id="btnUserMic" title="Record response">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1-9c0-.55.45-1 1-1s1 .45 1 1v6c0 .55-.45 1-1 1s-1-.45-1-1V5z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
+          </button>
+          <input type="text" id="userTextInput" placeholder="Type your response...">
+          <button class="btn-icon btn-file" id="btnUserFile" title="Upload audio file">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11z"/></svg>
+          </button>
+          <input type="file" id="userFileInput" class="hidden" accept="audio/*,.wav,.mp3,.ogg,.webm,.flac,.m4a">
+          <button class="btn-icon btn-analyze" id="btnAnalyzeTypedText" title="Analyze sentiment of typed text">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 9.5 8.5 3 11l6.5 2.5L12 20l2.5-6.5L21 11l-6.5-2.5L12 2z"/></svg>
+          </button>
+          <button class="btn-send" id="btnSend" title="Send">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+          </button>
+          <span id="userProcessing" class="processing-indicator hidden">Processing...</span>
+        </div>
+      </div>
+
+      <!-- Section 3: Bottom — Hardware Monitoring Graphs -->
+      <div class="section-bottom-hardware">
+        <div class="telemetry-title">Hardware Utilization</div>
+        <div class="graphs-container">
+          <div class="graph-panel">
+            <div class="graph-header">
+              <span class="graph-label">CPU</span>
+              <span class="graph-value" id="cpuValue">0%</span>
+              <span class="graph-detail" id="cpuFreq"></span>
+              <span class="graph-detail" id="cpuTemp"></span>
+            </div>
+            <canvas id="cpuGraph" width="300" height="80"></canvas>
+            <div class="graph-engines" id="cpuUsage"></div>
+            <div class="graph-activity" id="cpuActivity">
+              <span class="activity-chip activity-chip-base">OS + Userspace</span>
+            </div>
+          </div>
+          <div class="graph-panel">
+            <div class="graph-header">
+              <span class="graph-label">GPU</span>
+              <span class="graph-value" id="gpuValue">0%</span>
+              <span class="graph-detail" id="gpuFreq"></span>
+            </div>
+            <canvas id="gpuGraph" width="300" height="80"></canvas>
+            <div class="graph-engines" id="gpuEngines"></div>
+            <div class="graph-activity" id="gpuActivity">
+              <span class="activity-chip activity-chip-base">OS + Userspace</span>
+            </div>
+          </div>
+          <div class="graph-panel">
+            <div class="graph-header">
+              <span class="graph-label">NPU</span>
+              <span class="graph-value" id="npuValue">0%</span>
+              <span class="graph-detail" id="npuTemp"></span>
+            </div>
+            <canvas id="npuGraph" width="300" height="80"></canvas>
+            <div class="graph-engines" id="npuDetail"></div>
+            <div class="graph-activity" id="npuActivity">
+              <span class="activity-chip activity-chip-base">OS + Userspace</span>
+            </div>
+          </div>
+          <div class="graph-panel">
+            <div class="graph-header">
+              <span class="graph-label">Memory</span>
+              <span class="graph-value" id="memValue">0%</span>
+              <span class="graph-detail" id="memTotal"></span>
+            </div>
+            <canvas id="memGraph" width="300" height="80"></canvas>
+            <div class="graph-engines" id="memDetail"></div>
+            <div class="graph-activity" id="memActivity">
+              <span class="activity-chip activity-chip-base">System RAM</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ==================== TAB 2: Settings ==================== -->
+  <div class="tab-content" id="tab-settings">
+    <div class="settings-container">
+      <h2 class="settings-heading">AI Pipeline Configuration</h2>
+      <p class="settings-description">Select the model and execution target (CPU/GPU/NPU) for each pipeline stage.</p>
+      <div class="settings-grid" id="settingsGrid"></div>
+    </div>
+  </div>
+
+  <!-- ==================== TAB 3: Prerequisites ==================== -->
+  <div class="tab-content" id="tab-prerequisites">
+    <div class="prerequisites-container">
+      <h2 class="prerequisites-heading">Prerequisites Checklist</h2>
+      <p class="prerequisites-description">Verify that all dependencies are met before using the application.</p>
+      <div class="prerequisites-list" id="prerequisitesList">
+        <div class="prereq-item" id="prereq-docker">
+          <span class="prereq-status" id="prereq-docker-status">&#x2717;</span>
+          <span class="prereq-label">Docker</span>
+          <span class="prereq-detail">Container runtime for isolated execution</span>
+        </div>
+        <div class="prereq-item" id="prereq-gpu">
+          <span class="prereq-status" id="prereq-gpu-status">&#x2717;</span>
+          <span class="prereq-label">GPU Driver</span>
+          <span class="prereq-detail">Intel GPU compute-runtime</span>
+        </div>
+        <div class="prereq-item" id="prereq-npu">
+          <span class="prereq-status" id="prereq-npu-status">&#x2717;</span>
+          <span class="prereq-label">NPU Driver</span>
+          <span class="prereq-detail">Intel NPU acceleration driver</span>
+        </div>
+        <div class="prereq-item" id="prereq-ffmpeg">
+          <span class="prereq-status" id="prereq-ffmpeg-status">&#x2717;</span>
+          <span class="prereq-label">FFmpeg</span>
+          <span class="prereq-detail">Audio format decoding (MP3, WebM, OGG, etc.)</span>
+        </div>
+        <div class="prereq-item" id="prereq-models-transcription">
+          <span class="prereq-status" id="prereq-models-transcription-status">&#x2717;</span>
+          <span class="prereq-label">Transcription Model</span>
+          <span class="prereq-detail">Whisper (OpenVINO IR)</span>
+        </div>
+        <div class="prereq-item" id="prereq-models-translation">
+          <span class="prereq-status" id="prereq-models-translation-status">&#x2717;</span>
+          <span class="prereq-label">Translation Model</span>
+          <span class="prereq-detail">NLLB-200 (OpenVINO IR)</span>
+        </div>
+        <div class="prereq-item" id="prereq-models-sentiment">
+          <span class="prereq-status" id="prereq-models-sentiment-status">&#x2717;</span>
+          <span class="prereq-label">Sentiment Model</span>
+          <span class="prereq-detail">DistilBERT SST-2 (OpenVINO IR)</span>
+        </div>
+        <div class="prereq-item" id="prereq-models-tts">
+          <span class="prereq-status" id="prereq-models-tts-status">&#x2717;</span>
+          <span class="prereq-label">Text-to-Speech Model</span>
+          <span class="prereq-detail">SpeechT5 (OpenVINO IR)</span>
+        </div>
+        <div class="prereq-item" id="prereq-models-mission-cue-llm">
+          <span class="prereq-status" id="prereq-models-mission-cue-llm-status">&#x2717;</span>
+          <span class="prereq-label">Mission Cue LLM</span>
+          <span class="prereq-detail">Qwen2.5-1.5B (OpenVINO INT4) — for unformatted PDF parsing</span>
+        </div>
+        <div class="prereq-item" id="prereq-network">
+          <span class="prereq-status" id="prereq-network-status">&#x2717;</span>
+          <span class="prereq-label">Network Access</span>
+          <span class="prereq-detail">Required only for initial model download</span>
+        </div>
+      </div>
+      <button class="btn-check-prereqs" id="btnCheckPrereqs">Re-check Prerequisites</button>
+    </div>
+  </div>
+
+  <!-- ==================== TAB 4: Architecture ==================== -->
+  <div class="tab-content" id="tab-architecture">
+    <div class="architecture-container">
+      <h2 class="architecture-title">System Architecture</h2>
+      <p class="architecture-subtitle">Data flow from browser input through AI pipeline to Intel hardware execution targets</p>
+
+      <svg class="architecture-svg" viewBox="0 0 1080 640" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="arrowFlow" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto">
+            <polygon points="0 0, 7 2.5, 0 5" class="arch-arrow"/>
+          </marker>
+          <filter id="glowCyan" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="3" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <filter id="glowGreen" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="2.5" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <filter id="glowAmber" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="2.5" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <filter id="glowPurple" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="2.5" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+
+        <!-- ========== ENCLOSURE: Docker Container ========== -->
+        <rect x="365" y="118" width="310" height="170" rx="14" class="arch-enclosure arch-enclosure-app"/>
+        <text x="372" y="136" class="arch-enclosure-label arch-enclosure-label-app">Docker Container</text>
+
+        <!-- ========== ENCLOSURE: Intel Hardware ========== -->
+        <rect x="90" y="520" width="900" height="100" rx="14" class="arch-enclosure arch-enclosure-hw"/>
+        <text x="540" y="612" class="arch-enclosure-label arch-enclosure-label-hw">Intel Panther Lake SoC</text>
+
+        <!-- ========== CONNECTIONS ========== -->
+
+        <!-- Browser -> REST API -->
+        <path d="M540,78 L540,140" class="arch-connection" marker-end="url(#arrowFlow)"/>
+        <circle r="4" class="arch-travel-dot arch-travel-dot-main">
+          <animateMotion dur="2s" repeatCount="indefinite" path="M540,78 L540,140"/>
+        </circle>
+
+        <!-- REST API -> Pipeline -->
+        <path d="M540,180 L540,220" class="arch-connection" marker-end="url(#arrowFlow)"/>
+        <circle r="3.5" class="arch-travel-dot arch-travel-dot-main">
+          <animateMotion dur="1.5s" repeatCount="indefinite" path="M540,180 L540,220" begin="0.3s"/>
+        </circle>
+
+        <!-- Pipeline -> Whisper -->
+        <path d="M435,260 L162,350" class="arch-connection arch-connection-ai" marker-end="url(#arrowFlow)"/>
+        <circle r="3.5" class="arch-travel-dot arch-travel-dot-ai">
+          <animateMotion dur="2s" repeatCount="indefinite" path="M435,260 L162,350" begin="0.6s"/>
+        </circle>
+
+        <!-- Pipeline -> Kokoro -->
+        <path d="M477,260 L307,350" class="arch-connection arch-connection-ai" marker-end="url(#arrowFlow)"/>
+        <circle r="3.5" class="arch-travel-dot arch-travel-dot-ai">
+          <animateMotion dur="2s" repeatCount="indefinite" path="M477,260 L307,350" begin="0.8s"/>
+        </circle>
+
+        <!-- Pipeline -> NLLB -->
+        <path d="M519,260 L452,350" class="arch-connection arch-connection-ai" marker-end="url(#arrowFlow)"/>
+        <circle r="3.5" class="arch-travel-dot arch-travel-dot-ai">
+          <animateMotion dur="1.6s" repeatCount="indefinite" path="M519,260 L452,350" begin="1s"/>
+        </circle>
+
+        <!-- Pipeline -> RoBERTa -->
+        <path d="M603,260 L767,350" class="arch-connection arch-connection-ai" marker-end="url(#arrowFlow)"/>
+        <circle r="3.5" class="arch-travel-dot arch-travel-dot-ai">
+          <animateMotion dur="1.8s" repeatCount="indefinite" path="M603,260 L767,350" begin="0.7s"/>
+        </circle>
+
+        <!-- Pipeline -> Wav2Vec2 -->
+        <path d="M645,260 L917,350" class="arch-connection arch-connection-ai" marker-end="url(#arrowFlow)"/>
+        <circle r="3.5" class="arch-travel-dot arch-travel-dot-ai">
+          <animateMotion dur="2.2s" repeatCount="indefinite" path="M645,260 L917,350" begin="0.9s"/>
+        </circle>
+
+        <!-- REST API -> Mission Cue LLM (on-demand PDF parsing, bypasses Pipeline Orchestrator) -->
+        <path d="M660,155 L700,155 L700,330 L612,330 L612,350" class="arch-connection arch-connection-ai" marker-end="url(#arrowFlow)"/>
+        <circle r="3.5" class="arch-travel-dot arch-travel-dot-ai">
+          <animateMotion dur="2.4s" repeatCount="indefinite" path="M660,155 L700,155 L700,330 L612,330 L612,350" begin="1.1s"/>
+        </circle>
+
+        <!-- Whisper -> CPU (endpoint + color updated dynamically per Settings target) -->
+        <path id="arch-hwconn-transcription" d="M162,414 L196,540" class="arch-connection-hw arch-connection-hw-cpu" marker-end="url(#arrowFlow)"/>
+        <circle id="arch-hwconn-transcription-dot" r="3" class="arch-travel-dot arch-travel-dot-hw arch-travel-dot-hw-cpu">
+          <animateMotion id="arch-hwconn-transcription-motion" dur="1.8s" repeatCount="indefinite" path="M162,414 L196,540" begin="1.4s"/>
+        </circle>
+
+        <!-- Kokoro -> CPU -->
+        <path id="arch-hwconn-text_to_speech" d="M307,414 L246,540" class="arch-connection-hw arch-connection-hw-cpu" marker-end="url(#arrowFlow)"/>
+        <circle id="arch-hwconn-text_to_speech-dot" r="3" class="arch-travel-dot arch-travel-dot-hw arch-travel-dot-hw-cpu">
+          <animateMotion id="arch-hwconn-text_to_speech-motion" dur="1.6s" repeatCount="indefinite" path="M307,414 L246,540" begin="1.6s"/>
+        </circle>
+
+        <!-- Mission Cue LLM -> CPU -->
+        <path id="arch-hwconn-mission_cue_llm" d="M612,414 L286,540" class="arch-connection-hw arch-connection-hw-cpu" marker-end="url(#arrowFlow)"/>
+        <circle id="arch-hwconn-mission_cue_llm-dot" r="3" class="arch-travel-dot arch-travel-dot-hw arch-travel-dot-hw-cpu">
+          <animateMotion id="arch-hwconn-mission_cue_llm-motion" dur="2s" repeatCount="indefinite" path="M612,414 L286,540" begin="2s"/>
+        </circle>
+
+        <!-- NLLB -> GPU -->
+        <path id="arch-hwconn-translation" d="M452,414 L540,540" class="arch-connection-hw arch-connection-hw-gpu" marker-end="url(#arrowFlow)"/>
+        <circle id="arch-hwconn-translation-dot" r="3" class="arch-travel-dot arch-travel-dot-hw arch-travel-dot-hw-gpu">
+          <animateMotion id="arch-hwconn-translation-motion" dur="1.5s" repeatCount="indefinite" path="M452,414 L540,540" begin="1.7s"/>
+        </circle>
+
+        <!-- RoBERTa -> NPU -->
+        <path id="arch-hwconn-sentiment" d="M767,414 L789,540" class="arch-connection-hw arch-connection-hw-npu" marker-end="url(#arrowFlow)"/>
+        <circle id="arch-hwconn-sentiment-dot" r="3" class="arch-travel-dot arch-travel-dot-hw arch-travel-dot-hw-npu">
+          <animateMotion id="arch-hwconn-sentiment-motion" dur="1.6s" repeatCount="indefinite" path="M767,414 L789,540" begin="1.8s"/>
+        </circle>
+
+        <!-- Wav2Vec2 -> NPU -->
+        <path id="arch-hwconn-voice_emotion" d="M917,414 L849,540" class="arch-connection-hw arch-connection-hw-npu" marker-end="url(#arrowFlow)"/>
+        <circle id="arch-hwconn-voice_emotion-dot" r="3" class="arch-travel-dot arch-travel-dot-hw arch-travel-dot-hw-npu">
+          <animateMotion id="arch-hwconn-voice_emotion-motion" dur="1.8s" repeatCount="indefinite" path="M917,414 L849,540" begin="1.5s"/>
+        </circle>
+
+        <!-- Metrics Manager -> API -->
+        <path d="M870,165 L660,165" class="arch-connection-side" marker-end="url(#arrowFlow)"/>
+        <circle r="2.5" class="arch-travel-dot arch-travel-dot-side">
+          <animateMotion dur="3s" repeatCount="indefinite" path="M870,165 L660,165" begin="0.5s"/>
+        </circle>
+
+        <!-- Pipeline -> SQLite -->
+        <path d="M420,240 L260,240" class="arch-connection-side" marker-end="url(#arrowFlow)"/>
+        <circle r="2.5" class="arch-travel-dot arch-travel-dot-side">
+          <animateMotion dur="2.5s" repeatCount="indefinite" path="M420,240 L260,240" begin="1s"/>
+        </circle>
+
+        <!-- ========== NODES ========== -->
+
+        <!-- Browser -->
+        <g class="arch-node arch-node-browser">
+          <rect x="410" y="18" width="260" height="60" rx="12"/>
+          <text x="540" y="42" class="arch-node-label">Frontend (Browser)</text>
+          <text x="540" y="62" class="arch-node-sublabel">Touch UI &bull; Mic &bull; File &bull; Text</text>
+        </g>
+
+        <!-- REST API -->
+        <g class="arch-node arch-node-app">
+          <rect x="420" y="140" width="240" height="40" rx="10"/>
+          <text x="540" y="165" class="arch-node-label">REST API (FastAPI :7860)</text>
+        </g>
+
+        <!-- Pipeline Orchestrator -->
+        <g class="arch-node arch-node-app">
+          <rect x="420" y="220" width="240" height="40" rx="10"/>
+          <text x="540" y="245" class="arch-node-label">Pipeline Orchestrator</text>
+        </g>
+
+        <!-- AI Models: L-to-R ordered by pipeline flow. Corner badge shows the live CPU/GPU/NPU target from Settings. -->
+        <!-- Whisper (Transcribe) - CPU -->
+        <g class="arch-node arch-node-ai">
+          <rect x="92" y="350" width="140" height="64" rx="10"/>
+          <text id="arch-node-label-transcription" x="162" y="374" class="arch-node-label">Whisper Medium</text>
+          <text x="162" y="390" class="arch-node-sublabel">faster-whisper</text>
+          <text x="162" y="406" class="arch-node-sublabel">Speech-to-Text</text>
+          <circle id="arch-badge-transcription" cx="224" cy="360" r="9" class="arch-device-badge arch-device-badge-cpu"><title>CPU</title></circle>
+          <text id="arch-badge-transcription-text" x="224" y="363" class="arch-device-badge-text">C</text>
+        </g>
+
+        <!-- Kokoro (TTS) - CPU -->
+        <g class="arch-node arch-node-ai">
+          <rect x="247" y="350" width="120" height="64" rx="10"/>
+          <text id="arch-node-label-text_to_speech" x="307" y="374" class="arch-node-label">Kokoro-82M</text>
+          <text x="307" y="390" class="arch-node-sublabel">OpenVINO INT8</text>
+          <text x="307" y="406" class="arch-node-sublabel">Text-to-Speech</text>
+          <circle id="arch-badge-text_to_speech" cx="359" cy="360" r="9" class="arch-device-badge arch-device-badge-cpu"><title>CPU</title></circle>
+          <text id="arch-badge-text_to_speech-text" x="359" y="363" class="arch-device-badge-text">C</text>
+        </g>
+
+        <!-- NLLB (Translation) - GPU -->
+        <g class="arch-node arch-node-ai">
+          <rect x="382" y="350" width="140" height="64" rx="10"/>
+          <text id="arch-node-label-translation" x="452" y="374" class="arch-node-label">NLLB-200 3.3B</text>
+          <text x="452" y="390" class="arch-node-sublabel">OpenVINO IR</text>
+          <text x="452" y="406" class="arch-node-sublabel">Translation</text>
+          <circle id="arch-badge-translation" cx="514" cy="360" r="9" class="arch-device-badge arch-device-badge-gpu"><title>GPU</title></circle>
+          <text id="arch-badge-translation-text" x="514" y="363" class="arch-device-badge-text">G</text>
+        </g>
+
+        <!-- Qwen2.5 (Mission Cue LLM) - CPU, PDF hotword/action extraction -->
+        <g class="arch-node arch-node-ai">
+          <rect x="537" y="350" width="150" height="64" rx="10"/>
+          <text id="arch-node-label-mission_cue_llm" x="612" y="374" class="arch-node-label">Qwen2.5-1.5B</text>
+          <text x="612" y="390" class="arch-node-sublabel">OpenVINO INT4</text>
+          <text x="612" y="406" class="arch-node-sublabel">Mission Cue LLM</text>
+          <circle id="arch-badge-mission_cue_llm" cx="679" cy="360" r="9" class="arch-device-badge arch-device-badge-cpu"><title>CPU</title></circle>
+          <text id="arch-badge-mission_cue_llm-text" x="679" y="363" class="arch-device-badge-text">C</text>
+        </g>
+
+        <!-- RoBERTa (Sentiment) - NPU -->
+        <g class="arch-node arch-node-ai">
+          <rect x="702" y="350" width="130" height="64" rx="10"/>
+          <text id="arch-node-label-sentiment" x="767" y="374" class="arch-node-label">RoBERTa</text>
+          <text x="767" y="390" class="arch-node-sublabel">OpenVINO IR</text>
+          <text x="767" y="406" class="arch-node-sublabel">Sentiment</text>
+          <circle id="arch-badge-sentiment" cx="824" cy="360" r="9" class="arch-device-badge arch-device-badge-npu"><title>NPU</title></circle>
+          <text id="arch-badge-sentiment-text" x="824" y="363" class="arch-device-badge-text">N</text>
+        </g>
+
+        <!-- Wav2Vec2 (Voice Emotion) - NPU -->
+        <g class="arch-node arch-node-ai">
+          <rect x="847" y="350" width="140" height="64" rx="10"/>
+          <text id="arch-node-label-voice_emotion" x="917" y="374" class="arch-node-label">Wav2Vec2</text>
+          <text x="917" y="390" class="arch-node-sublabel">OpenVINO IR</text>
+          <text x="917" y="406" class="arch-node-sublabel">Voice Emotion</text>
+          <circle id="arch-badge-voice_emotion" cx="979" cy="360" r="9" class="arch-device-badge arch-device-badge-npu"><title>NPU</title></circle>
+          <text id="arch-badge-voice_emotion-text" x="979" y="363" class="arch-device-badge-text">N</text>
+        </g>
+
+        <!-- Hardware inside enclosure (sublabels list the models currently assigned per Settings) -->
+        <g class="arch-node arch-node-hw">
+          <rect x="166" y="540" width="140" height="50" rx="10"/>
+          <text x="236" y="562" class="arch-node-label">CPU</text>
+          <text id="arch-hw-cpu-sub" x="236" y="580" class="arch-node-sublabel">Whisper &bull; Kokoro &bull; Qwen</text>
+        </g>
+
+        <g class="arch-node arch-node-hw">
+          <rect x="470" y="540" width="140" height="50" rx="10"/>
+          <text x="540" y="562" class="arch-node-label">Intel iGPU</text>
+          <text id="arch-hw-gpu-sub" x="540" y="580" class="arch-node-sublabel">NLLB Translation</text>
+        </g>
+
+        <g class="arch-node arch-node-hw">
+          <rect x="749" y="540" width="140" height="50" rx="10"/>
+          <text x="819" y="562" class="arch-node-label">Intel NPU</text>
+          <text id="arch-hw-npu-sub" x="819" y="580" class="arch-node-sublabel">Sentiment &bull; Emotion</text>
+        </g>
+
+        <!-- Side nodes -->
+        <g class="arch-node arch-node-side">
+          <rect x="830" y="135" width="150" height="50" rx="10"/>
+          <text x="905" y="157" class="arch-node-label">Metrics Manager</text>
+          <text x="905" y="173" class="arch-node-sublabel">HW Telemetry (SSE)</text>
+        </g>
+
+        <g class="arch-node arch-node-side">
+          <rect x="170" y="220" width="90" height="40" rx="10"/>
+          <text x="215" y="245" class="arch-node-label">SQLite</text>
+        </g>
+
+        <!-- Group label -->
+        <text x="540" y="335" class="arch-group-label">AI Models &mdash; OpenVINO Runtime</text>
+      </svg>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function() {
+  var KEY = 'localLingua_theme';
+  var saved = localStorage.getItem(KEY) || 'dark';
+  document.documentElement.setAttribute('data-theme', saved);
+  function updateIcons(theme) {
+    var sun = document.getElementById('themeIconSun');
+    var moon = document.getElementById('themeIconMoon');
+    if (sun) sun.style.display = theme === 'dark' ? '' : 'none';
+    if (moon) moon.style.display = theme === 'light' ? '' : 'none';
+  }
+  updateIcons(saved);
+  document.addEventListener('DOMContentLoaded', function() {
+    var btn = document.getElementById('themeToggle');
+    if (btn) btn.addEventListener('click', function() {
+      var current = document.documentElement.getAttribute('data-theme') || 'dark';
+      var next = current === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      localStorage.setItem(KEY, next);
+      updateIcons(next);
+    });
+  });
+})();
+</script>
+<script type="module" src="/js/app.js?v=35"></script>
+</body>
+</html>

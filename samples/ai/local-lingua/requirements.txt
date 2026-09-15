@@ -1,0 +1,48 @@
+# Core inference (OpenVINO — no CUDA needed for Intel iGPU/NPU)
+openvino>=2026.0
+optimum[openvino]
+optimum-intel
+transformers<=4.57.6
+tokenizers
+sentencepiece
+
+# INT4 weight compression for Tiny Aya sentiment LLM, applied at load time
+# (its ONNX graph can't survive an OpenVINO IR save/reload — see
+# sentiment_tiny_aya.py) — used at inference, not just export
+nncf
+
+# PyTorch CPU-only (used for model export only, not inference)
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+
+# Mel filterbank computation for Cohere Transcribe export only (not inference —
+# the runtime wrapper loads a cached .npy instead)
+librosa
+
+# Audio
+sounddevice
+numpy
+scipy
+
+# Speech-to-text (faster-whisper uses CTranslate2 — faster than OpenVINO for Whisper)
+faster-whisper>=1.1.0
+
+# TTS text processing (Kokoro-82M requires espeak-ng phonemization)
+phonemizer
+
+# Backend API + static file serving
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+psutil>=5.9.0
+python-multipart>=0.0.32
+
+# Utilities
+PyYAML
+langdetect
+
+# Model download
+huggingface_hub
+
+# Mission Cues PDF generation & parsing
+reportlab
+PyMuPDF>=1.24.0
