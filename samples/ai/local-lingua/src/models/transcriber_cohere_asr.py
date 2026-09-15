@@ -1,3 +1,6 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """Cohere Transcribe speech-to-text using OpenVINO's ONNX frontend directly.
 
 CohereLabs/cohere-transcribe-03-2026 ("Cohere Transcribe") is a 2B-parameter

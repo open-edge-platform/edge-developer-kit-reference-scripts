@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * Local Lingua — Transient Toast Notifications
  * Shared user-facing error/warning/success messages.

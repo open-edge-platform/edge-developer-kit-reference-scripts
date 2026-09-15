@@ -1,4 +1,7 @@
 #!/bin/bash -x
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 # Install Intel GPU compute-runtime and graphics compiler inside a container.
 # Used only during Docker build — no host library mounts required.
 

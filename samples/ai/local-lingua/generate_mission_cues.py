@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """
 Generate a single "Mission Cues" PDF reference document covering every demo
 language under voice_samples/.

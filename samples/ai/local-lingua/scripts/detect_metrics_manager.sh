@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 # Detects whether a metrics-manager container is already running on this host
 # under a *different* Compose project (e.g. uav-mission-compute-sdk, which also
 # runs a container named "metrics-manager" bound to host port 9090). Both apps

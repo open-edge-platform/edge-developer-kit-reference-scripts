@@ -1,3 +1,6 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """
 Language identification on transcribed text using langdetect.
 Configuration-driven — reads supported languages and settings from config.yaml.

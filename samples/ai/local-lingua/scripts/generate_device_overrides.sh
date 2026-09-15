@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 # Regenerates docker-compose.override.yml so `docker compose up` only mounts
 # host accelerator devices (/dev/dri for GPU, /dev/accel for NPU) that
 # actually exist on this host. Docker refuses to create a container at all if

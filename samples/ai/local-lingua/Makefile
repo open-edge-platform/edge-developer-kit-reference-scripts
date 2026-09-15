@@ -1,3 +1,6 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 .PHONY: help prereq demo-prereq check build run stop clean demo-clean ensure-dirs
 
 SHELL := /bin/bash

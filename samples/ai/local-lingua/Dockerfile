@@ -1,3 +1,6 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 FROM python:3.12-slim
 
 ARG INSTALL_DRIVER_VERSION="26.09.37435"

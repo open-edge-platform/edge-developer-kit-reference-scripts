@@ -1,3 +1,6 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """Model registry service — manages model metadata and runtime assignments.
 
 Reads config.yaml to build a list of available models per pipeline stage,

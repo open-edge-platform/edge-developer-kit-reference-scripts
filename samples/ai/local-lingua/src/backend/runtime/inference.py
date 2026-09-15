@@ -1,3 +1,6 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """OpenVINO runtime wrapper — single point of contact with openvino.runtime.Core."""
 
 import logging

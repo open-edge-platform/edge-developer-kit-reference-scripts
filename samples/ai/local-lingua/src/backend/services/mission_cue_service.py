@@ -1,3 +1,6 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """Mission Cue detection service — matches translated English text against
 loaded hotword/action documents (PDFs in the mission-cues table format).
 

@@ -1,3 +1,6 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """Hardware telemetry service — proxies metrics from Intel metrics-manager.
 
 The metrics-manager container (intel/metrics-manager) collects CPU, GPU, and NPU
