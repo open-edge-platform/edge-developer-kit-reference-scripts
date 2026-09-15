@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * Local Lingua — Backend API Client
  * All fetch calls to /api/* endpoints.

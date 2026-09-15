@@ -1,3 +1,6 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """Chunked transcription service for long audio files.
 
 Splits audio into ~30-second segments using ffmpeg, transcribes each chunk

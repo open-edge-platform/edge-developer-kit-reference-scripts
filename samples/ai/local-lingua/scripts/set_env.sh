@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 # Update or append KEY=VALUE in an env file without clobbering other entries.
 # Shared by the Makefile and scripts/detect_metrics_manager.sh so that neither
 # truncates variables written by the other.

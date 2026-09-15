@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * Local Lingua — Hardware Utilization Graphs (Time Series)
  * Displays CPU, GPU, NPU, and system memory metrics from Intel metrics-manager.

@@ -1,3 +1,6 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """
 Whisper speech-to-text using faster-whisper (CTranslate2 backend).
 

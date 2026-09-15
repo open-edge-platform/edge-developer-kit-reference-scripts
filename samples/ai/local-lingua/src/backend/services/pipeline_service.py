@@ -1,3 +1,6 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """Pipeline orchestration service — processes input through the AI pipeline.
 
 All models are loaded in-process (monolith mode). Each AI stage runs via

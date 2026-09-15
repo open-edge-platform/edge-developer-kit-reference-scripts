@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * Local Lingua — Main App Logic
  * Initialization, tabs, consent, prerequisites, event wiring.

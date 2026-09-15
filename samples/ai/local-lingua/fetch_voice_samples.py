@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """
 Download MediaSpeech (AR/ES/FR/TR) + OpenSLR-83 Midlands English (male)
 datasets, extract them, and copy N unique RANDOM WAV samples per language

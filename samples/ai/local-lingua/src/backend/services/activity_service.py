@@ -1,3 +1,6 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """Tracks which pipeline stage is currently inferring on which device.
 
 Feeds the per-device activity labels rendered under the hardware utilization

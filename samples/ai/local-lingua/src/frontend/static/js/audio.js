@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * Local Lingua — Mic Recording with Voice Activity Detection (VAD)
  * Auto-stops on silence for a smooth assistant-like UX.
