@@ -1,0 +1,264 @@
+##############################################################################
+# Local Lingua — Configuration
+# Change model names, device settings, and behavior here.
+# After changing a model name, re-run: python setup/export_models.py
+##############################################################################
+
+# Inference device
+device: "GPU"
+fallback_device: "CPU"
+
+# Model definitions — swap model names to upgrade/downgrade
+# Each stage has an `active` model (used at runtime) and optional `alternatives`
+# that can be exported and switched to via the UI or config change.
+#
+# To swap a model:
+#   1. Move the current `active` entry into `alternatives`
+#   2. Move your desired alternative into `active`
+#   3. Re-run: python setup/export_models.py
+#
+models:
+  whisper:
+    name: "openai/whisper-medium"
+    export_dir: "models/whisper-medium"
+    model_size: "medium"
+    task: "transcribe"
+    compute_type: "int8"
+    backend: "faster-whisper"
+    supported_targets: ["CPU"]
+    alternatives:
+      - name: "openai/whisper-large-v3-turbo"
+        export_dir: "models/whisper-large-v3-turbo"
+        backend: "openvino"
+        supported_targets: ["CPU", "GPU"]
+        recommended_target: "GPU"
+        note: "Larger model, best accuracy for Hindi/non-Latin scripts, GPU-accelerated via OpenVINO"
+      - name: "CohereLabs/cohere-transcribe-03-2026"
+        export_dir: "models/cohere-transcribe-03-2026"
+        backend: "cohere_asr"
+        supported_targets: ["CPU", "GPU"]
+        recommended_target: "GPU"
+        note: >
+          2B-param Conformer ASR, #1 on the HF Open ASR Leaderboard. optimum-intel
+          has no native OpenVINO export for this architecture, so weights come from
+          the community ONNX export (onnx-community/cohere-transcribe-03-2026-ONNX,
+          encoder q4f16 + decoder fp16) and are compiled directly from ONNX via
+          OpenVINO's ONNX frontend at load time — see transcriber_cohere_asr.py for
+          why IR pre-conversion is skipped. "GPU" target runs only the encoder
+          (>90% of compute) on GPU; the decoder always runs on CPU because its
+          growing KV-cache gives it dynamic shapes the OpenVINO GPU plugin can't
+          execute. Only 14 languages, no auto-detection: ar, de, el, en, es, fr,
+          it, ja, ko, nl, pl, pt, vi, zh.
+
+  translator:
+    name: "facebook/nllb-200-3.3B"
+    export_dir: "models/nllb-200-3.3B"
+    device: "GPU"
+    supported_targets: ["CPU", "GPU"]
+    alternatives:
+      - name: "facebook/nllb-200-distilled-1.3B"
+        export_dir: "models/nllb-200-distilled-1.3B"
+        supported_targets: ["CPU", "GPU"]
+        note: "Distilled 1.3B, faster but lower quality for non-Latin scripts"
+      - name: "facebook/nllb-200-distilled-600M"
+        export_dir: "models/nllb-200-distilled-600M"
+        supported_targets: ["CPU", "GPU", "NPU"]
+        note: "Lighter model, faster but lower quality for Hindi/non-Latin"
+
+  sentiment:
+    name: "SamLowe/roberta-base-go_emotions"
+    export_dir: "models/roberta-go-emotions"
+    device: "NPU"
+    labels: ["admiration", "amusement", "anger", "annoyance", "approval", "caring",
+             "confusion", "curiosity", "desire", "disappointment", "disapproval",
+             "disgust", "embarrassment", "excitement", "fear", "gratitude", "grief",
+             "joy", "love", "nervousness", "optimism", "pride", "realization",
+             "relief", "remorse", "sadness", "surprise", "neutral"]
+    # Upper bound on chunks scored per message. Text longer than the model
+    # window (128 tokens on NPU, 512 on CPU/GPU) is split into sentence-aligned
+    # chunks and aggregated, so this is NOT a cap on how much text is read —
+    # beyond it, chunks are sampled evenly across the whole message.
+    max_chunks: 40
+    supported_targets: ["CPU", "GPU", "NPU"]
+    alternatives:
+      - name: "cardiffnlp/twitter-roberta-base-sentiment-latest"
+        export_dir: "models/twitter-roberta-sentiment"
+        labels: ["NEGATIVE", "NEUTRAL", "POSITIVE"]
+        supported_targets: ["CPU", "GPU", "NPU"]
+        note: "Simple 3-class sentiment (positive/neutral/negative)"
+      - name: "CohereLabs/tiny-aya-global"
+        export_dir: "models/tiny-aya-global"
+        backend: "llm"
+        supported_targets: ["CPU", "GPU"]
+        recommended_target: "GPU"
+        note: >
+          3.35B-param multilingual instruct LLM, prompted for sentiment instead
+          of classifying against a fixed label set — see sentiment_tiny_aya.py.
+          optimum-intel has no OpenVINO export for the cohere2 architecture, so
+          this uses the community ONNX export (onnx-community/tiny-aya-global-ONNX,
+          fp16) with NNCF INT4 weight compression applied at load time rather
+          than pre-converted IR (the graph's fused attention op can't survive
+          an OpenVINO IR save/reload round trip, so conversion runs fresh each
+          load, ~10-15s).
+
+  tts:
+    name: "tngtech/Kokoro-82M-int8-ov"
+    export_dir: "models/kokoro-82m-int8-ov"
+    sample_rate: 24000
+    pre_quantized: true
+    recommended_target: "CPU"
+    supported_targets: ["CPU", "GPU"]
+    default_voice: "af_heart"
+    multilingual: true
+
+  mission_cue_llm:
+    name: "OpenVINO/Qwen2.5-1.5B-Instruct-int4-ov"
+    export_dir: "models/qwen2.5-1.5b-instruct-int4-ov"
+    pre_quantized: true
+    supported_targets: ["CPU", "GPU"]
+    recommended_target: "CPU"
+    note: "LLM for parsing unformatted PDF documents into hotword/action pairs"
+    alternatives:
+      - name: "OpenVINO/Phi-3-mini-4k-instruct-int4-ov"
+        export_dir: "models/phi-3-mini-4k-instruct-int4-ov"
+        pre_quantized: true
+        supported_targets: ["CPU", "GPU"]
+        recommended_target: "CPU"
+        note: "Microsoft Phi-3-mini 3.8B, alternative LLM for PDF parsing"
+
+  voice_emotion:
+    name: "firdhokk/speech-emotion-recognition-with-facebook-wav2vec2-large-xlsr-53"
+    export_dir: "models/wav2vec2-xlsr-emotion"
+    device: "NPU"
+    mode: "categorical"
+    labels: ["angry", "disgust", "fearful", "happy", "neutral", "sad", "surprised"]
+    static_audio_samples: 80000
+    max_windows: 60
+    # Mean raw logit per class measured on voice_samples/ (25 calm read-speech
+    # files, 65 windows, 5 languages) — subtracted from each window's logits
+    # before softmax. Without this, calm speech's argmax was angry 34% of the
+    # time and happy 37% of the time, neutral only 6%; with it, angry drops to
+    # 12-19% and neutral rises to 23-24% on the same files. Re-measure if the
+    # model changes.
+    calibration:
+      logit_bias:
+        angry: 3.036
+        disgust: -1.831
+        fearful: -1.207
+        happy: 2.954
+        neutral: -1.733
+        sad: -2.973
+        surprised: 1.060
+    supported_targets: ["CPU", "GPU", "NPU"]
+    recommended_target: "NPU"
+    note: >
+      Trained on acted emotion corpora — raw logits are biased toward
+      angry/happy on ordinary calm speech, which is what the logit_bias
+      calibration above corrects for (measured, not eliminated: angry still
+      surfaces on 12-19% of calm windows). Chosen anyway over the dimensional
+      alternative below because it actually reports angry/sad/surprised
+      instead of defaulting to neutral almost everywhere.
+    alternatives:
+      - name: "audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim"
+        export_dir: "models/wav2vec2-emotion-dimensional"
+        device: "NPU"
+        mode: "dimensional"
+        dimensions: ["arousal", "dominance", "valence"]
+        # Length of a single analysis window (3s at 16kHz, matching this model's
+        # training clip length). The whole recording is split into speech-only
+        # windows of this size and the results aggregated, so this is NOT a cap
+        # on how much audio gets analysed.
+        static_audio_samples: 48000
+        # Upper bound on windows scored per recording; longer audio is sampled
+        # evenly across the full timeline rather than truncated.
+        max_windows: 60
+        # Range each dimension occupies on ordinary calm speech — p5..p95 measured
+        # over the 25 read-speech files in voice_samples/ (87 windows, 5 languages).
+        # Inside the band the voice is treated as carrying no polarity. Needed
+        # because this model's outputs are compressed and language-dependent
+        # (English read speech sits near arousal 0.37, Arabic/Turkish near 0.75),
+        # so there is no single midpoint that fits every language. Re-measure if
+        # the model changes.
+        calibration:
+          arousal_band: [0.377, 0.793]
+          dominance_band: [0.468, 0.744]
+          valence_band: [0.367, 0.681]
+        supported_targets: ["CPU", "GPU", "NPU"]
+        note: >
+          Well-calibrated against false positives (25/25 calm files read neutral)
+          but, by the same token, reads neutral almost everywhere — the band is
+          derived from calm speech only, so it has not been confirmed to flag
+          genuinely angry/sad speech either.
+      - name: "ehcalabres/wav2vec2-lg-xlsr-en-speech-emotion-recognition"
+        export_dir: "models/wav2vec2-speech-emotion"
+        mode: "categorical"
+        labels: ["angry", "calm", "disgust", "fearful", "happy", "neutral", "sad", "surprised"]
+        static_audio_samples: 48000
+        max_windows: 60
+        supported_targets: ["CPU", "GPU", "NPU"]
+        note: "Categorical 8 emotions, English-focused, also acted-corpus trained"
+
+# Audio capture settings
+audio:
+  sample_rate: 16000
+  channels: 1
+  chunk_duration_s: 3.0
+  vad_threshold: 0.5
+
+# Language detection
+language:
+  default: "en"
+  min_text_length: 3
+  supported:
+    - code: "en"
+      name: "English"
+      flag: "🇬🇧"
+    - code: "fr"
+      name: "French"
+      flag: "🇫🇷"
+    - code: "de"
+      name: "German"
+      flag: "🇩🇪"
+    - code: "es"
+      name: "Spanish"
+      flag: "🇪🇸"
+    - code: "it"
+      name: "Italian"
+      flag: "🇮🇹"
+    - code: "pt"
+      name: "Portuguese"
+      flag: "🇵🇹"
+    - code: "nl"
+      name: "Dutch"
+      flag: "🇳🇱"
+    - code: "ru"
+      name: "Russian"
+      flag: "🇷🇺"
+    - code: "zh"
+      name: "Chinese"
+      flag: "🇨🇳"
+    - code: "ja"
+      name: "Japanese"
+      flag: "🇯🇵"
+    - code: "ko"
+      name: "Korean"
+      flag: "🇰🇷"
+    - code: "ar"
+      name: "Arabic"
+      flag: "🇸🇦"
+    - code: "hi"
+      name: "Hindi"
+      flag: "🇮🇳"
+    - code: "tr"
+      name: "Turkish"
+      flag: "🇹🇷"
+    - code: "pl"
+      name: "Polish"
+      flag: "🇵🇱"
+
+# UI settings
+ui:
+  title: "Local Lingua"
+  subtitle: "Conversational speech translation & sentiment analysis — fully local on Intel iGPU via OpenVINO"
+  port: 7860
+  host: "0.0.0.0"
