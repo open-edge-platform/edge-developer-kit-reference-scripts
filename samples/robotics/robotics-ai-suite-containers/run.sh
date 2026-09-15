@@ -42,6 +42,28 @@ require_cmd xhost
 
 SELECTED=""
 
+# Read a secret from stdin, echoing '*' for each character typed instead of
+# the actual characters. Usage: read_secret "Prompt: " VAR_NAME
+read_secret() {
+    local prompt="$1" var_name="$2"
+    local char secret=""
+    printf '%s' "${prompt}"
+    while IFS= read -rs -n 1 char; do
+        [[ -z "${char}" ]] && break  # Enter pressed
+        if [[ "${char}" == $'\x7f' ]]; then  # Backspace
+            if [[ -n "${secret}" ]]; then
+                secret="${secret%?}"
+                printf '\b \b'
+            fi
+        else
+            secret+="${char}"
+            printf '*'
+        fi
+    done
+    echo
+    printf -v "${var_name}" '%s' "${secret}"
+}
+
 # select_from_menu [--default VALUE] PROMPT OPTIONS...
 select_from_menu() {
     local default=""
@@ -110,6 +132,16 @@ else
     die "Unknown module selected: ${MODULE_NAME}"
 fi
 
+# pi05-rtc-ov needs a Hugging Face token to download the gated PaliGemma tokenizer.
+# Prompt here (before the container starts) so it lands in the container's top-level
+# environment via -e HF_TOKEN below, and is visible to every step of the pipeline.
+if [[ "${MODULE_NAME}" == "humanoid-imitation-learning" && "${SAMPLE_NAME}" == "pi05-rtc-ov" ]]; then
+    if [[ -z "${HF_TOKEN:-}" && -t 0 ]]; then
+        read_secret "Enter your Hugging Face token: " HF_TOKEN
+        export HF_TOKEN
+    fi
+fi
+
 # Check if docker image exists for the selected module
 if ! docker image inspect "robotics-ai-suite:${MODULE_NAME}-${SAMPLE_NAME}" &>/dev/null; then
     die "Docker image 'robotics-ai-suite:${MODULE_NAME}-${SAMPLE_NAME}' not found. Please build the image first using the setup script."
@@ -140,6 +172,7 @@ docker run --rm -it \
     --device /dev/accel \
     --user root \
     "${RENDER_GROUP_ARGS[@]}" \
+    -e HF_TOKEN="${HF_TOKEN:-}" \
     -e DISPLAY="${DISPLAY:-}" \
     -v /tmp/.X11-unix:/tmp/.X11-unix \
     -v /home/"$USER"/.cache:/root/.cache \

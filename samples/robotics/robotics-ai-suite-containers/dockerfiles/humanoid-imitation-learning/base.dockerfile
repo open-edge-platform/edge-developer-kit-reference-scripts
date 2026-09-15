@@ -11,6 +11,7 @@ USER root
 RUN apt update \
     && apt install -y curl \
         unzip \
+        wget \
         cmake \
         git \
         git-lfs \
