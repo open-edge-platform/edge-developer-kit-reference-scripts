@@ -1,0 +1,24 @@
+// Copyright (C) 2026 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+
+/* Project-level Payload admin overrides go here. */
+
+/**
+ * The registration-desk and settings links added under the collection nav
+ * (src/payload/components/EnrollLink.tsx, SettingsLink.tsx). Payload's own
+ * nav links are laid out by `.nav__link`; this only sets them apart as
+ * destinations outside the admin, with the rule above the first one doing
+ * the separating.
+ */
+.kiosk-nav-link {
+  margin-top: var(--base, 1rem);
+  padding-top: calc(var(--base, 1rem) / 2);
+  border-top: 1px solid var(--theme-elevation-100);
+  font-weight: 600;
+}
+
+.kiosk-nav-link + .kiosk-nav-link {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
