@@ -40,6 +40,34 @@ CONFIG = {
     "ovms_port": 5007,
 }
 
+# Fallback used when the frontend hasn't provided STARTUP_TIMEOUT (e.g. when
+# running the worker standalone, outside the frontend's process supervisor).
+DEFAULT_STARTUP_TIMEOUT = 600
+
+
+def _get_startup_timeout() -> int:
+    """Read the OVMS readiness timeout (seconds) from STARTUP_TIMEOUT.
+
+    The frontend injects this env var from its own configurable
+    `startupTimeout` app setting (see process-handler.ts) so the worker waits
+    exactly as long as the frontend's prepare→error watchdog allows — large
+    models on slower devices (e.g. NPU) won't be cut short by a shorter,
+    unrelated hardcoded timeout.
+    """
+    raw = os.environ.get("STARTUP_TIMEOUT")
+    if not raw:
+        return DEFAULT_STARTUP_TIMEOUT
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning(
+            f"Invalid STARTUP_TIMEOUT value '{raw}', using default of "
+            f"{DEFAULT_STARTUP_TIMEOUT}s"
+        )
+        return DEFAULT_STARTUP_TIMEOUT
+    return value if value > 0 else DEFAULT_STARTUP_TIMEOUT
+
+
 # Keep track of long running task
 IMAGE_GENERATION_TASK = None
 IMAGE_EDIT_TASK = None
@@ -239,17 +267,34 @@ async def lifespan(app: FastAPI):
             logger.warning("Could not determine OVMS process ID")
 
         # Wait for the server to be ready
-        logger.info("Waiting for OVMS server to be ready...")
+        startup_timeout = _get_startup_timeout()
+        logger.info(
+            f"Waiting up to {startup_timeout}s for OVMS server to be ready..."
+        )
 
-        model_ready = await asyncio.to_thread(
+        model_ready, ovms_exit_code = await asyncio.to_thread(
             wait_for_model_ready,
             CONFIG["ovms_port"],
             CONFIG["model_id"],
-            timeout=120,  # 2 minutes timeout
+            startup_timeout,
+            1.0,
+            OVMS_PROCESS,
         )
 
         if not model_ready:
-            raise RuntimeError("OVMS server failed to start within timeout period")
+            if ovms_exit_code is not None:
+                raise RuntimeError(
+                    f"OVMS server process exited with code {ovms_exit_code} "
+                    f"before model '{CONFIG['model_id']}' became ready "
+                    f"(device: {CONFIG['device']}). Check the worker logs for "
+                    "the OVMS error — this is a crash, not a timeout."
+                )
+            raise RuntimeError(
+                "OVMS server failed to become ready within "
+                f"{startup_timeout}s. The model may still be loading/compiling "
+                f"(device: {CONFIG['device']}) — consider raising the startup "
+                "timeout in settings for large models or slower devices."
+            )
 
         logger.info("Image generation server services initialized successfully")
 
