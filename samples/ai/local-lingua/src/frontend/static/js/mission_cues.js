@@ -52,6 +52,109 @@ let _accumulatedMatches = new Map(); // hotword -> {hotword, action, filename, s
 const COLLAPSE_KEY = 'localLingua_missionCuesCollapsed';
 const DETECTIONS_KEY = 'localLingua_missionCueDetections';
 
+// Per-message matches, keyed by messageId — lets Simple-mode chat bubbles
+// show their own inline cue tag/highlight (including after a page reload),
+// independent of the accumulated hotword bank above.
+const MESSAGE_CUES_KEY = 'localLingua_missionCueByMessage';
+const MESSAGE_CUES_CAP = 200;
+
+function _loadMessageCueStore() {
+  try {
+    const raw = localStorage.getItem(MESSAGE_CUES_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+export function persistMessageCues(messageId, matches) {
+  if (!messageId || !matches || matches.length === 0) return;
+  try {
+    const store = _loadMessageCueStore();
+    store[messageId] = matches;
+    const keys = Object.keys(store);
+    if (keys.length > MESSAGE_CUES_CAP) {
+      // Plain-object insertion order matches string-key insertion order, so
+      // trimming the front evicts the oldest entries first.
+      keys.slice(0, keys.length - MESSAGE_CUES_CAP).forEach(k => delete store[k]);
+    }
+    localStorage[MESSAGE_CUES_KEY] = JSON.stringify(store);
+  } catch (e) {
+    console.error('Failed to persist message mission cues:', e);
+  }
+}
+
+export function getMessageCues(messageId) {
+  if (!messageId) return [];
+  return _loadMessageCueStore()[messageId] || [];
+}
+
+// ---------------------------------------------------------------------------
+// Shared hotword highlighting (used by the Sentiment History list and, in
+// Simple mode, by chat bubbles).
+// ---------------------------------------------------------------------------
+
+/** Append `text` into `parent`, wrapping occurrences of any `terms` string in <mark class="hotword-highlight">. */
+export function highlightTerms(parent, text, terms) {
+  if (!text) return;
+  const clean = [...new Set((terms || []).filter(Boolean))];
+  if (!clean.length) {
+    parent.appendChild(document.createTextNode(text));
+    return;
+  }
+  // Longest-first so overlapping hotwords match the longer one.
+  for (let i = 0; i < clean.length; i++) {
+    let longest = i;
+    for (let j = i + 1; j < clean.length; j++) {
+      if (clean[j].length > clean[longest].length) longest = j;
+    }
+    if (longest !== i) {
+      const tmp = clean[i];
+      clean[i] = clean[longest];
+      clean[longest] = tmp;
+    }
+  }
+
+  // Plain case-insensitive substring scan instead of a dynamically-built
+  // RegExp — hotwords are data-controlled, so there's no fixed pattern to
+  // safely escape into a regex source; matching by substring search avoids
+  // constructing a regex from them at all.
+  const lowerText = text.toLowerCase();
+  const lowerTerms = clean.map(t => t.toLowerCase());
+  let plain = '';
+  let pos = 0;
+  while (pos < text.length) {
+    let matchLen = 0;
+    for (let t = 0; t < lowerTerms.length; t++) {
+      const term = lowerTerms[t];
+      if (term && lowerText.startsWith(term, pos)) {
+        matchLen = term.length;
+        break;
+      }
+    }
+    if (matchLen > 0) {
+      if (plain) {
+        parent.appendChild(document.createTextNode(plain));
+        plain = '';
+      }
+      const mark = document.createElement('mark');
+      mark.className = 'hotword-highlight';
+      mark.textContent = text.slice(pos, pos + matchLen);
+      parent.appendChild(mark);
+      pos += matchLen;
+    } else {
+      plain += text[pos];
+      pos += 1;
+    }
+  }
+  if (plain) parent.appendChild(document.createTextNode(plain));
+}
+
+/** Append a specific message's detected matches into `parent` (uses matchedText, falling back to the canonical hotword). */
+export function highlightHotwords(parent, text, matches) {
+  highlightTerms(parent, text, (matches || []).map(m => m.matchedText || m.hotword));
+}
+
 function persistDetections() {
   try {
     const arr = [..._accumulatedMatches.values()].map(m => ({ ...m, isNew: false }));
@@ -284,6 +387,15 @@ export async function initMissionCues() {
   // PDF upload
   const fileInput = document.getElementById('cuePdfInput');
   const parseModeSelect = document.getElementById('cueParseModeSelect');
+
+  // Compact trigger shown next to the local input bar in Simple mode — opens
+  // the same hidden file input, using whatever parse mode is selected in the
+  // (hidden, but still readable) Mission Cues panel.
+  const compactBtn = document.getElementById('btnUploadCuePdfCompact');
+  if (compactBtn && fileInput) {
+    compactBtn.addEventListener('click', () => fileInput.click());
+  }
+
   if (fileInput) {
     fileInput.addEventListener('change', async (e) => {
       const file = e.target.files[0];

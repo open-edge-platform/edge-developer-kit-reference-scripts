@@ -6,8 +6,9 @@
  */
 
 import { fetchSentimentHistory, postSentimentAnalyze } from './api.js';
-import { getHotwords } from './mission_cues.js';
+import { getHotwords, highlightTerms } from './mission_cues.js';
 import { showToast } from './toast.js';
+import { updateGlanceVerdict } from './chat.js';
 
 // ============================================================
 // Helpers
@@ -124,54 +125,8 @@ export async function loadSentimentHistory(query) {
         const textDiv = document.createElement('div');
         textDiv.className = 'shi-message';
         const rawText = (item.keyPhrases || []).join(', ');
-        const hotwords = getHotwords().filter(Boolean);
-        if (rawText && hotwords.length) {
-          // Locate hotword occurrences via plain substring search (no
-          // dynamic regex is built from hotword text), preferring longer
-          // hotwords when matches overlap.
-          const lowerText = rawText.toLowerCase();
-          const claimed = new Array(rawText.length).fill(false);
-          const matches = [];
-          [...hotwords].sort((a, b) => b.length - a.length).forEach(hotword => {
-            const lowerHotword = hotword.toLowerCase();
-            if (!lowerHotword) return;
-            let searchFrom = 0;
-            let idx;
-            while ((idx = lowerText.indexOf(lowerHotword, searchFrom)) !== -1) {
-              const end = idx + lowerHotword.length;
-              let overlaps = false;
-              for (let i = idx; i < end; i++) {
-                if (claimed[i]) { overlaps = true; break; }
-              }
-              if (!overlaps) {
-                matches.push({ start: idx, end });
-                claimed.fill(true, idx, end);
-              }
-              searchFrom = idx + 1;
-            }
-          });
-          matches.sort((a, b) => a.start - b.start);
-
-          let cursor = 0;
-          matches.forEach(({ start, end }) => {
-            if (start > cursor) {
-              const gapSpan = document.createElement('span');
-              gapSpan.textContent = rawText.slice(cursor, start);
-              textDiv.appendChild(gapSpan);
-            }
-            const mark = document.createElement('mark');
-            mark.className = 'hotword-highlight';
-            mark.textContent = rawText.slice(start, end);
-            textDiv.appendChild(mark);
-            cursor = end;
-          });
-          if (cursor < rawText.length) {
-            const gapSpan = document.createElement('span');
-            gapSpan.textContent = rawText.slice(cursor);
-            textDiv.appendChild(gapSpan);
-          }
-        } else {
-          textDiv.textContent = rawText;
+        if (rawText) {
+          highlightTerms(textDiv, rawText, getHotwords());
         }
 
         if (textDiv.textContent) div.appendChild(textDiv);
@@ -309,9 +264,13 @@ async function submitTextSentiment() {
   submitBtn.disabled = true;
   submitBtn.textContent = 'Analyzing...';
   try {
-    await postSentimentAnalyze(text, 'en');
+    const result = await postSentimentAnalyze(text, 'en');
     closeTextSentimentModal();
     loadSentimentHistory();
+    // Sentiment History (where the result above lands) is hidden in Simple
+    // mode — also feed the result into the Glance hero verdict so a manual
+    // analysis is visible there too, same as auto-sentiment.
+    updateGlanceVerdict(result);
   } catch (e) {
     console.error('Text sentiment analyze error:', e);
     showToast('Sentiment analysis failed — see server logs.', 'error');
