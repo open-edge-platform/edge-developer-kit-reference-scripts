@@ -27,6 +27,25 @@ async function getHfToken(): Promise<string> {
   }
 }
 
+const DEFAULT_STARTUP_TIMEOUT_SECONDS = 600
+
+// Shares the same startup timeout budget configured for the frontend's own
+// prepare→error watchdog (see healthcheck.ts) with spawned worker processes,
+// so slow model loads (e.g. large models on NPU) aren't cut short by an
+// unrelated hardcoded timeout inside the worker.
+async function getStartupTimeout(): Promise<number> {
+  try {
+    const payload = await getPayload({ config })
+    const settings = await payload.findGlobal({
+      slug: 'app-settings',
+      overrideAccess: true,
+    })
+    return settings.startupTimeout ?? DEFAULT_STARTUP_TIMEOUT_SECONDS
+  } catch {
+    return DEFAULT_STARTUP_TIMEOUT_SECONDS
+  }
+}
+
 const isWindows = os.platform() === 'win32'
 const isLinux = os.platform() === 'linux'
 const START_SCRIPT = isWindows ? 'start.ps1' : 'start.sh'
@@ -319,11 +338,15 @@ async function spawnProcess(
     ),
   )
 
-  const hfToken = await getHfToken()
+  const [hfToken, startupTimeout] = await Promise.all([
+    getHfToken(),
+    getStartupTimeout(),
+  ])
   const proc = spawn(command, spawnArgs, {
     env: {
       ...process.env,
       ...(hfToken ? { HF_TOKEN: hfToken } : {}),
+      STARTUP_TIMEOUT: String(startupTimeout),
       ...options.env,
     },
     cwd: options.cwd,

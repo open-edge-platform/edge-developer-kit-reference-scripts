@@ -468,6 +468,7 @@ def wait_for_model_ready(
     model_name: str,
     timeout: int = 180,
     check_interval: float = 2.0,
+    process: subprocess.Popen | None = None,
 ):
     """
     Poll the OVMS readiness endpoint until the model is ready or timeout.
@@ -477,9 +478,15 @@ def wait_for_model_ready(
         model_name: Model name as registered in config.json.
         timeout: Maximum seconds to wait.
         check_interval: Seconds between readiness checks.
+        process: The OVMS subprocess (if available). When provided, its exit
+            status is checked on every iteration so a crash is detected and
+            reported immediately instead of waiting out the full timeout.
 
     Returns:
-        True if the model is ready, False if timed out.
+        A ``(ready, exit_code)`` tuple. ``ready`` is True once the model
+        answers healthy. When ``ready`` is False, ``exit_code`` is the OVMS
+        process's exit code if it crashed, or None if the wait simply timed
+        out while the process was still running.
     """
     start_time = time.time()
     encoded_name = urllib.parse.quote(model_name, safe="")
@@ -488,12 +495,22 @@ def wait_for_model_ready(
     print(f"Checking OVMS readiness on port {port} for model '{model_name}'")
 
     while time.time() - start_time < timeout:
+        if process is not None:
+            exit_code = process.poll()
+            if exit_code is not None:
+                print(
+                    f"OVMS process exited (code {exit_code}) while waiting for "
+                    f"model '{model_name}' to become ready — treating as a crash, "
+                    "not a slow load."
+                )
+                return False, exit_code
+
         try:
             response = requests.get(health_url, timeout=5)
             print(f"Model readiness check for '{model_name}': {response.status_code}")
             if response.status_code == 200:
                 print(f"OVMS server is ready with model: {model_name}")
-                return True
+                return True, None
         except requests.exceptions.RequestException as e:
             print(f"Model readiness check failed: {e}")
 
@@ -501,5 +518,9 @@ def wait_for_model_ready(
         print(f"Still waiting for model readiness... ({elapsed:.1f}s/{timeout}s)")
         time.sleep(check_interval)
 
-    print(f"Timeout waiting for OVMS server on port {port}")
-    return False
+    print(
+        f"Timeout waiting for OVMS server on port {port} after {timeout}s — the "
+        f"model '{model_name}' may still be loading/compiling. Consider raising "
+        "the startup timeout for slower devices (e.g. NPU) or large models."
+    )
+    return False, None

@@ -28,7 +28,7 @@ export const sample: Sample = {
       role: 'required',
       recommended: {
         device: 'xpu:0',
-        model: 'pyannote/speaker-diarization-3.1',
+        model: 'pyannote/speaker-diarization-community-1',
       },
     },
     {
