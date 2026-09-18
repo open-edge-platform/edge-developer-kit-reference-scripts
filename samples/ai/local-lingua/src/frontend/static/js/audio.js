@@ -10,7 +10,7 @@ import { postLocalMic, postLocalFileStream, postLocalText, postUserMic, postUser
 import { addLocalMessage, addUserMessage } from './chat.js';
 import { requestMicConsent, requestFileConsent } from './app.js';
 import { handleAutoSentiment } from './sentiment.js';
-import { updateMissionCues } from './mission_cues.js';
+import { updateMissionCues, persistMessageCues } from './mission_cues.js';
 import { showToast } from './toast.js';
 import { currentEpoch, isStale } from './session.js';
 
@@ -86,17 +86,42 @@ function getTgtLang() {
   return document.getElementById('tgtLang').value;
 }
 
+// Glance mode's status bar (glanceListeningText) is the single place any
+// processing state surfaces there — LISTENING while recording, PROCESSING
+// while any upload/transcribe/translate step is in flight, READY otherwise.
+// The per-button #localProcessing/#userProcessing spans still exist for
+// Advanced mode but are hidden in Simple mode via CSS.
+const _glanceActiveIndicators = new Set();
+
+function _updateGlanceStatus() {
+  const glanceListening = document.getElementById('glanceListening');
+  const glanceListeningText = document.getElementById('glanceListeningText');
+  if (!glanceListening || !glanceListeningText) return;
+  if (localRecording || userRecording) return;
+  if (_glanceActiveIndicators.size > 0) {
+    glanceListening.classList.add('active');
+    glanceListeningText.textContent = 'PROCESSING';
+  } else {
+    glanceListening.classList.remove('active');
+    glanceListeningText.textContent = 'READY';
+  }
+}
+
 function showIndicator(id, text) {
   const el = document.getElementById(id);
   if (el) {
     if (text) el.textContent = text;
     el.classList.remove('hidden');
   }
+  _glanceActiveIndicators.add(id);
+  _updateGlanceStatus();
 }
 
 function hideIndicator(id) {
   const el = document.getElementById(id);
   if (el) el.classList.add('hidden');
+  _glanceActiveIndicators.delete(id);
+  _updateGlanceStatus();
 }
 
 // ============================================================
@@ -246,6 +271,15 @@ async function startRecording(type) {
     const btn = document.getElementById(btnId);
     btn.classList.add('recording');
 
+    // Glance-mode status bar's listening indicator mirrors the local mic only
+    // — that's the one the "LISTENING" copy in the mockup refers to.
+    if (type === 'local') {
+      const glanceListening = document.getElementById('glanceListening');
+      if (glanceListening) glanceListening.classList.add('active');
+      const glanceListeningText = document.getElementById('glanceListeningText');
+      if (glanceListeningText) glanceListeningText.textContent = 'LISTENING';
+    }
+
     const indicatorId = type === 'local' ? 'localProcessing' : 'userProcessing';
     const indicator = document.getElementById(indicatorId);
     if (indicator) {
@@ -299,6 +333,10 @@ function stopRecording(type) {
     const btn = document.getElementById('btnLocalMic');
     btn.classList.remove('recording');
     btn.style.setProperty('--mic-level', 0);
+    const glanceListening = document.getElementById('glanceListening');
+    if (glanceListening) glanceListening.classList.remove('active');
+    const glanceListeningText = document.getElementById('glanceListeningText');
+    if (glanceListeningText) glanceListeningText.textContent = 'READY';
     const indicator = document.getElementById('localProcessing');
     if (indicator) indicator.textContent = 'Transcribing...';
   } else if (type === 'user' && userRecorder) {
@@ -339,9 +377,12 @@ async function handleLocalAudio(blob) {
       showToast('Could not transcribe audio. Try speaking louder or longer.', 'warn');
     } else {
       if (isStale(epoch) || data.discarded) return;
-      addLocalMessage(data.originalText, data.translatedText, data.timestamp);
+      addLocalMessage(data.originalText, data.translatedText, data.timestamp, { sentiment: data.sentiment, missionCues: data.missionCues });
       handleAutoSentiment(data.sentiment, data.conversationSummary);
-      if (data.missionCues) updateMissionCues(data.missionCues);
+      if (data.missionCues) {
+        updateMissionCues(data.missionCues);
+        persistMessageCues(data.messageId, data.missionCues);
+      }
     }
   } catch (e) {
     console.error('Send local audio error:', e);
@@ -371,9 +412,12 @@ async function handleUserAudio(blob) {
       showToast('Could not transcribe audio. Try speaking louder or longer.', 'warn');
     } else {
       if (isStale(epoch) || data.discarded) return;
-      addUserMessage(data.originalText, data.translatedText, data.timestamp);
+      addUserMessage(data.originalText, data.translatedText, data.timestamp, { sentiment: data.sentiment, missionCues: data.missionCues });
       handleAutoSentiment(data.sentiment, data.conversationSummary);
-      if (data.missionCues) updateMissionCues(data.missionCues);
+      if (data.missionCues) {
+        updateMissionCues(data.missionCues);
+        persistMessageCues(data.messageId, data.missionCues);
+      }
     }
   } catch (e) {
     console.error('Send user audio error:', e);
@@ -419,9 +463,12 @@ async function handleLocalFile(file) {
       showToast('Could not transcribe file. Ensure it contains speech.', 'warn');
     } else {
       if (isStale(epoch) || data.discarded) return;
-      addLocalMessage(data.originalText, data.translatedText, data.timestamp);
+      addLocalMessage(data.originalText, data.translatedText, data.timestamp, { sentiment: data.sentiment, missionCues: data.missionCues });
       handleAutoSentiment(data.sentiment, data.conversationSummary);
-      if (data.missionCues) updateMissionCues(data.missionCues);
+      if (data.missionCues) {
+        updateMissionCues(data.missionCues);
+        persistMessageCues(data.messageId, data.missionCues);
+      }
     }
   } catch (e) {
     console.error('Send local file error:', e);
@@ -463,9 +510,12 @@ async function handleUserFile(file) {
       showToast('Could not transcribe file. Ensure it contains speech.', 'warn');
     } else {
       if (isStale(epoch) || data.discarded) return;
-      addUserMessage(data.originalText, data.translatedText, data.timestamp);
+      addUserMessage(data.originalText, data.translatedText, data.timestamp, { sentiment: data.sentiment, missionCues: data.missionCues });
       handleAutoSentiment(data.sentiment, data.conversationSummary);
-      if (data.missionCues) updateMissionCues(data.missionCues);
+      if (data.missionCues) {
+        updateMissionCues(data.missionCues);
+        persistMessageCues(data.messageId, data.missionCues);
+      }
     }
   } catch (e) {
     console.error('Send user file error:', e);
@@ -487,8 +537,12 @@ async function handleLocalTextSend(text) {
   try {
     const data = await postLocalText(text, getSrcLang(), getTgtLang());
     if (isStale(epoch) || data.discarded) return;
-    addLocalMessage(data.originalText, data.translatedText, data.timestamp);
+    addLocalMessage(data.originalText, data.translatedText, data.timestamp, { sentiment: data.sentiment, missionCues: data.missionCues });
     handleAutoSentiment(data.sentiment, data.conversationSummary);
+    if (data.missionCues) {
+      updateMissionCues(data.missionCues);
+      persistMessageCues(data.messageId, data.missionCues);
+    }
   } catch (e) {
     console.error('Send local text error:', e);
     showToast('Translation failed.', 'error');
@@ -509,8 +563,12 @@ async function handleUserTextSend(text) {
   try {
     const data = await postUserText(text, getTgtLang(), getSrcLang());
     if (isStale(epoch) || data.discarded) return;
-    addUserMessage(data.originalText, data.translatedText, data.timestamp);
+    addUserMessage(data.originalText, data.translatedText, data.timestamp, { sentiment: data.sentiment, missionCues: data.missionCues });
     handleAutoSentiment(data.sentiment, data.conversationSummary);
+    if (data.missionCues) {
+      updateMissionCues(data.missionCues);
+      persistMessageCues(data.messageId, data.missionCues);
+    }
   } catch (e) {
     console.error('Send user text error:', e);
     showToast('Translation failed.', 'error');

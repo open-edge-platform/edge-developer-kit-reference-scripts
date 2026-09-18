@@ -6,17 +6,18 @@
  * Initialization, tabs, consent, prerequisites, event wiring.
  */
 
-import { fetchLanguages, fetchConversationHistory, clearConversationHistory, setSessionLanguages, fetchTelemetry, fetchModels, fetchPrerequisites, grantMicConsent, grantFileConsent } from './api.js';
+import { fetchLanguages, fetchConversationHistory, clearConversationHistory, setSessionLanguages, fetchTelemetry, fetchModels, fetchPrerequisites, fetchSentimentHistory, grantMicConsent, grantFileConsent } from './api.js';
 import { addLocalMessage, addUserMessage, clearChatUI } from './chat.js';
 import { initAudio } from './audio.js';
 import { initSentiment, loadSentimentHistory, resetSentimentPanel } from './sentiment.js';
-import { initMissionCues, clearMissionCues } from './mission_cues.js';
+import { initMissionCues, clearMissionCues, getMessageCues } from './mission_cues.js';
 import { bumpEpoch } from './session.js';
 import { showToast } from './toast.js';
 import { initTelemetry } from './telemetry.js';
 import { initSettings } from './settings.js';
 import { initArchitecture } from './architecture.js';
 import { initDemo } from './demo.js';
+import { initMode, initLighting } from './mode.js';
 
 // ============================================================
 // Theme Toggle
@@ -262,17 +263,39 @@ function initLanguageListeners() {
 
 async function loadConversationHistory(query) {
   try {
-    const data = await fetchConversationHistory(query);
+    // Sentiment history is fetched unfiltered (not scoped to `query`) so every
+    // message can be joined by messageId regardless of the conversation search
+    // term — it's what lets Simple-mode bubbles show their sentiment dot after
+    // a reload, same as a live turn would.
+    const [data, sentiments] = await Promise.all([
+      fetchConversationHistory(query),
+      fetchSentimentHistory().catch(() => []),
+    ]);
     clearChatUI();
+
+    const sentimentByMessage = new Map();
+    if (Array.isArray(sentiments)) {
+      sentiments.forEach(s => { if (s.messageId) sentimentByMessage.set(s.messageId, s); });
+    }
+
     if (Array.isArray(data)) {
-      data.forEach(msg => {
+      // The API returns newest-first (ORDER BY timestamp DESC), but bubbles
+      // must be appended oldest-first so the DOM ends up in chronological
+      // order — the last child (newest turn) is what Simple/Glance mode
+      // shows, and Advanced mode's scrollback reads top-to-bottom correctly.
+      [...data].reverse().forEach(msg => {
         // prefetch: false — this is restoring saved history (startup, search),
         // not a live turn, so don't rerun TTS synthesis for messages nobody
         // has asked to hear again.
+        const opts = {
+          prefetch: false,
+          sentiment: sentimentByMessage.get(msg.messageId) || null,
+          missionCues: getMessageCues(msg.messageId),
+        };
         if (msg.speakerType === 'local_speaker') {
-          addLocalMessage(msg.originalText, msg.translatedText, msg.timestamp, { prefetch: false });
+          addLocalMessage(msg.originalText, msg.translatedText, msg.timestamp, opts);
         } else {
-          addUserMessage(msg.originalText, msg.translatedText, msg.timestamp, { prefetch: false });
+          addUserMessage(msg.originalText, msg.translatedText, msg.timestamp, opts);
         }
       });
     }
@@ -425,6 +448,8 @@ document.addEventListener('DOMContentLoaded', () => {
   _appInitialized = true;
 
   initTabs();
+  initMode();
+  initLighting();
   loadLanguages();
   initLanguageListeners();
   initAudio();

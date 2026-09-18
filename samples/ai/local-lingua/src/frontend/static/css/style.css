@@ -14,6 +14,11 @@
   --bg-body: #0d1b2a;
   --bg-tab-bar: #0a1628;
   --bg-section-left: #1b3a4b;
+  /* Glance mode gets its own near-black backdrop (distinct from the
+     teal-tinted --bg-section-left Advanced mode's panels use) so it reads
+     as a standalone device screen rather than a themed Advanced panel. */
+  --glance-bg: #0a0e14;
+  --glance-body-gradient: radial-gradient(circle at 50% 0%, #12202f, #05080d 70%);
   --bg-section-right: #1a2f3a;
   --bg-hardware: #0f1f35;
   /* Header/label strips (Local Speaker, chat headers, block headers, search,
@@ -198,7 +203,10 @@
 
 /* ===================== Light Theme ===================== */
 
-[data-theme="light"] {
+/* Sunlight (Glance-mode lighting toggle) starts from every Light-theme
+   variable, then gets a handful of high-contrast overrides below — see the
+   supplemental [data-theme="sunlight"] block after this one. */
+[data-theme="light"], [data-theme="sunlight"] {
   /* Backgrounds — cool-gray canvas with crisp white cards lifting off it.
      Canvas sits a step below the section/card surfaces so panels read as
      distinct elevated cards (settings, prereqs, architecture) rather than
@@ -206,6 +214,8 @@
   --bg-body: #e9ecf3;
   --bg-tab-bar: #ffffff;
   --bg-section-left: #fbfcff;
+  --glance-bg: #ffffff;
+  --glance-body-gradient: radial-gradient(circle at 50% 0%, #f7f9fc, #dde3ee 70%);
   --bg-section-right: #f8fbfa;
   --bg-hardware: #eef0f7;
   --bg-input-bar: rgba(99, 102, 241, 0.09);
@@ -380,6 +390,24 @@
   --token-input-border: #d1d5db;
   --toast-shadow: 0 4px 16px rgba(30, 27, 75, 0.12);
   --history-detail-color: #4b5563;
+}
+
+/* Sunlight overrides — highest-impact vars only, for outdoor-glare
+   legibility (max contrast, no translucent tints). */
+[data-theme="sunlight"] {
+  --bg-body: #ffffff;
+  --bg-section-left: #ffffff;
+  --bg-section-right: #ffffff;
+  --bg-tab-bar: #ffffff;
+  --glance-bg: #ffffff;
+  --glance-body-gradient: none;
+  --text-primary: #000000;
+  --border-block: #000000;
+  --border-subtle-3: #000000;
+}
+
+[data-theme="sunlight"] body {
+  filter: contrast(1.08) saturate(1.05);
 }
 
 /* ===================== Base Reset ===================== */
@@ -561,6 +589,255 @@ body {
   border-top: 2px solid var(--border-block);
 }
 
+/* ===================== Simple (Customer) Mode ===================== */
+/* Advanced mode (default) is unaffected by any rule in this block — every
+   selector here is scoped under [data-mode="simple"]. Simple mode hides the
+   reference-app surface (Settings/Prerequisites/Architecture tabs, demo
+   button, telemetry, sentiment/mission-cues side panels) and collapses the
+   Main tab to a single full-width conversation column. The reply bar is
+   reparented into that column by mode.js so it isn't lost along with the
+   rest of .section-top-right. */
+
+[data-mode="simple"] .tab-btn[data-tab="main"],
+[data-mode="simple"] .tab-btn[data-tab="settings"],
+[data-mode="simple"] .tab-btn[data-tab="prerequisites"],
+[data-mode="simple"] .tab-btn[data-tab="architecture"],
+[data-mode="simple"] #btnDemoScenarios,
+[data-mode="simple"] #splitToggle {
+  display: none;
+}
+
+/* With every tab label hidden, nothing should read as "a browser-style tab
+   bar" anymore — shrink it to a bare utility strip holding just the mode
+   and lighting toggles, so Simple/Glance mode doesn't look like Advanced
+   mode with panels hidden. */
+[data-mode="simple"] .tab-bar {
+  padding: 6px 12px;
+  border-bottom: none;
+  background: transparent;
+}
+
+/* #splitToggle normally owns the margin-left:auto that pushes the whole
+   toggle cluster to the tab bar's right edge. It's display:none above, so
+   (being out of flex flow) it can no longer do that — .mode-toggle takes
+   over the push while it's the leftmost visible member of the cluster. */
+[data-mode="simple"] .mode-toggle {
+  margin-left: auto;
+}
+
+[data-mode="simple"] .main-layout {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+
+[data-mode="simple"] .section-top-right,
+[data-mode="simple"] .section-bottom-hardware {
+  display: none;
+}
+
+[data-mode="simple"] .section-top-left {
+  border-right: none;
+}
+
+/* Reply bar lives here once mode.js reparents it for Simple mode — see the
+   Glance action-row section further down for its restyled (order/border)
+   rule now that it's a secondary control below the main talk action. */
+
+[data-mode="simple"] #btnAnalyzeTypedText {
+  display: none;
+}
+
+/* Latest-only view: searching scrollback doesn't fit a single-exchange
+   layout. Search stays available in Advanced mode. */
+[data-mode="simple"] .search-bar {
+  display: none;
+}
+
+/* Only the newest turn is visible in Glance mode — older bubbles stay in
+   the DOM (Advanced mode shows the full history; history restore doesn't
+   need mode-aware branching) but are hidden from view here.
+   Centering is done with auto margins on the bubble itself (below) rather
+   than justify-content:center here — centering a flex container's content
+   with justify-content clips any overflow at the *start* of the axis and
+   makes it unreachable by scrolling in most browsers. Auto margins collapse
+   to 0 when the content doesn't fit, which keeps the bubble scrollable from
+   the top instead of silently clipping it. */
+[data-mode="simple"] .chat-area .chat-bubble:not(:last-child) {
+  display: none;
+}
+
+[data-mode="simple"] .chat-area .chat-bubble:last-child {
+  margin-top: auto;
+  margin-bottom: auto;
+}
+
+/* ---- Hero sentiment verdict + mission-cue banner ("Glance" layout) ---- */
+/* Rendered unconditionally in the DOM (chat.js keeps them updated on every
+   message) so history restore doesn't need mode-aware branching — same
+   pattern as .bubble-sentiment-badge/.bubble-cue-tag further down. */
+
+.glance-verdict {
+  display: none;
+}
+
+[data-mode="simple"] .glance-verdict {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 18px 16px;
+  text-align: center;
+  border-bottom: 1px solid var(--border-subtle-3);
+}
+
+.glance-verdict-tag-slot {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.glance-verdict-tag-left {
+  justify-content: flex-end;
+}
+
+.glance-verdict-tag-right {
+  justify-content: flex-start;
+}
+
+.glance-verdict-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.glance-verdict-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.glance-verdict-word {
+  font-size: 60px;
+  font-weight: 900;
+  letter-spacing: 0.5px;
+  line-height: 1;
+  color: var(--sentiment-neutral-color);
+}
+
+.glance-verdict-shape {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: color-mix(in srgb, currentColor 14%, transparent);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, currentColor 30%, transparent);
+  color: var(--sentiment-neutral-color);
+}
+
+.glance-verdict.positive .glance-verdict-word,
+.glance-verdict.positive .glance-verdict-shape {
+  color: var(--sentiment-positive-color);
+}
+
+.glance-verdict.negative .glance-verdict-word,
+.glance-verdict.negative .glance-verdict-shape {
+  color: var(--sentiment-negative-color);
+}
+
+.glance-verdict-meter {
+  display: flex;
+  gap: 5px;
+}
+
+.glance-bar {
+  width: 44px;
+  height: 12px;
+  border-radius: 3px;
+  background: transparent;
+  border: 1px solid var(--border-subtle-3);
+}
+
+.glance-verdict.positive .glance-bar.on {
+  background: var(--sentiment-positive-color);
+  border-color: var(--sentiment-positive-color);
+}
+
+.glance-verdict.neutral .glance-bar.on {
+  background: var(--sentiment-neutral-color);
+  border-color: var(--sentiment-neutral-color);
+}
+
+.glance-verdict.negative .glance-bar.on {
+  background: var(--sentiment-negative-color);
+  border-color: var(--sentiment-negative-color);
+}
+
+/* Same confidence/voice-tone breakdown shown per-message in Advanced mode's
+   Sentiment History (.shi-meta) — reuses the same .sentiment-badge/
+   .voice-tone-inline classes so colors and labels stay identical, just
+   scaled up to match Glance mode's larger type. Each slot holds at most one
+   badge (see .glance-verdict-tag-left/-right in the row above). */
+.glance-verdict-tag-slot .sentiment-badge,
+.glance-verdict-tag-slot .voice-tone-inline {
+  font-size: 15px;
+  padding: 6px 14px 7px;
+  border-radius: 14px;
+  gap: 8px;
+}
+
+.glance-verdict-tag-slot .badge-icon {
+  width: 22px;
+  height: 22px;
+}
+
+@keyframes glance-flash {
+  from { filter: brightness(1); }
+  to { filter: brightness(1.25); }
+}
+
+.glance-cue-banner {
+  display: none;
+}
+
+[data-mode="simple"] .glance-cue-banner.visible {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 24px 14px;
+  padding: 14px 18px;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 17px;
+}
+
+.glance-cue-banner.negative {
+  background: var(--sentiment-negative-color);
+  color: #fff;
+  animation: glance-flash 1.1s infinite alternate;
+}
+
+.glance-cue-banner.neutral {
+  background: transparent;
+  border: 2px solid var(--sentiment-neutral-color);
+  color: var(--sentiment-neutral-color);
+}
+
+.glance-cue-banner.positive {
+  background: transparent;
+  border: 2px solid var(--sentiment-positive-color);
+  color: var(--sentiment-positive-color);
+}
+
+.glance-cue-icon {
+  display: flex;
+  flex-shrink: 0;
+}
+
 /* ===================== Input Bar (Top-Left) ===================== */
 
 .input-bar {
@@ -652,6 +929,122 @@ body {
 .btn-file:hover {
   background: var(--btn-file-hover);
 }
+
+/* Compact mission-cues PDF upload trigger. Shares the same hidden
+   #cuePdfInput / default parse mode as the full Mission Cues panel's
+   upload control (Advanced mode only) — hidden here too now that the
+   Glance layout's action row is decluttered to just talk + play. */
+.btn-cue-upload-compact {
+  display: none;
+  background: var(--btn-file);
+  color: white;
+}
+
+.btn-cue-upload-compact:hover {
+  background: var(--btn-file-hover);
+}
+
+/* ---- Glance-mode talk/listen action row ---- */
+/* Two mic buttons plus a file-upload icon each: #btnLocalMic ("Their
+   Turn" — records the local/native speaker, same click handler as
+   Advanced mode, just restyled) + #btnLocalFile, and #btnUserMic ("Your
+   Turn" — the user's own-language reply, reparented here by mode.js) +
+   #btnUserFile. Text reply and send are decluttered away — Glance mode
+   stays voice/file only. Per-bubble speaker icons (see .btn-speaker
+   above) cover playback instead of a separate shared button. */
+[data-mode="simple"] .input-bar {
+  order: 6;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  padding: 18px 20px 10px;
+  background: transparent;
+  border-top: 1px solid var(--border-subtle-3);
+  border-bottom: none;
+}
+
+[data-mode="simple"] .input-bar-label {
+  display: none;
+}
+
+[data-mode="simple"] #btnLocalMic,
+[data-mode="simple"] #btnUserMic,
+[data-mode="simple"] #btnLocalFile,
+[data-mode="simple"] #btnUserFile {
+  flex: 1 1 170px;
+  width: auto;
+  min-width: 170px;
+  height: 104px;
+  min-height: 104px;
+  border-radius: 20px;
+  gap: 6px;
+  padding: 6px 10px;
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  text-transform: uppercase;
+  line-height: 1.05;
+  /* Text can run longer than the button is wide at this size ("Upload
+     Audio" vs. "Their Turn") — wrap it and clip instead of letting it
+     spill outside the button's actual hit box, which made taps land on
+     whatever the overflowing text visually sat on top of instead of the
+     button underneath it. */
+  overflow: hidden;
+  /* .btn-icon's "transition: all" would otherwise animate flex-grow/width/
+     min-width from Advanced mode's small circle to this wide pill on every
+     load (data-mode is set before this stylesheet's rules can apply),
+     causing a jarring resize/text-reflow. Keep only the hover-feedback
+     properties transitioning. */
+  transition: background 0.2s, color 0.2s, transform 0.2s, box-shadow 0.2s;
+}
+
+[data-mode="simple"] #btnLocalMic svg,
+[data-mode="simple"] #btnUserMic svg,
+[data-mode="simple"] #btnLocalFile svg,
+[data-mode="simple"] #btnUserFile svg {
+  width: 60px;
+  height: 60px;
+  flex-shrink: 0;
+}
+
+.btn-mic-label {
+  display: none;
+}
+
+[data-mode="simple"] .btn-mic-label {
+  display: inline;
+  white-space: normal;
+  text-align: center;
+}
+
+/* Processing status is consolidated into the glance status bar's READY/
+   LISTENING/PROCESSING text (see audio.js's _updateGlanceStatus) — the
+   per-button indicators stay in the DOM for Advanced mode but shouldn't
+   duplicate that state here. */
+[data-mode="simple"] #localProcessing,
+[data-mode="simple"] #userProcessing {
+  display: none !important;
+}
+
+/* Reply bar becomes the second pill+file pair in the action cluster — no
+   longer a secondary control, so it drops its own separator/padding and
+   matches the row directly above it. */
+[data-mode="simple"] .section-top-left .user-response-bar {
+  order: 7;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  padding: 0 20px 18px;
+  border-top: none;
+}
+
+[data-mode="simple"] #userTextInput,
+[data-mode="simple"] #btnSend,
+[data-mode="simple"] #userProcessing {
+  display: none;
+}
+
 
 .btn-analyze {
   background: var(--accent-primary);
@@ -876,6 +1269,13 @@ body {
   transition: background 0.2s;
 }
 
+.btn-speaker svg {
+  width: 100%;
+  height: 100%;
+  max-width: 14px;
+  max-height: 14px;
+}
+
 .btn-speaker:hover {
   background: var(--bg-speaker-hover);
 }
@@ -909,8 +1309,11 @@ body {
 
 /* Strong seam between the two stacked left sections (local vs user chat),
    matching the left/right and right-pane dividers so all four main sections
-   are equally identifiable. */
-.chat-section:last-of-type {
+   are equally identifiable. :has() keys off the unique chat-area id rather
+   than :last-of-type, since several non-.chat-section <div> siblings (status
+   bar, verdict, search bar) precede these two and defeat the structural
+   pseudo-class. */
+.chat-section:has(#chatEnglish) {
   border-top: 2px solid var(--border-block);
 }
 
@@ -933,12 +1336,12 @@ body {
 }
 
 /* First chat header sits directly under the search bar — no top seam needed. */
-.chat-section:first-of-type .chat-header {
+.chat-section:has(#chatNonEnglish) .chat-header {
   border-top: none;
 }
 
 /* User-language chat header — green key matching the mint user bubbles. */
-.chat-section:last-of-type .chat-header {
+.chat-section:has(#chatEnglish) .chat-header {
   background: var(--bg-chat-header-user);
   color: var(--chat-header-user-color);
   border-left-color: var(--chat-header-user-color);
@@ -1020,6 +1423,233 @@ body {
   font-size: 9px;
   color: var(--text-muted-3);
   margin-top: 4px;
+}
+
+/* ---- Inline Sentiment / Mission-Cue markers ---- */
+/* Always rendered (chat.js appends them unconditionally) but always
+   display:none — Advanced mode never showed them as a design choice, and
+   Simple/Glance mode now surfaces this same data via the hero verdict
+   (.glance-verdict) and cue banner (.glance-cue-banner) instead, so the
+   inline per-bubble versions would just be redundant clutter there too. */
+.bubble-sentiment-badge.sentiment-badge {
+  display: none;
+  margin-top: 6px;
+  width: fit-content;
+  cursor: default;
+}
+
+.bubble-cue-tag {
+  display: none;
+  font-size: 10px;
+  font-weight: 600;
+  margin-top: 6px;
+  padding: 3px 8px;
+  border-radius: 10px;
+  background: var(--sentiment-neutral-bg);
+  color: var(--sentiment-neutral-color);
+  width: fit-content;
+}
+
+.hotword-highlight {
+  background: rgba(0, 200, 255, 0.15);
+  border: 1px solid rgba(0, 200, 255, 0.4);
+  border-radius: 3px;
+  padding: 0 3px;
+  color: var(--accent-primary);
+  font-weight: 600;
+}
+
+/* Glance mode shows plain centered text with a per-bubble speaker icon (no
+   per-message timestamp) — one play button per language, matching the
+   reference mockup's per-bubble 🔊. Translated (English) text reads
+   first/primary, native text second/secondary — reordered below via
+   .chat-section, not by touching chat.js's DOM order, so Advanced mode
+   (which restores this same markup) is completely unaffected. */
+[data-mode="simple"] .chat-bubble {
+  max-width: 92%;
+  padding: 16px 22px;
+  border-radius: 20px;
+  box-shadow: var(--shadow-bubble);
+  align-self: center !important;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-size: 34px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+/* Long messages get their font shrunk by chat.js's fitGlanceBubbleText()
+   (inline font-size overrides the value above) until they fit the visible
+   area; overflow-wrap covers the remaining edge case of a single unbreakable
+   "word" (URL, long token) too long to fit even at the minimum font size. */
+[data-mode="simple"] .chat-bubble .bubble-text {
+  overflow-wrap: anywhere;
+}
+
+/* Centered layout reads oddly with the corner-clipped "speech tail" radius
+   used in Advanced mode's left/right-aligned bubbles — square all corners
+   off here instead. */
+[data-mode="simple"] .chat-bubble.local,
+[data-mode="simple"] .chat-bubble.user {
+  border-bottom-left-radius: 20px;
+  border-bottom-right-radius: 20px;
+}
+
+/* :has(#chatNonEnglish) is the native-language section — visually reordered
+   to appear second/secondary below, per the "order" rules further down, so
+   its text gets the smaller/dimmer treatment here to match. */
+[data-mode="simple"] .chat-section:has(#chatNonEnglish) .chat-bubble {
+  font-size: 22px;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+[data-mode="simple"] .chat-bubble .bubble-time {
+  display: none;
+}
+
+[data-mode="simple"] .chat-bubble .btn-speaker {
+  width: 56px;
+  height: 56px;
+  font-size: 18px;
+}
+
+[data-mode="simple"] .chat-bubble .btn-speaker svg {
+  max-width: 28px;
+  max-height: 28px;
+}
+
+[data-mode="simple"] .hotword-highlight {
+  padding: 1px 4px;
+  font-weight: 700;
+}
+
+/* ---- Glance layout order & chrome ---- */
+/* Explicit order on every direct child of .section-top-left, so the visual
+   sequence (status bar -> verdict -> English text -> native text -> cue
+   banner -> talk action -> reply bar) is fully controlled here rather than
+   depending on DOM position — the DOM itself is untouched for Advanced
+   mode and for chat.js/mode.js's existing id-based lookups. .input-bar
+   (order 6) and .user-response-bar (order 7) get their order alongside
+   their own dedicated restyle rules further down instead of repeating it
+   here. */
+[data-mode="simple"] .glance-status-bar { order: 1; }
+[data-mode="simple"] .glance-verdict { order: 2; }
+[data-mode="simple"] .chat-section:has(#chatEnglish) { order: 3; }
+[data-mode="simple"] .chat-section:has(#chatNonEnglish) { order: 4; }
+[data-mode="simple"] .glance-cue-banner { order: 5; }
+
+[data-mode="simple"] .chat-header,
+[data-mode="simple"] .chat-section:has(#chatEnglish) {
+  border: none;
+}
+
+[data-mode="simple"] .chat-header {
+  display: none;
+}
+
+/* Full-bleed layout: the Simple/Glance column fills the entire viewport
+   edge-to-edge (no phone-card framing) — .main-layout is already a single
+   full-width/height grid cell once .section-top-right/.section-bottom-hardware
+   are hidden above, so this only needs to drop the constrained-width card
+   look, not touch the grid itself. */
+[data-mode="simple"] .section-top-left {
+  width: 100%;
+  background: var(--glance-bg);
+}
+
+[data-mode="simple"] body {
+  background: var(--glance-body-gradient);
+}
+
+.glance-status-bar {
+  display: none;
+}
+
+[data-mode="simple"] .glance-status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 24px 12px;
+  border-bottom: 1px solid var(--border-subtle-3);
+}
+
+/* Hidden by default — it now lives inside .input-bar/.user-response-bar,
+   which are the real, always-visible Advanced-mode rows, so unlike its
+   previous home (.glance-status-bar, itself display:none outside Simple
+   mode) it needs its own explicit Simple-mode-only visibility. */
+.glance-lang-pill {
+  display: none;
+}
+
+[data-mode="simple"] .glance-lang-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-search-bar);
+  border: 1px solid var(--border-subtle-3);
+  border-radius: 20px;
+  padding: 8px 18px;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+/* The real #srcLang/#tgtLang selects are reparented in here by mode.js
+   (instead of a separate synced read-only pill) so language can still be
+   changed without leaving Glance mode — restyled to blend into the pill. */
+.glance-lang-pill .lang-select-inline {
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  padding: 0;
+}
+
+.glance-lang-arrow {
+  color: var(--text-muted-2);
+}
+
+/* Compact variant that sits inline to the left of #btnLocalMic/#btnUserMic in
+   each action row (see "Glance-mode talk/listen action row" below), instead
+   of the standalone status-bar pill — same select-reparenting mechanism,
+   just a smaller footprint and matching the row's dark/accent palette. */
+[data-mode="simple"] .glance-lang-pill-inline {
+  flex: 0 0 auto;
+  height: 104px;
+  padding: 0 24px;
+  font-size: 22px;
+  border-radius: 20px;
+  background: var(--bg-search-bar);
+  border: 1px solid var(--border-subtle-3);
+}
+
+.glance-listening {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--text-muted-2);
+}
+
+.glance-listening-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--text-muted-3);
+}
+
+.glance-listening.active {
+  color: var(--status-active);
+}
+
+.glance-listening.active .glance-listening-dot {
+  background: var(--status-active);
+  animation: pulse-record 1.4s infinite;
 }
 
 /* ===================== Sample Buttons ===================== */
@@ -1185,6 +1815,108 @@ body {
 }
 
 .split-toggle-btn.active {
+  background: var(--accent-primary);
+  color: #fff;
+}
+
+/* ---- Simple / Advanced Mode Toggle ---- */
+
+.mode-toggle {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--bg-search-bar);
+  border: 1px solid var(--border-subtle-3);
+  border-radius: 8px;
+  margin-right: 10px;
+  align-self: center;
+  flex-shrink: 0;
+}
+
+.split-toggle ~ .mode-toggle {
+  margin-left: 0;
+}
+
+.mode-toggle ~ .theme-toggle {
+  margin-left: 0;
+}
+
+.mode-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  padding: 0 10px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  color: var(--text-muted-3);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.mode-toggle-btn:hover {
+  color: var(--text-secondary);
+}
+
+.mode-toggle-btn.active {
+  background: var(--accent-primary);
+  color: #fff;
+}
+
+/* ---- Lighting Toggle (Night / Day / Sunlight — Simple mode only) ---- */
+/* Same chrome as .mode-toggle/.mode-toggle-btn, kept as separate rules
+   (rather than sharing selectors) so this toggle's own show/hide doesn't
+   interact with the existing sibling-combinator margin rules above that
+   are keyed to the exact .mode-toggle/.theme-toggle/.split-toggle classes. */
+
+.lighting-toggle {
+  display: none;
+  gap: 2px;
+  padding: 2px;
+  background: var(--bg-search-bar);
+  border: 1px solid var(--border-subtle-3);
+  border-radius: 8px;
+  margin-right: 10px;
+  align-self: center;
+  flex-shrink: 0;
+}
+
+[data-mode="simple"] .lighting-toggle {
+  display: inline-flex;
+}
+
+[data-mode="simple"] .theme-toggle {
+  display: none;
+}
+
+.lighting-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  padding: 0 10px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  color: var(--text-muted-3);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.lighting-toggle-btn:hover {
+  color: var(--text-secondary);
+}
+
+.lighting-toggle-btn.active {
   background: var(--accent-primary);
   color: #fff;
 }
