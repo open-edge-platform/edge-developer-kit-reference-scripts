@@ -93,6 +93,15 @@ function getTgtLang() {
 // Advanced mode but are hidden in Simple mode via CSS.
 const _glanceActiveIndicators = new Set();
 
+// mode.js listens for this to defer DOM reparenting (Simple/Advanced toggle)
+// until no recording is in flight — reparenting #userResponseBar mid-recording
+// yanks the active mic button out of the DOM and freezes its status pill.
+function _broadcastRecordingState() {
+  document.dispatchEvent(new CustomEvent('locallingua:recordingstate', {
+    detail: { recording: localRecording || userRecording }
+  }));
+}
+
 function _updateGlanceStatus() {
   const glanceListening = document.getElementById('glanceListening');
   const glanceListeningText = document.getElementById('glanceListeningText');
@@ -314,6 +323,7 @@ async function startRecording(type) {
         }
       }, MAX_RECORDING_DURATION);
     }
+    _broadcastRecordingState();
   } catch (e) {
     console.error('Mic access error:', e);
     _persistentStream = null;
@@ -351,6 +361,7 @@ function stopRecording(type) {
     const indicator = document.getElementById('userProcessing');
     if (indicator) indicator.textContent = 'Transcribing...';
   }
+  _broadcastRecordingState();
 }
 
 // ============================================================

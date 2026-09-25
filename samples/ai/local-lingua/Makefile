@@ -118,8 +118,9 @@ prereq:
 	@$(MAKE) --no-print-directory ensure-dirs
 	@. .venv/bin/activate && python3 setup/export_models.py
 	@echo ""
-	@echo "[6/6] Building the application Docker image..."
+	@echo "[6/6] Building the application image and pulling sidecar images..."
 	@docker compose build
+	@docker compose pull metrics-manager
 	@echo ""
 	@echo "=== Prerequisites setup complete ==="
 	@echo "Run 'make demo-prereq' to enable the in-app scripted Demo, or 'make run' to start the app."

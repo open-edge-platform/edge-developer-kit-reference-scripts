@@ -592,19 +592,31 @@ body {
 /* ===================== Simple (Customer) Mode ===================== */
 /* Advanced mode (default) is unaffected by any rule in this block — every
    selector here is scoped under [data-mode="simple"]. Simple mode hides the
-   reference-app surface (Settings/Prerequisites/Architecture tabs, demo
-   button, telemetry, sentiment/mission-cues side panels) and collapses the
-   Main tab to a single full-width conversation column. The reply bar is
-   reparented into that column by mode.js so it isn't lost along with the
-   rest of .section-top-right. */
+   reference-app surface (Settings/Prerequisites/Architecture tabs, telemetry,
+   sentiment/mission-cues side panels) and collapses the Main tab to a single
+   full-width conversation column. The reply bar is reparented into that
+   column by mode.js so it isn't lost along with the rest of
+   .section-top-right. The Demo button stays reachable (restyled below) so
+   kiosk operators can trigger a scripted conversation without switching to
+   Advanced mode. */
 
 [data-mode="simple"] .tab-btn[data-tab="main"],
 [data-mode="simple"] .tab-btn[data-tab="settings"],
 [data-mode="simple"] .tab-btn[data-tab="prerequisites"],
 [data-mode="simple"] .tab-btn[data-tab="architecture"],
-[data-mode="simple"] #btnDemoScenarios,
 [data-mode="simple"] #splitToggle {
   display: none;
+}
+
+/* #btnDemoScenarios is the new leftmost visible item in the utility strip
+   once the tab buttons and #splitToggle above are hidden — restyle it as a
+   touch-friendly control instead of the small Advanced-mode nav pill. */
+[data-mode="simple"] #btnDemoScenarios {
+  margin-left: 0;
+  margin-right: auto;
+  min-height: 44px;
+  padding: 0 18px;
+  font-size: 13px;
 }
 
 /* With every tab label hidden, nothing should read as "a browser-style tab
