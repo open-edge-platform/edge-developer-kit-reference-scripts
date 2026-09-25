@@ -22,6 +22,21 @@ import { refitGlanceBubbles, resetGlanceBubbleFonts } from './chat.js';
 const MODE_KEY = 'localLingua_uiMode';
 const THEME_KEY = 'localLingua_theme';
 
+// Reparenting #userResponseBar mid-recording yanks the active mic button out
+// of the DOM and freezes its status pill — defer the reparent until audio.js
+// broadcasts that no recording is in flight.
+let _recordingActive = false;
+let _pendingReparentMode = null;
+
+document.addEventListener('locallingua:recordingstate', (e) => {
+  _recordingActive = !!(e.detail && e.detail.recording);
+  if (!_recordingActive && _pendingReparentMode !== null) {
+    const pending = _pendingReparentMode;
+    _pendingReparentMode = null;
+    reparentForMode(pending);
+  }
+});
+
 function syncLightingButtons(theme) {
   document.querySelectorAll('#lightingToggle .lighting-toggle-btn').forEach((btn) => {
     const active = btn.dataset.lighting === theme;
@@ -62,7 +77,12 @@ function reparentForMode(mode) {
 
 export function applyMode(mode) {
   document.documentElement.setAttribute('data-mode', mode);
-  reparentForMode(mode);
+
+  if (_recordingActive) {
+    _pendingReparentMode = mode;
+  } else {
+    reparentForMode(mode);
+  }
 
   document.querySelectorAll('#modeToggle .mode-toggle-btn').forEach((btn) => {
     const active = btn.dataset.mode === mode;
