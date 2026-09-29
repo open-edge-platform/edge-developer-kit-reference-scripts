@@ -93,10 +93,13 @@ detect_ubuntu_version() {
       "24.04")
          REPO_TAG="ubuntu24"
          ;;
+      "26.04")
+         REPO_TAG="ubuntu26"
+         ;;
       *)
          print_warning "Unsupported Ubuntu version: $ubuntu_ver"
-         print_warning "This script only supports Ubuntu 24.04 LTS"
-         print_error "Please upgrade to Ubuntu 24.04 LTS for DL Streamer support"
+         print_warning "This script supports Ubuntu 24.04 and 26.04 LTS"
+         print_error "Please upgrade to Ubuntu 24.04 or 26.04 LTS for DL Streamer support"
          exit 1
          ;;
    esac

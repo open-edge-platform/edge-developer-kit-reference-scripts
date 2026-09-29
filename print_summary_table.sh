@@ -353,7 +353,7 @@ validate_configuration() {
     local validation_passed=true
     local missing_items=()
     
-    # HARD CHECK 1: Ubuntu 24.04.3 requirement
+    # HARD CHECK 1: Supported Ubuntu LTS requirement
     local ubuntu_version ubuntu_version_id
     if [ -f /etc/os-release ]; then
         # shellcheck disable=SC1091
@@ -361,10 +361,9 @@ validate_configuration() {
         ubuntu_version="$PRETTY_NAME"
         ubuntu_version_id="$VERSION_ID"
         
-        # Check for Ubuntu 24.04.3 specifically
-        if [[ ! "$ubuntu_version" =~ Ubuntu\ 24\.04\.3 ]] && [[ "$ubuntu_version_id" != "24.04" ]]; then
+        if [[ "$ubuntu_version_id" != "24.04" && "$ubuntu_version_id" != "26.04" ]]; then
             validation_passed=false
-            missing_items+=("Ubuntu 24.04.3 Required (Current: $ubuntu_version)")
+            missing_items+=("Ubuntu 24.04 or 26.04 LTS Required (Current: $ubuntu_version)")
         fi
     else
         validation_passed=false

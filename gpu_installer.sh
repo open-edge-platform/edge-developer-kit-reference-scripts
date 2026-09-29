@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # This is a complete standalone script for Intel Arc BMG and DG2 GPU setup
-# Supports Ubuntu 24.04 only with Intel Kobuk team PPA
+# Supports Ubuntu 24.04 and 26.04 with Intel Kobuk team PPA
 
 set -e
 
@@ -112,8 +112,8 @@ verify_os() {
    current_os_version=$(grep -E '^VERSION_ID=' /etc/os-release | cut -d'=' -f2- | tr -d '"')
    current_os_codename=$(grep -E '^VERSION_CODENAME=' /etc/os-release | cut -d'=' -f2- | tr -d '"')
    
-   if [ "$current_os_id" != "ubuntu" ] || [ "$current_os_version" != "24.04" ]; then
-      error_exit "Only Ubuntu 24.04 is supported. Current: $current_os_id $current_os_version"
+   if [ "$current_os_id" != "ubuntu" ] || [[ "$current_os_version" != "24.04" && "$current_os_version" != "26.04" ]]; then
+      error_exit "Only Ubuntu 24.04 or 26.04 is supported. Current: $current_os_id $current_os_version"
    fi
    
    log_success "OS version: $current_os_id $current_os_version ($current_os_codename)"
