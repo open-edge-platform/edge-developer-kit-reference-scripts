@@ -22,7 +22,7 @@ dependencies = [
     "torchvision>=0.26.0",
     "triton-xpu>=3.7.1 ; sys_platform == 'win32' or sys_platform == 'linux'",
     "nncf>=2.18.0",
-    "huggingface-hub>=0.32.4",
+    "huggingface-hub>=0.32.4,<1.0",
     "modelscope>=1.26.0",
     "sentencepiece>=0.2.1",
     "einops>=0.8.1",
