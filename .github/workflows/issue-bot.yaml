@@ -5,15 +5,21 @@ on:
   issues:
     types: [opened]
 
-permissions:
-  issues: write
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.issue.number }}
+  cancel-in-progress: false
 
 jobs:
   triage:
+    name: Triage new issue
     runs-on: ubuntu-latest
+    permissions:
+      issues: write # comment on and assign the new issue
     steps:
       - name: Comment triage request and assign maintainer
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
         with:
           script: |
             const issue_number = context.issue.number;
