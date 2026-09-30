@@ -14,7 +14,7 @@ Welcome to Intel®'s edge computing ecosystem! This guide will help you get up a
 ### Step 1: Prepare Your System
 
 **Required:**
-- Ubuntu* 24.04 LTS Desktop ([Download](https://releases.ubuntu.com/noble/))
+- Ubuntu* 24.04 or 26.04 LTS Desktop ([Download](https://releases.ubuntu.com/))
 - Internet connection
 - Administrator (sudo) access
 

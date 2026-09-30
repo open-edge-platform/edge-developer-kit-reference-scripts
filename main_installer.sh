@@ -287,9 +287,9 @@ download_scripts() {
     done
 }
 
-# Verify Ubuntu 24.04 LTS with Canonical kernel
-verify_ubuntu_24() {
-    echo "# Verifying Ubuntu 24.04 LTS with Canonical kernel..."
+# Verify a supported Ubuntu LTS release with Canonical kernel
+verify_supported_ubuntu() {
+    echo "# Verifying supported Ubuntu LTS release with Canonical kernel..."
     
     # Check OS release
     if [ ! -f /etc/os-release ]; then
@@ -301,14 +301,14 @@ verify_ubuntu_24() {
     source /etc/os-release
     
     # Check Ubuntu version
-    if [ "$ID" != "ubuntu" ] || [ "$VERSION_ID" != "24.04" ]; then
-        echo "$S_ERROR This installer requires Ubuntu 24.04 LTS"
+    if [ "$ID" != "ubuntu" ] || [[ "$VERSION_ID" != "24.04" && "$VERSION_ID" != "26.04" ]]; then
+        echo "$S_ERROR This installer requires Ubuntu 24.04 or 26.04 LTS"
         echo "Current OS: $PRETTY_NAME"
-        echo "Please upgrade to Ubuntu 24.04 LTS before running this script"
+        echo "Please upgrade to Ubuntu 24.04 or 26.04 LTS before running this script"
         exit 1
     fi
 
-    echo "$S_VALID Ubuntu 24.04 LTS detected"
+    echo "$S_VALID Ubuntu $VERSION_ID LTS detected"
 }
 
 # Install NPU drivers (NPU-capable platforms only)
@@ -1348,7 +1348,7 @@ main() {
     echo ""
 
     # 2. Verify Ubuntu version
-    verify_ubuntu_24
+    verify_supported_ubuntu
     echo ""
 
     # 3. Install essential development tools

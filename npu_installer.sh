@@ -7,47 +7,80 @@
 #
 # Version Management:
 #
-# The driver is pinned to a validated release by default. The pinned path
-# builds the download URL directly and never contacts api.github.com, which is
-# rate limited to 60 requests/hour per source IP. Behind a shared NAT or
-# corporate proxy that quota is easily exhausted by other machines, which made
-# installation fail intermittently and undiagnosably. See issue #1038.
+# By default the newest upstream release is installed. It is resolved from the
+# github.com release pages (the /releases/latest redirect and the expanded
+# assets list), not from api.github.com, which is rate limited to 60
+# requests/hour per source IP and made installs fail behind shared NAT or
+# corporate proxies. See issue #1038.
 #
-# Note that only the metadata API is rate limited. The release *download* host
-# is not, so the pinned path keeps working even when the API is exhausted.
+# The libze1 Level Zero loader URL is read from the same release notes, so it
+# follows the driver release.
 #
-# This mirrors main_installer.sh, which pins the kernel rather than resolving
-# the newest one.
+# If the release pages cannot be parsed, the API is tried, then the pinned
+# release below is installed.
 #
 # Overrides:
-#   NPU_VERSION=latest          resolve the newest release (needs the API)
-#   NPU_VERSION + NPU_BUILD_ID  install a specific release, no API call
-#   NPU_ASSET_URL               full tar.gz URL, no API call
+#   NPU_VERSION=pinned          install the pinned fallback release, no lookup
+#   NPU_VERSION + NPU_BUILD_ID  install a specific release, no lookup
+#   NPU_ASSET_URL               full tar.gz URL, no lookup
+#   LIBZE1_URL                  full libze1 .deb URL
 #   GITHUB_TOKEN                raises the API quota to 5000/hour when used
 #
 # Releases: https://github.com/intel/linux-npu-driver/releases
 #
 # Usage:
 #   sudo ./npu_installer.sh
-#   sudo NPU_VERSION=latest ./npu_installer.sh
+#   sudo NPU_VERSION=pinned ./npu_installer.sh
 #   sudo NPU_VERSION=1.32.1 NPU_BUILD_ID=20260422-24767473183 ./npu_installer.sh
 
-# Validated release, updated deliberately rather than tracking upstream.
-readonly NPU_PINNED_VERSION="1.33.0"
-readonly NPU_PINNED_BUILD_ID="20260529-26625960453"
+# Fallback release, used only when the newest release cannot be resolved.
+readonly NPU_PINNED_VERSION="1.38.0"
+readonly NPU_PINNED_BUILD_ID="20260910-34487311128"
+# Fallback libze1, used when the release notes don't list one
+readonly LIBZE1_VERSION="1.32.0-1"
+readonly LIBZE1_SNAPSHOT="20260830T100000Z"
 
-NPU_VERSION="${NPU_VERSION:-}"
+readonly NPU_REPO_URL="https://github.com/intel/linux-npu-driver"
+
+NPU_VERSION="${NPU_VERSION:-latest}"
 NPU_BUILD_ID="${NPU_BUILD_ID:-}"
 NPU_ASSET_URL="${NPU_ASSET_URL:-}"
-
-# Apply the pin unless the caller asked for something else
-if [ -z "$NPU_ASSET_URL" ] && [ -z "$NPU_VERSION" ]; then
-   NPU_VERSION="$NPU_PINNED_VERSION"
-   NPU_BUILD_ID="$NPU_PINNED_BUILD_ID"
-fi
+LIBZE1_URL="${LIBZE1_URL:-}"
+NPU_SOURCE=""
 
 log_success() {
    echo "$S_VALID $1"
+}
+
+# Print the libze1 .deb URL for this Ubuntu release found in stdin, if any
+extract_libze1_url() {
+   grep -oE "https://snapshot\.ppa\.launchpadcontent\.net/[^\"<[:space:]\\]+/libze1_[^\"<[:space:]/\\]+~${UBUNTU_RELEASE}~ppa1_amd64\.deb" | head -1
+}
+
+# Resolve the newest release from github.com pages (not the rate limited API)
+resolve_latest_web() {
+   local tag path name
+   local -a curl_opts=(-sS -L --connect-timeout 10 --max-time 30)
+
+   tag=$(curl -sS -o /dev/null -w '%{redirect_url}' --connect-timeout 10 --max-time 30 \
+      "${NPU_REPO_URL}/releases/latest" 2>/dev/null | sed -nE 's#.*/releases/tag/v([0-9]+(\.[0-9]+)*)$#\1#p')
+   [ -n "$tag" ] || return 1
+
+   path=$(curl "${curl_opts[@]}" "${NPU_REPO_URL}/releases/expanded_assets/v${tag}" 2>/dev/null \
+      | grep -oE "href=\"/intel/linux-npu-driver/releases/download/v${tag}/linux-npu-driver-v${tag}\.[0-9]+-[0-9]+-${UBUNTU_VERSION}\.tar\.gz\"" \
+      | head -1 | sed -E 's/^href="([^"]+)"$/\1/')
+   if [ -z "$path" ]; then
+      GITHUB_API_ERROR="Latest release v${tag} has no ${UBUNTU_VERSION} package"
+      return 1
+   fi
+
+   name=$(basename "$path")
+   name="${name#linux-npu-driver-v"${tag}".}"
+   NPU_BUILD_ID="${name%-"${UBUNTU_VERSION}".tar.gz}"
+   NPU_VERSION="$tag"
+   NPU_ASSET_URL="https://github.com${path}"
+   [ -z "$LIBZE1_URL" ] && LIBZE1_URL=$(curl "${curl_opts[@]}" "${NPU_REPO_URL}/releases/tag/v${tag}" 2>/dev/null | extract_libze1_url)
+   return 0
 }
 
 # Resolve latest release and asset URL from GitHub (no jq required)
@@ -80,17 +113,15 @@ resolve_latest_release() {
 
    if [ -n "$json" ]; then
       tag=$(echo "$json" | grep -m1 '"tag_name"' | sed -E 's/.*"v?([^"]+)".*/\1/' )
-      url=$(echo "$json" | grep '"browser_download_url"' | grep -E 'tar\.gz' | grep -E 'ubuntu2404|ubuntu24\.04|ubuntu24' | head -1 | sed -E 's/.*"(https:[^"]+)".*/\1/')
-      if [ -z "$url" ]; then
-         # Fallback to any tar.gz if ubuntu-specific not found
-         url=$(echo "$json" | grep '"browser_download_url"' | grep -E 'tar\.gz' | head -1 | sed -E 's/.*"(https:[^"]+)".*/\1/')
-      fi
+      url=$(echo "$json" | grep '"browser_download_url"' | grep -E "${UBUNTU_VERSION}\.tar\.gz" | head -1 | sed -E 's/.*"(https:[^"]+)".*/\1/')
+      [ -z "$url" ] && GITHUB_API_ERROR="Latest release v${tag} has no ${UBUNTU_VERSION} package"
       if [ -n "$url" ]; then
          NPU_ASSET_URL="$url"
          NPU_VERSION="$tag"
          asset_name=$(basename "$url")
          # Expected: linux-npu-driver-v<version>.<build>-<ubuntu>.tar.gz
-         NPU_BUILD_ID=$(echo "$asset_name" | sed -E 's/^linux-npu-driver-v[^.]+\.([^-]+)-.*/\1/' )
+         NPU_BUILD_ID=$(echo "$asset_name" | sed -E 's/^linux-npu-driver-v[0-9.]+\.([0-9]+-[0-9]+)-.*/\1/' )
+         [ -z "$LIBZE1_URL" ] && LIBZE1_URL=$(echo "$json" | extract_libze1_url)
          return 0
       fi
    fi
@@ -103,38 +134,46 @@ resolve_versions() {
    if [ -n "${NPU_ASSET_URL:-}" ]; then
       local asset_name
       asset_name=$(basename "$NPU_ASSET_URL")
-      NPU_VERSION=${NPU_VERSION:-$(echo "$asset_name" | sed -E 's/^linux-npu-driver-v([^\.]+)\..*/\1/')}
-      NPU_BUILD_ID=${NPU_BUILD_ID:-$(echo "$asset_name" | sed -E 's/^linux-npu-driver-v[^.]+\.([^-]+)-.*/\1/')}
+      if [ "$NPU_VERSION" = "latest" ] || [ "$NPU_VERSION" = "pinned" ]; then
+         NPU_VERSION=$(echo "$asset_name" | sed -E 's/^linux-npu-driver-v([0-9.]+)\.[0-9]+-[0-9]+-.*/\1/')
+      fi
+      NPU_BUILD_ID=${NPU_BUILD_ID:-$(echo "$asset_name" | sed -E 's/^linux-npu-driver-v[0-9.]+\.([0-9]+-[0-9]+)-.*/\1/')}
+      NPU_SOURCE="${NPU_SOURCE:-override}"
       return 0
    fi
 
-   # If user provided version + build id, construct the URL
-   if [ -n "${NPU_VERSION:-}" ] && [ -n "${NPU_BUILD_ID:-}" ]; then
-      NPU_ASSET_URL="https://github.com/intel/linux-npu-driver/releases/download/v${NPU_VERSION}/linux-npu-driver-v${NPU_VERSION}.${NPU_BUILD_ID}-${UBUNTU_VERSION}.tar.gz"
-      return 0
-   fi
-
-   # NPU_VERSION=latest explicitly opts in to the GitHub API
    if [ "$NPU_VERSION" = "latest" ]; then
       NPU_VERSION=""
-      if resolve_latest_release; then
+      if resolve_latest_web || resolve_latest_release; then
+         NPU_SOURCE="latest"
          return 0
       fi
-      print_error "Unable to resolve the latest NPU release from GitHub"
-      [ -n "${GITHUB_API_ERROR:-}" ] && print_error "  $GITHUB_API_ERROR"
-      print_info "  api.github.com allows 60 requests/hour per source IP."
-      print_info "  Retry without NPU_VERSION=latest to install the pinned"
-      print_info "  release ${NPU_PINNED_VERSION}, which needs no API call, or set GITHUB_TOKEN."
-      return 1
+      print_warning "Unable to resolve the latest NPU release, falling back to ${NPU_PINNED_VERSION}"
+      [ -n "${GITHUB_API_ERROR:-}" ] && print_warning "  $GITHUB_API_ERROR"
+      NPU_VERSION="pinned"
+   fi
+
+   if [ "$NPU_VERSION" = "pinned" ]; then
+      NPU_VERSION="$NPU_PINNED_VERSION"
+      NPU_BUILD_ID="$NPU_PINNED_BUILD_ID"
+      NPU_SOURCE="pinned"
+   fi
+
+   # Version + build id, construct the URL
+   if [ -n "${NPU_VERSION:-}" ] && [ -n "${NPU_BUILD_ID:-}" ]; then
+      NPU_ASSET_URL="${NPU_REPO_URL}/releases/download/v${NPU_VERSION}/linux-npu-driver-v${NPU_VERSION}.${NPU_BUILD_ID}-${UBUNTU_VERSION}.tar.gz"
+      NPU_SOURCE="${NPU_SOURCE:-override}"
+      return 0
    fi
 
    print_error "Unable to resolve the NPU release"
-   print_error "You can override via NPU_ASSET_URL or NPU_VERSION+NPU_BUILD_ID"
+   print_error "NPU_VERSION=${NPU_VERSION} also needs NPU_BUILD_ID, or set NPU_ASSET_URL"
    return 1
 }
 
 # Auto-detect Ubuntu version
 UBUNTU_VERSION=""
+UBUNTU_RELEASE=""
 detect_ubuntu_version() {
    local ubuntu_ver
    ubuntu_ver=$(lsb_release -r | awk '{print $2}')
@@ -143,13 +182,17 @@ detect_ubuntu_version() {
       "24.04")
          UBUNTU_VERSION="ubuntu2404"
          ;;
+      "26.04")
+         UBUNTU_VERSION="ubuntu2604"
+         ;;
       *)
          print_warning "Unsupported Ubuntu version: $ubuntu_ver"
-         print_warning "This script only supports Ubuntu 24.04 LTS"
-         print_error "Please upgrade to Ubuntu 24.04 LTS for NPU driver support"
+         print_warning "This script supports Ubuntu 24.04 and 26.04 LTS"
+         print_error "Please upgrade to Ubuntu 24.04 or 26.04 LTS for NPU driver support"
          exit 1
          ;;
    esac
+   UBUNTU_RELEASE="$ubuntu_ver"
    
    print_info "Detected Ubuntu version: $ubuntu_ver -> $UBUNTU_VERSION"
 }
@@ -165,12 +208,12 @@ display_version_info() {
    print_info "NPU Version: ${NPU_VERSION:-auto} | Build: ${NPU_BUILD_ID:-auto}"
    print_info "Ubuntu Package: ${UBUNTU_VERSION}"
    print_info ""
-   if [ "${NPU_VERSION}.${NPU_BUILD_ID}" = "${NPU_PINNED_VERSION}.${NPU_PINNED_BUILD_ID}" ]; then
-      print_info "Using the pinned validated release (no GitHub API call)."
-      print_info "Override: NPU_VERSION=latest, or NPU_VERSION + NPU_BUILD_ID, or NPU_ASSET_URL."
-   else
-      print_info "Using an overridden release."
-   fi
+   case "$NPU_SOURCE" in
+      latest) print_info "Using the latest upstream release." ;;
+      pinned) print_info "Using the pinned fallback release." ;;
+      *)      print_info "Using an overridden release." ;;
+   esac
+   print_info "Override: NPU_VERSION=pinned, NPU_VERSION + NPU_BUILD_ID, or NPU_ASSET_URL."
 }
 
 # Status indicators - using ASCII for better compatibility (conditional definition)
@@ -222,7 +265,7 @@ cleanup_old_packages() {
    print_info "Removing old NPU packages and conflicting packages..."
    
    # Remove NPU packages with force to handle conflicts
-   dpkg --purge --force-remove-reinstreq intel-driver-compiler-npu intel-fw-npu intel-level-zero-npu 2>/dev/null || true
+   dpkg --purge --force-remove-reinstreq intel-driver-compiler-npu intel-fw-npu intel-level-zero-npu intel-level-zero-npu-dbgsym 2>/dev/null || true
    
    print_success "Old packages and conflicts cleaned up"
    return 0
@@ -290,6 +333,44 @@ install_npu_packages() {
          return 1
       fi
    fi
+}
+
+# Install the libze1 Level Zero loader from the kobuk-team PPA snapshot
+install_level_zero_loader() {
+   local installed required deb url
+   url="$LIBZE1_URL"
+   if [ -z "$url" ]; then
+      url="https://snapshot.ppa.launchpadcontent.net/kobuk-team/intel-graphics/ubuntu/${LIBZE1_SNAPSHOT}/pool/main/l/level-zero-loader/libze1_${LIBZE1_VERSION}~${UBUNTU_RELEASE}~ppa1_amd64.deb"
+   fi
+   deb=$(basename "$url")
+   required="${deb#libze1_}"
+   required="${required%%~*}"
+
+   installed=$(dpkg-query -W -f='${Version}' libze1 2>/dev/null || true)
+   if is_package_installed libze1 && dpkg --compare-versions "$installed" ge "$required"; then
+      print_success "libze1 $installed already installed"
+      return 0
+   fi
+
+   print_info "  Downloading ${deb}..."
+   if ! wget -q --timeout=30 "$url"; then
+      print_error "  Failed to download ${url}"
+      return 1
+   fi
+
+   if dpkg -i "$deb"; then
+      print_success "libze1 ${required} installed"
+      return 0
+   fi
+
+   print_warning "libze1 install failed, removing conflicting Level Zero packages and retrying..."
+   dpkg --purge --force-remove-reinstreq level-zero level-zero-devel 2>/dev/null || true
+   if dpkg -i "$deb"; then
+      print_success "libze1 ${required} installed"
+      return 0
+   fi
+   print_error "Failed to install libze1"
+   return 1
 }
 
 # Setup device permissions
@@ -376,7 +457,9 @@ verify_installation() {
    done
    
    # Check Level Zero packages (either generic or NPU-specific)
-   if is_package_installed "level-zero"; then
+   if is_package_installed "libze1"; then
+      print_success "Level Zero loader (libze1) installed"
+   elif is_package_installed "level-zero"; then
       print_success "oneAPI Level Zero installed"
    elif is_package_installed "intel-level-zero-npu"; then
       print_success "NPU Level Zero installed"
@@ -440,18 +523,21 @@ install_npu() {
    print_info "Step 4: Installing NPU packages..."
    install_npu_packages || { print_error "Failed to install NPU packages"; exit 1; }
 
-   print_info "Step 5: Setting up device permissions..."
+   print_info "Step 5: Installing Level Zero loader (libze1)..."
+   install_level_zero_loader || { print_error "Failed to install Level Zero loader"; exit 1; }
+
+   print_info "Step 6: Setting up device permissions..."
    setup_device_permissions || { print_error "Failed to setup device permissions"; exit 1; }
    configure_user_groups
    
    # Cleanup
-   print_info "Step 6: Cleaning up temporary files..."
+   print_info "Step 7: Cleaning up temporary files..."
    cd / || exit 1
    rm -rf "$temp_dir"
    print_success "Cleanup completed"
 
    # Verify installation
-   print_info "Step 7: Verifying installation..."
+   print_info "Step 8: Verifying installation..."
    verify_installation
    
    print_info ""
