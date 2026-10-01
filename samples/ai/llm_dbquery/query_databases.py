@@ -8,7 +8,7 @@ Queries data from SQLite databases using ODBC (Auto-discovers all databases)
 
 import pyodbc
 import pandas as pd
-from typing import Dict, List, Any
+from typing import Dict
 import sys
 import os
 import glob
@@ -108,7 +108,9 @@ class MultiDatabaseQuery:
         
         if not sqlite_files:
             print("⚠ No .sqlite files found in databases directory!")
-            print(f"  Create databases first: python create_databases.py")
+            print(f"  Create databases first:")
+            print(f"    Manufacturing: python generate_db.py")
+            print(f"    Retail:        python generate_retail_db.py")
             return
         
         print(f"Found {len(sqlite_files)} database(s):")
@@ -174,164 +176,6 @@ class MultiDatabaseQuery:
         
         print("\n" + "="*60)
     
-    def query_sales_summary(self):
-        """Query sales data from sales database"""
-        if 'sales' not in self.databases:
-            print("⚠ Sales database not found")
-            return None
-        
-        print("\n" + "="*60)
-        print("QUERY 1: Sales Summary by Region")
-        print("="*60)
-        
-        query = """
-            SELECT 
-                region,
-                COUNT(*) as total_sales,
-                SUM(quantity) as total_quantity,
-                SUM(sale_amount) as total_revenue,
-                ROUND(AVG(sale_amount), 2) as avg_sale_amount
-            FROM sales
-            GROUP BY region
-            ORDER BY total_revenue DESC;
-        """
-        
-        df = self.databases['sales'].execute_query(query)
-        print("\nResults:")
-        print(df.to_string(index=False))
-        return df
-    
-    def query_inventory_status(self):
-        """Query inventory data from inventory database"""
-        if 'inventory' not in self.databases:
-            print("⚠ Inventory database not found")
-            return None
-        
-        print("\n" + "="*60)
-        print("QUERY 2: Product Inventory by Category")
-        print("="*60)
-        
-        query = """
-            SELECT 
-                category,
-                COUNT(*) as product_count,
-                SUM(stock_quantity) as total_stock,
-                ROUND(AVG(unit_price), 2) as avg_price,
-                warehouse_location
-            FROM products
-            GROUP BY category, warehouse_location
-            ORDER BY category, warehouse_location;
-        """
-        
-        df = self.databases['inventory'].execute_query(query)
-        print("\nResults:")
-        print(df.to_string(index=False))
-        return df
-    
-    def query_customer_demographics(self):
-        """Query customer data from customer database"""
-        if 'customers' not in self.databases:
-            print("⚠ Customers database not found")
-            return None
-        
-        print("\n" + "="*60)
-        print("QUERY 3: Customer Demographics by Tier")
-        print("="*60)
-        
-        query = """
-            SELECT 
-                customer_tier,
-                COUNT(*) as customer_count,
-                COUNT(DISTINCT state) as states_covered,
-                MIN(registration_date) as earliest_registration,
-                MAX(registration_date) as latest_registration
-            FROM customers
-            GROUP BY customer_tier
-            ORDER BY customer_count DESC;
-        """
-        
-        df = self.databases['customers'].execute_query(query)
-        print("\nResults:")
-        print(df.to_string(index=False))
-        return df
-    
-    def query_unified_cross_database(self):
-        """Execute a TRUE cross-database query using SQLite ATTACH"""
-        print("\n" + "="*60)
-        print("QUERY 4: UNIFIED Cross-Database Query")
-        print("="*60)
-        print("Joining data from all databases in ONE SQL query!\n")
-        
-        # Use first database as primary connection
-        primary_db_key = list(self.databases.keys())[0]
-        primary_conn = self.databases[primary_db_key].connection
-        cursor = primary_conn.cursor()
-        
-        try:
-            # Attach all other databases
-            attached_dbs = []
-            for db_key, db_obj in self.databases.items():
-                if db_key == primary_db_key:
-                    continue
-                
-                db_prefix = f"{db_key}_db"
-                db_path = db_obj.database_path
-                
-                # Detach if already attached
-                try:
-                    cursor.execute(f"DETACH DATABASE {db_prefix}")
-                except:
-                    pass
-                
-                # Attach database
-                cursor.execute(f"ATTACH DATABASE '{db_path}' AS {db_prefix}")
-                attached_dbs.append((db_key, db_prefix))
-                print(f"  ✓ Attached {db_key} as {db_prefix}")
-            
-            # Build dynamic query based on available databases
-            if 'sales' in self.databases and 'customers' in self.databases and 'inventory' in self.databases:
-                unified_query = """
-                    SELECT 
-                        s.sale_id,
-                        s.sale_date,
-                        s.region,
-                        c.first_name || ' ' || c.last_name AS customer_name,
-                        c.email,
-                        c.customer_tier,
-                        c.city,
-                        c.state,
-                        p.product_name,
-                        p.category,
-                        s.quantity,
-                        p.unit_price,
-                        s.sale_amount,
-                        p.stock_quantity
-                    FROM sales s
-                    INNER JOIN customer_db.customers c ON s.customer_id = c.customer_id
-                    INNER JOIN inventory_db.products p ON s.product_id = p.product_id
-                    ORDER BY s.sale_date DESC
-                    LIMIT 10;
-                """
-                
-                print("\nExecuting unified query across databases...")
-                df = pd.read_sql(unified_query, primary_conn)
-                
-                print("\nResults - Complete Sales Report:")
-                print(df.to_string(index=False))
-                
-                print(f"\n✓ Successfully queried data from {len(self.databases)} databases in a single query!")
-                
-                return df
-            else:
-                print("⚠ Required databases (sales, customers, inventory) not all present")
-                return None
-            
-        except Exception as e:
-            print(f"⚠ Error executing cross-database query: {e}")
-            import traceback
-            traceback.print_exc()
-            return None
-    
     def close_all(self):
         """Close all database connections"""
         print("\n" + "="*60)
@@ -354,21 +198,15 @@ def main():
     # Connect to all databases
     if not mdq.connect_all():
         print("\n⚠ Failed to connect to one or more databases.")
-        print("Make sure databases are created: python create_databases.py")
+        print("Generate databases first: python generate_db.py (manufacturing) or python generate_retail_db.py (retail)")
         sys.exit(1)
     
     try:
         # List all connected databases
         mdq.list_databases()
         
-        # Execute queries if databases exist
-        mdq.query_sales_summary()
-        mdq.query_inventory_status()
-        mdq.query_customer_demographics()
-        mdq.query_unified_cross_database()
-        
         print("\n" + "="*60)
-        print("All queries completed successfully!")
+        print("Database discovery completed successfully!")
         print("="*60)
         
     except Exception as e:

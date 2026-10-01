@@ -1,0 +1,75 @@
+MEGAMART RETAIL — EXAMPLE QUESTIONS
+================================================================================
+
+--- SALES PERFORMANCE ---
+
+What is the total revenue for all stores?
+Show me daily sales for the last 7 days
+Which day had the highest number of transactions?
+Compare total revenue between MegaMart Central and MegaMart Northgate
+What is the average transaction value per store?
+Show me total revenue broken down by day and store
+What is the revenue trend over the past 2 weeks?
+
+--- PRODUCT ANALYSIS ---
+
+What are the top 5 best-selling products by units sold?
+Which product generated the most revenue?
+Show me total revenue and units sold for each product category
+Which category has the highest average selling price?
+List all products in the Electronics category with their prices
+Which products have never been sold?
+Show profit margin by category
+
+--- CUSTOMER INSIGHTS ---
+
+How many customers do we have in each loyalty tier?
+Which customer spent the most money in total?
+What is the average transaction value for Platinum vs Bronze customers?
+Show me all customers who made a purchase in the last 7 days
+Which loyalty tier generates the most revenue?
+How many transactions came from walk-in customers vs registered customers?
+List the top 5 customers by total spend
+
+--- INVENTORY & STOCK ---
+
+Which products are running low on stock?
+Show inventory status for all products at MegaMart Central
+Are there any out-of-stock products?
+Which products are below their reorder level?
+Show inventory levels for the Electronics category across both stores
+Compare stock levels between MegaMart Central and MegaMart Northgate
+
+--- EMPLOYEE PERFORMANCE ---
+
+How many transactions did each employee process?
+Which cashier handled the most transactions?
+What is the total revenue processed by each employee?
+Compare transaction counts between Cashiers and Supervisors
+Which employee handled the highest-value single transaction?
+Show transaction count by employee role and department
+
+--- RETURNS & REFUNDS ---
+
+How many product returns have been recorded?
+What are the most common reasons for returns?
+Which products were returned the most?
+What is the total refund amount issued?
+Show me all returns and their refund amounts
+
+--- PAYMENT & DISCOUNTS ---
+
+What is the most common payment method used by customers?
+How much total discount was given across all transactions?
+Which loyalty tier received the most discount?
+Show revenue vs discount breakdown by payment method
+What percentage of transactions used E-Wallet?
+
+--- ADVANCED / SHOWCASE ---
+
+For each product category, show total revenue, units sold, and number of transactions ranked by revenue
+Show me a daily sales trend with transaction count and average value for last 7 days
+Which store has better performance across revenue, transactions, and average basket size?
+Compare weekend vs weekday transaction volume and revenue
+Show top 3 products per category by units sold
+================================================================================

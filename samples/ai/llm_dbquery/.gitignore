@@ -44,7 +44,61 @@ Thumbs.db
 
 # Docker volumes (data persists in named volumes)
 databases/
-database_exports/
 
 # Logs
 *.log
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Configuration files (may contain sensitive data)
+.primary_db_config
+*.config
+.env
+.env.*
+!.env.example
+
+# Backup files
+*.bak
+*.backup
+*.tmp
+*~
+
+# Testing
+.pytest_cache/
+.tox/
+.coverage
+.coverage.*
+htmlcov/
+.hypothesis/
+.cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# MCP server build artifacts and local environments
+mcp_data_analysis_server/venv/
+mcp_data_analysis_server/__pycache__/
+mcp_data_analysis_server/charts/
+mcp_data_analysis_server/debug.log
+mcp_data_analysis_server/*.spec
+mcp_odbcserver/venv/
+mcp_odbcserver/__pycache__/
+mcp_odbcserver/*.spec
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# pytype static type analyzer
+.pytype/
+
+# Cython debug symbols
+cython_debug/

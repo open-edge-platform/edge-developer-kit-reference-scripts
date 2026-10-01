@@ -59,6 +59,7 @@ def create_response(success, message, data=None, exit_code=0, current_port=None,
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 odbcserver_PORT = int(os.getenv('MCP_ODBCSERVER_PORT', 7906))
 odbcserver_PROTOCOL = os.getenv('MCP_ODBCSERVER_PROTOCOL', 'http')
+DB_DOMAIN = os.getenv('MCP_ODBCSERVER_DOMAIN', '')  # 'manu' or 'retail'; empty = not set
 mcp = None  # Will be initialized after command line parsing
 
 # Global variables for server management
@@ -87,9 +88,23 @@ async def query_database(question: str) -> str:
         import pandas as pd
         from nl_query import NaturalLanguageQueryInterface
         from query_databases import MultiDatabaseQuery
-        
+
+        # Resolve database directory from active domain
+        if not DB_DOMAIN:
+            return json.dumps({"error": "No domain selected. Restart the server with --domain manu or --domain retail (or set MCP_ODBCSERVER_DOMAIN env var)."})
+
+        domain_map = {
+            'manu':   os.path.join(SCRIPT_DIR, '..', 'databases', 'db_manu'),
+            'retail': os.path.join(SCRIPT_DIR, '..', 'databases', 'db_retail'),
+        }
+        if DB_DOMAIN not in domain_map:
+            return json.dumps({"error": f"Unknown domain '{DB_DOMAIN}'. Valid values: manu, retail"})
+
+        db_dir = os.path.normpath(domain_map[DB_DOMAIN])
+        print(f"🗄  Domain: {DB_DOMAIN} → {db_dir}")
+
         # Initialize database connections
-        mdq = MultiDatabaseQuery()
+        mdq = MultiDatabaseQuery(db_dir=db_dir)
         if not mdq.connect_all():
             return json.dumps({"error": "Failed to connect to databases"})
         
@@ -545,6 +560,8 @@ Examples:
     parser.add_argument("--timeout", type=int, default=30)
     parser.add_argument("--port", type=int)
     parser.add_argument("--protocol", choices=["sse", "stdio", "http"], help="Communication protocol")
+    parser.add_argument("--domain", choices=["manu", "retail"],
+                        help="Database domain to load: 'manu' (manufacturing) or 'retail'")
     
     try:
         args = parser.parse_args()
@@ -557,6 +574,27 @@ Examples:
         if args.protocol:
             current_protocol = args.protocol
             os.environ[f'MCP_ODBCSERVER_PROTOCOL'] = current_protocol
+
+        # Domain selection: required for start; must be provided via --domain or env var
+        if args.domain:
+            DB_DOMAIN = args.domain
+            os.environ['MCP_ODBCSERVER_DOMAIN'] = DB_DOMAIN
+        elif not DB_DOMAIN and args.command == 'start':
+            # Check if domain subdirectories exist to give a helpful error
+            project_root = os.path.join(SCRIPT_DIR, '..')
+            manu_exists = os.path.isdir(os.path.join(project_root, 'databases', 'db_manu'))
+            retail_exists = os.path.isdir(os.path.join(project_root, 'databases', 'db_retail'))
+            print("❌ No domain specified. Use --domain to select a database set:")
+            if manu_exists:
+                print("     python server.py start --domain manu    (Manufacturing FCT databases)")
+            if retail_exists:
+                print("     python server.py start --domain retail  (Retail databases)")
+            print("   Or set the MCP_ODBCSERVER_DOMAIN environment variable.")
+            sys.exit(1)
+
+        if DB_DOMAIN:
+            domain_labels = {'manu': 'Manufacturing', 'retail': 'Retail'}
+            print(f"🗄  Domain: {domain_labels.get(DB_DOMAIN, DB_DOMAIN)} (databases/db_{DB_DOMAIN})")
         
         # For stdio protocol, ignore port setting
         if current_protocol == 'stdio':

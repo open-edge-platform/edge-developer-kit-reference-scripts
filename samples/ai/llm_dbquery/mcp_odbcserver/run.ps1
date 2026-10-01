@@ -1,6 +1,12 @@
 # Copyright (C) 2025 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
+param (
+    [Parameter(Mandatory=$true)]
+    [ValidateSet("manu", "retail")]
+    [string]$Domain
+)
+
 Set-Location $PSScriptRoot # make sure terminal is in the same directory as this script
 
 if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
@@ -18,5 +24,5 @@ else {
     venv/Scripts/Activate.ps1
 }
 
-Write-Host "Starting the server..."
-python server.py start --json
+Write-Host "Starting the server with domain: $Domain..."
+python server.py start --domain $Domain --json

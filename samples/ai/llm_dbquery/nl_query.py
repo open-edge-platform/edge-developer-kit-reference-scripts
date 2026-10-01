@@ -623,7 +623,6 @@ Target database: {target_database}
                 ],
                 temperature=0,
             )
-            print(response)
             sql_query = response.choices[0].message.content.strip()
             
             # Clean up the SQL (remove markdown code blocks if present)
@@ -737,6 +736,8 @@ class NaturalLanguageQueryInterface:
         self.databases = databases
         self.db_dir = os.path.join(os.path.dirname(__file__), 'databases')
         
+        self.last_sql = None
+        
         # Discover schema ONCE during initialization with optional primary selection
         schema_info = SchemaDiscovery.discover_all_schemas(databases, primary_db=primary_db)
         self.primary_db_key = SchemaDiscovery._primary_db_key  # Store primary key
@@ -771,6 +772,8 @@ class NaturalLanguageQueryInterface:
         if not sql_query:
             print("❌ Failed to convert query")
             return None
+        
+        self.last_sql = sql_query
         
         print(f"\n📝 Generated SQL:")
         print("-" * 60)
