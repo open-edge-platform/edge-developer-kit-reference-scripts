@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 def check_databases():
     """Check if any databases exist in the databases folder"""
     print("\n" + "="*60)
-    print("1️⃣  CHECKING DATABASES")
+    print("1\ufe0f\u20e3  CHECKING DATABASES")
     print("="*60)
     
     db_dir = os.path.join(os.path.dirname(__file__), 'databases')
@@ -37,7 +37,9 @@ def check_databases():
         print("⚠ No .sqlite files found in databases folder!")
         print("\n📝 Place your .sqlite database files in:")
         print(f"   {db_dir}")
-        print("\n💡 Or create sample databases with: python create_databases.py")
+        print("\n💡 Or create sample databases:")
+        print("   Manufacturing: python generate_db.py")
+        print("   Retail:        python generate_retail_db.py")
         return False
     
     print(f"✓ Found {len(sqlite_files)} database(s):")
@@ -49,10 +51,80 @@ def check_databases():
     print("\n✅ Databases ready for discovery!")
     return True
 
+def check_meta_files():
+    """Check schema metadata (_meta.json) for all databases and offer to generate missing ones."""
+    print("\n" + "="*60)
+    print("2️⃣  CHECKING SCHEMA METADATA")
+    print("="*60)
+    
+    db_dir = os.path.join(os.path.dirname(__file__), 'databases')
+    
+    if not os.path.exists(db_dir):
+        print("⚠ Databases folder not found — skip meta check")
+        return True  # non-fatal
+    
+    try:
+        from schema_bootstrap import check_all_meta_status, generate_meta
+    except ImportError:
+        print("⚠ schema_bootstrap.py not found — skip meta check")
+        return True
+    
+    import glob
+    sqlite_files = sorted(glob.glob(os.path.join(db_dir, '*.sqlite')))
+    if not sqlite_files:
+        print("⚠ No databases found — skip meta check")
+        return True
+    
+    status_map = check_all_meta_status(db_dir)
+    
+    # Display status table
+    needs_bootstrap = []
+    for db_key, status in status_map.items():
+        if status == "ok":
+            print(f"  ✓ {db_key}: metadata up-to-date")
+        elif status == "missing":
+            print(f"  ⚠ {db_key}: NO metadata file")
+            needs_bootstrap.append(db_key)
+        elif status == "stale":
+            print(f"  🔄 {db_key}: schema changed, metadata outdated")
+            needs_bootstrap.append(db_key)
+    
+    if not needs_bootstrap:
+        print("\n✅ All database metadata files are current!")
+        return True
+    
+    # Offer to generate
+    print(f"\n{len(needs_bootstrap)} database(s) need metadata generation: {', '.join(needs_bootstrap)}")
+    print("Metadata helps the LLM understand your database schema for better SQL generation.")
+    print("The llama.cpp server will be used to auto-generate descriptions and examples.")
+    
+    answer = input("\nGenerate metadata now? [Y/n]: ").strip().lower()
+    if answer == "n":
+        print("⚠ Skipped — you can run 'python schema_bootstrap.py' later")
+        return True  # non-fatal skip
+    
+    # Process each database that needs bootstrapping
+    success_count = 0
+    for db_key in needs_bootstrap:
+        # Find the matching .sqlite file
+        matching = [f for f in sqlite_files 
+                    if os.path.splitext(os.path.basename(f))[0].replace('_db', '') == db_key]
+        if matching:
+            ok = generate_meta(matching[0], auto=False, force=True)
+            if ok:
+                success_count += 1
+    
+    if success_count == len(needs_bootstrap):
+        print(f"\n✅ Generated metadata for all {success_count} database(s)!")
+    else:
+        print(f"\n⚠ Generated {success_count}/{len(needs_bootstrap)} metadata files")
+    
+    return True
+
 def check_schema():
     """Discover and display database schemas for ALL databases"""
     print("\n" + "="*60)
-    print("2️⃣  DISCOVERING SCHEMAS (All Databases)")
+    print("3️⃣  DISCOVERING SCHEMAS (All Databases)")
     print("="*60)
     
     try:
@@ -200,7 +272,7 @@ def check_schema():
 def check_odbc_driver():
     """Check if SQLite ODBC driver is installed"""
     print("\n" + "="*60)
-    print("3️⃣  CHECKING ODBC DRIVER")
+    print("4\ufe0f\u20e3  CHECKING ODBC DRIVER")
     print("="*60)
     
     try:
@@ -230,7 +302,7 @@ def check_odbc_driver():
 def check_llama_server():
     """Check if llama.cpp server is running"""
     print("\n" + "="*60)
-    print("4️⃣  CHECKING LLAMA.CPP SERVER")
+    print("5\ufe0f\u20e3  CHECKING LLAMA.CPP SERVER")
     print("="*60)
     
     try:
@@ -346,7 +418,7 @@ def check_llama_server():
 def check_python_dependencies():
     """Check if all Python dependencies are installed"""
     print("\n" + "="*60)
-    print("5️⃣  CHECKING PYTHON DEPENDENCIES")
+    print("6\ufe0f\u20e3  CHECKING PYTHON DEPENDENCIES")
     print("="*60)
     
     required_packages = {
@@ -377,7 +449,7 @@ def check_python_dependencies():
 def check_mcp_servers():
     """Check if MCP server files exist"""
     print("\n" + "="*60)
-    print("6️⃣  CHECKING MCP SERVER FILES")
+    print("7\ufe0f\u20e3  CHECKING MCP SERVER FILES")
     print("="*60)
     
     # Use current directory as base
@@ -412,10 +484,11 @@ def main():
     
     checks = [
         ("Databases", check_databases),
-        ("Python Dependencies", check_python_dependencies),
-        ("ODBC Driver", check_odbc_driver),
+        ("Schema Metadata", check_meta_files),
         ("Database Schemas", check_schema),
+        ("ODBC Driver", check_odbc_driver),
         ("llama.cpp Server", check_llama_server),
+        ("Python Dependencies", check_python_dependencies),
         ("MCP Server Files", check_mcp_servers)
     ]
     
@@ -453,8 +526,9 @@ def main():
         
         # Provide helpful next steps
         if not results.get("Databases"):
-            print("\n🔧 Fix: Add .sqlite files to the 'databases' folder")
-            print("      Or run: python create_databases.py (to create sample databases)")
+            print("\n🔧 Fix: Generate databases for your domain:")
+            print("      Manufacturing: python generate_db.py")
+            print("      Retail:        python generate_retail_db.py")
         if not results.get("Python Dependencies"):
             print("🔧 Fix: pip install -r requirements.txt")
         if not results.get("ODBC Driver"):

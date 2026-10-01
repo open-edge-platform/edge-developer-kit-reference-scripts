@@ -67,347 +67,15 @@ _server_start_time = None
 
 #### Server Tools ####
 
-async def analyze_data(
-    data,
-    analysis_question: str = "What are the key insights and patterns in this data?",
-    analysis_type: str = "comprehensive"
-) -> str:
-    """Analyze data using AI/LLM to extract insights, patterns, and recommendations.
-    
-    This tool receives JSON data from database queries and performs intelligent analysis
-    using a local LLM (llama.cpp). It provides key findings, patterns, and actionable recommendations.
-    
-    Workflow:
-    1. Receives JSON data from query_database tool (from odbcserver)
-    2. Parses and converts to DataFrame for analysis
-    3. Generates statistical summaries and distributions
-    4. Sends to LLM for intelligent interpretation
-    5. Returns formatted analysis report
-    
-    Args:
-        data: JSON string or dict from database query, can be single or multiple datasets
-        analysis_question: Specific question to focus the analysis
-        analysis_type: "comprehensive", "statistical", "trends", or "recommendations"
-    
-    Returns:
-        str: Formatted analysis report with insights and recommendations
-    """
-    try:
-        import os
-        import time
-        import json
-        import pandas as pd
-        
-        # === ADD DETAILED DEBUG LOGGING ===
-        log_path = os.path.join(os.path.dirname(__file__), "debug.log")
-        try:
-            with open(log_path, "a", encoding="utf-8") as f:
-                f.write(f"\n{'='*60}\n")
-                f.write(f"analyze_data called at {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
-                f.write(f"Data type: {type(data)}\n")
-                f.write(f"Data repr (first 500 chars): {repr(data)[:500]}\n")
-                
-                # Check if it's already parsed
-                if isinstance(data, (dict, list)):
-                    f.write("✓ Data is already parsed (dict or list)\n")
-                    parsed_data = data  # No need to parse
-                elif isinstance(data, str):
-                    f.write(f"Data is a string, length: {len(data)}\n")
-                    f.write(f"First 200 chars: {data[:200]}\n")
-                    # Try to parse
-                    try:
-                        parsed_data = json.loads(data)
-                        f.write("✓ Successfully parsed JSON string\n")
-                    except json.JSONDecodeError as e:
-                        f.write(f"✗ JSON parse error: {e}\n")
-                        f.write(f"Error at position: {e.pos}\n")
-                        f.write(f"Context: {data[max(0, e.pos-50):e.pos+50]}\n")
-                        raise
-                else:
-                    f.write(f"✗ Unexpected data type: {type(data)}\n")
-                    parsed_data = data
-                
-                f.write(f"{'='*60}\n")
-        except Exception as log_error:
-            print(f"Debug logging failed: {log_error}")
-        
-        # === SIMPLIFIED PARSING LOGIC ===
-        # Check type first
-        if isinstance(data, str):
-            try:
-                parsed_data = json.loads(data)
-            except json.JSONDecodeError as e:
-                return f"Error: Invalid JSON at position {e.pos}\n\nReceived: {data[:500]}\n\nError: {str(e)}"
-        else:
-            # Already parsed by MCP framework
-            parsed_data = data
-        
-        # Rest of your analysis code...
-        # Check if we have multiple datasets
-        is_multiple = (
-            isinstance(parsed_data, dict) and
-            "_metadata" in parsed_data and
-            "separate_tables" in parsed_data["_metadata"]
-        )
-        
-        if is_multiple:
-            return await _analyze_multiple_datasets(parsed_data, analysis_question, analysis_type, log_path)
-        else:
-            return await _analyze_single_dataset(parsed_data, analysis_question, analysis_type, log_path)
-            
-    except Exception as e:
-        import traceback
-        error_details = traceback.format_exc()
-        return f"Error analyzing data: {str(e)}\n\nDetails:\n{error_details}"
-
-
-async def _analyze_single_dataset(data, analysis_question, analysis_type, log_path):
-    """Analyze a single dataset."""
-    import pandas as pd
-    import json
-    import os
-    
-    # Convert to DataFrame
-    try:
-        if isinstance(data, list):
-            df = pd.DataFrame(data)
-        elif isinstance(data, dict):
-            # Check if it's column-oriented (dict of lists)
-            if all(isinstance(v, list) for v in data.values()):
-                df = pd.DataFrame(data)
-            else:
-                # Single record
-                df = pd.DataFrame([data])
-        else:
-            return f"Error: Cannot convert data type {type(data)} to DataFrame"
-    except Exception as e:
-        return f"Error creating DataFrame: {str(e)}"
-    
-    if df.empty:
-        return "Error: No data to analyze (empty dataset)"
-    
-    # Get analysis from LLM
-    analysis_text = await _get_llm_analysis(df, analysis_question, analysis_type)
-    
-    # Format output
-    report = f"""{'='*60}
-DATA ANALYSIS REPORT
-{'='*60}
-
-Dataset Overview:
-- Rows: {len(df)}
-- Columns: {len(df.columns)}
-- Analysis Type: {analysis_type}
-
-Question: {analysis_question}
-
-{'='*60}
-RAW DATA
-{'='*60}
-
-{df.to_string(index=False)}
-
-{'='*60}
-ANALYSIS
-{'='*60}
-
-{analysis_text}
-
-{'='*60}
-"""
-    return report
-
-
-async def _analyze_multiple_datasets(data, analysis_question, analysis_type, log_path):
-    """Analyze multiple datasets from query_database."""
-    import pandas as pd
-    import json
-    import os
-    
-    metadata = data.get("_metadata", {})
-    total_results = metadata.get("total_results", 0)
-    
-    # Build comprehensive report
-    report = f"""{'='*60}
-MULTI-DATASET ANALYSIS REPORT
-{'='*60}
-
-Overview:
-- Total Datasets: {total_results}
-- Analysis Type: {analysis_type}
-- Question: {analysis_question}
-
-"""
-    
-    # Collect all datasets
-    datasets = []
-    for key in sorted(data.keys()):
-        if key.startswith("result_"):
-            result_data = data[key]
-            try:
-                # result_data is a list of dicts (records)
-                df = pd.DataFrame(result_data)
-                datasets.append((key, df))
-            except Exception as e:
-                report += f"\n⚠ Error processing {key}: {str(e)}\n"
-                continue
-    
-    if not datasets:
-        return report + "\nError: No valid datasets found to analyze."
-    
-    # Show raw data for each dataset
-    report += f"{'='*60}\n"
-    report += "RAW DATA\n"
-    report += f"{'='*60}\n\n"
-    
-    for idx, (key, df) in enumerate(datasets, 1):
-        report += f"\n--- Dataset {idx} ({key}) ---\n"
-        report += f"Rows: {len(df)}, Columns: {len(df.columns)}\n"
-        report += f"Columns: {', '.join(df.columns.tolist())}\n\n"
-        report += df.to_string(index=False) + "\n"
-    
-    # Combined analysis
-    report += f"\n{'='*60}\n"
-    report += "ANALYSIS\n"
-    report += f"{'='*60}\n\n"
-    
-    # If only one dataset, just analyze it
-    if len(datasets) == 1:
-        analysis = await _get_llm_analysis(datasets[0][1], analysis_question, analysis_type)
-        report += analysis + "\n"
-    else:
-        # Multiple datasets - analyze each individually
-        for idx, (key, df) in enumerate(datasets, 1):
-            report += f"\n--- Analysis of Dataset {idx} ({key}) ---\n\n"
-            individual_analysis = await _get_llm_analysis(
-                df, 
-                f"{analysis_question} (Focus on dataset {idx})",
-                analysis_type
-            )
-            report += individual_analysis + "\n"
-        
-        # Add cross-dataset insights
-        report += f"\n{'-'*60}\n"
-        report += "CROSS-DATASET INSIGHTS\n"
-        report += f"{'-'*60}\n\n"
-        
-        # Create summary for cross-analysis
-        summary_text = f"Analyzing {len(datasets)} related datasets:\n\n"
-        for idx, (key, df) in enumerate(datasets, 1):
-            summary_text += f"Dataset {idx} ({key}):\n"
-            summary_text += f"  - {len(df)} rows, {len(df.columns)} columns\n"
-            summary_text += f"  - Columns: {', '.join(df.columns.tolist())}\n"
-            summary_text += f"  - Sample: {df.head(2).to_dict('records')}\n\n"
-        
-        cross_analysis = await _get_llm_analysis(
-            datasets[0][1],  # Use first dataset as context
-            f"Cross-dataset analysis: {analysis_question}\n\nContext:\n{summary_text}",
-            analysis_type
-        )
-        report += cross_analysis + "\n"
-    
-    report += f"\n{'='*60}\n"
-    return report
-
-
-async def _get_llm_analysis(df: 'pd.DataFrame', question: str, analysis_type: str) -> str:
-    """Get AI analysis from LLM for a single DataFrame."""
-    import pandas as pd
-    import os
-    
-    try:
-        import openai
-        base_url = os.getenv("LLAMA_CPP_URL", "http://127.0.0.1:8080/v1")
-        client = openai.OpenAI(
-            base_url=base_url,
-            api_key=""  # No API key needed for local llama.cpp
-        )
-    except ImportError:
-        return "Error: openai package not installed. Run: pip install openai"
-    
-    # Prepare data summary
-    summary_parts = []
-    summary_parts.append(f"Dataset: {df.shape[0]} rows × {df.shape[1]} columns")
-    summary_parts.append(f"Columns: {', '.join(df.columns)}\n")
-    
-    # Sample data
-    max_rows = min(30, len(df))
-    if len(df) > max_rows:
-        summary_parts.append(f"First {max_rows} rows:")
-        summary_parts.append(df.head(max_rows).to_string(index=False))
-        summary_parts.append(f"\n... {len(df) - max_rows} more rows not shown")
-    else:
-        summary_parts.append("All data:")
-        summary_parts.append(df.to_string(index=False))
-    
-    # Numeric statistics
-    numeric_cols = df.select_dtypes(include=['number']).columns
-    if len(numeric_cols) > 0:
-        summary_parts.append("\n\nNumeric Statistics:")
-        summary_parts.append(df[numeric_cols].describe().to_string())
-    
-    # Categorical distributions
-    categorical_cols = df.select_dtypes(include=['object']).columns
-    for col in categorical_cols:
-        if df[col].nunique() <= 15:
-            summary_parts.append(f"\n\n{col} distribution:")
-            summary_parts.append(df[col].value_counts().to_string())
-    
-    data_summary = "\n".join(summary_parts)
-    
-    # Customize prompt based on analysis type
-    if analysis_type == "statistical":
-        focus = "Focus on statistical measures, distributions, averages, and outliers."
-    elif analysis_type == "trends":
-        focus = "Focus on trends, patterns over time, growth rates, and directional insights."
-    elif analysis_type == "recommendations":
-        focus = "Focus on actionable business recommendations and strategic suggestions."
-    else:  # comprehensive
-        focus = "Provide a comprehensive analysis covering all aspects."
-    
-    system_prompt = f"""You are an expert data analyst. Analyze the provided data and deliver actionable insights.
-
-{focus}
-
-Structure your analysis with:
-1. **Key Findings**: Most important discoveries
-2. **Statistical Observations**: Notable numbers and patterns
-3. **Trends & Patterns**: What the data reveals
-4. **Anomalies**: Unusual or unexpected findings (if any)
-5. **Business Recommendations**: Actionable next steps
-
-Be concise, clear, data-driven, and business-focused."""
-    
-    user_prompt = f"""Data to analyze:
-
-{data_summary}
-
-Analysis Question: {question}
-
-Provide your analysis:"""
-    
-    # Call LLM
-    try:
-        response = client.chat.completions.create(
-            model="local-model",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            temperature=0.3,
-        )
-        
-        return response.choices[0].message.content.strip()
-        
-    except Exception as e:
-        return f"Error calling LLM: {str(e)}\n\nMake sure llama.cpp server is running at {base_url}"
-
+from visualization_tools import visualize_data
+from analysis_tools import analyze_data
 
 
 #### Tool Registration ####
 
 # List of all tool functions to register
 TOOL_FUNCTIONS = [
+    visualize_data,
     analyze_data,
     # Add additional tool functions here
 ]
@@ -424,6 +92,67 @@ def register_tools(verbose=True):
             print(f"Registered tool: {tool_func.__name__}")
 
 #### Server management functions ####
+
+# --- Chart HTTP Server ---
+CHART_SERVER_PORT = int(os.getenv('MCP_CHART_SERVER_PORT', 7907))
+_chart_server_running = False
+
+def _start_chart_http_server():
+    """Start a lightweight HTTP server to serve chart images from the charts/ directory."""
+    global _chart_server_running
+    import http.client
+    import http.server
+
+    charts_dir = os.path.join(SCRIPT_DIR, "charts")
+    os.makedirs(charts_dir, exist_ok=True)
+
+    class ChartHandler(http.server.SimpleHTTPRequestHandler):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, directory=charts_dir, **kwargs)
+
+        def log_message(self, format, *args):
+            print(f"  [ChartServer] {format % args}")
+
+    try:
+        server = http.server.HTTPServer(("127.0.0.1", CHART_SERVER_PORT), ChartHandler)
+        _chart_server_running = True
+        print(f"Chart HTTP server started at http://127.0.0.1:{CHART_SERVER_PORT}/")
+        print(f"   Serving charts from: {charts_dir}")
+        server.serve_forever()
+    except OSError as e:
+        if "10048" in str(e) or "Address already in use" in str(e):
+            # Port taken — verify it actually serves data (could be a stale broken process)
+            try:
+                with http.client.HTTPConnection("127.0.0.1", CHART_SERVER_PORT, timeout=3) as connection:
+                    connection.request("GET", "/")
+                    response = connection.getresponse()
+                    if response.status == 200:
+                        print(f"Chart HTTP server port {CHART_SERVER_PORT} already in use and responding OK")
+                        _chart_server_running = True
+                        return
+            except Exception:
+                pass
+            # Stale process holding port — warn user
+            print(f"WARNING: Port {CHART_SERVER_PORT} is in use but NOT responding.")
+            print(f"  Kill the stale process: netstat -ano | findstr :{CHART_SERVER_PORT}")
+            print(f"  Then restart this server.")
+            _chart_server_running = False
+        else:
+            print(f"Failed to start chart HTTP server: {e}")
+            _chart_server_running = False
+    except Exception as e:
+        print(f"Chart HTTP server error: {e}")
+        _chart_server_running = False
+
+def start_chart_server():
+    """Start chart HTTP server in a background thread."""
+    chart_thread = threading.Thread(target=_start_chart_http_server, daemon=True)
+    chart_thread.start()
+    time.sleep(1)  # Give server time to bind and start
+
+def get_chart_url(filename: str) -> str:
+    """Get the HTTP URL for a chart file."""
+    return f"http://127.0.0.1:{CHART_SERVER_PORT}/{filename}"
 
 def _run_server_in_thread(port, protocol):
     """Run the MCP server in a separate thread."""
@@ -475,6 +204,9 @@ def start_server(port=None, protocol=None):
 
         _server_thread = threading.Thread(target=_run_server_in_thread, args=(port, protocol), daemon=True)
         _server_thread.start()
+        
+        # Start chart HTTP server alongside MCP server
+        start_chart_server()
         
         # Start shutdown listener in a separate daemon thread (only for non-stdio protocols)
         if protocol != 'stdio' and port is not None:

@@ -1,0 +1,91 @@
+SOPHIC FCT MANUFACTURING — EXAMPLE QUESTIONS
+================================================================================
+
+--- YIELD & PASS RATE ---
+
+What is the overall pass rate across all contractors?
+Show me the daily pass rate for the last 7 days
+Which contractor has the highest yield?
+Compare pass rates between Acme EMS, Delta Manufacturing, and Vertex Tech
+What is the yield rate for Motor Drive vs Heater Control tests?
+Show pass and fail counts by contractor
+Which day had the lowest yield?
+Show weekly yield trend over the full test period
+
+--- TEST SESSION ANALYSIS ---
+
+How many test sessions were run in total?
+How many tests were run per day on average?
+Show total test counts broken down by contractor and recipe
+Which station ran the most tests?
+How many tests were run on weekends vs weekdays?
+Show test volume by week
+
+--- FAILURE ANALYSIS ---
+
+What are the most common error codes?
+Which process step fails most often in the Motor Drive recipe?
+Which process step fails most often in the Heater Control recipe?
+Show failure distribution across all test steps
+List all tests that failed with error code ERR003
+Which contractor has the most failures?
+Show Pareto chart of failure causes
+
+--- STATION & EQUIPMENT ---
+
+Which station has the highest failure rate?
+List all stations with their test counts and pass rates
+Which cavity has the most failures?
+Show test counts and yield by station name
+Compare X590 Motor Drive FCT vs X310 Heater Control FCT performance
+Which UUT (unit under test) ran the most sessions?
+
+--- OPERATOR & USER PERFORMANCE ---
+
+Which operator ran the most tests?
+Show test count and pass rate by operator
+Who had the best pass rate among operators?
+How many tests did Ahmad Razak perform?
+Compare operator performance at Acme EMS
+Show tests run by Engineers vs Operators
+
+--- RETEST ANALYSIS ---
+
+How many retests were performed?
+Show retest count by contractor
+What is the pass rate for retested units compared to first-time tests?
+Which serial numbers were retested more than once?
+Show retest volume over time
+
+--- RECIPE & PROCESS STEPS ---
+
+Which recipe has the lower pass rate?
+Show average test duration by recipe
+List all process steps for the Motor Drive recipe with their failure rates
+What are the test limits for the Supply Voltage Test?
+Show all RecipeContent entries for the Heater Control recipe
+
+--- ERROR & EVENT LOG ---
+
+What events were logged on 2026-02-10?
+How many maintenance events occurred across all contractors?
+Show calibration events by station
+How many login events were recorded per user?
+List all events where recipe was changed
+
+--- CONTRACTOR COMPARISON ---
+
+Side by side comparison of all 3 contractors: yield, test volume, error count
+Which contractor submitted the most tests per week?
+How did yield change during the bad batch week for each contractor?
+Show yield before and after the maintenance date for Acme EMS
+Compare Delta Manufacturing and Vertex Tech performance for Heater Control tests
+
+--- ADVANCED / SHOWCASE ---
+
+Show daily yield trend for all contractors on the same chart
+For each contractor, show weekly pass rate to identify the bad batch week
+Find the worst performing station and show its top 3 failure modes
+Show test volume and yield by recipe across all contractors ranked by performance
+Which serial numbers failed multiple times and what error codes did they get?
+================================================================================
