@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Complete Intel Arc GPU Installation Script (BMG/DG2)
-# Copyright (C) 2025 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 # This is a complete standalone script for Intel Arc BMG and DG2 GPU setup
