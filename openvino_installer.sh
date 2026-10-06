@@ -2,7 +2,7 @@
 
 # Simple OpenVINO Device Detection Test Script
 # Creates temporary environment, tests OpenVINO devices, cleans up
-# Copyright (C) 2025 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 # Color codes for output

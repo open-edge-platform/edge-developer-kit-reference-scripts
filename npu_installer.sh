@@ -2,7 +2,7 @@
 
 # NPU (Neural Processing Unit) Installer for Core Ultra platforms
 # Installs Intel NPU drivers with Level Zero support
-# Copyright (C) 2025 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 #
 # Version Management:

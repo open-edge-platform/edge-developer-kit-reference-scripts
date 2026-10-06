@@ -1,3 +1,6 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """Monkey-patch lerobot video decoding to use PyAV directly.
 
 torchvision.io.VideoReader has been removed in recent torchvision versions,

@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 # Install ROS 2 Lyrical and the requested local-navigation stack on RHEL 10.
 #
 # Run as a normal sudo-capable user.  This script deliberately does not run
