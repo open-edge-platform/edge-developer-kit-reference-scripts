@@ -1,3 +1,6 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """Motor calibration using lerobot Python API directly (no subprocess).
 
 This module replaces the fragile subprocess-based approach that used
