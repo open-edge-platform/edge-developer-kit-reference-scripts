@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+
 'use client'
 
 import { TooltipProvider } from '@/components/ui/tooltip'

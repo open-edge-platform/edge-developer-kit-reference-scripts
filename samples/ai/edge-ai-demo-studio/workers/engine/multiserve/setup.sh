@@ -15,7 +15,7 @@ else
 fi
 VENV_ACTIVATE_SCRIPT=".venv/bin/activate"
 
-LLAMA_VERSION=b7992
+LLAMA_VERSION=b11269
 LLAMA_RELEASE_URL="https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_VERSION}/llama-${LLAMA_VERSION}-bin-ubuntu-vulkan-x64.tar.gz"
 LLAMA_DOWNLOAD_FILE="llama-ubuntu.tar.gz"
 LLAMA_EXTRACT_DIR="engine/llama.cpp-vulkan"

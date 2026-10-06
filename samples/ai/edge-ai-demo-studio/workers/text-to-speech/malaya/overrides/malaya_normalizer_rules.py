@@ -1,3 +1,6 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 from malaya.normalizer.rules import Normalizer
 from malaya.function.validator import validate_object_methods
 from malaya.preprocessing import Tokenizer

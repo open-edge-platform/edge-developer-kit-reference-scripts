@@ -1,4 +1,4 @@
-﻿@REM Copyright (C) 2024 Intel Corporation
+﻿@REM Copyright (C) 2026 Intel Corporation
 @REM SPDX-License-Identifier: Apache-2.0
 
 @echo off
@@ -21,7 +21,7 @@ if defined UV_PATH (
 :uv_found
 set "VENV_ACTIVATE_SCRIPT=.venv\Scripts\activate.bat"
 
-set "LLAMA_VERSION=b7992"
+set "LLAMA_VERSION=b11269"
 set "LLAMA_VULKAN_RELEASE_URL=https://github.com/ggerganov/llama.cpp/releases/download/%LLAMA_VERSION%/llama-%LLAMA_VERSION%-bin-win-vulkan-x64.zip"
 set "LLAMA_VULKAN_DOWNLOAD_FILE=llama-vulkan.zip"
 set "LLAMA_VULKAN_EXTRACT_DIR=engine\llama.cpp-vulkan"

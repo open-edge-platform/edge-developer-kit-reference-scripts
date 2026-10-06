@@ -1,3 +1,6 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 import logging
 from malaya_speech.utils.text import TextIDS
 from overrides.malaya_normalizer_rules import load
