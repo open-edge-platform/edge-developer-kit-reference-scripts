@@ -1,0 +1,975 @@
+diff --git a/hmr4d/configs/gvhmr_b1_demo.yaml b/hmr4d/configs/gvhmr_b1_demo.yaml
+new file mode 100644
+index 0000000..e363723
+--- /dev/null
++++ b/hmr4d/configs/gvhmr_b1_demo.yaml
+@@ -0,0 +1,152 @@
++exp_name: ${exp_name_base}${exp_name_var}
++data_name: gvhmr_neurips
++# output_dir: outputs/${data_name}/${exp_name}
++exp_name_base: b1
++exp_name_var: ''
++ckpt_path: inputs/checkpoints/gvhmr/gvhmr_b1.ckpt
++resume_mode: null
++seed: 42
++task: fit
++
++pl_trainer:
++  devices: 2
++  num_sanity_val_steps: 0
++  precision: 16-mixed
++  inference_mode: false
++  log_every_n_steps: 50
++  gradient_clip_val: 0.5
++  max_epochs: 500
++  check_val_every_n_epoch: 10
++logger:
++  save_dir: ${output_dir}
++  name: ''
++  version: tb
++
++model:
++  pipeline: ${pipeline}
++  optimizer: ${optimizer}
++  scheduler_cfg: ${scheduler_cfg}
++  ignored_weights_prefix:
++  - smplx
++  - pipeline.endecoder
++
++network:
++  _target_: hmr4d.network.gvhmr.relative_transformer.NetworkEncoderRoPE
++  output_dim: 151
++  max_len: 120
++  cliffcam_dim: 3
++  cam_angvel_dim: 6
++  imgseq_dim: 1024
++  latent_dim: 512
++  num_layers: 12
++  num_heads: 8
++  mlp_ratio: 4.0
++  pred_cam_dim: 3
++  static_conf_dim: 6
++  dropout: 0.1
++  avgbeta: true
++
++endecoder:
++  _target_: hmr4d.model.gvhmr.utils.endecoder.EnDecoder
++  stats_name: MM_V1_AMASS_LOCAL_BEDLAM_CAM
++  noise_pose_k: 10
++
++pipeline:
++  _target_: hmr4d.model.gvhmr.pipeline.gvhmr_pipeline.Pipeline
++  args_denoiser3d: ${network}
++  args:
++    endecoder_opt: ${endecoder}
++    normalize_cam_angvel: true
++    weights:
++      cr_j3d: 500.0
++      transl_c: 1.0
++      cr_verts: 500.0
++      j2d: 1000.0
++      verts2d: 1000.0
++      transl_w: 1.0
++      static_conf_bce: 1.0
++    static_conf:
++      vel_thr: 0.15
++
++optimizer:
++  _partial_: true
++  lr: 0.0002
++scheduler_cfg:
++  scheduler:
++    milestones:
++    - 200
++    - 350
++    gamma: 0.5
++  interval: epoch
++  frequency: 1
++
++callbacks:
++  simple_ckpt_saver:
++    output_dir: ${output_dir}/checkpoints/
++    filename: e{epoch:03d}-s{step:06d}.ckpt
++    save_top_k: 100
++    every_n_epochs: 10
++    save_last: null
++    save_weights_only: true
++  prog_bar:
++    log_every_percent: 0.1
++    exp_name: ${exp_name}
++    data_name: ${data_name}
++  train_speed_timer:
++    N_avg: 5
++
++data:
++  dataset_opts:
++    train: ${train_datasets}
++    val: ${test_datasets}
++  loader_opts:
++    train:
++      batch_size: 256
++      num_workers: 16
++    val:
++      batch_size: 1
++      num_workers: 1
++  limit_each_trainset: null
++
++train_datasets:
++  pure_motion_amass:
++    cam_augmentation: v11
++  imgfeat_bedlam:
++
++test_datasets:
++  # emdb1:
++  #   split: 1
++  #   flip_test: false
++  # emdb2:
++  #   split: 2
++  #   flip_test: false
++  # rich:
++  #   vid_presets: null
++  # 3dpw:
++  #   flip_test: false
++  bedlam2:
++    version: hmr2
++
++video_name: ???
++output_root: outputs/demo
++output_dir: "${output_root}/${video_name}"
++preprocess_dir: ${output_dir}/preprocess
++video_path: "${output_dir}/0_input_video.mp4"
++
++# Options
++static_cam: False
++verbose: False
++use_dpvo: False
++f_mm: null  # focal length of fullframe camera in mm
++
++paths:
++  bbx: ${preprocess_dir}/bbx.pt
++  bbx_xyxy_video_overlay: ${preprocess_dir}/bbx_xyxy_video_overlay.mp4
++  vit_features: ${preprocess_dir}/vit_features.pt
++  vitpose: ${preprocess_dir}/vitpose.pt
++  vitpose_video_overlay: ${preprocess_dir}/vitpose_video_overlay.mp4
++  hmr4d_results: ${output_dir}/hmr4d_results.pt
++  incam_video: ${output_dir}/1_incam.mp4
++  global_video: ${output_dir}/2_global.mp4
++  incam_global_horiz_video: ${output_dir}/${video_name}_3_incam_global_horiz.mp4
++  slam: ${preprocess_dir}/slam_results.pt
+\ No newline at end of file
+diff --git a/hmr4d/configs/gvhmr_b1b2_demo.yaml b/hmr4d/configs/gvhmr_b1b2_demo.yaml
+new file mode 100644
+index 0000000..d4d4840
+--- /dev/null
++++ b/hmr4d/configs/gvhmr_b1b2_demo.yaml
+@@ -0,0 +1,152 @@
++exp_name: ${exp_name_base}${exp_name_var}
++data_name: gvhmr_neurips
++# output_dir: outputs/${data_name}/${exp_name}
++exp_name_base: b1b2
++exp_name_var: ''
++ckpt_path: inputs/checkpoints/gvhmr/gvhmr_b1b2.ckpt
++resume_mode: null
++seed: 42
++task: fit
++
++pl_trainer:
++  devices: 2
++  num_sanity_val_steps: 0
++  precision: 16-mixed
++  inference_mode: false
++  log_every_n_steps: 50
++  gradient_clip_val: 0.5
++  max_epochs: 500
++  check_val_every_n_epoch: 10
++logger:
++  save_dir: ${output_dir}
++  name: ''
++  version: tb
++
++model:
++  pipeline: ${pipeline}
++  optimizer: ${optimizer}
++  scheduler_cfg: ${scheduler_cfg}
++  ignored_weights_prefix:
++  - smplx
++  - pipeline.endecoder
++
++network:
++  _target_: hmr4d.network.gvhmr.relative_transformer.NetworkEncoderRoPE
++  output_dim: 151
++  max_len: 120
++  cliffcam_dim: 3
++  cam_angvel_dim: 6
++  imgseq_dim: 1024
++  latent_dim: 512
++  num_layers: 12
++  num_heads: 8
++  mlp_ratio: 4.0
++  pred_cam_dim: 3
++  static_conf_dim: 6
++  dropout: 0.1
++  avgbeta: true
++
++endecoder:
++  _target_: hmr4d.model.gvhmr.utils.endecoder.EnDecoder
++  stats_name: MM_V1_AMASS_LOCAL_BEDLAM_CAM
++  noise_pose_k: 10
++
++pipeline:
++  _target_: hmr4d.model.gvhmr.pipeline.gvhmr_pipeline.Pipeline
++  args_denoiser3d: ${network}
++  args:
++    endecoder_opt: ${endecoder}
++    normalize_cam_angvel: true
++    weights:
++      cr_j3d: 500.0
++      transl_c: 1.0
++      cr_verts: 500.0
++      j2d: 1000.0
++      verts2d: 1000.0
++      transl_w: 1.0
++      static_conf_bce: 1.0
++    static_conf:
++      vel_thr: 0.15
++
++optimizer:
++  _partial_: true
++  lr: 0.0002
++scheduler_cfg:
++  scheduler:
++    milestones:
++    - 200
++    - 350
++    gamma: 0.5
++  interval: epoch
++  frequency: 1
++
++callbacks:
++  simple_ckpt_saver:
++    output_dir: ${output_dir}/checkpoints/
++    filename: e{epoch:03d}-s{step:06d}.ckpt
++    save_top_k: 100
++    every_n_epochs: 10
++    save_last: null
++    save_weights_only: true
++  prog_bar:
++    log_every_percent: 0.1
++    exp_name: ${exp_name}
++    data_name: ${data_name}
++  train_speed_timer:
++    N_avg: 5
++
++data:
++  dataset_opts:
++    train: ${train_datasets}
++    val: ${test_datasets}
++  loader_opts:
++    train:
++      batch_size: 256
++      num_workers: 16
++    val:
++      batch_size: 1
++      num_workers: 1
++  limit_each_trainset: null
++
++train_datasets:
++  pure_motion_amass:
++    cam_augmentation: v11
++  imgfeat_bedlam:
++
++test_datasets:
++  # emdb1:
++  #   split: 1
++  #   flip_test: false
++  # emdb2:
++  #   split: 2
++  #   flip_test: false
++  # rich:
++  #   vid_presets: null
++  # 3dpw:
++  #   flip_test: false
++  bedlam2:
++    version: hmr2
++
++video_name: ???
++output_root: outputs/demo
++output_dir: "${output_root}/${video_name}"
++preprocess_dir: ${output_dir}/preprocess
++video_path: "${output_dir}/0_input_video.mp4"
++
++# Options
++static_cam: False
++verbose: False
++use_dpvo: False
++f_mm: null  # focal length of fullframe camera in mm
++
++paths:
++  bbx: ${preprocess_dir}/bbx.pt
++  bbx_xyxy_video_overlay: ${preprocess_dir}/bbx_xyxy_video_overlay.mp4
++  vit_features: ${preprocess_dir}/vit_features.pt
++  vitpose: ${preprocess_dir}/vitpose.pt
++  vitpose_video_overlay: ${preprocess_dir}/vitpose_video_overlay.mp4
++  hmr4d_results: ${output_dir}/hmr4d_results.pt
++  incam_video: ${output_dir}/1_incam.mp4
++  global_video: ${output_dir}/2_global.mp4
++  incam_global_horiz_video: ${output_dir}/${video_name}_3_incam_global_horiz.mp4
++  slam: ${preprocess_dir}/slam_results.pt
+\ No newline at end of file
+diff --git a/hmr4d/configs/gvhmr_b2_demo.yaml b/hmr4d/configs/gvhmr_b2_demo.yaml
+new file mode 100644
+index 0000000..8524fe2
+--- /dev/null
++++ b/hmr4d/configs/gvhmr_b2_demo.yaml
+@@ -0,0 +1,152 @@
++exp_name: ${exp_name_base}${exp_name_var}
++data_name: gvhmr_neurips
++# output_dir: outputs/${data_name}/${exp_name}
++exp_name_base: b2
++exp_name_var: ''
++ckpt_path: inputs/checkpoints/gvhmr/gvhmr_b2.ckpt
++resume_mode: null
++seed: 42
++task: fit
++
++pl_trainer:
++  devices: 2
++  num_sanity_val_steps: 0
++  precision: 16-mixed
++  inference_mode: false
++  log_every_n_steps: 50
++  gradient_clip_val: 0.5
++  max_epochs: 500
++  check_val_every_n_epoch: 10
++logger:
++  save_dir: ${output_dir}
++  name: ''
++  version: tb
++
++model:
++  pipeline: ${pipeline}
++  optimizer: ${optimizer}
++  scheduler_cfg: ${scheduler_cfg}
++  ignored_weights_prefix:
++  - smplx
++  - pipeline.endecoder
++
++network:
++  _target_: hmr4d.network.gvhmr.relative_transformer.NetworkEncoderRoPE
++  output_dim: 151
++  max_len: 120
++  cliffcam_dim: 3
++  cam_angvel_dim: 6
++  imgseq_dim: 1024
++  latent_dim: 512
++  num_layers: 12
++  num_heads: 8
++  mlp_ratio: 4.0
++  pred_cam_dim: 3
++  static_conf_dim: 6
++  dropout: 0.1
++  avgbeta: true
++
++endecoder:
++  _target_: hmr4d.model.gvhmr.utils.endecoder.EnDecoder
++  stats_name: MM_V1_AMASS_LOCAL_BEDLAM_CAM
++  noise_pose_k: 10
++
++pipeline:
++  _target_: hmr4d.model.gvhmr.pipeline.gvhmr_pipeline.Pipeline
++  args_denoiser3d: ${network}
++  args:
++    endecoder_opt: ${endecoder}
++    normalize_cam_angvel: true
++    weights:
++      cr_j3d: 500.0
++      transl_c: 1.0
++      cr_verts: 500.0
++      j2d: 1000.0
++      verts2d: 1000.0
++      transl_w: 1.0
++      static_conf_bce: 1.0
++    static_conf:
++      vel_thr: 0.15
++
++optimizer:
++  _partial_: true
++  lr: 0.0002
++scheduler_cfg:
++  scheduler:
++    milestones:
++    - 200
++    - 350
++    gamma: 0.5
++  interval: epoch
++  frequency: 1
++
++callbacks:
++  simple_ckpt_saver:
++    output_dir: ${output_dir}/checkpoints/
++    filename: e{epoch:03d}-s{step:06d}.ckpt
++    save_top_k: 100
++    every_n_epochs: 10
++    save_last: null
++    save_weights_only: true
++  prog_bar:
++    log_every_percent: 0.1
++    exp_name: ${exp_name}
++    data_name: ${data_name}
++  train_speed_timer:
++    N_avg: 5
++
++data:
++  dataset_opts:
++    train: ${train_datasets}
++    val: ${test_datasets}
++  loader_opts:
++    train:
++      batch_size: 256
++      num_workers: 16
++    val:
++      batch_size: 1
++      num_workers: 1
++  limit_each_trainset: null
++
++train_datasets:
++  pure_motion_amass:
++    cam_augmentation: v11
++  imgfeat_bedlam:
++
++test_datasets:
++  # emdb1:
++  #   split: 1
++  #   flip_test: false
++  # emdb2:
++  #   split: 2
++  #   flip_test: false
++  # rich:
++  #   vid_presets: null
++  # 3dpw:
++  #   flip_test: false
++  bedlam2:
++    version: hmr2
++
++video_name: ???
++output_root: outputs/demo
++output_dir: "${output_root}/${video_name}"
++preprocess_dir: ${output_dir}/preprocess
++video_path: "${output_dir}/0_input_video.mp4"
++
++# Options
++static_cam: False
++verbose: False
++use_dpvo: False
++f_mm: null  # focal length of fullframe camera in mm
++
++paths:
++  bbx: ${preprocess_dir}/bbx.pt
++  bbx_xyxy_video_overlay: ${preprocess_dir}/bbx_xyxy_video_overlay.mp4
++  vit_features: ${preprocess_dir}/vit_features.pt
++  vitpose: ${preprocess_dir}/vitpose.pt
++  vitpose_video_overlay: ${preprocess_dir}/vitpose_video_overlay.mp4
++  hmr4d_results: ${output_dir}/hmr4d_results.pt
++  incam_video: ${output_dir}/1_incam.mp4
++  global_video: ${output_dir}/2_global.mp4
++  incam_global_horiz_video: ${output_dir}/${video_name}_3_incam_global_horiz.mp4
++  slam: ${preprocess_dir}/slam_results.pt
+\ No newline at end of file
+diff --git a/hmr4d/model/gvhmr/gvhmr_pl.py b/hmr4d/model/gvhmr/gvhmr_pl.py
+index af9d3a2..37a3910 100644
+--- a/hmr4d/model/gvhmr/gvhmr_pl.py
++++ b/hmr4d/model/gvhmr/gvhmr_pl.py
+@@ -109,10 +109,10 @@ class GvhmrPL(pl.LightningModule):
+         if True:
+             noisy_j3d = randomly_modify_hands_legs(noisy_j3d)
+         obs_i_j2d = perspective_projection(noisy_j3d, batch["K_fullimg"])  # (B, L, J, 2)
+-        j2d_visible_mask = get_visible_mask(gt_j3d.shape[:2]).cuda()  # (B, L, J)
++        j2d_visible_mask = get_visible_mask(gt_j3d.shape[:2]).xpu()  # (B, L, J)
+         j2d_visible_mask[noisy_j3d[..., 2] < 0.3] = False  # Set close-to-image-plane points as invisible
+         if True:  # Set both legs as invisible for a period
+-            legs_invisible_mask = get_invisible_legs_mask(gt_j3d.shape[:2]).cuda()  # (B, L, J)
++            legs_invisible_mask = get_invisible_legs_mask(gt_j3d.shape[:2]).xpu()  # (B, L, J)
+             j2d_visible_mask[legs_invisible_mask] = False
+         obs_kp2d = torch.cat([obs_i_j2d, j2d_visible_mask[:, :, :, None].float()], dim=-1)  # (B, L, J, 3)
+         obs = normalize_kp2d(obs_kp2d, batch["bbx_xys"])  # (B, L, J, 3)
+@@ -227,7 +227,7 @@ class GvhmrPL(pl.LightningModule):
+ 
+         if False:  # wis3d
+             wis3d = make_wis3d(name="debug-rich-cap")
+-            smplx_model = make_smplx("rich-smplx", gender="neutral").cuda()
++            smplx_model = make_smplx("rich-smplx", gender="neutral").xpu()
+             gender = batch["gender"][0]
+             T_w2ay = batch["T_w2ay"][0]
+ 
+@@ -241,8 +241,8 @@ class GvhmrPL(pl.LightningModule):
+ 
+             # GT (w)
+             smplx_models = {
+-                "male": make_smplx("rich-smplx", gender="male").cuda(),
+-                "female": make_smplx("rich-smplx", gender="female").cuda(),
++                "male": make_smplx("rich-smplx", gender="male").xpu(),
++                "female": make_smplx("rich-smplx", gender="female").xpu(),
+             }
+             gt_smpl_params = {k: v[0, windows[0]] for k, v in batch["gt_smpl_params"].items()}
+             gt_smplx_out = smplx_models[gender](**gt_smpl_params)
+diff --git a/hmr4d/model/gvhmr/gvhmr_pl_demo.py b/hmr4d/model/gvhmr/gvhmr_pl_demo.py
+index 3cd49db..84c21c7 100644
+--- a/hmr4d/model/gvhmr/gvhmr_pl_demo.py
++++ b/hmr4d/model/gvhmr/gvhmr_pl_demo.py
+@@ -34,7 +34,7 @@ class DemoPL(pl.LightningModule):
+             "cam_angvel": data["cam_angvel"][None],
+             "f_imgseq": data["f_imgseq"][None],
+         }
+-        batch = {k: v.cuda() for k, v in batch.items()}
++        batch = {k: v.xpu() for k, v in batch.items()}
+         outputs = self.pipeline.forward(batch, train=False, postproc=True, static_cam=static_cam)
+ 
+         pred = {
+diff --git a/hmr4d/model/gvhmr/utils/postprocess.py b/hmr4d/model/gvhmr/utils/postprocess.py
+index 9605c52..5be627d 100644
+--- a/hmr4d/model/gvhmr/utils/postprocess.py
++++ b/hmr4d/model/gvhmr/utils/postprocess.py
+@@ -16,7 +16,7 @@ from hmr4d.model.gvhmr.utils.endecoder import EnDecoder
+ from hmr4d.utils.wis3d_utils import make_wis3d, add_motion_as_lines
+ 
+ 
+-@autocast(enabled=False)
++# @autocast(enabled=False)
+ def pp_static_joint(outputs, endecoder: EnDecoder):
+     # Global FK
+     pred_w_j3d = endecoder.fk_v2(**outputs["pred_smpl_params_global"])
+@@ -58,7 +58,7 @@ def pp_static_joint(outputs, endecoder: EnDecoder):
+     return post_w_transl
+ 
+ 
+-@autocast(enabled=False)
++# @autocast(enabled=False)
+ def pp_static_joint_cam(outputs, endecoder: EnDecoder):
+     """Use static joint and static camera assumption to postprocess the global transl"""
+     # input
+@@ -118,7 +118,7 @@ def pp_static_joint_cam(outputs, endecoder: EnDecoder):
+     return post_w_transl
+ 
+ 
+-@autocast(enabled=False)
++# @autocast(enabled=False)
+ def process_ik(outputs, endecoder):
+     static_conf = outputs["static_conf_logits"].sigmoid()  # (B, L, J)
+     post_w_j3d, local_mat, post_w_mat = endecoder.fk_v2(**outputs["pred_smpl_params_global"], get_intermediate=True)
+diff --git a/hmr4d/utils/net_utils.py b/hmr4d/utils/net_utils.py
+index 698d61b..ed2c8f1 100644
+--- a/hmr4d/utils/net_utils.py
++++ b/hmr4d/utils/net_utils.py
+@@ -87,6 +87,16 @@ def to_cuda(data):
+     else:
+         return data
+ 
++def to_xpu(data):
++    """Move data in the batch to xpu(), carefully handle data that is not tensor"""
++    if isinstance(data, torch.Tensor):
++        return data.xpu()
++    elif isinstance(data, dict):
++        return {k: to_xpu(v) for k, v in data.items()}
++    elif isinstance(data, list):
++        return [to_xpu(v) for v in data]
++    else:
++        return data
+ 
+ def get_valid_mask(max_len, valid_len, device="cpu"):
+     mask = torch.zeros(max_len, dtype=torch.bool).to(device)
+diff --git a/hmr4d/utils/preproc/slam.py b/hmr4d/utils/preproc/slam.py
+index ccd75d7..94f6a70 100644
+--- a/hmr4d/utils/preproc/slam.py
++++ b/hmr4d/utils/preproc/slam.py
+@@ -44,8 +44,8 @@ class SLAMModel(object):
+         if t < 0:
+             return False
+ 
+-        image = torch.from_numpy(image).permute(2, 0, 1).cuda()
+-        intrinsics = intrinsics.cuda()  # [fx, fy, cx, cy]
++        image = torch.from_numpy(image).permute(2, 0, 1).xpu()
++        intrinsics = intrinsics.xpu()  # [fx, fy, cx, cy]
+ 
+         if self.slam is None:
+             cfg.merge_from_file(self.dpvo_cfg)
+diff --git a/hmr4d/utils/preproc/tracker.py b/hmr4d/utils/preproc/tracker.py
+index b093ed4..2302e90 100644
+--- a/hmr4d/utils/preproc/tracker.py
++++ b/hmr4d/utils/preproc/tracker.py
+@@ -24,7 +24,7 @@ class Tracker:
+     def track(self, video_path):
+         track_history = []
+         cfg = {
+-            "device": "cuda",
++            "device": "cpu",
+             "conf": 0.5,  # default 0.25, wham 0.5
+             "classes": 0,  # human
+             "verbose": False,
+diff --git a/hmr4d/utils/preproc/vitfeat_extractor.py b/hmr4d/utils/preproc/vitfeat_extractor.py
+index 6ae37f5..208e1cb 100644
+--- a/hmr4d/utils/preproc/vitfeat_extractor.py
++++ b/hmr4d/utils/preproc/vitfeat_extractor.py
+@@ -59,7 +59,7 @@ def get_batch(input_path, bbx_xys, img_ds=0.5, img_dst_size=256, path_type="vide
+ 
+ class Extractor:
+     def __init__(self, tqdm_leave=True):
+-        self.extractor: HMR2 = load_hmr2().cuda().eval()
++        self.extractor: HMR2 = load_hmr2().xpu().eval()
+         self.tqdm_leave = tqdm_leave
+ 
+     def extract_video_features(self, video_path, bbx_xys, img_ds=0.5):
+@@ -75,7 +75,7 @@ class Extractor:
+ 
+         # Inference
+         F, _, H, W = imgs.shape  # (F, 3, H, W)
+-        imgs = imgs.cuda()
++        imgs = imgs.xpu()
+         batch_size = 16  # 5GB GPU memory, occupies all CUDA cores of 3090
+         features = []
+         for j in tqdm(range(0, F, batch_size), desc="HMR2 Feature", leave=self.tqdm_leave):
+diff --git a/hmr4d/utils/preproc/vitpose.py b/hmr4d/utils/preproc/vitpose.py
+index 215adc8..497ddd6 100644
+--- a/hmr4d/utils/preproc/vitpose.py
++++ b/hmr4d/utils/preproc/vitpose.py
+@@ -14,7 +14,7 @@ class VitPoseExtractor:
+     def __init__(self, tqdm_leave=True):
+         ckpt_path = "inputs/checkpoints/vitpose/vitpose-h-multi-coco.pth"
+         self.pose = build_model("ViTPose_huge_coco_256x192", ckpt_path)
+-        self.pose.cuda().eval()
++        self.pose.xpu().eval()
+ 
+         self.flip_test = True
+         self.tqdm_leave = tqdm_leave
+@@ -34,7 +34,7 @@ class VitPoseExtractor:
+         vitpose = []
+         for j in tqdm(range(0, L, batch_size), desc="ViTPose", leave=self.tqdm_leave):
+             # Heat map
+-            imgs_batch = imgs[j : j + batch_size, :, :, 32:224].cuda()
++            imgs_batch = imgs[j : j + batch_size, :, :, 32:224].xpu()
+             if self.flip_test:
+                 heatmap, heatmap_flipped = self.pose(torch.cat([imgs_batch, imgs_batch.flip(3)], dim=0)).chunk(2)
+                 heatmap_flipped = flip_heatmap_coco17(heatmap_flipped)
+@@ -45,7 +45,7 @@ class VitPoseExtractor:
+ 
+             if False:
+                 # Get joint
+-                bbx_xys_batch = bbx_xys[j : j + batch_size].cuda()
++                bbx_xys_batch = bbx_xys[j : j + batch_size].xpu()
+                 method = "hard"
+                 if method == "hard":
+                     kp2d_pm1, conf = get_heatmap_preds(heatmap)
+diff --git a/hmr4d/utils/pylogger.py b/hmr4d/utils/pylogger.py
+index b827475..c14a67e 100644
+--- a/hmr4d/utils/pylogger.py
++++ b/hmr4d/utils/pylogger.py
+@@ -5,7 +5,7 @@ from colorlog import ColoredFormatter
+ 
+ 
+ def sync_time():
+-    torch.cuda.synchronize()
++    torch.xpu.synchronize()
+     return time()
+ 
+ 
+@@ -26,35 +26,35 @@ Log.addHandler(ch)
+ # Log.info("Init-Logger")
+ 
+ 
+-def timer(sync_cuda=False, mem=False, loop=1):
++def timer(sync_xpu=False, mem=False, loop=1):
+     """
+     Args:
+         func: function
+-        sync_cuda: bool, whether to synchronize cuda
++        sync_xpu: bool, whether to synchronize xpu
+         mem: bool, whether to log memory
+     """
+ 
+     def decorator(func):
+         def wrapper(*args, **kwargs):
+             if mem:
+-                start_mem = torch.cuda.memory_allocated() / 1024**2
+-            if sync_cuda:
+-                torch.cuda.synchronize()
++                start_mem = torch.xpu.memory_allocated() / 1024**2
++            if sync_xpu:
++                torch.xpu.synchronize()
+ 
+             start = Log.time()
+             for _ in range(loop):
+                 result = func(*args, **kwargs)
+ 
+-            if sync_cuda:
+-                torch.cuda.synchronize()
++            if sync_xpu:
++                torch.xpu.synchronize()
+             if loop == 1:
+                 message = f"{func.__name__} took {Log.time() - start:.3f} s."
+             else:
+                 message = f"{func.__name__} took {((Log.time() - start))/loop:.3f} s. (loop={loop})"
+ 
+             if mem:
+-                end_mem = torch.cuda.memory_allocated() / 1024**2
+-                end_max_mem = torch.cuda.max_memory_allocated() / 1024**2
++                end_mem = torch.xpu.memory_allocated() / 1024**2
++                end_max_mem = torch.xpu.max_memory_allocated() / 1024**2
+                 message += f" Start_Mem {start_mem:.1f} Max {end_max_mem:.1f} MB"
+             Log.info(message)
+ 
+@@ -67,10 +67,10 @@ def timer(sync_cuda=False, mem=False, loop=1):
+ 
+ def timed(fn):
+     """example usage: timed(lambda: model(inp))"""
+-    start = torch.cuda.Event(enable_timing=True)
+-    end = torch.cuda.Event(enable_timing=True)
++    start = torch.xpu.Event(enable_timing=True)
++    end = torch.xpu.Event(enable_timing=True)
+     start.record()
+     result = fn()
+     end.record()
+-    torch.cuda.synchronize()
++    torch.xpu.synchronize()
+     return result, start.elapsed_time(end) / 1000
+diff --git a/hmr4d/utils/video_io_utils.py b/hmr4d/utils/video_io_utils.py
+index 9ccfeaf..f286dda 100644
+--- a/hmr4d/utils/video_io_utils.py
++++ b/hmr4d/utils/video_io_utils.py
+@@ -101,7 +101,7 @@ def merge_videos_horizontal(in_video_paths: list, out_video_path: str):
+     inputs = [ffmpeg.input(path) for path in in_video_paths]
+     merged_video = ffmpeg.filter(inputs, "hstack", inputs=len(inputs))
+     output = ffmpeg.output(merged_video, out_video_path)
+-    ffmpeg.run(output, overwrite_output=True, quiet=True)
++    ffmpeg.run(output, overwrite_output=True)
+ 
+ 
+ def merge_videos_vertical(in_video_paths: list, out_video_path: str):
+diff --git a/hmr4d/utils/vis/renderer.py b/hmr4d/utils/vis/renderer.py
+index f4d6232..baa2b6c 100644
+--- a/hmr4d/utils/vis/renderer.py
++++ b/hmr4d/utils/vis/renderer.py
+@@ -103,7 +103,7 @@ def compute_bbox_from_points(X, img_w, img_h, scaleFactor=1.2):
+ 
+ 
+ class Renderer:
+-    def __init__(self, width, height, focal_length=None, device="cuda", faces=None, K=None, bin_size=None):
++    def __init__(self, width, height, focal_length=None, device="cpu", faces=None, K=None, bin_size=None):
+         """set bin_size to 0 for no binning"""
+         self.width = width
+         self.height = height
+@@ -286,7 +286,7 @@ def create_meshes(verts, faces, colors):
+     return join_meshes_as_scene(meshes)
+ 
+ 
+-def get_global_cameras(verts, device="cuda", distance=5, position=(-5.0, 5.0, 0.0)):
++def get_global_cameras(verts, device="cpu", distance=5, position=(-5.0, 5.0, 0.0)):
+     """This always put object at the center of view"""
+     positions = torch.tensor([position]).repeat(len(verts), 1)
+     targets = verts.mean(1)
+@@ -303,7 +303,7 @@ def get_global_cameras(verts, device="cuda", distance=5, position=(-5.0, 5.0, 0.
+ 
+ 
+ def get_global_cameras_static(
+-    verts, beta=4.0, cam_height_degree=30, target_center_height=1.0, use_long_axis=False, vec_rot=45, device="cuda"
++    verts, beta=4.0, cam_height_degree=30, target_center_height=1.0, use_long_axis=False, vec_rot=45, device="cpu"
+ ):
+     L, V, _ = verts.shape
+ 
+diff --git a/requirements.txt b/requirements.txt
+index 6eeb9e8..c03fd6b 100644
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -1,7 +1,7 @@
+ # PyTorch
+---extra-index-url https://download.pytorch.org/whl/cu121
+-torch==2.3.0+cu121
+-torchvision==0.18.0+cu121
++--extra-index-url https://download.pytorch.org/whl/xpu
++torch==2.13.0
++torchvision==0.28.0
+ timm==0.9.12  # For HMR2.0a feature extraction
+ 
+ # Lightning + Hydra
+@@ -33,7 +33,6 @@ joblib
+ # transformers==4.31.0
+ 
+ # 3D-Vision
+-pytorch3d @ https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py310_cu121_pyt230/pytorch3d-0.7.6-cp310-cp310-linux_x86_64.whl
+ trimesh
+ chumpy
+ smplx
+diff --git a/tools/demo/demo.py b/tools/demo/demo.py
+index a10fb64..c97c807 100644
+--- a/tools/demo/demo.py
++++ b/tools/demo/demo.py
+@@ -7,6 +7,7 @@ from hmr4d.utils.pylogger import Log
+ import hydra
+ from hydra import initialize_config_module, compose
+ from pathlib import Path
++from omegaconf import OmegaConf
+ from pytorch3d.transforms import quaternion_to_matrix
+ 
+ from hmr4d.configs import register_store_gvhmr
+@@ -25,7 +26,7 @@ from hmr4d.utils.preproc import Tracker, Extractor, VitPoseExtractor, SimpleVO
+ from hmr4d.utils.geo.hmr_cam import get_bbx_xys_from_xyxy, estimate_K, convert_K_to_K4, create_camera_sensor
+ from hmr4d.utils.geo_transform import compute_cam_angvel
+ from hmr4d.model.gvhmr.gvhmr_pl_demo import DemoPL
+-from hmr4d.utils.net_utils import detach_to_cpu, to_cuda
++from hmr4d.utils.net_utils import detach_to_cpu, to_cuda, to_xpu
+ from hmr4d.utils.smplx_utils import make_smplx
+ from hmr4d.utils.vis.renderer import Renderer, get_global_cameras_static, get_ground_params_from_points
+ from tqdm import tqdm
+@@ -52,7 +53,8 @@ def parse_args_to_cfg():
+         "If the camera zoom in a lot, you can try 135, 200 or even larger values.",
+     )
+     parser.add_argument("--verbose", action="store_true", help="If true, draw intermediate results")
+-    args = parser.parse_args()
++    parser.add_argument("--cfg_file", type=str, default="hmr4d/configs/gvhmr_b1b2_demo.yaml")
++    args, extras = parser.parse_known_args()
+ 
+     # Input
+     video_path = Path(args.video)
+@@ -61,21 +63,18 @@ def parse_args_to_cfg():
+     Log.info(f"[Input]: {video_path}")
+     Log.info(f"(L, W, H) = ({length}, {width}, {height})")
+     # Cfg
+-    with initialize_config_module(version_base="1.3", config_module=f"hmr4d.configs"):
+-        overrides = [
+-            f"video_name={video_path.stem}",
+-            f"static_cam={args.static_cam}",
+-            f"verbose={args.verbose}",
+-            f"use_dpvo={args.use_dpvo}",
+-        ]
+-        if args.f_mm is not None:
+-            overrides.append(f"f_mm={args.f_mm}")
+-
+-        # Allow to change output root
+-        if args.output_root is not None:
+-            overrides.append(f"output_root={args.output_root}")
+-        register_store_gvhmr()
+-        cfg = compose(config_name="demo", overrides=overrides)
++    cfg_file = OmegaConf.load(args.cfg_file)
++    overrides = {
++        "video_name": video_path.stem,
++        "use_dpvo": args.use_dpvo,
++        "static_cam": args.static_cam,
++        "verbose": args.verbose,
++    }
++    if args.f_mm is not None:
++        overrides["f_mm"] = args.f_mm
++    if args.output_root is not None:
++        overrides["output_root"] = args.output_root
++    cfg = OmegaConf.merge(cfg_file, overrides, OmegaConf.from_cli(extras))
+ 
+     # Output
+     Log.info(f"[Output Dir]: {cfg.output_dir}")
+@@ -207,12 +206,12 @@ def render_incam(cfg):
+         return
+ 
+     pred = torch.load(cfg.paths.hmr4d_results)
+-    smplx = make_smplx("supermotion").cuda()
+-    smplx2smpl = torch.load("hmr4d/utils/body_model/smplx2smpl_sparse.pt").cuda()
++    smplx = make_smplx("supermotion").xpu()
++    smplx2smpl = torch.load("hmr4d/utils/body_model/smplx2smpl_sparse.pt").xpu()
+     faces_smpl = make_smplx("smpl").faces
+ 
+     # smpl
+-    smplx_out = smplx(**to_cuda(pred["smpl_params_incam"]))
++    smplx_out = smplx(**to_xpu(pred["smpl_params_incam"]))
+     pred_c_verts = torch.stack([torch.matmul(smplx2smpl, v_) for v_ in smplx_out.vertices])
+ 
+     # -- rendering code -- #
+@@ -221,7 +220,7 @@ def render_incam(cfg):
+     K = pred["K_fullimg"][0]
+ 
+     # renderer
+-    renderer = Renderer(width, height, device="cuda", faces=faces_smpl, K=K)
++    renderer = Renderer(width, height, device="cpu", faces=faces_smpl, K=K)
+     reader = get_video_reader(video_path)  # (F, H, W, 3), uint8, numpy
+     bbx_xys_render = torch.load(cfg.paths.bbx)["bbx_xys"]
+ 
+@@ -229,7 +228,7 @@ def render_incam(cfg):
+     verts_incam = pred_c_verts
+     writer = get_writer(incam_video_path, fps=30, crf=CRF)
+     for i, img_raw in tqdm(enumerate(reader), total=get_video_lwh(video_path)[0], desc=f"Rendering Incam"):
+-        img = renderer.render_mesh(verts_incam[i].cuda(), img_raw, [0.8, 0.8, 0.8])
++        img = renderer.render_mesh(verts_incam[i].cpu(), img_raw, [0.8, 0.8, 0.8])
+ 
+         # # bbx
+         # bbx_xys_ = bbx_xys_render[i].cpu().numpy()
+@@ -250,13 +249,13 @@ def render_global(cfg):
+ 
+     debug_cam = False
+     pred = torch.load(cfg.paths.hmr4d_results)
+-    smplx = make_smplx("supermotion").cuda()
+-    smplx2smpl = torch.load("hmr4d/utils/body_model/smplx2smpl_sparse.pt").cuda()
++    smplx = make_smplx("supermotion").xpu()
++    smplx2smpl = torch.load("hmr4d/utils/body_model/smplx2smpl_sparse.pt").xpu()
+     faces_smpl = make_smplx("smpl").faces
+-    J_regressor = torch.load("hmr4d/utils/body_model/smpl_neutral_J_regressor.pt").cuda()
++    J_regressor = torch.load("hmr4d/utils/body_model/smpl_neutral_J_regressor.pt").xpu()
+ 
+     # smpl
+-    smplx_out = smplx(**to_cuda(pred["smpl_params_global"]))
++    smplx_out = smplx(**to_xpu(pred["smpl_params_global"]))
+     pred_ay_verts = torch.stack([torch.matmul(smplx2smpl, v_) for v_ in smplx_out.vertices])
+ 
+     def move_to_start_point_face_z(verts):
+@@ -278,6 +277,7 @@ def render_global(cfg):
+         beta=2.0,
+         cam_height_degree=20,
+         target_center_height=1.0,
++        device="xpu",
+     )
+ 
+     # -- rendering code -- #
+@@ -286,19 +286,23 @@ def render_global(cfg):
+     _, _, K = create_camera_sensor(width, height, 24)  # render as 24mm lens
+ 
+     # renderer
+-    renderer = Renderer(width, height, device="cuda", faces=faces_smpl, K=K)
+-    # renderer = Renderer(width, height, device="cuda", faces=faces_smpl, K=K, bin_size=0)
++    renderer = Renderer(
++        width, height, device="xpu", faces=faces_smpl, K=K, bin_size=0
++    )
+ 
+     # -- render mesh -- #
+     scale, cx, cz = get_ground_params_from_points(joints_glob[:, 0], verts_glob)
+     renderer.set_ground(scale * 1.5, cx, cz)
+-    color = torch.ones(3).float().cuda() * 0.8
++    color = torch.ones(3, device=verts_glob.device).float() * 0.8
+ 
+     render_length = length if not debug_cam else 8
+     writer = get_writer(global_video_path, fps=30, crf=CRF)
+     for i in tqdm(range(render_length), desc=f"Rendering Global"):
+         cameras = renderer.create_camera(global_R[i], global_T[i])
+-        img = renderer.render_with_ground(verts_glob[[i]], color[None], cameras, global_lights)
++        with torch.no_grad():
++            img = renderer.render_with_ground(
++                verts_glob[[i]], color[None], cameras, global_lights
++            )
+         writer.write_frame(img)
+     writer.close()
+ 
+@@ -306,8 +310,8 @@ def render_global(cfg):
+ if __name__ == "__main__":
+     cfg = parse_args_to_cfg()
+     paths = cfg.paths
+-    Log.info(f"[GPU]: {torch.cuda.get_device_name()}")
+-    Log.info(f'[GPU]: {torch.cuda.get_device_properties("cuda")}')
++    Log.info(f"[XPU]: {torch.xpu.get_device_name()}")
++    Log.info(f'[XPU]: {torch.xpu.get_device_properties("xpu")}')
+ 
+     # ===== Preprocess and save to disk ===== #
+     run_preprocess(cfg)
+@@ -316,9 +320,9 @@ if __name__ == "__main__":
+     # ===== HMR4D ===== #
+     if not Path(paths.hmr4d_results).exists():
+         Log.info("[HMR4D] Predicting")
+-        model: DemoPL = hydra.utils.instantiate(cfg.model, _recursive_=False)
++        model = DemoPL(pipeline=cfg.model.pipeline)
+         model.load_pretrained_model(cfg.ckpt_path)
+-        model = model.eval().cuda()
++        model = model.eval().xpu()
+         tic = Log.sync_time()
+         pred = model.predict(data, static_cam=cfg.static_cam)
+         pred = detach_to_cpu(pred)

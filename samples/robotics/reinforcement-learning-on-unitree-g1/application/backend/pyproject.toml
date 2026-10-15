@@ -1,0 +1,28 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "FastAPI backend for Video2Humanoid RL GUI"
+readme = "README.md"
+authors = [
+    { name = "Tsao, Nathan", email = "nathan.tsao@intel.com" }
+]
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi[standard]==0.142.2",
+    "python-multipart>=0.0.20",
+    "uvicorn[standard]>=0.35.0",
+    "pydantic",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.0",
+    "pytest>=8.3.0",
+]
+
+[project.scripts]
+backend = "backend.main:run"
+
+[build-system]
+requires = ["uv_build>=0.12.17,<0.13.0"]
+build-backend = "uv_build"

@@ -1,0 +1,236 @@
+diff --git a/mujoco_warp/_src/solver.py b/mujoco_warp/_src/solver.py
+index 74f1343..091b975 100644
+--- a/mujoco_warp/_src/solver.py
++++ b/mujoco_warp/_src/solver.py
+@@ -2833,6 +2833,15 @@ def _cholesky_factorize_solve(m: types.Model, d: types.Data, ctx: SolverContext,
+   If skip_unchanged is True (blocked path only), worlds where no constraints
+   changed reuse the cached factorization in hfactor instead of refactorizing.
+   """
++  device = wp.get_device()
++  if device.is_sycl:
++    from mujoco_warp._src.sycl_kernels import launch_update_gradient_cholesky
++
++    launch_update_gradient_cholesky(
++      ctx.grad, ctx.h, ctx.done, ctx.Mgrad, d.nworld, m.nv, device
++    )
++    return
++
+   if m.nv <= _BLOCK_CHOLESKY_DIM:
+     wp.launch_tiled(
+       update_gradient_cholesky(m.nv),
+@@ -2951,21 +2960,36 @@ def _update_gradient(m: types.Model, d: types.Data, ctx: SolverContext):
+         outputs=[ctx.h],
+       )
+     else:
+-      with scoped_mathdx_gemm_disabled():
+-        wp.launch_tiled(
+-          update_gradient_JTDAJ_dense_tiled(m.nv_pad, types.TILE_SIZE_JTDAJ_DENSE, d.njmax),
+-          dim=d.nworld,
+-          inputs=[
+-            d.nefc,
+-            d.qM,
+-            d.efc.J,
+-            d.efc.D,
+-            d.efc.state,
+-            ctx.done,
+-          ],
+-          outputs=[ctx.h],
+-          block_dim=m.block_dim.update_gradient_JTDAJ_dense,
++      if wp.get_device().is_sycl:
++        from mujoco_warp._src.sycl_kernels import launch_update_gradient_jtdaj
++
++        launch_update_gradient_jtdaj(
++          d.nefc,
++          d.qM,
++          d.efc.J,
++          d.efc.D,
++          d.efc.state,
++          ctx.done,
++          ctx.h,
++          d.nworld,
++          m.nv_pad,
+         )
++      else:
++        with scoped_mathdx_gemm_disabled():
++          wp.launch_tiled(
++            update_gradient_JTDAJ_dense_tiled(m.nv_pad, types.TILE_SIZE_JTDAJ_DENSE, d.njmax),
++            dim=d.nworld,
++            inputs=[
++              d.nefc,
++              d.qM,
++              d.efc.J,
++              d.efc.D,
++              d.efc.state,
++              ctx.done,
++            ],
++            outputs=[ctx.h],
++            block_dim=m.block_dim.update_gradient_JTDAJ_dense,
++          )
+ 
+     if m.opt.cone == types.ConeType.ELLIPTIC:
+       # Optimization: launching update_gradient_JTCJ with limited number of blocks on a GPU.
+@@ -3368,7 +3392,7 @@ def _solve(m: types.Model, d: types.Data, ctx: SolverContext):
+   step_size_cost = wp.empty((d.nworld, m.opt.ls_iterations if m.opt.ls_parallel else 0), dtype=float)
+ 
+   nsolving = wp.full(shape=(1,), value=d.nworld, dtype=int)
+-  if m.opt.iterations != 0 and m.opt.graph_conditional:
++  if m.opt.iterations != 0 and m.opt.graph_conditional and not d.qacc.device.is_sycl:
+     # Note: the iteration kernel (indicated by while_body) is repeatedly launched
+     # as long as condition_iteration is not zero.
+     # condition_iteration is a warp array of size 1 and type int, it counts the number
+@@ -3380,8 +3404,8 @@ def _solve(m: types.Model, d: types.Data, ctx: SolverContext):
+       nsolving, while_body=_solver_iteration, m=m, d=d, ctx=ctx, step_size_cost=step_size_cost, nsolving=nsolving
+     )
+   else:
+-    # This branch is mostly for when JAX is used as it is currently not compatible
+-    # with CUDA graph conditional.
+-    # It should be removed when JAX becomes compatible.
++    # Use fixed iterations for SYCL, which does not support the host-driven
++    # conditional loop while recording or submitting asynchronous kernels.
++    # This branch is also used by JAX, which cannot use CUDA graph conditionals.
+     for _ in range(m.opt.iterations):
+       _solver_iteration(m, d, ctx, step_size_cost, nsolving)
+diff --git a/mujoco_warp/_src/sycl_kernels.py b/mujoco_warp/_src/sycl_kernels.py
+new file mode 100644
+index 0000000..4185d61
+--- /dev/null
++++ b/mujoco_warp/_src/sycl_kernels.py
+@@ -0,0 +1,137 @@
++"""Barrier-free kernels for Warp's SYCL device."""
++
++from __future__ import annotations
++
++import warp as wp
++from mujoco_warp._src import types
++
++_JTDAJ_TILE = 16
++
++
++@wp.kernel(enable_backward=False)
++def _update_gradient_jtdaj_flat(
++  nefc_in: wp.array[int],
++  qM_in: wp.array3d[float],
++  efc_J_in: wp.array3d[float],
++  efc_D_in: wp.array2d[float],
++  efc_state_in: wp.array2d[int],
++  ctx_done_in: wp.array[bool],
++  nv_pad: int,
++  tile_count: int,
++  quadratic_state: int,
++  ctx_h_out: wp.array3d[float],
++):
++  worldid, tile_id = wp.tid()
++  if ctx_done_in[worldid]:
++    return
++
++  tile_i = tile_id // tile_count
++  tile_j = tile_id - tile_i * tile_count
++  row_start = tile_i * _JTDAJ_TILE
++  col_start = tile_j * _JTDAJ_TILE
++  rows = wp.min(_JTDAJ_TILE, nv_pad - row_start)
++  cols = wp.min(_JTDAJ_TILE, nv_pad - col_start)
++
++  for i in range(rows):
++    for j in range(cols):
++      ctx_h_out[worldid, row_start + i, col_start + j] = qM_in[
++        worldid, row_start + i, col_start + j
++      ]
++
++  for constraint_id in range(nefc_in[worldid]):
++    d = efc_D_in[worldid, constraint_id]
++    if efc_state_in[worldid, constraint_id] != quadratic_state or d == 0.0:
++      continue
++    for i in range(rows):
++      row_value = efc_J_in[worldid, constraint_id, row_start + i] * d
++      for j in range(cols):
++        ctx_h_out[worldid, row_start + i, col_start + j] += (
++          row_value * efc_J_in[worldid, constraint_id, col_start + j]
++        )
++
++
++def launch_update_gradient_jtdaj(
++  nefc: wp.array,
++  qM: wp.array3d,
++  efc_J: wp.array3d,
++  efc_D: wp.array2d,
++  efc_state: wp.array2d,
++  done: wp.array,
++  h: wp.array3d,
++  nworld: int,
++  nv_pad: int,
++) -> None:
++  tile_count = (nv_pad + _JTDAJ_TILE - 1) // _JTDAJ_TILE
++  wp.launch(
++    _update_gradient_jtdaj_flat,
++    dim=(nworld, tile_count * tile_count),
++    inputs=[
++      nefc,
++      qM,
++      efc_J,
++      efc_D,
++      efc_state,
++      done,
++      nv_pad,
++      tile_count,
++      int(types.ConstraintState.QUADRATIC.value),
++    ],
++    outputs=[h],
++  )
++
++
++@wp.kernel(enable_backward=False)
++def _update_gradient_cholesky_flat(
++  grad_in: wp.array2d[float],
++  h_in: wp.array3d[float],
++  done_in: wp.array[bool],
++  matrix_size: int,
++  factor_out: wp.array3d[float],
++  mgrad_out: wp.array2d[float],
++):
++  worldid = wp.tid()
++  if done_in[worldid]:
++    return
++
++  for i in range(matrix_size):
++    for j in range(i + 1):
++      value = h_in[worldid, i, j]
++      for k in range(j):
++        value -= factor_out[worldid, i, k] * factor_out[worldid, j, k]
++      if i == j:
++        factor_out[worldid, i, j] = wp.sqrt(value)
++      else:
++        factor_out[worldid, i, j] = value / factor_out[worldid, j, j]
++
++  for i in range(matrix_size):
++    value = grad_in[worldid, i]
++    for k in range(i):
++      value -= factor_out[worldid, i, k] * mgrad_out[worldid, k]
++    mgrad_out[worldid, i] = value / factor_out[worldid, i, i]
++
++  for offset in range(matrix_size):
++    i = matrix_size - 1 - offset
++    value = mgrad_out[worldid, i]
++    for k in range(matrix_size - 1 - i):
++      row = matrix_size - 1 - k
++      value -= factor_out[worldid, row, i] * mgrad_out[worldid, row]
++    mgrad_out[worldid, i] = value / factor_out[worldid, i, i]
++
++
++def launch_update_gradient_cholesky(
++  grad: wp.array2d,
++  h: wp.array3d,
++  done: wp.array,
++  mgrad: wp.array2d,
++  nworld: int,
++  matrix_size: int,
++  device: wp.context.Device,
++) -> None:
++  factor = wp.empty_like(h, device=device)
++  wp.launch(
++    _update_gradient_cholesky_flat,
++    dim=nworld,
++    inputs=[grad, h, done, matrix_size],
++    outputs=[factor, mgrad],
++    device=device,
++  )
+\ No newline at end of file

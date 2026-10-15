@@ -1,0 +1,39 @@
+services:
+  humanoid-rl-intel:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        HTTP_PROXY: ${HTTP_PROXY}
+        HTTPS_PROXY: ${HTTPS_PROXY}
+        NO_PROXY: ${NO_PROXY}
+        HUMANOID_RL_API_URL: http://127.0.0.1:${BACKEND_PORT:-8008}
+    environment:
+      DISPLAY: ${DISPLAY}
+      XAUTHORITY: /root/.Xauthority
+      QT_X11_NO_MITSHM: "1"
+      MUJOCO_GL: egl
+      HTTP_PROXY: ${HTTP_PROXY}
+      HTTPS_PROXY: ${HTTPS_PROXY}
+      NO_PROXY: ${NO_PROXY}
+      DEVICE: /dev/dri/renderD128
+      HUMANOID_RL_HOME: /app
+      HUMANOID_RL_DATA_DIR: /app/.data
+      BACKEND_HOST: 127.0.0.1
+      BACKEND_PORT: ${BACKEND_PORT:-8008}
+      FRONTEND_HOST: 0.0.0.0
+      FRONTEND_PORT: "3008"
+    volumes:
+      - ${XAUTHORITY:-$HOME/.Xauthority}:/root/.Xauthority:ro
+      - humanoid_rl_data:/app/.data
+    network_mode: host
+    working_dir: /app
+    init: true
+    restart: unless-stopped
+    devices:
+      - /dev/dri/renderD128:/dev/dri/renderD128
+    group_add:
+      - "${RENDER_GID:-0}"
+
+volumes:
+  humanoid_rl_data:

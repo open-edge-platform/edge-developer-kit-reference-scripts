@@ -1,0 +1,2875 @@
+diff --git a/warp/_src/build.py b/warp/_src/build.py
+index 2ed9ab76..c7a6cf3a 100644
+--- a/warp/_src/build.py
++++ b/warp/_src/build.py
+@@ -1,5 +1,6 @@
+ # SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ # SPDX-License-Identifier: Apache-2.0
++# MODIFIED from NVIDIA/warp 1.12.0: SYCL backend support; see warp_backend/README.md.
+ #
+ # Licensed under the Apache License, Version 2.0 (the "License");
+ # you may not use this file except in compliance with the License.
+@@ -15,11 +16,14 @@
+ 
+ import ctypes
+ import errno
++import glob
+ import hashlib
+ import json
+ import os
+ import platform
+ import shutil
++import subprocess
++import tempfile
+ import threading
+ import time
+ from pathlib import Path
+@@ -141,6 +145,442 @@ def build_cpu(obj_path, cpp_path, mode="release", verify_fp=False, fast_math=Fal
+         raise Exception(f"CPU kernel build failed with error code {err}")
+ 
+ 
++# ---------------------------------------------------------------------------
++# SYCL (Intel GPU) build support, experimental.
++#
++# Kernel modules are compiled by oneAPI's DPC++ compiler into shared libraries
++# that embed the SPIR-V device image alongside the host entry points. The
++# shared sycl::queue and USM allocator live in a platform runtime library in
++# the kernel cache; module libraries link against it.
++
++_sycl_build_env = None  # captured MSVC + oneAPI environment
++_sycl_dll_dir_handles = []  # keep os.add_dll_directory() handles alive
++_sycl_runtime_dll = None  # cached warpsycl.dll handle
++
++
++def _sycl_strip_extended_path(path: str) -> str:
++    r"""Strip Windows extended-path prefixes (\\?\) that MSVC tools reject."""
++    if path.startswith("\\\\?\\") and not path.startswith("\\\\?\\UNC\\"):
++        return path[4:]
++    if path.startswith("\\\\?\\UNC\\"):
++        return "\\" + path[7:]
++    return path
++
++
++def find_sycl_toolchain():
++    """Locate the platform SYCL compiler toolchain.
++
++    Raises RuntimeError when either is missing, which callers use to detect
++    whether SYCL support should be enabled on this machine.
++    """
++    if sys.platform.startswith("linux"):
++        compiler = os.environ.get("WARP_SYCL_ICX_EXE") or shutil.which("icpx")
++        if compiler:
++            return compiler
++        raise RuntimeError(
++            "SYCL toolchain not found: need Intel oneAPI DPC++ (icpx) on PATH. "
++            "Source oneAPI's setvars.sh or set WARP_SYCL_ICX_EXE."
++        )
++
++    vcvarsall = os.environ.get("WARP_SYCL_VCVARSALL")
++    if not vcvarsall:
++        for pattern in (
++            r"C:\Program Files (x86)\Microsoft Visual Studio\*\*\VC\Auxiliary\Build\vcvarsall.bat",
++            r"C:\Program Files\Microsoft Visual Studio\*\*\VC\Auxiliary\Build\vcvarsall.bat",
++        ):
++            hits = sorted(glob.glob(pattern), reverse=True)
++            if hits:
++                vcvarsall = hits[0]
++                break
++
++    intel_vars = os.environ.get("WARP_SYCL_INTEL_VARS")
++    if not intel_vars:
++        oneapi_root = os.environ.get("WARP_SYCL_ONEAPI_ROOT", r"C:\Program Files (x86)\Intel\oneAPI")
++        candidate = os.path.join(oneapi_root, "compiler", "latest", "env", "vars.bat")
++        if os.path.isfile(candidate):
++            intel_vars = candidate
++
++    if not vcvarsall or not intel_vars:
++        raise RuntimeError(
++            "SYCL toolchain not found: need MSVC (vcvarsall.bat) and Intel oneAPI (compiler vars.bat). "
++            "Set WARP_SYCL_VCVARSALL / WARP_SYCL_INTEL_VARS (or WARP_SYCL_ONEAPI_ROOT) to point at them."
++        )
++
++    return vcvarsall, intel_vars
++
++
++def _get_sycl_build_env():
++    """Capture the full MSVC + oneAPI compiler environment (once per process)."""
++    global _sycl_build_env
++    if _sycl_build_env is None:
++        vcvarsall, intel_vars = find_sycl_toolchain()
++
++        # Note: oneAPI's setvars.bat does not auto-detect MSVC 18 (2026), so
++        # the environment must be chained explicitly: vcvarsall -> oneAPI.
++        bat = tempfile.NamedTemporaryFile(mode="w", suffix=".bat", delete=False)
++        try:
++            bat.write("@echo off\r\n")
++            bat.write(f'call "{vcvarsall}" x64 >nul 2>&1\r\n')
++            bat.write("if errorlevel 1 exit /b 1\r\n")
++            bat.write(f'call "{intel_vars}" >nul 2>&1\r\n')
++            bat.write("if errorlevel 1 exit /b 1\r\n")
++            bat.write("set\r\n")
++            bat.close()
++
++            result = subprocess.run(
++                [bat.name], capture_output=True, text=True, errors="replace", timeout=300
++            )
++        finally:
++            os.unlink(bat.name)
++
++        if result.returncode != 0:
++            raise RuntimeError(f"SYCL toolchain environment setup failed:\n{result.stderr}")
++
++        env = {}
++        for line in result.stdout.splitlines():
++            key, sep, value = line.partition("=")
++            if sep and key and not key.startswith("="):
++                # cmd's `set` preserves the original variable casing (e.g.
++                # "Path"), but Windows environment lookups are case
++                # insensitive — normalize to upper case
++                env[key.upper()] = value
++
++        if "INCLUDE" not in env:
++            raise RuntimeError("SYCL toolchain environment capture failed (INCLUDE missing)")
++
++        # Resolve the absolute compiler path once: CreateProcess locates the
++        # child executable through the *parent's* PATH, so passing env= alone
++        # would not be enough to find icx.
++        icx_exe = None
++        for dir_ in env.get("PATH", "").split(os.pathsep):
++            if dir_:
++                candidate = os.path.join(dir_, "icx.exe")
++                if os.path.isfile(candidate):
++                    icx_exe = candidate
++                    break
++        if icx_exe is None:
++            raise RuntimeError("SYCL toolchain environment capture failed (icx.exe not on the toolchain PATH)")
++
++        env["WARP_SYCL_ICX_EXE"] = icx_exe
++        _sycl_build_env = env
++
++    return _sycl_build_env
++
++
++def _run_icx(args, cwd):
++    """Run icx with the captured MSVC + oneAPI environment."""
++    env = _get_sycl_build_env()
++    cmd = [env["WARP_SYCL_ICX_EXE"]] + [_sycl_strip_extended_path(a) for a in args]
++    result = subprocess.run(
++        cmd,
++        capture_output=True,
++        text=True,
++        errors="replace",
++        env=env,
++        cwd=_sycl_strip_extended_path(cwd) if cwd else None,
++        timeout=1800,
++    )
++    if result.returncode != 0:
++        raise RuntimeError(
++            f"icx build failed with exit code {result.returncode}:\n"
++            f"  {' '.join(cmd)}\n{result.stdout}\n{result.stderr}"
++        )
++    return result
++
++
++def _run_icpx(args, cwd):
++    """Run oneAPI DPC++ using the active Linux environment."""
++    compiler = find_sycl_toolchain()
++    cmd = [compiler] + args
++    result = subprocess.run(
++        cmd,
++        capture_output=True,
++        text=True,
++        errors="replace",
++        cwd=cwd,
++        timeout=1800,
++    )
++    if result.returncode != 0:
++        raise RuntimeError(
++            f"icpx build failed with exit code {result.returncode}:\n"
++            f"  {' '.join(cmd)}\n{result.stdout}\n{result.stderr}"
++        )
++    return result
++
++
++def _linux_sycl_runtime_fingerprint(native, compiler):
++    result = subprocess.run(
++        [compiler, "--version"],
++        capture_output=True,
++        text=True,
++        errors="replace",
++        timeout=30,
++    )
++    if result.returncode != 0:
++        raise RuntimeError(f"Could not query icpx version:\n{result.stdout}\n{result.stderr}")
++
++    digest = hashlib.sha256()
++    digest.update(os.path.realpath(compiler).encode())
++    digest.update(result.stdout.encode())
++    digest.update(result.stderr.encode())
++    for filename in ("sycl_runtime.cpp", "sycl_runtime.h"):
++        with open(os.path.join(native, filename), "rb") as source_file:
++            digest.update(source_file.read())
++    return digest.hexdigest()
++
++
++def _sycl_dll_dirs():
++    """Directories that must be searchable to load SYCL runtime DLLs."""
++    dirs = [_sycl_strip_extended_path(warp.config.kernel_cache_dir)]  # warpsycl.dll lives here
++    oneapi_root = os.environ.get("WARP_SYCL_ONEAPI_ROOT", r"C:\Program Files (x86)\Intel\oneAPI")
++    bin_dir = os.path.join(oneapi_root, "compiler", "latest", "bin")
++    if os.path.isdir(bin_dir):
++        dirs.append(bin_dir)  # sycl8.dll, ur_loader.dll, ...
++    return dirs
++
++
++def _load_sycl_dll(dll_path):
++    """Load a SYCL DLL (warpsycl.dll or a kernel module) and its dependencies.
++
++    The SYCL runtime resolves some of its components (Level Zero adapters,
++    etc.) through the standard DLL search order, which does not consult
++    os.add_dll_directory() — the oneAPI bin directory must therefore also be
++    prepended to the process PATH. The prepend is idempotent.
++    """
++    if sys.platform.startswith("linux"):
++        return ctypes.CDLL(dll_path, mode=ctypes.RTLD_GLOBAL)
++
++    dirs = _sycl_dll_dirs()
++
++    path_dirs = [d for d in os.environ.get("PATH", "").split(os.pathsep) if d]
++    for d in dirs:
++        if d not in path_dirs:
++            path_dirs.insert(0, d)
++    os.environ["PATH"] = os.pathsep.join(path_dirs)
++
++    for d in dirs:
++        try:
++            _sycl_dll_dir_handles.append(os.add_dll_directory(d))
++        except OSError:
++            pass
++
++    return ctypes.CDLL(_sycl_strip_extended_path(dll_path))
++
++
++def ensure_sycl_runtime():
++    """Load the SYCL runtime, building it into the kernel cache if necessary."""
++    global _sycl_runtime_dll
++    if _sycl_runtime_dll is not None:
++        return _sycl_runtime_dll
++
++    if sys.platform.startswith("linux"):
++        runtime_path = os.path.join(warp.config.kernel_cache_dir, "libwarpsycl.so")
++        native = os.path.join(warp_home, "native")
++        src = os.path.join(native, "sycl_runtime.cpp")
++        if not os.path.isfile(src):
++            raise RuntimeError(f"SYCL runtime source not found: {src}")
++
++        compiler = find_sycl_toolchain()
++        fingerprint = _linux_sycl_runtime_fingerprint(native, compiler)
++        fingerprint_path = runtime_path + ".fingerprint"
++        cached_fingerprint = None
++        try:
++            with open(fingerprint_path) as fingerprint_file:
++                cached_fingerprint = fingerprint_file.read().strip()
++        except OSError:
++            pass
++
++        if not os.path.isfile(runtime_path) or cached_fingerprint != fingerprint:
++            if not warp.config.quiet:
++                print("Warp: building libwarpsycl.so (one-time setup for the Intel SYCL device)...")
++
++            _run_icpx(
++                [
++                    "-fsycl",
++                    "-O2",
++                    "-fPIC",
++                    "-shared",
++                    "-DWP_SYCL_BUILDING_RUNTIME",
++                    f"-I{native}",
++                    src,
++                    "-o",
++                    runtime_path,
++                ],
++                cwd=warp.config.kernel_cache_dir,
++            )
++            if not os.path.isfile(runtime_path):
++                raise RuntimeError("libwarpsycl.so was not produced by the build")
++            temporary_fingerprint = fingerprint_path + ".tmp"
++            with open(temporary_fingerprint, "w") as fingerprint_file:
++                fingerprint_file.write(fingerprint + "\n")
++            os.replace(temporary_fingerprint, fingerprint_path)
++
++        _sycl_runtime_dll = _load_sycl_dll(runtime_path)
++    elif os.name == "nt":
++        dll_path = os.path.join(warp.config.kernel_cache_dir, "warpsycl.dll")
++        lib_path = os.path.join(warp.config.kernel_cache_dir, "warpsycl.lib")
++
++        if not (os.path.isfile(dll_path) and os.path.isfile(lib_path)):
++            if not warp.config.quiet:
++                print("Warp: building warpsycl.dll (one-time setup for the Intel SYCL device)...")
++
++            native = os.path.join(warp_home, "native")
++            src = os.path.join(native, "sycl_runtime.cpp")
++            if not os.path.isfile(src):
++                raise RuntimeError(f"SYCL runtime source not found: {src}")
++
++            # /LD also emits warpsycl.lib/.exp next to the DLL for module linking.
++            _run_icx(
++                [
++                    "/nologo",
++                    "/fsycl",
++                    "/EHsc",
++                    "/O2",
++                    "/MD",
++                    "/LD",
++                    "/DWP_SYCL_BUILDING_RUNTIME",
++                    f"/I{native}",
++                    src,
++                    f"/Fe:{dll_path}",
++                ],
++                cwd=warp.config.kernel_cache_dir,
++            )
++
++            if not (os.path.isfile(dll_path) and os.path.isfile(lib_path)):
++                raise RuntimeError("warpsycl.dll/.lib were not produced by the build")
++
++        _sycl_runtime_dll = _load_sycl_dll(dll_path)
++    else:
++        raise RuntimeError(f"SYCL backend is not supported on {sys.platform}")
++
++    _sycl_runtime_dll.wp_sycl_alloc_shared.argtypes = [ctypes.c_size_t]
++    _sycl_runtime_dll.wp_sycl_alloc_shared.restype = ctypes.c_void_p
++    _sycl_runtime_dll.wp_sycl_free.argtypes = [ctypes.c_void_p]
++    _sycl_runtime_dll.wp_sycl_free.restype = None
++    _sycl_runtime_dll.wp_sycl_stage_args.argtypes = [ctypes.c_size_t]
++    _sycl_runtime_dll.wp_sycl_stage_args.restype = ctypes.c_void_p
++    _sycl_runtime_dll.wp_sycl_device_name.argtypes = []
++    _sycl_runtime_dll.wp_sycl_device_name.restype = ctypes.c_char_p
++    _sycl_runtime_dll.wp_sycl_queue_ptr.argtypes = []
++    _sycl_runtime_dll.wp_sycl_queue_ptr.restype = ctypes.c_void_p
++    _sycl_runtime_dll.wp_sycl_pointer_type.argtypes = [ctypes.c_void_p]
++    _sycl_runtime_dll.wp_sycl_pointer_type.restype = ctypes.c_int
++    _sycl_runtime_dll.wp_sycl_memset.argtypes = [
++        ctypes.c_void_p,
++        ctypes.c_int,
++        ctypes.c_size_t,
++    ]
++    _sycl_runtime_dll.wp_sycl_memset.restype = None
++    _sycl_runtime_dll.wp_sycl_memcpy.argtypes = [
++        ctypes.c_void_p,
++        ctypes.c_void_p,
++        ctypes.c_size_t,
++    ]
++    _sycl_runtime_dll.wp_sycl_memcpy.restype = None
++    _sycl_runtime_dll.wp_sycl_memtile.argtypes = [
++        ctypes.c_void_p,
++        ctypes.c_void_p,
++        ctypes.c_size_t,
++        ctypes.c_size_t,
++    ]
++    _sycl_runtime_dll.wp_sycl_memtile.restype = None
++    _sycl_runtime_dll.wp_sycl_graph_supported.argtypes = []
++    _sycl_runtime_dll.wp_sycl_graph_supported.restype = ctypes.c_int
++    _sycl_runtime_dll.wp_sycl_graph_begin.argtypes = []
++    _sycl_runtime_dll.wp_sycl_graph_begin.restype = ctypes.c_void_p
++    _sycl_runtime_dll.wp_sycl_graph_end.argtypes = [ctypes.c_void_p]
++    _sycl_runtime_dll.wp_sycl_graph_end.restype = ctypes.c_int
++    _sycl_runtime_dll.wp_sycl_graph_launch.argtypes = [ctypes.c_void_p]
++    _sycl_runtime_dll.wp_sycl_graph_launch.restype = ctypes.c_int
++    _sycl_runtime_dll.wp_sycl_graph_destroy.argtypes = [ctypes.c_void_p]
++    _sycl_runtime_dll.wp_sycl_graph_destroy.restype = None
++    _sycl_runtime_dll.wp_sycl_graph_is_capturing.argtypes = []
++    _sycl_runtime_dll.wp_sycl_graph_is_capturing.restype = ctypes.c_int
++    _sycl_runtime_dll.wp_sycl_bvh_depth.argtypes = [ctypes.c_void_p]
++    _sycl_runtime_dll.wp_sycl_bvh_depth.restype = ctypes.c_int
++    _sycl_runtime_dll.wp_sycl_bvh_refit.argtypes = [ctypes.c_void_p, ctypes.c_int]
++    _sycl_runtime_dll.wp_sycl_bvh_refit.restype = None
++    _sycl_runtime_dll.wp_sycl_mesh_refit.argtypes = [ctypes.c_void_p, ctypes.c_int]
++    _sycl_runtime_dll.wp_sycl_mesh_refit.restype = None
++    _sycl_runtime_dll.wp_sycl_qld_factor.argtypes = [
++        ctypes.c_void_p,
++        ctypes.c_void_p,
++        ctypes.c_void_p,
++        ctypes.c_void_p,
++        ctypes.c_void_p,
++        ctypes.c_void_p,
++        ctypes.c_void_p,
++        ctypes.c_size_t,
++        ctypes.c_size_t,
++        ctypes.c_size_t,
++        ctypes.c_size_t,
++    ]
++    _sycl_runtime_dll.wp_sycl_qld_factor.restype = None
++
++    return _sycl_runtime_dll
++
++
++def build_sycl(dll_path, cpp_path, mode="release", fast_math=False):
++    """Compile a generated kernel module for the Intel SYCL device."""
++    ensure_sycl_runtime()
++
++    native = os.path.join(warp_home, "native")
++    if sys.platform.startswith("linux"):
++        runtime_path = os.path.join(warp.config.kernel_cache_dir, "libwarpsycl.so")
++        args = ["-fsycl", "-fPIC", "-shared"]
++        if mode == "debug":
++            args += ["-O0", "-g"]
++        else:
++            args += ["-O2", "-DNDEBUG"]
++        if fast_math:
++            args.append("-ffast-math")
++        shared_kb = os.environ.get("WARP_SYCL_SHARED_KB")
++        if shared_kb:
++            args.append(f"-DWP_MAX_SYCL_SHARED={int(shared_kb)}*1024")
++        args += [
++            f"-I{native}",
++            cpp_path,
++            runtime_path,
++            "-Wl,-rpath,$ORIGIN/..",
++            "-o",
++            dll_path,
++        ]
++        _run_icpx(args, cwd=os.path.dirname(dll_path))
++        return
++
++    if not os.name == "nt":
++        raise RuntimeError(f"SYCL backend is not supported on {sys.platform}")
++
++    warpsycl_lib = os.path.join(warp.config.kernel_cache_dir, "warpsycl.lib")
++
++    args = ["/nologo", "/fsycl", "/EHsc", "/MD", "/LD"]
++    if mode == "debug":
++        args.append("/Od")
++    else:
++        # NDEBUG compiles out assert() in the generated module (both the host
++        # entry points and icx's SPIR-V device pass)
++        args += ["/O2", "/DNDEBUG"]
++    if fast_math:
++        args.append("/fp:fast")
++    # tile SLM arena size (bytes); see WP_MAX_SYCL_SHARED in tile.h
++    shared_kb = os.environ.get("WARP_SYCL_SHARED_KB")
++    if shared_kb:
++        args.append(f"/DWP_MAX_SYCL_SHARED={int(shared_kb)}*1024")
++    args += [
++        f"/I{native}",
++        cpp_path,
++        warpsycl_lib,
++        f"/Fe:{dll_path}",
++    ]
++
++    _run_icx(args, cwd=os.path.dirname(dll_path))
++
++
++def load_sycl(dll_path):
++    """Load a compiled SYCL kernel module DLL."""
++    return _load_sycl_dll(dll_path)
++
++
+ def init_kernel_cache(path=None):
+     """Initialize kernel cache directory.
+ 
+diff --git a/warp/_src/builtins.py b/warp/_src/builtins.py
+index a04b3c26..9ceb6546 100644
+--- a/warp/_src/builtins.py
++++ b/warp/_src/builtins.py
+@@ -1,5 +1,6 @@
+ # SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ # SPDX-License-Identifier: Apache-2.0
++# MODIFIED from NVIDIA/warp 1.12.0: SYCL backend support; see warp_backend/README.md.
+ #
+ # Licensed under the Apache License, Version 2.0 (the "License");
+ # you may not use this file except in compliance with the License.
+@@ -24,7 +25,7 @@ from typing import Any, Callable
+ import warp._src.build
+ import warp._src.context
+ import warp._src.utils
+-from warp._src.codegen import Reference, Var, get_arg_value, strip_reference
++from warp._src.codegen import FunctorArg, Reference, Var, get_arg_value, strip_reference
+ from warp._src.types import *
+ 
+ from .context import add_builtin
+@@ -5805,7 +5806,7 @@ def tile_unary_map_dispatch_func(arg_types: Mapping[str, type], return_type: Any
+ 
+     overload = op.get_overload([tile_a.type.dtype], {})
+ 
+-    return ((overload, tile_a), ())
++    return ((FunctorArg(overload), tile_a), ())
+ 
+ 
+ add_builtin(
+@@ -5922,7 +5923,7 @@ def tile_binary_map_dispatch_func(arg_types: Mapping[str, type], return_type: An
+ 
+     overload = op.get_overload([tile_a.type.dtype, b_dtype], {})
+ 
+-    return ((overload, tile_a, arg_b), ())
++    return ((FunctorArg(overload), tile_a, arg_b), ())
+ 
+ 
+ add_builtin(
+@@ -6054,7 +6055,7 @@ def tile_n_map_dispatch_func(arg_types: Mapping[str, type], return_type: Any, ar
+ 
+     overload = op.get_overload(dtypes, {})
+ 
+-    return ((overload, tile_a, *args), ())
++    return ((FunctorArg(overload), tile_a, *args), ())
+ 
+ 
+ add_builtin(
+diff --git a/warp/_src/codegen.py b/warp/_src/codegen.py
+index 8b4d93fd..c863dcbf 100644
+--- a/warp/_src/codegen.py
++++ b/warp/_src/codegen.py
+@@ -1,5 +1,6 @@
+ # SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ # SPDX-License-Identifier: Apache-2.0
++# MODIFIED from NVIDIA/warp 1.12.0: SYCL backend support; see warp_backend/README.md.
+ #
+ # Licensed under the Apache License, Version 2.0 (the "License");
+ # you may not use this file except in compliance with the License.
+@@ -706,6 +707,28 @@ def strip_reference(arg: Any) -> Any:
+     return arg
+ 
+ 
++class FunctorArg:
++    """Renders a warp function argument as a stateless generic C++ lambda.
++
++    SPIR-V (SYCL device code) rejects calls through function pointers, and
++    tile_map()'s op argument is otherwise emitted as a bare function symbol,
++    which decays to a pointer inside device code. The lambda closure calls
++    the target directly, so it is inlined everywhere (CPU and CUDA compile
++    it just as happily). The adjoint variant calls the 'adj_'-prefixed
++    symbol, mirroring how format_args() renders plain function arguments.
++    """
++
++    def __init__(self, func):
++        self.func = func
++
++    def emit(self, prefix: str = "var"):
++        if "adj" in prefix:
++            sym = f"{self.func.namespace}adj_{self.func.native_func}"
++        else:
++            sym = f"{self.func.namespace}{self.func.native_func}"
++        return f"[](auto&&... _wp_f){{ return {sym}(_wp_f...); }}"
++
++
+ def compute_type_str(base_name, template_params):
+     if not template_params:
+         return base_name
+@@ -1274,7 +1297,9 @@ class Adjoint:
+         arg_strs = []
+ 
+         for a in args:
+-            if isinstance(a, warp._src.context.Function):
++            if isinstance(a, FunctorArg):
++                arg_strs.append(a.emit(prefix))
++            elif isinstance(a, warp._src.context.Function):
+                 # functions don't have a var_ prefix so strip it off here
+                 if prefix == "var":
+                     arg_strs.append(f"{a.namespace}{a.native_func}")
+@@ -1371,7 +1396,7 @@ class Adjoint:
+         # the list of primal vars until later on, instead of registering them
+         # immediately if we were to use `adj.add_var()` or `adj.add_constant()`.
+ 
+-        if isinstance(var, (Reference, warp._src.context.Function)):
++        if isinstance(var, (Reference, warp._src.context.Function, FunctorArg)):
+             return var
+ 
+         if isinstance(var, int):
+@@ -1672,7 +1697,7 @@ class Adjoint:
+ 
+         fwd_args = []
+         for func_arg in func_args:
+-            if not isinstance(func_arg, (Reference, warp._src.context.Function)):
++            if not isinstance(func_arg, (Reference, warp._src.context.Function, FunctorArg)):
+                 func_arg_var = adj.load(func_arg)
+             else:
+                 func_arg_var = func_arg
+@@ -1684,6 +1709,16 @@ class Adjoint:
+ 
+                 adj.builder.build_function(func_arg_var)
+ 
++            # same for functions wrapped in a FunctorArg (tile_map ops)
++            if isinstance(func_arg_var, FunctorArg) and not func_arg_var.func.is_builtin():
++                if adj.used_by_backward_kernel:
++                    func_arg_var.func.adj.used_by_backward_kernel = True
++
++                if adj.builder is None:
++                    func_arg_var.func.build(None)
++                elif func_arg_var.func not in adj.builder.functions:
++                    adj.builder.build_function(func_arg_var.func)
++
+             fwd_args.append(strip_reference(func_arg_var))
+ 
+         if return_type is None:
+@@ -4093,6 +4128,37 @@ cuda_module_header = """
+ 
+ """
+ 
++sycl_module_header = """
++#define WP_TILE_BLOCK_DIM {block_dim}
++// The SYCL runtime header must come first so that sycl:: names are visible
++// to builtin.h's device-side specializations (e.g. atomic_add via
++// sycl::atomic_ref). Unlike the CPU/CUDA targets the module must NOT define
++// WP_NO_CRT: icx compiles against the full MSVC standard library, and the
++// jitify-style CRT shims in crt.h resolve to host-only helpers that cannot
++// be compiled into SPIR-V device code. The real CRT headers (assert, cmath)
++// are device-supported by DPC++; printf is NOT — icx rejects variadic calls
++// in device code, so builtin.h redefines it to a no-op under
++// __SYCL_DEVICE_ONLY__.
++#define _USE_MATH_DEFINES
++#include "sycl_runtime.h"
++#include "builtin.h"
++
++// avoid namespacing of float type for casting to float type, this is to avoid wp::float(x), which is not valid in C++
++#define float(x) cast_float(x)
++#define adj_float(x, adj_x, adj_ret) adj_cast_float(x, adj_x, adj_ret)
++
++#define int(x) cast_int(x)
++#define adj_int(x, adj_x, adj_ret) adj_cast_int(x, adj_x, adj_ret)
++
++#define builtin_tid1d() wp::tid(task_index, dim)
++#define builtin_tid2d(x, y) wp::tid(x, y, task_index, dim)
++#define builtin_tid3d(x, y, z) wp::tid(x, y, z, task_index, dim)
++#define builtin_tid4d(x, y, z, w) wp::tid(x, y, z, w, task_index, dim)
++
++#define builtin_block_dim() wp::block_dim()
++
++"""
++
+ struct_template = """
+ struct {name}
+ {{
+@@ -4270,6 +4336,141 @@ WP_API void {name}_cpu_backward(
+ 
+ """
+ 
++sycl_module_template_forward = """
++
++extern "C" {{
++
++// Python SYCL entry point for kernels that do NOT use tiles: dispatches the
++// device-agnostic kernel body to the Intel GPU. Unlike tile kernels it
++// touches no SLM and packs 8 tasks per work-group, which measured ~7x
++// faster than one task per work-group on Arc 130T (dispatch amortization).
++// The args struct is copied into USM shared memory first: it lives in host
++// memory that the device cannot dereference.
++WP_API void {name}_cpu_forward(
++    wp::launch_bounds_t dim,
++    wp_args_{name} *_wp_args)
++{{
++    wp_args_{name} *_wp_usm_args = static_cast<wp_args_{name} *>(wp_sycl_stage_args(sizeof(wp_args_{name})));
++    wp_sycl_note_kernel("{name}");
++    *_wp_usm_args = *_wp_args;
++
++    if (dim.size == 0) {{
++        return;
++    }}
++
++    // 8 tasks per work-group amortizes dispatch overhead across the
++    // sub-group (measured ~7x on Arc 130T vs one task per work-group).
++    // The global size is rounded up to a multiple of the local size --
++    // SYCL requires it -- and the body is guarded so padding lanes no-op.
++    // Submission is async: global synchronize() drains the queue.
++    const size_t _wp_local = {plain_local_size};
++    const size_t _wp_global = ((dim.size + _wp_local - 1) / _wp_local) * _wp_local;
++    wp_sycl_queue().parallel_for(
++        sycl::nd_range<1>(sycl::range<1>(_wp_global), sycl::range<1>(_wp_local)),
++        [=](sycl::nd_item<1> _item) {{
++            const size_t _wp_tid = _item.get_global_linear_id();
++            if (_wp_tid < dim.size) {{
++                {name}_cpu_kernel_forward(dim, _wp_tid, _wp_usm_args);
++            }}
++        }});
++}}
++
++}} // extern C
++
++"""
++
++sycl_module_template_forward_tiled = """
++
++extern "C" {{
++
++// Python SYCL entry point for tile kernels: the kernel body is the
++// plain-C++ CPU target, which the icx device pass compiles to SPIR-V.
++// Tiles expect each task to own its work-group's local memory (see
++// tile_shared_storage_t in tile.h), so this launches as an nd_range with
++// work-groups of size 1 and re-zeros the per-task tile-scratch counter
++// first because SLM contents are uninitialized at kernel start.
++WP_API void {name}_cpu_forward(
++    wp::launch_bounds_t dim,
++    wp_args_{name} *_wp_args)
++{{
++    wp_args_{name} *_wp_usm_args = static_cast<wp_args_{name} *>(wp_sycl_stage_args(sizeof(wp_args_{name})));
++    wp_sycl_note_kernel("{name}");
++    *_wp_usm_args = *_wp_args;
++
++    wp_sycl_queue().parallel_for(
++        sycl::nd_range<1>(sycl::range<1>(dim.size), sycl::range<1>(1)),
++        [=](sycl::nd_item<1> _item) {{
++            wp::tile_shared_storage_t::init();
++            {name}_cpu_kernel_forward(dim, _item.get_global_linear_id(), _wp_usm_args);
++        }});
++}}
++
++}} // extern C
++
++"""
++
++sycl_module_template_backward = """
++
++extern "C" {{
++
++WP_API void {name}_cpu_backward(
++    wp::launch_bounds_t dim,
++    wp_args_{name} *_wp_args,
++    wp_args_{name} *_wp_adj_args)
++{{
++    wp_args_{name} *_wp_usm_args = static_cast<wp_args_{name} *>(wp_sycl_stage_args(2 * sizeof(wp_args_{name})));
++    wp_sycl_note_kernel("{name}");
++    wp_args_{name} *_wp_usm_adj_args = _wp_usm_args + 1;
++    _wp_usm_args[0] = *_wp_args;
++    _wp_usm_args[1] = *_wp_adj_args;
++
++    if (dim.size == 0) {{
++        return;
++    }}
++
++    const size_t _wp_local = {plain_local_size};
++    const size_t _wp_global = ((dim.size + _wp_local - 1) / _wp_local) * _wp_local;
++    wp_sycl_queue().parallel_for(
++        sycl::nd_range<1>(sycl::range<1>(_wp_global), sycl::range<1>(_wp_local)),
++        [=](sycl::nd_item<1> _item) {{
++            const size_t _wp_tid = _item.get_global_linear_id();
++            if (_wp_tid < dim.size) {{
++                {name}_cpu_kernel_backward(dim, _wp_tid, _wp_usm_args, _wp_usm_adj_args);
++            }}
++        }});
++}}
++
++}} // extern C
++
++"""
++
++sycl_module_template_backward_tiled = """
++
++extern "C" {{
++
++WP_API void {name}_cpu_backward(
++    wp::launch_bounds_t dim,
++    wp_args_{name} *_wp_args,
++    wp_args_{name} *_wp_adj_args)
++{{
++    wp_args_{name} *_wp_usm_args = static_cast<wp_args_{name} *>(wp_sycl_stage_args(2 * sizeof(wp_args_{name})));
++    wp_sycl_note_kernel("{name}");
++    wp_args_{name} *_wp_usm_adj_args = _wp_usm_args + 1;
++    _wp_usm_args[0] = *_wp_args;
++    _wp_usm_args[1] = *_wp_adj_args;
++
++    wp_sycl_queue().parallel_for(
++        sycl::nd_range<1>(sycl::range<1>(dim.size), sycl::range<1>(1)),
++        [=](sycl::nd_item<1> _item) {{
++            wp::tile_shared_storage_t::init();
++            {name}_cpu_kernel_backward(dim, _item.get_global_linear_id(), _wp_usm_args, _wp_usm_adj_args);
++        }});
++}}
++
++}} // extern C
++
++"""
++
+ 
+ # converts a constant Python value to equivalent C-repr
+ def constant_str(value):
+@@ -4875,7 +5076,26 @@ def codegen_kernel(kernel, device, options):
+     return args_struct + s
+ 
+ 
+-def codegen_module(kernel, device, options):
++def codegen_module(kernel, device, options, uses_tiles=False):
++    if device == "sycl":
++        # Update the module's options with the ones defined on the kernel, if any.
++        options = options | kernel.options
++
++        # Tile kernels need an nd_range with one work-group per task (SLM
++        # ownership); everything else uses a plain parallel_for so the driver
++        # can pick work-group sizes for full SIMT utilization.
++        template = sycl_module_template_forward_tiled if uses_tiles else sycl_module_template_forward
++
++        if options["enable_backward"]:
++            template += sycl_module_template_backward_tiled if uses_tiles else sycl_module_template_backward
++
++        import os as _os
++        s = template.format(
++            name=kernel.get_mangled_name(),
++            plain_local_size=max(1, int(_os.environ.get("WARP_SYCL_PLAIN_LOCAL", "8"))),
++        )
++        return s
++
+     if device != "cpu":
+         return ""
+ 
+diff --git a/warp/_src/context.py b/warp/_src/context.py
+index e7b30350..d0b9b1e8 100644
+--- a/warp/_src/context.py
++++ b/warp/_src/context.py
+@@ -1,5 +1,6 @@
+ # SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ # SPDX-License-Identifier: Apache-2.0
++# MODIFIED from NVIDIA/warp 1.12.0: SYCL backend support; see warp_backend/README.md.
+ #
+ # Licensed under the Apache License, Version 2.0 (the "License");
+ # you may not use this file except in compliance with the License.
+@@ -2199,6 +2200,11 @@ class ModuleBuilder:
+         return source
+ 
+     def codegen(self, device):
++        # SYCL modules reuse the CPU codegen verbatim for everything except
++        # the module entry points and the header: the kernel bodies are
++        # device-agnostic plain C++, compiled for the GPU by icx's device
++        # pass (see codegen.sycl_module_template_forward / sycl_module_header).
++        body_device = "cpu" if device == "sycl" else device
+         source = ""
+ 
+         # code-gen LTO forward declarations
+@@ -2227,7 +2233,7 @@ class ModuleBuilder:
+         non_grad_functions = [f for f in self.functions.keys() if not f.adj.uses_grad_call]
+ 
+         # Pass 1: Forward functions that don't use grad()
+-        source += self._codegen_functions(non_grad_functions, device, forward_only=True)
++        source += self._codegen_functions(non_grad_functions, body_device, forward_only=True)
+ 
+         # Pass 2: Reverse/adjoint functions with custom grads sorted before auto-adjoints
+         # Build set of functions that ARE custom gradients (decorated with @wp.func_grad)
+@@ -2243,19 +2249,28 @@ class ModuleBuilder:
+ 
+         # Generate adjoints: custom grads first, then other functions
+         # This ensures custom grads are defined before any auto-adjoints that call them
+-        source += self._codegen_functions(custom_grad_functions + other_functions, device, reverse_only=True)
++        source += self._codegen_functions(custom_grad_functions + other_functions, body_device, reverse_only=True)
+ 
+         # Pass 3: Forward functions that use wp.grad()
+         # These must come after pass 2 because they call adjoint functions
+-        source += self._codegen_functions(grad_functions, device, forward_only=True)
++        source += self._codegen_functions(grad_functions, body_device, forward_only=True)
+ 
+         for kernel in self.kernels:
+-            source += warp._src.codegen.codegen_kernel(kernel, device=device, options=self.options)
+-            source += warp._src.codegen.codegen_module(kernel, device=device, options=self.options)
++            kernel_src = warp._src.codegen.codegen_kernel(kernel, device=body_device, options=self.options)
++            source += kernel_src
++
++            # SYCL entry-point selection: funcs are inlined into the kernel body,
++            # so scanning the generated C++ catches tile usage transitively.
++            uses_tiles = "wp::tile" in kernel_src
++            source += warp._src.codegen.codegen_module(
++                kernel, device=device, options=self.options, uses_tiles=uses_tiles
++            )
+ 
+         # add headers
+         if device == "cpu":
+             source = warp._src.codegen.cpu_module_header.format(block_dim=self.options["block_dim"]) + source
++        elif device == "sycl":
++            source = warp._src.codegen.sycl_module_header.format(block_dim=self.options["block_dim"]) + source
+         else:
+             source = warp._src.codegen.cuda_module_header.format(block_dim=self.options["block_dim"]) + source
+ 
+@@ -2291,6 +2306,9 @@ class ModuleExec:
+                     # use CUDA context guard to avoid side effects during garbage collection
+                     with self.device.context_guard:
+                         runtime.core.wp_cuda_unload_module(self.device.context, self.handle)
++                elif self.device.is_sycl:
++                    # module DLL released by garbage collection of the ctypes handle
++                    pass
+                 else:
+                     runtime.llvm.wp_unload_obj(self.handle.encode("utf-8"))
+             except (TypeError, AttributeError):
+@@ -2345,6 +2363,28 @@ class ModuleExec:
+ 
+             hooks = KernelHooks(forward_kernel, backward_kernel, forward_smem_bytes, backward_smem_bytes)
+ 
++        elif self.device.is_sycl:
++            # SYCL modules are plain DLLs that export the same entry-point
++            # symbols as CPU modules ({name}_cpu_forward/_cpu_backward); they
++            # are resolved via GetProcAddress instead of the LLVM loader.
++            func = ctypes.CFUNCTYPE(None)
++
++            def lookup(symbol):
++                try:
++                    address = ctypes.cast(getattr(self.handle, symbol), ctypes.c_void_p).value
++                except AttributeError:
++                    return None
++                return func(address) if address else None
++
++            forward = lookup(name + "_cpu_forward")
++
++            if options["enable_backward"]:
++                backward = lookup(name + "_cpu_backward")
++            else:
++                backward = None
++
++            hooks = KernelHooks(forward, backward)
++
+         else:
+             func = ctypes.CFUNCTYPE(None)
+             forward = (
+@@ -2667,6 +2707,11 @@ class Module:
+         """
+         module_name_short = self.get_module_identifier()
+ 
++        if device and device.is_sycl:
++            if sys.platform.startswith("linux"):
++                return f"{module_name_short}.sycl.so"
++            return f"{module_name_short}.sycl.dll"
++
+         if device and device.is_cpu:
+             return f"{module_name_short}.o"
+ 
+@@ -2801,8 +2846,38 @@ class Module:
+                 "Optimization level other than 3 has no effect on CUDA versions prior to 12.9.", once=True
+             )
+ 
++        # build SYCL (Intel GPU): CPU kernel bodies + SYCL entry points in a DLL
++        if device is not None and device.is_sycl:
++            # build
++            try:
++                source_code_path = os.path.join(build_dir, f"{module_name_short}.cpp")
++
++                # write cpp sources
++                cpp_source = builder.codegen("sycl")
++
++                with open(source_code_path, "w") as cpp_file:
++                    cpp_file.write(cpp_source)
++
++                output_path = os.path.join(build_dir, output_name)
++
++                # build the module DLL
++                with warp.ScopedTimer("Compile SYCL", active=warp.config.verbose):
++                    warp._src.build.build_sycl(
++                        output_path,
++                        source_code_path,
++                        mode=mode,
++                    )
++
++            except Exception as e:
++                if isinstance(e, FileNotFoundError):
++                    _check_and_raise_long_path_error(e)
++
++                self.failed_builds.add(device.context)
++
++                raise (e)
++
+         # build CPU
+-        if output_arch is None:
++        elif output_arch is None:
+             # build
+             try:
+                 source_code_path = os.path.join(build_dir, f"{module_name_short}.cpp")
+@@ -3022,7 +3097,13 @@ class Module:
+             else:
+                 raise FileNotFoundError(f"Module metadata file {meta_path} was not found in the cache")
+ 
+-            if device.is_cpu:
++            if device.is_sycl:
++                # SYCL modules are shared libraries; the handle is the ctypes.CDLL object.
++                module_handle = warp._src.build.load_sycl(binary_path)
++                module_exec = ModuleExec(module_handle, module_hash, device, meta)
++                self.execs[(device.context, active_block_dim)] = module_exec
++
++            elif device.is_cpu:
+                 # LLVM modules are identified using strings, so we need to ensure uniqueness
+                 id = self.increment_id()
+                 module_handle = f"wp_{self.name}_{id}"
+@@ -3101,6 +3182,27 @@ class CpuPinnedAllocator:
+         runtime.core.wp_free_pinned(ptr)
+ 
+ 
++class SyclSharedAllocator:
++    """Allocates USM shared memory, accessible from both host and device.
++
++    Used by the experimental Intel SYCL device; allocations come from the
++    shared SYCL runtime so they share its context with kernel launches.
++    """
++
++    def __init__(self, device):
++        self.device = device
++        self.deleter = lambda ptr, size: self.free(ptr, size)
++
++    def alloc(self, size_in_bytes):
++        ptr = runtime.sycl.wp_sycl_alloc_shared(size_in_bytes)
++        if not ptr:
++            raise RuntimeError(f"Failed to allocate {size_in_bytes} bytes on device '{self.device}'")
++        return ptr
++
++    def free(self, ptr, size_in_bytes):
++        runtime.sycl.wp_sycl_free(ptr)
++
++
+ class CudaDefaultAllocator:
+     def __init__(self, device):
+         assert device.is_cuda
+@@ -3529,6 +3631,38 @@ class Device:
+             self.default_allocator = CpuDefaultAllocator(self)
+             self.pinned_allocator = CpuPinnedAllocator(self)
+ 
++        elif self.ordinal == -2:
++            # Intel SYCL device (experimental): host-shaped module loading and
++            # launches (is_cpu is True below), but arrays live in USM shared
++            # memory and kernel modules are DLLs targeting the Intel GPU.
++            self.name = runtime.sycl.wp_sycl_device_name().decode()
++            self.arch = 0
++            self.sm_count = 0
++            self.max_shared_memory_per_block = 0
++            self.is_uva = True  # USM shared: pointers valid on host and device
++            self.is_mempool_supported = False
++            self.is_mempool_enabled = False
++            self.is_ipc_supported = False
++            self.is_cubin_supported = False
++            self.uuid = None
++            self.pci_bus_id = None
++
++            # Byte fills are enqueued on the in-order queue: they execute
++            # after any in-flight kernels that touch the same allocation and
++            # before anything submitted later, so no drain is needed. The host
++            # must not read the target before the next synchronize.
++            def _sycl_memset(ptr, value, size):
++                runtime.sycl.wp_sycl_memset(ptr, value, size)
++
++            def _sycl_memtile(ptr, src, srcsize, reps):
++                runtime.sycl.wp_sycl_memtile(ptr, src, srcsize, reps)
++
++            self.memset = _sycl_memset
++            self.memtile = _sycl_memtile
++
++            self.default_allocator = SyclSharedAllocator(self)
++            self.pinned_allocator = CpuPinnedAllocator(self)
++
+         elif ordinal >= 0 and ordinal < runtime.core.wp_cuda_device_get_count():
+             # CUDA device
+             self.name = runtime.core.wp_cuda_device_get_name(ordinal).decode()
+@@ -3622,6 +3756,11 @@ class Device:
+         """A boolean indicating whether the device is a CUDA device."""
+         return self.ordinal >= 0
+ 
++    @property
++    def is_sycl(self) -> bool:
++        """A boolean indicating whether the device is the Intel SYCL GPU device."""
++        return self.ordinal == -2
++
+     @property
+     def is_capturing(self) -> bool:
+         """A boolean indicating whether this device's default stream is currently capturing a graph."""
+@@ -3631,6 +3770,8 @@ class Device:
+             # The best we can do is check whether a graph capture was started by Warp on this
+             # device and whether the current stream is capturing.
+             return self.captures or self.stream.is_capturing
++        elif self.is_sycl:
++            return bool(self.captures)
+         else:
+             return False
+ 
+@@ -3956,6 +4097,10 @@ class Graph:
+             return
+ 
+         try:
++            if self.device.is_sycl:
++                runtime.sycl.wp_sycl_graph_destroy(self.graph)
++                self.graph = None
++                return
+             # use CUDA context guard to avoid side effects during garbage collection
+             with self.device.context_guard:
+                 runtime.core.wp_cuda_graph_destroy(self.device.context, self.graph)
+@@ -5326,6 +5471,30 @@ class Runtime:
+         # initialize kernel cache
+         warp._src.build.init_kernel_cache(warp.config.kernel_cache_dir)
+ 
++        # Register the Intel SYCL device on Windows and Linux. The platform
++        # toolchain builds the shared runtime into the kernel cache on first use.
++        # Silently skipped when the toolchain is absent;
++        # set WARP_ENABLE_SYCL=0 to disable explicitly.
++        self.sycl = None
++        self.sycl_device = None
++        if (os.name == "nt" or sys.platform.startswith("linux")) and os.environ.get("WARP_ENABLE_SYCL", "1") != "0":
++            try:
++                warp._src.build.find_sycl_toolchain()
++                self.sycl = warp._src.build.ensure_sycl_runtime()
++                sycl_device = Device(self, "sycl", ordinal=-2, context="sycl")
++                self.sycl_device = sycl_device
++                self.device_map["sycl"] = sycl_device
++                self.device_map["sycl:0"] = sycl_device
++                self.device_map["xpu"] = sycl_device
++                self.device_map["xpu:0"] = sycl_device
++            except RuntimeError as e:
++                if str(e).startswith("SYCL toolchain not found"):
++                    pass  # oneAPI/MSVC not installed on this machine
++                else:
++                    warp._src.utils.warn(f"SYCL device unavailable: {e}", once=True)
++            except Exception as e:
++                warp._src.utils.warn(f"SYCL device unavailable: {e}", once=True)
++
+         # global tape
+         self.tape = None
+ 
+@@ -6882,6 +7051,15 @@ def pack_arg(kernel, arg_type, arg_name, value, device, adjoint=False):
+                                 interface, dtype=arg_type.dtype, owner=value
+                             )
+                     else:
++                        if device.is_sycl:
++                            # the interface would wrap plain host memory, which
++                            # the GPU cannot dereference — require a USM-backed
++                            # array on the device instead
++                            raise RuntimeError(
++                                f"Error launching kernel '{kernel.key}', argument '{arg_name}': "
++                                f"implicit host-array conversion is not supported on the sycl device, "
++                                f"create a warp.array on device='sycl' first."
++                            )
+                         # check for __array_interface__
+                         try:
+                             interface = value.__array_interface__
+@@ -7314,6 +7492,10 @@ class Launch:
+             stream: The stream to launch on.
+         """
+         if self.device.is_cpu:
++            if self.device.is_sycl and self.device.captures:
++                graph = self.device.captures.get(None)
++                if graph is not None:
++                    graph.retain_module_exec(self.module_exec)
+             invoke(self.kernel, self.hooks, self.params, self.adjoint)
+         else:
+             if stream is None:
+@@ -7494,6 +7676,10 @@ def launch(
+                 )
+                 return launch
+ 
++            if device.is_sycl and device.captures:
++                graph = device.captures.get(None)
++                if graph is not None:
++                    graph.retain_module_exec(module_exec)
+             invoke(kernel, hooks, params, adjoint)
+ 
+         else:
+@@ -7662,6 +7848,9 @@ def synchronize():
+     or memory copies have completed.
+     """
+ 
++    if runtime.sycl is not None:
++        runtime.sycl.wp_sycl_synchronize()
++
+     if is_cuda_driver_initialized():
+         # save the original context to avoid side effects
+         saved_context = runtime.core.wp_cuda_context_get_current()
+@@ -7695,6 +7884,8 @@ def synchronize_device(device: DeviceLike = None):
+             raise RuntimeError(f"Cannot synchronize device {device} while graph capture is active")
+ 
+         runtime.core.wp_cuda_context_synchronize(device.context)
++    elif device.is_sycl:
++        runtime.sycl.wp_sycl_synchronize()
+ 
+ 
+ def synchronize_stream(stream_or_device: Stream | DeviceLike | None = None):
+@@ -8244,9 +8435,28 @@ def capture_begin(
+         device = stream.device
+     else:
+         device = runtime.get_device(device)
+-        if not device.is_cuda:
+-            raise RuntimeError("Must be a CUDA device")
+-        stream = device.stream
++
++    if device.is_sycl:
++        if stream is not None:
++            raise RuntimeError("SYCL graph capture does not support Warp streams")
++        if external:
++            raise RuntimeError("External SYCL graph capture is not supported")
++        if device.captures or runtime.sycl.wp_sycl_graph_is_capturing():
++            raise RuntimeError("Graph capture already in progress on the SYCL device")
++        if force_module_load:
++            force_load(device)
++        graph_handle = runtime.sycl.wp_sycl_graph_begin()
++        if not graph_handle:
++            raise RuntimeError("SYCL graph capture failed to start")
++        graph = Graph(device, 0)
++        graph.capture_id = id(graph)
++        graph.graph = ctypes.c_void_p(graph_handle)
++        _register_capture(device, None, graph, graph.capture_id)
++        return
++
++    if not device.is_cuda:
++        raise RuntimeError("Must be a CUDA or SYCL device")
++    stream = device.stream
+ 
+     if external:
+         # make sure the stream is already capturing
+@@ -8284,9 +8494,23 @@ def capture_end(device: DeviceLike = None, stream: Stream | None = None) -> Grap
+         device = stream.device
+     else:
+         device = runtime.get_device(device)
+-        if not device.is_cuda:
+-            raise RuntimeError("Must be a CUDA device")
+-        stream = device.stream
++
++    if device.is_sycl:
++        if stream is not None:
++            raise RuntimeError("SYCL graph capture does not support Warp streams")
++        graph = device.captures.get(None)
++        if graph is None:
++            raise RuntimeError("Graph capture is not active on the SYCL device")
++        _unregister_capture(device, None, graph)
++        if not runtime.sycl.wp_sycl_graph_end(graph.graph):
++            runtime.sycl.wp_sycl_graph_destroy(graph.graph)
++            graph.graph = None
++            raise RuntimeError("SYCL graph capture failed to finalize")
++        return graph
++
++    if not device.is_cuda:
++        raise RuntimeError("Must be a CUDA or SYCL device")
++    stream = device.stream
+ 
+     # get the graph being captured
+     graph = device.captures.get(stream)
+@@ -8456,6 +8680,10 @@ def capture_if(
+             warp.synchronize_stream(stream)
+             condition_value = bool(ctypes.cast(condition_host.ptr, ctypes.POINTER(ctypes.c_int32)).contents)
+         else:
++            if device.is_sycl:
++                # device kernels write the condition asynchronously: drain
++                # before the raw USM read so the host observes the latest value
++                runtime.sycl.wp_sycl_synchronize()
+             condition_value = bool(ctypes.cast(condition.ptr, ctypes.POINTER(ctypes.c_int32)).contents)
+ 
+         if condition_value:
+@@ -8598,6 +8826,11 @@ def capture_while(
+                 warp.synchronize_stream(stream)
+                 condition_value = bool(ctypes.cast(condition_host.ptr, ctypes.POINTER(ctypes.c_int32)).contents)
+             else:
++                if device.is_sycl:
++                    # device kernels write the condition asynchronously: drain
++                    # before the raw USM read so the host observes the latest
++                    # value (mirrors the CUDA pinned-readback + stream sync)
++                    runtime.sycl.wp_sycl_synchronize()
+                 condition_value = bool(ctypes.cast(condition.ptr, ctypes.POINTER(ctypes.c_int32)).contents)
+ 
+             if condition_value:
+@@ -8684,6 +8917,13 @@ def capture_launch(graph: Graph, stream: Stream | None = None):
+         stream: A :class:`Stream` to launch the graph on
+     """
+ 
++    if graph.device.is_sycl:
++        if stream is not None:
++            raise RuntimeError("SYCL graph replay does not support Warp streams")
++        if not runtime.sycl.wp_sycl_graph_launch(graph.graph):
++            raise RuntimeError("SYCL graph launch failed")
++        return
++
+     if stream is not None:
+         if stream.device != graph.device:
+             raise RuntimeError(f"Cannot launch graph from device {graph.device} on stream from device {stream.device}")
+@@ -8748,6 +8988,20 @@ def copy(
+         elif src.device.is_cuda:
+             stream = src.device.stream
+ 
++    # USM shared memory on the sycl device is host-visible. Contiguous
++    # sycl->sycl copies are enqueued on the in-order queue, which orders them
++    # against in-flight kernels; every other combination goes through host
++    # memory, which requires draining the queue first so kernels that may
++    # still be writing the bytes have completed.
++    sycl_contiguous_copy = (
++        src.device.is_sycl
++        and dest.device.is_sycl
++        and src.is_contiguous
++        and dest.is_contiguous
++    )
++    if (src.device.is_sycl or dest.device.is_sycl) and not sycl_contiguous_copy:
++        runtime.sycl.wp_sycl_synchronize()
++
+     # Copying between different devices requires contiguous arrays.  If the arrays
+     # are not contiguous, we must use temporary staging buffers for the transfer.
+     # TODO: We can skip the staging if device access is enabled.
+@@ -8828,7 +9082,11 @@ def copy(
+                     src.device.context, dst_ptr, src_ptr, bytes_to_copy, stream.cuda_stream
+                 )
+             else:
+-                result = runtime.core.wp_memcpy_h2h(dst_ptr, src_ptr, bytes_to_copy)
++                if sycl_contiguous_copy:
++                    runtime.sycl.wp_sycl_memcpy(dst_ptr, src_ptr, bytes_to_copy)
++                    result = 1
++                else:
++                    result = runtime.core.wp_memcpy_h2h(dst_ptr, src_ptr, bytes_to_copy)
+ 
+         if not result:
+             raise RuntimeError(f"Warp copy error: {runtime.get_error_string()}")
+diff --git a/warp/_src/types.py b/warp/_src/types.py
+index 67ac2e91..617410a7 100644
+--- a/warp/_src/types.py
++++ b/warp/_src/types.py
+@@ -1,5 +1,6 @@
+ # SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ # SPDX-License-Identifier: Apache-2.0
++# MODIFIED from NVIDIA/warp 1.12.0: SYCL backend support; see warp_backend/README.md.
+ #
+ # Licensed under the Apache License, Version 2.0 (the "License");
+ # you may not use this file except in compliance with the License.
+@@ -3230,7 +3231,10 @@ class array(Array):
+             # which takes take of initializing Warp if needed.
+             device = warp._src.context.get_device(device)
+ 
+-        if device.is_cpu and not copy and not pinned:
++        # note: the sycl device is host-shaped (is_cpu) but its kernels run on
++        # the GPU, which can only dereference USM pointers — numpy buffers
++        # must therefore always be copied into device allocations
++        if device.is_cpu and not device.is_sycl and not copy and not pinned:
+             # reference numpy memory directly
+             self._init_from_ptr(arr.ctypes.data, dtype, shape, strides, None, device, False, None)
+             # keep a ref to the source array to keep allocation alive
+@@ -4923,6 +4927,202 @@ def is_tile(t):
+ bvh_constructor_values = {"sah": 0, "median": 1, "lbvh": 2}
+ 
+ 
++# ---------------------------------------------------------------------------
++# SYCL USM mirror of the native BVH / Mesh descriptors.
++#
++# The SYCL device reports is_cpu=True, so Bvh/Mesh construction takes the
++# wp_*_create_host code path: the builder runs on the host but allocates its
++# node arrays with plain `new`, which device kernels cannot dereference.
++# These helpers deep-copy the built descriptor (struct + internal arrays)
++# into USM shared memory via the SYCL runtime, so device-side bvh_get()/mesh_get()
++# see valid device-accessible pointers. Item arrays (lowers/uppers/groups/
++# points/indices) are wp.array allocations on the sycl device and are already
++# USM, so they are aliased, not copied.
++#
++# The ctypes structs must match native/bvh.h (struct BVH) and native/mesh.h
++# (struct Mesh) field-for-field; both use natural alignment, which ctypes
++# reproduces.
++# ---------------------------------------------------------------------------
++
++
++class _BVHDesc(ctypes.Structure):
++    _fields_ = [
++        ("node_lowers", ctypes.c_void_p),
++        ("node_uppers", ctypes.c_void_p),
++        ("node_parents", ctypes.c_void_p),
++        ("node_counts", ctypes.c_void_p),
++        ("primitive_indices", ctypes.c_void_p),
++        ("max_depth", ctypes.c_int32),
++        ("max_nodes", ctypes.c_int32),
++        ("num_nodes", ctypes.c_int32),
++        ("num_leaf_nodes", ctypes.c_int32),
++        ("root", ctypes.c_void_p),
++        ("item_lowers", ctypes.c_void_p),
++        ("item_uppers", ctypes.c_void_p),
++        ("item_groups", ctypes.c_void_p),
++        ("num_items", ctypes.c_int32),
++        ("leaf_size", ctypes.c_int32),
++        ("context", ctypes.c_void_p),
++    ]
++
++
++class _ArrayDesc(ctypes.Structure):
++    # native/array.h: array_t<T> -- T* data; T* grad; shape_t shape; int strides[4]; int ndim;
++    _fields_ = [
++        ("data", ctypes.c_void_p),
++        ("grad", ctypes.c_void_p),
++        ("dims", ctypes.c_int32 * 4),
++        ("strides", ctypes.c_int32 * 4),
++        ("ndim", ctypes.c_int32),
++    ]
++
++
++class _MeshDesc(ctypes.Structure):
++    _fields_ = [
++        ("points", _ArrayDesc),
++        ("velocities", _ArrayDesc),
++        ("indices", _ArrayDesc),
++        ("lowers", ctypes.c_void_p),
++        ("uppers", ctypes.c_void_p),
++        ("solid_angle_props", ctypes.c_void_p),
++        ("num_points", ctypes.c_int32),
++        ("num_tris", ctypes.c_int32),
++        ("bvh", _BVHDesc),
++        ("context", ctypes.c_void_p),
++        ("average_edge_length", ctypes.c_float),
++    ]
++
++
++_BVH_NODE_HALF_SIZE = 16  # sizeof(BVHPackedNodeHalf): 3 floats + 31:1 bitfield
++_VEC3_SIZE = 12
++_INT_SIZE = 4
++# sizeof(SolidAngleProps): 6 vec3 + 18 floats + bounds3 (2 vec3) + vec3 + 3 floats
++_SOLID_ANGLE_PROPS_SIZE = 168
++
++
++def _sycl_usm_copy(src_addr, nbytes):
++    """Copy nbytes from host address src_addr into new USM shared memory."""
++    if not src_addr or nbytes <= 0:
++        return None
++    rt = warp._src.context.runtime
++    dst = rt.sycl.wp_sycl_alloc_shared(nbytes)
++    if not dst:
++        raise RuntimeError(f"wp_sycl_alloc_shared failed for {nbytes} bytes")
++    ctypes.memmove(dst, src_addr, nbytes)
++    return dst
++
++
++def _bvh_create_usm(host_id):
++    """Deep-copy a host-built BVH descriptor into USM shared memory."""
++    rt = warp._src.context.runtime
++    host = _BVHDesc.from_address(host_id)
++
++    usm = _BVHDesc()
++    usm.node_lowers = _sycl_usm_copy(host.node_lowers, host.max_nodes * _BVH_NODE_HALF_SIZE)
++    usm.node_uppers = _sycl_usm_copy(host.node_uppers, host.max_nodes * _BVH_NODE_HALF_SIZE)
++    usm.node_parents = _sycl_usm_copy(host.node_parents, host.max_nodes * _INT_SIZE)
++    usm.node_counts = host.node_counts  # always null for the top-down builder
++    usm.primitive_indices = _sycl_usm_copy(host.primitive_indices, host.num_items * _INT_SIZE)
++    usm.max_depth = host.max_depth
++    usm.max_nodes = host.max_nodes
++    usm.num_nodes = host.num_nodes
++    usm.num_leaf_nodes = host.num_leaf_nodes
++    usm.root = _sycl_usm_copy(host.root, _INT_SIZE)
++    # item arrays are wp.array allocations on the sycl device: already USM
++    usm.item_lowers = host.item_lowers
++    usm.item_uppers = host.item_uppers
++    usm.item_groups = host.item_groups
++    usm.num_items = host.num_items
++    usm.leaf_size = host.leaf_size
++    usm.context = None
++
++    rt.core.wp_bvh_destroy_host(host_id)
++
++    usm_id = rt.sycl.wp_sycl_alloc_shared(ctypes.sizeof(_BVHDesc))
++    if not usm_id:
++        raise RuntimeError("wp_sycl_alloc_shared failed for BVH descriptor")
++    ctypes.memmove(usm_id, ctypes.byref(usm), ctypes.sizeof(_BVHDesc))
++    return usm_id
++
++
++def _bvh_destroy_usm(bvh_id):
++    rt = warp._src.context.runtime
++    bvh = _BVHDesc.from_address(bvh_id)
++    for ptr in (bvh.node_lowers, bvh.node_uppers, bvh.node_parents, bvh.primitive_indices, bvh.root):
++        if ptr:
++            rt.sycl.wp_sycl_free(ptr)
++    rt.sycl.wp_sycl_free(bvh_id)
++
++
++def _mesh_create_usm(host_id):
++    """Deep-copy a host-built Mesh descriptor into USM shared memory."""
++    rt = warp._src.context.runtime
++    host = _MeshDesc.from_address(host_id)
++
++    usm = _MeshDesc()
++    # points/velocities/indices array_t descriptors alias caller wp.array
++    # buffers (already USM on the sycl device): copy the descriptors verbatim
++    ctypes.memmove(
++        ctypes.byref(usm, _MeshDesc.points.offset),
++        ctypes.byref(host, _MeshDesc.points.offset),
++        3 * ctypes.sizeof(_ArrayDesc),
++    )
++    usm.lowers = _sycl_usm_copy(host.lowers, host.num_tris * _VEC3_SIZE)
++    usm.uppers = _sycl_usm_copy(host.uppers, host.num_tris * _VEC3_SIZE)
++    num_solid = (2 * host.num_tris - 1) if host.solid_angle_props else 0
++    usm.solid_angle_props = _sycl_usm_copy(host.solid_angle_props, num_solid * _SOLID_ANGLE_PROPS_SIZE)
++    usm.num_points = host.num_points
++    usm.num_tris = host.num_tris
++
++    hbvh = host.bvh
++    ubvh = usm.bvh
++    ubvh.node_lowers = _sycl_usm_copy(hbvh.node_lowers, hbvh.max_nodes * _BVH_NODE_HALF_SIZE)
++    ubvh.node_uppers = _sycl_usm_copy(hbvh.node_uppers, hbvh.max_nodes * _BVH_NODE_HALF_SIZE)
++    ubvh.node_parents = _sycl_usm_copy(hbvh.node_parents, hbvh.max_nodes * _INT_SIZE)
++    ubvh.node_counts = hbvh.node_counts
++    ubvh.primitive_indices = _sycl_usm_copy(hbvh.primitive_indices, hbvh.num_items * _INT_SIZE)
++    ubvh.max_depth = hbvh.max_depth
++    ubvh.max_nodes = hbvh.max_nodes
++    ubvh.num_nodes = hbvh.num_nodes
++    ubvh.num_leaf_nodes = hbvh.num_leaf_nodes
++    ubvh.root = _sycl_usm_copy(hbvh.root, _INT_SIZE)
++    # mesh bvh item bounds are the mesh's own lowers/uppers arrays
++    ubvh.item_lowers = usm.lowers
++    ubvh.item_uppers = usm.uppers
++    ubvh.item_groups = hbvh.item_groups  # caller's wp.array, already USM
++    ubvh.num_items = hbvh.num_items
++    ubvh.leaf_size = hbvh.leaf_size
++    ubvh.context = None
++
++    usm.average_edge_length = host.average_edge_length
++
++    rt.core.wp_mesh_destroy_host(host_id)
++
++    usm_id = rt.sycl.wp_sycl_alloc_shared(ctypes.sizeof(_MeshDesc))
++    if not usm_id:
++        raise RuntimeError("wp_sycl_alloc_shared failed for Mesh descriptor")
++    ctypes.memmove(usm_id, ctypes.byref(usm), ctypes.sizeof(_MeshDesc))
++    return usm_id
++
++
++def _mesh_destroy_usm(mesh_id):
++    rt = warp._src.context.runtime
++    mesh = _MeshDesc.from_address(mesh_id)
++    for ptr in (
++        mesh.lowers,
++        mesh.uppers,
++        mesh.solid_angle_props,
++        mesh.bvh.node_lowers,
++        mesh.bvh.node_uppers,
++        mesh.bvh.node_parents,
++        mesh.bvh.primitive_indices,
++        mesh.bvh.root,
++    ):
++        if ptr:
++            rt.sycl.wp_sycl_free(ptr)
++    rt.sycl.wp_sycl_free(mesh_id)
++
++
+ class Bvh:
+     """Bounding Volume Hierarchy (BVH) for accelerated spatial queries."""
+ 
+@@ -5059,7 +5259,24 @@ class Bvh:
+         if leaf_size < 1:
+             raise ValueError(f"leaf_size must be greater than or equal to 1, current value: {leaf_size}")
+ 
+-        if self.device.is_cpu:
++        if self.device.is_sycl:
++            if constructor == "lbvh":
++                constructor = "sah"  # host-side top-down builder only
++
++            # the host builder reads lowers/uppers/groups (USM) that async
++            # device kernels may still be writing: drain the queue first
++            self.runtime.sycl.wp_sycl_synchronize()
++            host_id = self.runtime.core.wp_bvh_create_host(
++                get_data(lowers),
++                get_data(uppers),
++                len(lowers),
++                bvh_constructor_values[constructor],
++                get_data(groups),
++                leaf_size,
++            )
++            self.id = _bvh_create_usm(host_id)
++            self._sycl_depth = self.runtime.sycl.wp_sycl_bvh_depth(self.id)
++        elif self.device.is_cpu:
+             if constructor == "lbvh":
+                 warp.utils.warn(
+                     "LBVH constructor is not available for a CPU tree. Falling back to SAH constructor.", stacklevel=2
+@@ -5090,7 +5307,9 @@ class Bvh:
+             return
+ 
+         try:
+-            if self.device.is_cpu:
++            if self.device.is_sycl:
++                _bvh_destroy_usm(self.id)
++            elif self.device.is_cpu:
+                 self.runtime.core.wp_bvh_destroy_host(self.id)
+             else:
+                 # use CUDA context guard to avoid side effects during garbage collection
+@@ -5106,7 +5325,9 @@ class Bvh:
+         This should be called after users modify the ``lowers`` or ``uppers`` arrays.
+         """
+ 
+-        if self.device.is_cpu:
++        if self.device.is_sycl:
++            self.runtime.sycl.wp_sycl_bvh_refit(self.id, self._sycl_depth)
++        elif self.device.is_cpu:
+             self.runtime.core.wp_bvh_refit_host(self.id)
+         else:
+             self.runtime.core.wp_bvh_refit_device(self.id)
+@@ -5149,7 +5370,12 @@ class Bvh:
+         if constructor not in bvh_constructor_values:
+             raise ValueError(f"Unrecognized BVH constructor type: {constructor}")
+ 
+-        if self.device.is_cpu:
++        if self.device.is_sycl:
++            if constructor == "lbvh":
++                constructor = "sah"  # host-side top-down builder only
++            self.runtime.sycl.wp_sycl_synchronize()
++            self.runtime.core.wp_bvh_rebuild_host(self.id, bvh_constructor_values[constructor])
++        elif self.device.is_cpu:
+             if constructor == "lbvh":
+                 warp.utils.warn(
+                     "LBVH constructor is not available for a CPU tree. Falling back to SAH constructor.", stacklevel=2
+@@ -5255,7 +5481,28 @@ class Mesh:
+         if bvh_leaf_size < 1:
+             raise ValueError(f"bvh_leaf_size must be greater than or equal to 1, current value: {bvh_leaf_size}")
+ 
+-        if self.device.is_cpu:
++        if self.device.is_sycl:
++            if bvh_constructor == "lbvh":
++                bvh_constructor = "sah"  # host-side top-down builder only
++
++            # the host builder reads points/indices/groups (USM) that async
++            # device kernels may still be writing: drain the queue first
++            self.runtime.sycl.wp_sycl_synchronize()
++            host_id = self.runtime.core.wp_mesh_create_host(
++                points.__ctype__(),
++                velocities.__ctype__() if velocities else array().__ctype__(),
++                indices.__ctype__(),
++                len(points),
++                int(indices.size // 3),
++                int(support_winding_number),
++                bvh_constructor_values[bvh_constructor],
++                ctypes.c_void_p(groups.ptr) if groups else ctypes.c_void_p(0),
++                bvh_leaf_size,
++            )
++            self.id = _mesh_create_usm(host_id)
++            self._sycl_winding = bool(support_winding_number)
++            self._sycl_depth = self.runtime.sycl.wp_sycl_bvh_depth(self.id + _MeshDesc.bvh.offset)
++        elif self.device.is_cpu:
+             if bvh_constructor == "lbvh":
+                 warp._src.utils.warn(
+                     "LBVH constructor is not available for a CPU tree. Falling back to SAH constructor.", stacklevel=2
+@@ -5292,7 +5539,9 @@ class Mesh:
+             return
+ 
+         try:
+-            if self.device.is_cpu:
++            if self.device.is_sycl:
++                _mesh_destroy_usm(self.id)
++            elif self.device.is_cpu:
+                 self.runtime.core.wp_mesh_destroy_host(self.id)
+             else:
+                 # use CUDA context guard to avoid side effects during garbage collection
+@@ -5308,7 +5557,13 @@ class Mesh:
+         This should be called after users modify the ``points`` data.
+         """
+ 
+-        if self.device.is_cpu:
++        if self.device.is_sycl:
++            if self._sycl_winding:
++                self.runtime.sycl.wp_sycl_synchronize()
++                self.runtime.core.wp_mesh_refit_host(self.id)
++            else:
++                self.runtime.sycl.wp_sycl_mesh_refit(self.id, self._sycl_depth)
++        elif self.device.is_cpu:
+             self.runtime.core.wp_mesh_refit_host(self.id)
+         else:
+             self.runtime.core.wp_mesh_refit_device(self.id)
+@@ -5340,7 +5595,10 @@ class Mesh:
+             )
+ 
+         self._points = points_new
+-        if self.device.is_cpu:
++        if self.device.is_sycl:
++            self.runtime.sycl.wp_sycl_synchronize()
++            self.runtime.core.wp_mesh_set_points_host(self.id, points_new.__ctype__())
++        elif self.device.is_cpu:
+             self.runtime.core.wp_mesh_set_points_host(self.id, points_new.__ctype__())
+         else:
+             self.runtime.core.wp_mesh_set_points_device(self.id, points_new.__ctype__())
+@@ -5370,7 +5628,10 @@ class Mesh:
+             )
+ 
+         self._velocities = velocities_new
+-        if self.device.is_cpu:
++        if self.device.is_sycl:
++            self.runtime.sycl.wp_sycl_synchronize()
++            self.runtime.core.wp_mesh_set_velocities_host(self.id, velocities_new.__ctype__())
++        elif self.device.is_cpu:
+             self.runtime.core.wp_mesh_set_velocities_host(self.id, velocities_new.__ctype__())
+         else:
+             self.runtime.core.wp_mesh_set_velocities_device(self.id, velocities_new.__ctype__())
+diff --git a/warp/native/builtin.h b/warp/native/builtin.h
+index 00fa9cfd..f88fc26f 100644
+--- a/warp/native/builtin.h
++++ b/warp/native/builtin.h
+@@ -1,6 +1,7 @@
+ /*
+  * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+  * SPDX-License-Identifier: Apache-2.0
++ * MODIFIED from NVIDIA/warp 1.12.0: SYCL backend support; see warp_backend/README.md.
+  *
+  * Licensed under the Apache License, Version 2.0 (the "License");
+  * you may not use this file except in compliance with the License.
+@@ -23,6 +24,18 @@
+ 
+ #include "crt.h"
+ 
++#if defined(__SYCL_DEVICE_ONLY__)
++// icx's SPIR-V device pass rejects calls to variadic functions, which rules
++// out the CRT printf() even for a single-argument call. Every printf() in
++// kernel code (wp.printf, bounds-check diagnostics, wp::print) therefore
++// compiles to a no-op on the SYCL device. sycl::ext::oneapi::experimental::
++// printf is not a drop-in replacement: it requires the format string to
++// reside in constant address space, while warp's codegen passes a runtime
++// const char*. Must be defined after crt.h (so <stdio.h> is already
++// included) and before any header or kernel code below that calls printf.
++#define printf(...) ((void)0)
++#endif
++
+ #ifdef _WIN32
+ #define __restrict__ __restrict
+ #endif
+@@ -1491,28 +1504,52 @@ CUDA_CALLABLE inline int slice_get_length(const slice_t& slice)
+     return 0;
+ }
+ 
++#if defined(__SYCL_DEVICE_ONLY__)
++// Constructs a relaxed device-scope atomic_ref over a USM global-memory
++// location and passes it to fn, which selects the RMW method to apply.
++// Only the 32/64-bit scalar types are routed through atomic_ref; the callers
++// gate on sizeof(T) because atomic_ref rejects 8/16-bit types.
++template <typename T, typename F>
++inline T wp_sycl_atomic_ref(T* address, F&& fn)
++{
++    sycl::atomic_ref<T, sycl::memory_order::relaxed, sycl::memory_scope::device,
++                     sycl::access::address_space::global_space> ref(*address);
++    return fn(ref);
++}
++#endif
++
+ template <typename T> inline CUDA_CALLABLE T atomic_add(T* buf, T value)
+ {
+-#if !defined(__CUDA_ARCH__)
++#if defined(__CUDA_ARCH__)
++    return atomicAdd(buf, value);
++#elif defined(__SYCL_DEVICE_ONLY__)
++    if constexpr (sizeof(T) == 4 || sizeof(T) == 8) {
++        return wp_sycl_atomic_ref(buf, [&](auto& ref) { return ref.fetch_add(value); });
++    } else {
++        T old = buf[0];
++        buf[0] += value;
++        return old;
++    }
++#else
+     T old = buf[0];
+     buf[0] += value;
+     return old;
+-#else
+-    return atomicAdd(buf, value);
+ #endif
+ }
+ 
+ template <> inline CUDA_CALLABLE int64 atomic_add(int64* buf, int64 value)
+ {
+-#if !defined(__CUDA_ARCH__)
+-    int64 old = buf[0];
+-    buf[0] += value;
+-    return old;
+-#else  // CUDA compiled by NVRTC
++#if defined(__CUDA_ARCH__)
+     unsigned long long int* buf_as_ull = (unsigned long long int*)buf;
+     unsigned long long int unsigned_value = static_cast<unsigned long long int>(value);
+     unsigned long long int result = atomicAdd(buf_as_ull, unsigned_value);
+     return static_cast<int64>(result);
++#elif defined(__SYCL_DEVICE_ONLY__)
++    return wp_sycl_atomic_ref(buf, [&](auto& ref) { return ref.fetch_add(value); });
++#else
++    int64 old = buf[0];
++    buf[0] += value;
++    return old;
+ #endif
+ }
+ 
+@@ -1552,7 +1589,11 @@ template <> inline CUDA_CALLABLE float16 atomic_add(float16* buf, float16 value)
+ 
+ template <> inline CUDA_CALLABLE float64 atomic_add(float64* buf, float64 value)
+ {
+-#if !defined(__CUDA_ARCH__)
++#if defined(__SYCL_DEVICE_ONLY__)
++    // relaxed atomic_ref<double> compiles to an atomicrmw fadd when the device
++    // supports fp64 atomics, a CAS loop otherwise
++    return wp_sycl_atomic_ref(buf, [&](auto& ref) { return ref.fetch_add(value); });
++#elif !defined(__CUDA_ARCH__)
+     float64 old = buf[0];
+     buf[0] += value;
+     return old;
+@@ -1585,6 +1626,14 @@ template <typename T> inline CUDA_CALLABLE T atomic_min(T* address, T val)
+ {
+ #if defined(__CUDA_ARCH__)
+     return atomicMin(address, val);
++#elif defined(__SYCL_DEVICE_ONLY__)
++    if constexpr (sizeof(T) == 4 || sizeof(T) == 8) {
++        return wp_sycl_atomic_ref(address, [&](auto& ref) { return ref.fetch_min(val); });
++    } else {
++        T old = *address;
++        *address = min(old, val);
++        return old;
++    }
+ #else
+     T old = *address;
+     *address = min(old, val);
+@@ -1611,6 +1660,8 @@ template <> inline CUDA_CALLABLE float atomic_min(float* address, float val)
+ 
+     return __int_as_float(old);
+ 
++#elif defined(__SYCL_DEVICE_ONLY__)
++    return wp_sycl_atomic_ref(address, [&](auto& ref) { return ref.fetch_min(val); });
+ #else
+     float old = *address;
+     *address = min(old, val);
+@@ -1637,6 +1688,8 @@ template <> inline CUDA_CALLABLE double atomic_min(double* address, double val)
+ 
+     return __longlong_as_double(old);
+ 
++#elif defined(__SYCL_DEVICE_ONLY__)
++    return wp_sycl_atomic_ref(address, [&](auto& ref) { return ref.fetch_min(val); });
+ #else
+     double old = *address;
+     *address = min(old, val);
+@@ -1648,6 +1701,14 @@ template <typename T> inline CUDA_CALLABLE T atomic_max(T* address, T val)
+ {
+ #if defined(__CUDA_ARCH__)
+     return atomicMax(address, val);
++#elif defined(__SYCL_DEVICE_ONLY__)
++    if constexpr (sizeof(T) == 4 || sizeof(T) == 8) {
++        return wp_sycl_atomic_ref(address, [&](auto& ref) { return ref.fetch_max(val); });
++    } else {
++        T old = *address;
++        *address = max(old, val);
++        return old;
++    }
+ #else
+     T old = *address;
+     *address = max(old, val);
+@@ -1674,6 +1735,8 @@ template <> inline CUDA_CALLABLE float atomic_max(float* address, float val)
+ 
+     return __int_as_float(old);
+ 
++#elif defined(__SYCL_DEVICE_ONLY__)
++    return wp_sycl_atomic_ref(address, [&](auto& ref) { return ref.fetch_max(val); });
+ #else
+     float old = *address;
+     *address = max(old, val);
+@@ -1700,6 +1763,8 @@ template <> inline CUDA_CALLABLE double atomic_max(double* address, double val)
+ 
+     return __longlong_as_double(old);
+ 
++#elif defined(__SYCL_DEVICE_ONLY__)
++    return wp_sycl_atomic_ref(address, [&](auto& ref) { return ref.fetch_max(val); });
+ #else
+     double old = *address;
+     *address = max(old, val);
+@@ -1731,6 +1796,20 @@ template <typename T> inline CUDA_CALLABLE T atomic_cas(T* address, T compare, T
+ {
+ #if defined(__CUDA_ARCH__)
+     return atomicCAS(address, compare, val);
++#elif defined(__SYCL_DEVICE_ONLY__)
++    if constexpr (sizeof(T) == 4 || sizeof(T) == 8) {
++        return wp_sycl_atomic_ref(address, [&](auto& ref) {
++            T expected = compare;
++            ref.compare_exchange_strong(expected, val);
++            return expected;
++        });
++    } else {
++        T old = *address;
++        if (old == compare) {
++            *address = val;
++        }
++        return old;
++    }
+ #else
+     T old = *address;
+     if (old == compare) {
+@@ -1748,6 +1827,12 @@ template <> inline CUDA_CALLABLE float atomic_cas(float* address, float compare,
+         reinterpret_cast<unsigned int&>(val)
+     );
+     return reinterpret_cast<float&>(result);
++#elif defined(__SYCL_DEVICE_ONLY__)
++    return wp_sycl_atomic_ref(address, [&](auto& ref) {
++        float expected = compare;
++        ref.compare_exchange_strong(expected, val);
++        return expected;
++    });
+ #else
+     float old = *address;
+     if (old == compare) {
+@@ -1765,6 +1850,12 @@ template <> inline CUDA_CALLABLE double atomic_cas(double* address, double compa
+         reinterpret_cast<unsigned long long int&>(val)
+     );
+     return reinterpret_cast<double&>(result);
++#elif defined(__SYCL_DEVICE_ONLY__)
++    return wp_sycl_atomic_ref(address, [&](auto& ref) {
++        double expected = compare;
++        ref.compare_exchange_strong(expected, val);
++        return expected;
++    });
+ #else
+     double old = *address;
+     if (old == compare) {
+@@ -1782,6 +1873,12 @@ template <> inline CUDA_CALLABLE int64 atomic_cas(int64* address, int64 compare,
+         reinterpret_cast<unsigned long long int&>(val)
+     );
+     return reinterpret_cast<int64&>(result);
++#elif defined(__SYCL_DEVICE_ONLY__)
++    return wp_sycl_atomic_ref(address, [&](auto& ref) {
++        int64 expected = compare;
++        ref.compare_exchange_strong(expected, val);
++        return expected;
++    });
+ #else
+     int64 old = *address;
+     if (old == compare) {
+@@ -1795,6 +1892,14 @@ template <typename T> inline CUDA_CALLABLE T atomic_exch(T* address, T val)
+ {
+ #if defined(__CUDA_ARCH__)
+     return atomicExch(address, val);
++#elif defined(__SYCL_DEVICE_ONLY__)
++    if constexpr (sizeof(T) == 4 || sizeof(T) == 8) {
++        return wp_sycl_atomic_ref(address, [&](auto& ref) { return ref.exchange(val); });
++    } else {
++        T old = *address;
++        *address = val;
++        return old;
++    }
+ #else
+     T old = *address;
+     *address = val;
+@@ -1809,6 +1914,8 @@ template <> inline CUDA_CALLABLE double atomic_exch(double* address, double val)
+         reinterpret_cast<unsigned long long int*>(address), reinterpret_cast<unsigned long long int&>(val)
+     );
+     return reinterpret_cast<double&>(result);
++#elif defined(__SYCL_DEVICE_ONLY__)
++    return wp_sycl_atomic_ref(address, [&](auto& ref) { return ref.exchange(val); });
+ #else
+     double old = *address;
+     *address = val;
+@@ -1823,6 +1930,8 @@ template <> inline CUDA_CALLABLE int64 atomic_exch(int64* address, int64 val)
+         reinterpret_cast<unsigned long long int*>(address), reinterpret_cast<unsigned long long int&>(val)
+     );
+     return reinterpret_cast<int64&>(result);
++#elif defined(__SYCL_DEVICE_ONLY__)
++    return wp_sycl_atomic_ref(address, [&](auto& ref) { return ref.exchange(val); });
+ #else
+     int64 old = *address;
+     *address = val;
+@@ -1849,6 +1958,15 @@ template <typename T> inline CUDA_CALLABLE T atomic_and(T* buf, T value)
+ {
+ #if defined(__CUDA_ARCH__)
+     return atomicAnd(buf, value);
++#elif defined(__SYCL_DEVICE_ONLY__)
++    // fetch_and is integral-only in atomic_ref
++    if constexpr (std::is_integral_v<T> && (sizeof(T) == 4 || sizeof(T) == 8)) {
++        return wp_sycl_atomic_ref(buf, [&](auto& ref) { return ref.fetch_and(value); });
++    } else {
++        T old = buf[0];
++        buf[0] &= value;
++        return old;
++    }
+ #else
+     T old = buf[0];
+     buf[0] &= value;
+@@ -1860,6 +1978,14 @@ template <typename T> inline CUDA_CALLABLE T atomic_or(T* buf, T value)
+ {
+ #if defined(__CUDA_ARCH__)
+     return atomicOr(buf, value);
++#elif defined(__SYCL_DEVICE_ONLY__)
++    if constexpr (std::is_integral_v<T> && (sizeof(T) == 4 || sizeof(T) == 8)) {
++        return wp_sycl_atomic_ref(buf, [&](auto& ref) { return ref.fetch_or(value); });
++    } else {
++        T old = buf[0];
++        buf[0] |= value;
++        return old;
++    }
+ #else
+     T old = buf[0];
+     buf[0] |= value;
+diff --git a/warp/native/sycl_runtime.cpp b/warp/native/sycl_runtime.cpp
+new file mode 100644
+index 00000000..5cc50c66
+--- /dev/null
++++ b/warp/native/sycl_runtime.cpp
+@@ -0,0 +1,728 @@
++/*
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++// Implementation of the SYCL micro-driver (see sycl_runtime.h).
++// Built once into a platform shared library; kernel modules link against it.
++
++#include "sycl_runtime.h"
++
++#include <sycl/ext/oneapi/experimental/graph.hpp>
++
++#include <atomic>
++#include <chrono>
++#include <cmath>
++#include <cstdint>
++#include <cstdio>
++#include <cstdlib>
++#include <cstring>
++#include <mutex>
++#include <memory>
++#include <stdexcept>
++#include <string>
++#include <thread>
++#include <unordered_map>
++#include <utility>
++#include <vector>
++
++namespace {
++
++constexpr unsigned int kIntelVendorId = 0x8086;
++
++sycl::queue make_intel_queue() {
++    for (auto const& platform : sycl::platform::get_platforms()) {
++        for (auto const& dev : platform.get_devices(sycl::info::device_type::gpu)) {
++            if (dev.get_info<sycl::info::device::vendor_id>() == kIntelVendorId) {
++                // in_order: submission order == execution order, matching Warp's
++                // sequential launch semantics (also a prerequisite for the
++                // async-submission optimization).
++                return sycl::queue{dev, sycl::property::queue::in_order()};
++            }
++        }
++    }
++    throw std::runtime_error("wp_sycl: no Intel GPU found");
++}
++
++// ---------------------------------------------------------------------------
++// Watchdog: a hung device kernel (e.g. a deadlocked work-group barrier) never
++// completes, so the host would spin in queue wait forever -- and because this
++// is an iGPU, the display driver hangs with it. Windows TDR can reset the
++// GPU, but only if the process stops re-submitting into the dead queue.
++//
++// wp_sycl_synchronize() therefore arms a deadline before waiting; a watcher
++// thread that fires if the wait exceeds it hard-exits the process with the
++// name of the last submitted kernel. The process dies (with a diagnostic),
++// TDR resets the iGPU, the desktop survives. Timeout via
++// WARP_SYCL_SYNC_TIMEOUT_S (seconds, default 180, 0 disables).
++// ---------------------------------------------------------------------------
++static std::atomic<const char*> g_last_kernel{nullptr};
++static std::atomic<bool> g_in_sync{false};
++static std::atomic<long long> g_sync_deadline_ms{0};
++static std::atomic<long long> g_timeout_ms{180 * 1000};
++
++static long long now_ms() {
++    return std::chrono::duration_cast<std::chrono::milliseconds>(
++               std::chrono::system_clock::now().time_since_epoch()).count();
++}
++
++static void watchdog_loop() {
++    long long fired = 0;
++    for (;;) {
++        std::this_thread::sleep_for(std::chrono::milliseconds(200));
++        if (!g_in_sync.load(std::memory_order_acquire)) continue;
++        const long long deadline = g_sync_deadline_ms.load(std::memory_order_relaxed);
++        if (now_ms() < deadline || fired == deadline) continue;
++        fired = deadline;
++        const char* k = g_last_kernel.load(std::memory_order_relaxed);
++        std::fprintf(stderr,
++            "\nwp_sycl: WATCHDOG -- the device queue did not drain within the sync timeout.\n"
++            "  last kernel submitted: %s\n"
++            "  This is a device-side hang (divergent work-group barrier or GPU fault).\n"
++            "  Aborting so the display driver (TDR) can reset the GPU; the desktop\n"
++            "  should recover in seconds. Tune with WARP_SYCL_SYNC_TIMEOUT_S.\n",
++            k ? k : "<unknown>");
++        std::fflush(stderr);
++        std::_Exit(2);  // no destructors, no further submissions
++    }
++}
++
++static void start_watchdog() {
++    static std::once_flag once;
++    std::call_once(once, [] {
++        const char* t = std::getenv("WARP_SYCL_SYNC_TIMEOUT_S");
++        if (t) {
++            const long long v = std::atoll(t);
++            g_timeout_ms.store(v > 0 ? v * 1000 : 0);
++        }
++        if (g_timeout_ms.load() > 0)
++            std::thread(watchdog_loop).detach();
++    });
++}
++
++sycl::queue& the_queue() {
++    static sycl::queue q = make_intel_queue();
++    return q;
++}
++
++namespace sycl_exp = sycl::ext::oneapi::experimental;
++using ModifiableGraph = sycl_exp::command_graph<sycl_exp::graph_state::modifiable>;
++using ExecutableGraph = sycl_exp::command_graph<sycl_exp::graph_state::executable>;
++
++struct SyclGraph {
++    std::unique_ptr<ModifiableGraph> modifiable;
++    std::unique_ptr<ExecutableGraph> executable;
++    std::vector<void*> owned_staging;
++    std::vector<void*> owned_allocations;
++};
++
++std::mutex g_graph_mutex;
++SyclGraph* g_active_graph = nullptr;
++std::unordered_map<void*, SyclGraph*> g_graph_allocations;
++
++struct BvhNodeHalf {
++    float x, y, z;
++    uint32_t packed;
++};
++
++struct BvhVec3 { float x, y, z; };
++
++struct BvhDescriptor {
++    BvhNodeHalf* node_lowers;
++    BvhNodeHalf* node_uppers;
++    int* node_parents;
++    int* node_counts;
++    int* primitive_indices;
++    int max_depth, max_nodes, num_nodes, num_leaf_nodes;
++    int* root;
++    BvhVec3* item_lowers;
++    BvhVec3* item_uppers;
++    int* item_groups;
++    int num_items, leaf_size;
++    void* context;
++};
++
++constexpr uint32_t kNodeIndexMask = 0x7fffffffu;
++constexpr uint32_t kLeafBit = 0x80000000u;
++static_assert(sizeof(BvhNodeHalf) == 16);
++
++struct MeshArray {
++    void* data;
++    void* grad;
++    int dims[4];
++    int strides[4];
++    int ndim;
++};
++
++struct MeshDescriptor {
++    MeshArray points, velocities, indices;
++    BvhVec3* lowers;
++    BvhVec3* uppers;
++    void* solid_angle_props;
++    int num_points, num_tris;
++    BvhDescriptor bvh;
++    void* context;
++    float average_edge_length;
++};
++
++// ---------------------------------------------------------------------------
++// USM pool: sycl::malloc_shared is a driver round-trip (tens of us) and the
++// naive free must first drain the whole queue, because an in-flight kernel
++// may still hold the pointer. Training workloads allocate and free the same
++// array shapes every step, so recycling blocks is a large win.
++//
++// Safety rule: a freed block is only handed out again after a full
++// wp_sycl_synchronize() happened *after* the free. Kernels submitted before
++// that drain have completed by then, so nothing can still be referencing the
++// block; kernels submitted after the alloc see the new owner in program
++// order. Blocks freed since the last drain sit in `pending` and are moved
++// into the per-size free lists by the drain itself.
++// ---------------------------------------------------------------------------
++struct UsmPool {
++    std::mutex mutex;
++    std::unordered_map<void*, size_t> sizes;      // live + pending blocks
++    std::vector<std::pair<void*, size_t>> pending;  // freed, not yet drained
++    std::unordered_map<size_t, std::vector<void*>> free_lists;
++};
++
++UsmPool& the_pool() {
++    static UsmPool pool;
++    return pool;
++}
++
++}  // namespace
++
++namespace {
++
++// Drain the queue and recycle every block freed before this point: kernels
++// submitted earlier have completed, so nothing can still reference them.
++void drain_and_recycle() {
++    the_queue().wait();
++    UsmPool& pool = the_pool();
++    std::lock_guard<std::mutex> lock(pool.mutex);
++    for (auto& [ptr, size] : pool.pending) {
++        pool.free_lists[size].push_back(ptr);
++        pool.sizes[ptr] = size;
++    }
++    pool.pending.clear();
++}
++
++}  // namespace
++
++extern "C" {
++
++int wp_sycl_bvh_depth(const void* descriptor) {
++    const auto* bvh = static_cast<const BvhDescriptor*>(descriptor);
++    int max_depth = 0;
++    for (int node = 0; node < bvh->num_nodes; ++node) {
++        int depth = 0;
++        for (int parent = bvh->node_parents[node]; parent >= 0; parent = bvh->node_parents[parent]) {
++            if (++depth > bvh->num_nodes) std::abort();
++        }
++        if (depth > max_depth) max_depth = depth;
++    }
++    return max_depth;
++}
++
++void wp_sycl_bvh_refit(void* descriptor, int max_depth) {
++    auto* bvh = static_cast<BvhDescriptor*>(descriptor);
++    if (!bvh || bvh->num_nodes == 0) return;
++    g_last_kernel.store("wp_sycl_bvh_refit");
++    try {
++        the_queue().parallel_for(sycl::range<1>(bvh->num_nodes), [=](sycl::id<1> index) {
++            const int node = index[0];
++            auto& lower = bvh->node_lowers[node];
++            auto& upper = bvh->node_uppers[node];
++            if (!(lower.packed & kLeafBit)) return;
++            float lx = 3.402823466e38f, ly = lx, lz = lx;
++            float ux = -lx, uy = -lx, uz = -lx;
++            for (int position = lower.packed & kNodeIndexMask; position < (upper.packed & kNodeIndexMask); ++position) {
++                const int primitive = bvh->primitive_indices[position];
++                const auto lo = bvh->item_lowers[primitive];
++                const auto hi = bvh->item_uppers[primitive];
++                lx = sycl::fmin(lx, lo.x); ly = sycl::fmin(ly, lo.y); lz = sycl::fmin(lz, lo.z);
++                ux = sycl::fmax(ux, hi.x); uy = sycl::fmax(uy, hi.y); uz = sycl::fmax(uz, hi.z);
++            }
++            lower.x = lx; lower.y = ly; lower.z = lz;
++            upper.x = ux; upper.y = uy; upper.z = uz;
++        });
++
++        for (int level = max_depth; level >= 0; --level) {
++            the_queue().parallel_for(sycl::range<1>(bvh->num_nodes), [=](sycl::id<1> index) {
++                const int node = index[0];
++                auto& lower = bvh->node_lowers[node];
++                auto& upper = bvh->node_uppers[node];
++                if (lower.packed & kLeafBit) return;
++                int depth = 0;
++                for (int parent = bvh->node_parents[node]; parent >= 0; parent = bvh->node_parents[parent]) ++depth;
++                if (depth != level) return;
++                const auto left_lower = bvh->node_lowers[lower.packed & kNodeIndexMask];
++                const auto right_lower = bvh->node_lowers[upper.packed & kNodeIndexMask];
++                const auto left_upper = bvh->node_uppers[lower.packed & kNodeIndexMask];
++                const auto right_upper = bvh->node_uppers[upper.packed & kNodeIndexMask];
++                lower.x = sycl::fmin(left_lower.x, right_lower.x);
++                lower.y = sycl::fmin(left_lower.y, right_lower.y);
++                lower.z = sycl::fmin(left_lower.z, right_lower.z);
++                upper.x = sycl::fmax(left_upper.x, right_upper.x);
++                upper.y = sycl::fmax(left_upper.y, right_upper.y);
++                upper.z = sycl::fmax(left_upper.z, right_upper.z);
++            });
++        }
++    } catch (const sycl::exception& error) {
++        std::fprintf(stderr, "wp_sycl_bvh_refit failed: %s\n", error.what());
++        std::abort();
++    }
++}
++
++void wp_sycl_mesh_refit(void* descriptor, int max_depth) {
++    auto* mesh = static_cast<MeshDescriptor*>(descriptor);
++    if (!mesh || mesh->num_tris == 0 || mesh->solid_angle_props) std::abort();
++    g_last_kernel.store("wp_sycl_mesh_refit");
++    try {
++        the_queue().parallel_for(sycl::range<1>(mesh->num_tris), [=](sycl::id<1> index) {
++            const int tri = index[0];
++            const auto* points = static_cast<const BvhVec3*>(mesh->points.data);
++            const auto* indices = static_cast<const int*>(mesh->indices.data);
++            const auto p0 = points[indices[tri * 3]];
++            const auto p1 = points[indices[tri * 3 + 1]];
++            const auto p2 = points[indices[tri * 3 + 2]];
++            mesh->lowers[tri] = {
++                sycl::fmin(p0.x, sycl::fmin(p1.x, p2.x)),
++                sycl::fmin(p0.y, sycl::fmin(p1.y, p2.y)),
++                sycl::fmin(p0.z, sycl::fmin(p1.z, p2.z)),
++            };
++            mesh->uppers[tri] = {
++                sycl::fmax(p0.x, sycl::fmax(p1.x, p2.x)),
++                sycl::fmax(p0.y, sycl::fmax(p1.y, p2.y)),
++                sycl::fmax(p0.z, sycl::fmax(p1.z, p2.z)),
++            };
++        });
++        the_queue().single_task([=] {
++            const auto* points = static_cast<const BvhVec3*>(mesh->points.data);
++            const auto* indices = static_cast<const int*>(mesh->indices.data);
++            float sum = 0.0f;
++            for (int tri = 0; tri < mesh->num_tris; ++tri) {
++                const auto p0 = points[indices[tri * 3]];
++                const auto p1 = points[indices[tri * 3 + 1]];
++                const auto p2 = points[indices[tri * 3 + 2]];
++                const auto distance = [](BvhVec3 a, BvhVec3 b) {
++                    const float x = a.x - b.x, y = a.y - b.y, z = a.z - b.z;
++                    return sycl::sqrt(x*x + y*y + z*z);
++                };
++                sum += distance(p0, p1) + distance(p0, p2) + distance(p2, p1);
++            }
++            mesh->average_edge_length = sum / (mesh->num_tris * 3);
++        });
++        wp_sycl_bvh_refit(&mesh->bvh, max_depth);
++    } catch (const sycl::exception& error) {
++        std::fprintf(stderr, "wp_sycl_mesh_refit failed: %s\n", error.what());
++        std::abort();
++    }
++}
++
++void* wp_sycl_queue_ptr() { return &the_queue(); }
++
++int wp_sycl_pointer_type(const void* ptr) {
++    try {
++        switch (sycl::get_pointer_type(ptr, the_queue().get_context())) {
++            case sycl::usm::alloc::host: return 1;
++            case sycl::usm::alloc::device: return 2;
++            case sycl::usm::alloc::shared: return 3;
++            default: return 0;
++        }
++    } catch (const sycl::exception&) {
++        return 0;
++    }
++}
++
++void* wp_sycl_alloc_shared(size_t size) {
++    if (size == 0) {
++        size = 1;
++    }
++
++    {
++        std::lock_guard<std::mutex> graph_lock(g_graph_mutex);
++        if (g_active_graph != nullptr) {
++            void* ptr = sycl::malloc_shared(size, the_queue());
++            if (ptr != nullptr) {
++                g_active_graph->owned_allocations.push_back(ptr);
++                g_graph_allocations[ptr] = g_active_graph;
++            }
++            return ptr;
++        }
++    }
++
++    UsmPool& pool = the_pool();
++    std::lock_guard<std::mutex> lock(pool.mutex);
++
++    // only blocks released before the last drain are safe to reuse
++    auto it = pool.free_lists.find(size);
++    if (it != pool.free_lists.end() && !it->second.empty()) {
++        void* ptr = it->second.back();
++        it->second.pop_back();
++        return ptr;
++    }
++
++    void* ptr = sycl::malloc_shared(size, the_queue());
++    if (ptr != nullptr) {
++        pool.sizes[ptr] = size;
++    }
++    return ptr;
++}
++
++void wp_sycl_free(void* ptr) {
++    if (ptr == nullptr) {
++        return;
++    }
++
++    {
++        std::lock_guard<std::mutex> graph_lock(g_graph_mutex);
++        if (g_graph_allocations.find(ptr) != g_graph_allocations.end()) {
++            return;
++        }
++    }
++
++    UsmPool& pool = the_pool();
++    std::lock_guard<std::mutex> lock(pool.mutex);
++
++    auto it = pool.sizes.find(ptr);
++    if (it == pool.sizes.end()) {
++        // not ours (e.g. staging ring owns its slots separately): fall back
++        // to the conservative wait-and-free
++        the_queue().wait();
++        sycl::free(ptr, the_queue());
++        return;
++    }
++
++    // hold the block until a drain proves no in-flight kernel references it
++    pool.pending.emplace_back(ptr, it->second);
++    pool.sizes.erase(it);
++}
++
++void wp_sycl_memset(void* ptr, int value, size_t size) {
++    g_last_kernel.store("wp_sycl_memset");
++    if (ptr != nullptr && size > 0) {
++        try {
++            the_queue().memset(ptr, value, size);
++        } catch (sycl::exception const& e) {
++            std::fprintf(stderr, "wp_sycl_memset failed: %s\n", e.what());
++            std::abort();
++        }
++    }
++}
++
++void wp_sycl_memcpy(void* dst, const void* src, size_t size) {
++    g_last_kernel.store("wp_sycl_memcpy");
++    if (dst != nullptr && src != nullptr && size > 0) {
++        try {
++            the_queue().memcpy(dst, src, size);
++        } catch (sycl::exception const& e) {
++            std::fprintf(stderr, "wp_sycl_memcpy failed: %s\n", e.what());
++            std::abort();
++        }
++    }
++}
++
++void wp_sycl_memtile(void* dst, const void* src, size_t src_size, size_t reps) {
++    g_last_kernel.store("wp_sycl_memtile");
++    constexpr size_t kPatternCap = 256;  // covers scalar/vector/matrix fills
++    if (dst == nullptr || src == nullptr || src_size == 0 || reps == 0) {
++        return;
++    }
++    if (src_size > kPatternCap) {
++        // struct-sized patterns are rare: conservative host path
++        drain_and_recycle();
++        unsigned char* d = static_cast<unsigned char*>(dst);
++        unsigned char const* s = static_cast<unsigned char const*>(src);
++        for (size_t r = 0; r < reps; ++r) {
++            std::memcpy(d + r * src_size, s, src_size);
++        }
++        return;
++    }
++    // Stage the pattern in USM shared memory so the device kernel can read it;
++    // a plain host pointer (e.g. thread_local storage) is NOT device-accessible
++    // under Level-Zero, and the kernel would silently read nothing. The slot
++    // must stay alive while the fill is in flight, so reuse the same ring
++    // discipline as wp_sycl_stage_args (drain every kPatternRing-th call).
++    constexpr size_t kPatternRing = 256;
++    struct PatternSlots {
++        // one USM block per slot; allocated lazily, never freed
++        unsigned char* ptrs[kPatternRing] = {};
++    };
++    thread_local PatternSlots* slots = nullptr;
++    thread_local unsigned long counter = 0;
++
++    if (g_active_graph != nullptr) {
++        auto* pat = static_cast<unsigned char*>(wp_sycl_stage_args(src_size));
++        std::memcpy(pat, src, src_size);
++        unsigned char* d = static_cast<unsigned char*>(dst);
++        the_queue().parallel_for(
++            sycl::range<1>(reps),
++            [=](sycl::id<1> r) {
++                unsigned char* row = d + r * src_size;
++                for (size_t b = 0; b < src_size; ++b) {
++                    row[b] = pat[b];
++                }
++            });
++        return;
++    }
++
++    if (slots == nullptr) {
++        slots = new PatternSlots();
++    }
++    if (counter != 0 && counter % kPatternRing == 0) {
++        drain_and_recycle();
++    }
++    unsigned char*& pat = slots->ptrs[counter % kPatternRing];
++    if (pat == nullptr) {
++        pat = static_cast<unsigned char*>(sycl::malloc_shared(kPatternCap, the_queue()));
++        if (pat == nullptr) {
++            std::fprintf(stderr, "wp_sycl_memtile: pattern USM alloc failed\n");
++            std::abort();
++        }
++    }
++    ++counter;
++    std::memcpy(pat, src, src_size);
++
++    unsigned char* d = static_cast<unsigned char*>(dst);
++    the_queue().parallel_for(
++        sycl::range<1>(reps),
++        [=](sycl::id<1> r) {
++            unsigned char* row = d + r * src_size;
++            for (size_t b = 0; b < src_size; ++b) {
++                row[b] = pat[b];
++            }
++        });
++}
++
++void* wp_sycl_stage_args(size_t size) {
++    if (g_active_graph != nullptr) {
++        void* data = sycl::malloc_shared(size == 0 ? 1 : size, the_queue());
++        if (data == nullptr) {
++            std::fprintf(stderr, "wp_sycl: graph argument staging allocation failed\n");
++            std::abort();
++        }
++        g_active_graph->owned_staging.push_back(data);
++        return data;
++    }
++
++    // Ring of per-thread staging slots. Kernels are submitted asynchronously,
++    // so the host can run ahead of the device: a single buffer would be
++    // overwritten while an in-flight kernel still reads it. Slots are reused
++    // in ring order, and every kRing-th staging call drains the in-order
++    // queue, so by the time a slot comes around again every kernel that was
++    // handed its address has completed.
++    constexpr unsigned long kRing = 8192;
++    struct Slot {
++        void* data = nullptr;
++        size_t cap = 0;
++    };
++    thread_local Slot slots[kRing];
++    thread_local unsigned long counter = 0;
++
++    if (counter != 0 && counter % kRing == 0) {
++        drain_and_recycle();
++    }
++    Slot& s = slots[counter % kRing];
++    ++counter;
++
++    if (size > s.cap) {
++        if (s.data != nullptr) {
++            the_queue().wait();  // the old buffer may still be referenced
++            sycl::free(s.data, the_queue());
++        }
++        s.cap = size * 2;
++        s.data = sycl::malloc_shared(s.cap, the_queue());
++        if (s.data == nullptr) {
++            s.cap = 0;
++            std::fprintf(stderr, "wp_sycl: failed to allocate %zu-byte args staging buffer\n", size);
++            std::abort();
++        }
++    }
++    return s.data;
++}
++
++int wp_sycl_graph_supported() {
++    return the_queue().get_device().has(sycl::aspect::ext_oneapi_graph) ? 1 : 0;
++}
++
++void* wp_sycl_graph_begin() {
++    std::lock_guard<std::mutex> lock(g_graph_mutex);
++    if (g_active_graph != nullptr || !wp_sycl_graph_supported()) {
++        return nullptr;
++    }
++    try {
++        auto* graph = new SyclGraph();
++        graph->modifiable = std::make_unique<ModifiableGraph>(
++            the_queue().get_context(), the_queue().get_device());
++        graph->modifiable->begin_recording(the_queue());
++        g_active_graph = graph;
++        return graph;
++    } catch (const sycl::exception& e) {
++        std::fprintf(stderr, "wp_sycl_graph_begin failed: %s\n", e.what());
++        return nullptr;
++    }
++}
++
++int wp_sycl_graph_end(void* opaque_graph) {
++    std::lock_guard<std::mutex> lock(g_graph_mutex);
++    auto* graph = static_cast<SyclGraph*>(opaque_graph);
++    if (graph == nullptr || graph != g_active_graph) {
++        return 0;
++    }
++    try {
++        graph->modifiable->end_recording(the_queue());
++        graph->executable = std::make_unique<ExecutableGraph>(graph->modifiable->finalize());
++        graph->modifiable.reset();
++        g_active_graph = nullptr;
++        return 1;
++    } catch (const sycl::exception& e) {
++        g_active_graph = nullptr;
++        std::fprintf(stderr, "wp_sycl_graph_end failed: %s\n", e.what());
++        return 0;
++    }
++}
++
++int wp_sycl_graph_launch(void* opaque_graph) {
++    auto* graph = static_cast<SyclGraph*>(opaque_graph);
++    if (graph == nullptr || graph->executable == nullptr) {
++        return 0;
++    }
++    try {
++        g_last_kernel.store("wp_sycl_graph_launch");
++        the_queue().ext_oneapi_graph(*graph->executable);
++        return 1;
++    } catch (const sycl::exception& e) {
++        std::fprintf(stderr, "wp_sycl_graph_launch failed: %s\n", e.what());
++        return 0;
++    }
++}
++
++void wp_sycl_graph_destroy(void* opaque_graph) {
++    std::lock_guard<std::mutex> lock(g_graph_mutex);
++    auto* graph = static_cast<SyclGraph*>(opaque_graph);
++    if (graph == nullptr) {
++        return;
++    }
++    if (graph == g_active_graph) {
++        try {
++            graph->modifiable->end_recording(the_queue());
++        } catch (...) {
++        }
++        g_active_graph = nullptr;
++    }
++    the_queue().wait_and_throw();
++    for (void* ptr : graph->owned_staging) {
++        sycl::free(ptr, the_queue());
++    }
++    for (void* ptr : graph->owned_allocations) {
++        g_graph_allocations.erase(ptr);
++        sycl::free(ptr, the_queue());
++    }
++    delete graph;
++}
++
++int wp_sycl_graph_is_capturing() {
++    return g_active_graph != nullptr ? 1 : 0;
++}
++
++void wp_sycl_note_kernel(const char* name) { g_last_kernel.store(name); }
++
++void wp_sycl_qld_factor(
++    const int* rownnz, const int* rowadr,
++    const int* update_i, const int* update_k, const int* update_madr,
++    const int* level_offsets, float* L,
++    size_t nworld, size_t nC, size_t nlevels, size_t block_size) {
++    if (nworld == 0 || nlevels == 0 || block_size == 0) {
++        return;
++    }
++
++    g_last_kernel.store("wp_sycl_qld_factor");
++    try {
++        const size_t global_size = nworld * block_size;
++        the_queue().parallel_for(
++            sycl::nd_range<1>(sycl::range<1>(global_size), sycl::range<1>(block_size)),
++            [=](sycl::nd_item<1> item) {
++                const size_t worldid = item.get_group(0);
++                const size_t lane = item.get_local_id(0);
++                const size_t base = worldid * nC;
++
++                for (size_t reverse_level = 0; reverse_level < nlevels; ++reverse_level) {
++                    const size_t level = nlevels - 1 - reverse_level;
++                    const size_t begin = static_cast<size_t>(level_offsets[level]);
++                    const size_t end = static_cast<size_t>(level_offsets[level + 1]);
++
++                    for (size_t update_id = begin + lane; update_id < end; update_id += block_size) {
++                        const int i = update_i[update_id];
++                        const int k = update_k[update_id];
++                        const int madr_ki = update_madr[update_id];
++                        const int row_i = rowadr[i];
++                        const int row_k = rowadr[k];
++                        const int diag_k = row_k + rownnz[k] - 1;
++                        const float tmp = L[base + madr_ki] / L[base + diag_k];
++
++                        for (int j = 0; j < rownnz[i]; ++j) {
++                            const size_t address = base + static_cast<size_t>(row_i + j);
++                            sycl::atomic_ref<float,
++                                sycl::memory_order::relaxed,
++                                sycl::memory_scope::device,
++                                sycl::access::address_space::global_space> value(L[address]);
++                            value.fetch_sub(L[base + static_cast<size_t>(row_k + j)] * tmp);
++                        }
++                        L[base + static_cast<size_t>(madr_ki)] = tmp;
++                    }
++
++                    sycl::group_barrier(item.get_group(), sycl::memory_scope::device);
++                }
++            });
++    } catch (const sycl::exception& e) {
++        std::fprintf(stderr, "wp_sycl_qld_factor failed: %s\n", e.what());
++        std::abort();
++    }
++}
++
++void wp_sycl_synchronize() {
++    start_watchdog();
++    const long long timeout_ms = g_timeout_ms.load(std::memory_order_relaxed);
++    if (timeout_ms > 0) {
++        g_sync_deadline_ms.store(now_ms() + timeout_ms, std::memory_order_relaxed);
++        g_in_sync.store(true, std::memory_order_release);
++        try {
++            the_queue().wait_and_throw();
++        } catch (const sycl::exception& e) {
++            g_in_sync.store(false, std::memory_order_release);
++            const char* k = g_last_kernel.load(std::memory_order_relaxed);
++            std::fprintf(stderr,
++                "\nwp_sycl: device error during synchronize: %s\n"
++                "  last kernel submitted: %s\n  Aborting (see WATCHDOG notes).\n",
++                e.what(), k ? k : "<unknown>");
++            std::fflush(stderr);
++            std::_Exit(2);
++        }
++        g_in_sync.store(false, std::memory_order_release);
++    } else {
++        the_queue().wait();
++    }
++    drain_and_recycle();
++}
++
++
++const char* wp_sycl_device_name() {
++    static std::string name = the_queue().get_device().get_info<sycl::info::device::name>();
++    return name.c_str();
++}
++
++// CRT helpers expected by generated kernel modules (declared in crt.h).
++// Host-side implementations; kernels that call these from device code are
++// not supported yet.
++void _wp_assert(const char* message, const char* file, unsigned int line) {
++    std::fprintf(stderr, "%s:%u: assert: %s\n", file ? file : "?", line, message ? message : "?");
++    std::abort();
++}
++
++int _wp_isfinite(double x) { return std::isfinite(x); }
++
++int _wp_isnan(double x) { return std::isnan(x); }
++
++int _wp_isinf(double x) { return std::isinf(x); }
++
++}
+diff --git a/warp/native/sycl_runtime.h b/warp/native/sycl_runtime.h
+new file mode 100644
+index 00000000..fc0ed27a
+--- /dev/null
++++ b/warp/native/sycl_runtime.h
+@@ -0,0 +1,93 @@
++/*
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++// Minimal SYCL micro-driver shared by all SYCL-compiled Warp kernel modules.
++//
++// The implementation lives in the platform runtime library (built on demand
++// into the Warp kernel cache) and each module links against it so the whole
++// process shares a single sycl::queue and USM allocator.
++//
++// Device code cannot call through function pointers (SYCL/SPIR-V
++// restriction), so the generated module entry points embed the
++// parallel_for directly and only obtain the shared queue from here.
++
++#pragma once
++
++#include <cstddef>
++#include <sycl/sycl.hpp>
++
++// Exported symbols use Windows import/export attributes when applicable and
++// default ELF visibility on Linux.
++#if defined(_WIN32)
++#if defined(WP_SYCL_BUILDING_RUNTIME)
++#define WP_SYCL_API __declspec(dllexport)
++#else
++#define WP_SYCL_API __declspec(dllimport)
++#endif
++#else
++#define WP_SYCL_API __attribute__((visibility("default")))
++#endif
++
++extern "C" {
++// Address of the shared in-order sycl::queue bound to the first Intel GPU.
++WP_SYCL_API void* wp_sycl_queue_ptr();
++// USM kind for a pointer in the Warp queue's context: 0=unknown, 1=host,
++// 2=device, 3=shared. Does not dereference the pointer.
++WP_SYCL_API int wp_sycl_pointer_type(const void* ptr);
++// USM shared-memory allocation served from a drain-gated pool (see the .cpp):
++// blocks freed since the last synchronize are recycled without touching the
++// driver allocator, and frees never wait on the queue.
++WP_SYCL_API void* wp_sycl_alloc_shared(size_t size);
++WP_SYCL_API void wp_sycl_free(void* ptr);
++// Enqueue a byte fill / copy on the shared in-order queue. These are ordered
++// against kernels already in flight (unlike a raw host write) and complete
++// before any kernel submitted afterwards, so no queue drain is needed as long
++// as the host does not read the target before the next synchronize.
++WP_SYCL_API void wp_sycl_memset(void* ptr, int value, size_t size);
++WP_SYCL_API void wp_sycl_memcpy(void* dst, const void* src, size_t size);
++// Enqueue a tiled fill (repeat the src_size-byte pattern reps times) on the
++// shared in-order queue; the pattern is staged through a USM ring so the
++// device kernel can read it. Same ordering guarantees as memset/memcpy.
++WP_SYCL_API void wp_sycl_memtile(void* dst, const void* src, size_t src_size, size_t reps);
++// Record and replay submissions made to the shared queue. The returned graph
++// owns stable argument-staging allocations until wp_sycl_graph_destroy().
++WP_SYCL_API int wp_sycl_graph_supported();
++WP_SYCL_API void* wp_sycl_graph_begin();
++WP_SYCL_API int wp_sycl_graph_end(void* graph);
++WP_SYCL_API int wp_sycl_graph_launch(void* graph);
++WP_SYCL_API void wp_sycl_graph_destroy(void* graph);
++WP_SYCL_API int wp_sycl_graph_is_capturing();
++// Per-thread ring of USM staging buffers for kernel argument structs. The
++// struct produced by the Python launcher lives in plain host memory, which
++// the device cannot dereference; entry points copy it here before
++// submitting to the queue. Slots are reused in ring order; every kRing-th
++// staging call drains the in-order queue so a slot is never overwritten
++// while an in-flight launch still reads it.
++WP_SYCL_API void* wp_sycl_stage_args(size_t size);
++// Block until every submitted kernel on the shared queue has completed.
++WP_SYCL_API void wp_sycl_synchronize();
++// Record the name of the kernel about to be submitted (called at the top of
++// every generated module entry). The watchdog prints it before aborting so a
++// hang names its culprit instead of wedging the machine silently.
++WP_SYCL_API void wp_sycl_note_kernel(const char* name);
++WP_SYCL_API const char* wp_sycl_device_name();
++WP_SYCL_API int wp_sycl_bvh_depth(const void* descriptor);
++WP_SYCL_API void wp_sycl_bvh_refit(void* descriptor, int max_depth);
++WP_SYCL_API void wp_sycl_mesh_refit(void* descriptor, int max_depth);
++WP_SYCL_API void wp_sycl_qld_factor(
++    const int* rownnz, const int* rowadr,
++    const int* update_i, const int* update_k, const int* update_madr,
++    const int* level_offsets, float* L,
++    size_t nworld, size_t nC, size_t nlevels, size_t block_size);
++// SLM high-water tracking: tile.h alloc() reports bytes used per task;
++// the device side atomically maxes it into USM so the host can size the
++// arena to the real workload instead of guessing WP_MAX_SYCL_SHARED.
++WP_SYCL_API void wp_sycl_note_slm_usage(unsigned int bytes);
++WP_SYCL_API unsigned int wp_sycl_get_slm_highwater();
++WP_SYCL_API void wp_sycl_reset_slm_highwater();
++}
++
++inline sycl::queue& wp_sycl_queue() {
++    return *static_cast<sycl::queue*>(wp_sycl_queue_ptr());
++}
+diff --git a/warp/native/tile.h b/warp/native/tile.h
+index e4c13427..7c06f04c 100644
+--- a/warp/native/tile.h
++++ b/warp/native/tile.h
+@@ -1,6 +1,7 @@
+ /*
+  * SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+  * SPDX-License-Identifier: Apache-2.0
++ * MODIFIED from NVIDIA/warp 1.12.0: SYCL backend support; see warp_backend/README.md.
+  *
+  * Licensed under the Apache License, Version 2.0 (the "License");
+  * you may not use this file except in compliance with the License.
+@@ -917,10 +918,27 @@ static tile_shared_storage_t* shared_tile_storage;
+ // On the GPU this maps to dynamic shared memory, while on the CPU we allocate
+ // a fixed size block of memory on the stack and manage allocations from it.
+ // An instance of this class gets created at the start of a kernel.
++#if defined(WP_TRACE_TILE_USAGE) && !defined(__CUDA_ARCH__) && !defined(__SYCL_DEVICE_ONLY__)
++#include <cstdio>
++#include <cstdlib>
++inline void wp_tile_trace_note(unsigned int bytes) {
++    static unsigned int highwater = 0;
++    if (bytes > highwater) {
++        highwater = bytes;
++        std::fprintf(stderr, "[tile-trace] new high-water: %u bytes (%.1f KB)\n", bytes, bytes / 1024.0);
++    }
++}
++#endif
++
+ class tile_shared_storage_t {
+ private:
+ #if !defined(__CUDA_ARCH__)
+ #define WP_MAX_CPU_SHARED 256*1024
++// SYCL target: per-task arena carved out of the work-group's local memory
++// (SLM). Intel Arc reports 64 KiB per group; the counter array requested by
++// get_smem_base() takes 1 KiB, leaving this budget for tile storage. Must
++// stay in sync with the SLM capacity of the target GPU.
++#define WP_MAX_SYCL_SHARED 16*1024
+ #if defined(WP_ENABLE_TILES_IN_STACK_MEMORY)
+     tile_shared_storage_t* old_value;
+     unsigned int smem_base[WP_TILE_BLOCK_DIM];
+@@ -938,6 +956,13 @@ private:
+         return smem_base;
+ #elif defined(WP_ENABLE_TILES_IN_STACK_MEMORY)
+         return shared_tile_storage->smem_base;
++#elif defined(__SYCL_DEVICE_ONLY__)
++        // SYCL: work-group local memory. Kernel entries launch one work-item
++        // per group, so the counter is private to the current task. The
++        // allocation happens once at the (frontend) call site regardless of
++        // how often get_smem_base() is inlined into callers.
++        return reinterpret_cast<unsigned int*>(
++            __sycl_allocateLocalMemory(WP_TILE_BLOCK_DIM * sizeof(unsigned int), alignof(unsigned int)));
+ #else
+         static unsigned int smem_base[WP_TILE_BLOCK_DIM];
+         return smem_base;
+@@ -951,6 +976,11 @@ private:
+         return dynamic_smem_base;
+ #elif defined(WP_ENABLE_TILES_IN_STACK_MEMORY)
+         return shared_tile_storage->dynamic_smem_base;
++#elif defined(__SYCL_DEVICE_ONLY__)
++        // SYCL: per-task tile arena in work-group local memory. Only kernels
++        // whose bodies reference tiles instantiate this function, so plain
++        // kernels reserve no arena SLM.
++        return reinterpret_cast<char*>(__sycl_allocateLocalMemory(WP_MAX_SYCL_SHARED, 16));
+ #else
+         static char dynamic_smem_base[WP_MAX_CPU_SHARED];
+         return dynamic_smem_base;
+@@ -1003,8 +1033,13 @@ public:
+ 
+         // one entry per-thread so no need for synchronization
+         smem_base[WP_TILE_THREAD_IDX] += tile_align(num_bytes);
++#if defined(WP_TRACE_TILE_USAGE) && !defined(__CUDA_ARCH__) && !defined(__SYCL_DEVICE_ONLY__)
++        wp_tile_trace_note(smem_base[WP_TILE_THREAD_IDX]);
++#endif
+ 
+-#if !defined(__CUDA_ARCH__)
++#if defined(__SYCL_DEVICE_ONLY__)
++        assert(smem_base[WP_TILE_THREAD_IDX] <= WP_MAX_SYCL_SHARED);
++#elif !defined(__CUDA_ARCH__)
+         assert(smem_base[WP_TILE_THREAD_IDX] <= WP_MAX_CPU_SHARED);
+ #endif
+ 

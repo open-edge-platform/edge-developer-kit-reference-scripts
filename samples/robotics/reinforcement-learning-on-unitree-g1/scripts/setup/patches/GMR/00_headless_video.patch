@@ -1,0 +1,157 @@
+diff --git a/.gitignore b/.gitignore
+index ed221d6..bec3d1b 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -111,4 +111,6 @@ batch_twist1_to_csv.py
+ 
+ yaml_to_flat_csv.py
+ 
+-compute_rotation.py
+\ No newline at end of file
++compute_rotation.py
++
++outputs/
+\ No newline at end of file
+diff --git a/general_motion_retargeting/robot_motion_viewer.py b/general_motion_retargeting/robot_motion_viewer.py
+index 8589d82..434ada6 100644
+--- a/general_motion_retargeting/robot_motion_viewer.py
++++ b/general_motion_retargeting/robot_motion_viewer.py
+@@ -53,6 +53,7 @@ class RobotMotionViewer:
+                 video_path=None,
+                 video_width=640,
+                 video_height=480,
++                headless=False,
+                 keyboard_callback=None,
+                 ):
+         
+@@ -68,17 +69,24 @@ class RobotMotionViewer:
+         self.rate_limiter = RateLimiter(frequency=self.motion_fps, warn=False)
+         self.camera_follow = camera_follow
+         self.record_video = record_video
++        self.headless = headless
+ 
+-
+-        self.viewer = mjv.launch_passive(
+-            model=self.model,
+-            data=self.data,
+-            show_left_ui=False,
+-            show_right_ui=False, 
+-            key_callback=keyboard_callback
+-            )      
+-
+-        self.viewer.opt.flags[mj.mjtVisFlag.mjVIS_TRANSPARENT] = transparent_robot
++        self.viewer = None
++        self.camera = None
++        if self.headless:
++            if not self.record_video:
++                raise ValueError("Headless mode requires video recording.")
++            self.camera = mj.MjvCamera()
++            mj.mjv_defaultFreeCamera(self.model, self.camera)
++        else:
++            self.viewer = mjv.launch_passive(
++                model=self.model,
++                data=self.data,
++                show_left_ui=False,
++                show_right_ui=False,
++                key_callback=keyboard_callback,
++            )
++            self.viewer.opt.flags[mj.mjtVisFlag.mjVIS_TRANSPARENT] = transparent_robot
+         
+         if self.record_video:
+             assert video_path is not None, "Please provide video path for recording"
+@@ -123,39 +131,45 @@ class RobotMotionViewer:
+         
+         mj.mj_forward(self.model, self.data)
+         
++        camera = self.viewer.cam if self.viewer is not None else self.camera
+         if follow_camera:
+-            self.viewer.cam.lookat = self.data.xpos[self.model.body(self.robot_base).id]
+-            self.viewer.cam.distance = self.viewer_cam_distance
+-            self.viewer.cam.elevation = -10  # 正面视角，轻微向下看
++            camera.lookat = self.data.xpos[self.model.body(self.robot_base).id]
++            camera.distance = self.viewer_cam_distance
++            camera.elevation = -10  # 正面视角，轻微向下看
+             # self.viewer.cam.azimuth = 180    # 正面朝向机器人
+         
+         if human_motion_data is not None:
+             # Clean custom geometry
+-            self.viewer.user_scn.ngeom = 0
++            if self.viewer is not None:
++                self.viewer.user_scn.ngeom = 0
+             # Draw the task targets for reference
+-            for human_body_name, (pos, rot) in human_motion_data.items():
+-                draw_frame(
+-                    pos,
+-                    R.from_quat(rot, scalar_first=True).as_matrix(),
+-                    self.viewer,
+-                    human_point_scale,
+-                    pos_offset=human_pos_offset,
+-                    joint_name=human_body_name if show_human_body_name else None
++            if self.viewer is not None:
++                for human_body_name, (pos, rot) in human_motion_data.items():
++                    draw_frame(
++                        pos,
++                        R.from_quat(rot, scalar_first=True).as_matrix(),
++                        self.viewer,
++                        human_point_scale,
++                        pos_offset=human_pos_offset,
++                        joint_name=human_body_name if show_human_body_name else None,
+                     )
+ 
+-        self.viewer.sync()
++        if self.viewer is not None:
++            self.viewer.sync()
+         if rate_limit is True:
+             self.rate_limiter.sleep()
+ 
+         if self.record_video:
+             # Use renderer for proper offscreen rendering
+-            self.renderer.update_scene(self.data, camera=self.viewer.cam)
++            self.renderer.update_scene(self.data, camera=camera)
+             img = self.renderer.render()
+             self.mp4_writer.append_data(img)
+     
+     def close(self):
+-        self.viewer.close()
+-        time.sleep(0.5)
++        if self.viewer is not None:
++            self.viewer.close()
++            time.sleep(0.5)
+         if self.record_video:
+             self.mp4_writer.close()
++            self.renderer.close()
+             print(f"Video saved to {self.video_path}")
+diff --git a/scripts/gvhmr_to_robot.py b/scripts/gvhmr_to_robot.py
+index d971fba..fb6fd44 100644
+--- a/scripts/gvhmr_to_robot.py
++++ b/scripts/gvhmr_to_robot.py
+@@ -53,6 +53,19 @@ if __name__ == "__main__":
+         help="Record the video.",
+     )
+ 
++    parser.add_argument(
++        "--video_path",
++        default=None,
++        help="Path to save the rendered video.",
++    )
++
++    parser.add_argument(
++        "--headless",
++        default=False,
++        action="store_true",
++        help="Render video without opening an interactive MuJoCo window.",
++    )
++
+     parser.add_argument(
+         "--rate_limit",
+         default=False,
+@@ -88,7 +101,8 @@ if __name__ == "__main__":
+                                             motion_fps=aligned_fps,
+                                             transparent_robot=0,
+                                             record_video=args.record_video,
+-                                            video_path=f"videos/{args.robot}_{args.gvhmr_pred_file.split('/')[-1].split('.')[0]}.mp4",)
++                                            video_path=args.video_path or f"videos/{args.robot}_{args.gvhmr_pred_file.split('/')[-1].split('.')[0]}.mp4",
++                                            headless=args.headless)
+     
+ 
+     curr_frame = 0
