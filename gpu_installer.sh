@@ -181,8 +181,11 @@ detect_gpu() {
 configure_kobuk_repository() {
    echo -e "\n# Configuring Intel Kobuk GPU repository"
    
-   local repo_file="/etc/apt/sources.list.d/kobuk-team-ubuntu-intel-graphics-noble.sources"
-   if [ -e "$repo_file" ] || ls /var/lib/apt/lists/ppa.launchpadcontent.net_kobuk-team_intel-graphics_ubuntu_dists_* >/dev/null 2>&1; then
+   local codename
+   codename=$(grep -E '^VERSION_CODENAME=' /etc/os-release | cut -d'=' -f2- | tr -d '"')
+   local repo_file="/etc/apt/sources.list.d/kobuk-team-ubuntu-intel-graphics-${codename}.sources"
+   # A release upgrade leaves the old codename's file behind with "Enabled: no"
+   if [ -e "$repo_file" ] && ! grep -qi '^Enabled:[[:space:]]*no' "$repo_file"; then
       log_success "Kobuk repository already configured"
       return 0
    fi
