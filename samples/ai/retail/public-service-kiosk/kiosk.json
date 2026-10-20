@@ -1,0 +1,13 @@
+{
+  "id": "public-service",
+  "productName": "Vertical Reference Solutions Blueprint",
+  "appId": "com.verticalreferencesolutionsblueprint.desktop",
+  "executableName": "kiosk-desktop",
+  "dataDir": "VRSB",
+  "port": 3000,
+  "studio": {
+    "sampleId": "public-service-kiosk",
+    "title": "Public Service Kiosk",
+    "port": 8035
+  }
+}

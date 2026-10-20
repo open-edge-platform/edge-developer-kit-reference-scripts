@@ -1,0 +1,10 @@
+/.kiosk-run/
+
+# Packages and embedded bundles of every kiosk (./setup.sh --build)
+/build/
+
+# Per-kiosk launcher state and build output
+/*/assets/
+/*/build/
+/*/.prime.log
+/*/.prime.pid
