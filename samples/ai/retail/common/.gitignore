@@ -1,0 +1,11 @@
+# Portable Node.js, downloaded by ./setup.sh when the machine has none
+thirdparty/
+
+# Launcher-script local state (setup / start / build / dev)
+.kioskrc
+.kiosks
+.studio.log
+.studio.log.err
+
+/tests/coverity/*
+!/tests/coverity/coverity_scan.sh

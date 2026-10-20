@@ -1,0 +1,69 @@
+version: 2
+
+# Dependabot opens security fixes only, batched into one PR per ecosystem.
+# Routine version bumps come from .github/workflows/dependency-update.yml,
+# which upgrades frontend/, electron/ and every workers/**/uv.lock in a single
+# PR and runs the Playwright suite on it.
+#
+# open-pull-requests-limit: 0 switches version-update PRs off; security updates
+# ignore that limit. Fixes that stay within minor/patch share one PR, and those
+# that need a major bump get a separate one so they can't hold up the rest.
+updates:
+  - package-ecosystem: "npm"
+    directories:
+      - "/frontend"
+      - "/electron"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    commit-message:
+      prefix: "fix(deps)"
+    groups:
+      npm-security:
+        applies-to: security-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+      npm-security-major:
+        applies-to: security-updates
+        patterns: ["*"]
+        update-types: ["major"]
+
+  # One directory per uv.lock: the workspace lock plus each project the
+  # workspace excludes. Members have no lock of their own.
+  - package-ecosystem: "uv"
+    directories:
+      - "/workers"
+      - "/workers/common/ovms-export"
+      - "/workers/common/ovms-export-qwen3-asr"
+      - "/workers/services/embeddings"
+      - "/workers/services/geti-classifier"
+      - "/workers/services/speech-to-text/oep"
+      - "/workers/services/text-to-speech/oep-tts"
+      - "/workers/services/vectordb"
+      - "/workers/services/wake-word-detection"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    commit-message:
+      prefix: "fix(deps)"
+    groups:
+      uv-security:
+        applies-to: security-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+      uv-security-major:
+        applies-to: security-updates
+        patterns: ["*"]
+        update-types: ["major"]
+
+  # dependency-update.yml doesn't touch workflow actions, so Dependabot keeps
+  # their version updates, all in one monthly PR.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    commit-message:
+      prefix: "ci(deps)"
+    groups:
+      actions:
+        patterns: ["*"]

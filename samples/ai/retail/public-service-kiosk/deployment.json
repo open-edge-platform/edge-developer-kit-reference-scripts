@@ -1,0 +1,63 @@
+{
+  "modes": {
+    "touch": {
+      "services": {
+        "text-generation": {
+          "status": "offline",
+          "models": {
+            "default": {
+              "name": "unsloth/gemma-4-E4B-it-GGUF",
+              "backend": "llamacpp",
+              "quant": "Q4_K_M",
+              "source": "huggingface",
+              "device": "GPU"
+            }
+          }
+        },
+        "ocr": {
+          "status": "online",
+          "models": { "default": { "device": "NPU" } }
+        },
+        "face-recognition": {
+          "status": "online",
+          "models": { "default": { "device": "CPU" } }
+        },
+        "speech-to-text": { "status": "offline" },
+        "text-to-speech": { "status": "offline" }
+      }
+    },
+    "chat": {
+      "services": {
+        "text-generation": {
+          "status": "online",
+          "models": {
+            "default": {
+              "name": "unsloth/gemma-4-E4B-it-GGUF",
+              "backend": "llamacpp",
+              "quant": "Q4_K_M",
+              "source": "huggingface",
+              "device": "GPU"
+            }
+          }
+        },
+        "ocr": {
+          "status": "online",
+          "models": { "default": { "device": "CPU" } }
+        },
+        "face-recognition": {
+          "status": "online",
+          "models": { "default": { "device": "CPU" } }
+        },
+        "speech-to-text": {
+          "status": "online",
+          "models": { "default": { "device": "NPU" } }
+        },
+        "text-to-speech": {
+          "status": "online",
+          "models": { "default": { "device": "CPU" } }
+        }
+      }
+    },
+    "agent": "chat"
+  }
+}
