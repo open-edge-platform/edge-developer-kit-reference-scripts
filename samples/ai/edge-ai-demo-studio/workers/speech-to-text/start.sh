@@ -45,7 +45,7 @@ check_uv
 check_ffmpeg
 check_ovms
 
-OVMS_VERSION="v2026.3"
+OVMS_VERSION="v2026.4.0"
 OPTIMUM_VENV_DIR="$SCRIPT_DIR/thirdparty/.venv"
 OPTIMUM_VENV_PROFILE_FILE="$SCRIPT_DIR/thirdparty/.venv-profile"
 OPTIMUM_EXPORT_MODEL_URL="https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/tags/${OVMS_VERSION}/demos/common/export_models"

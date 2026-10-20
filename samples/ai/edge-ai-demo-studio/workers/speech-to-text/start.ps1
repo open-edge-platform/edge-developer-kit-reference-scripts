@@ -37,7 +37,7 @@ Test-UV
 Test-FFmpeg
 Test-OVMS
 
-$OVMS_VERSION = "v2026.3"
+$OVMS_VERSION = "v2026.4.0"
 $OPTIMUM_VENV_DIR = Join-Path $SCRIPT_DIR "thirdparty\.venv"
 $OPTIMUM_VENV_PROFILE_FILE = Join-Path $SCRIPT_DIR "thirdparty\.venv-profile"
 $OPTIMUM_EXPORT_MODEL_URL = "https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/tags/$OVMS_VERSION/demos/common/export_models"
