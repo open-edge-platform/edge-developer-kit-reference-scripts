@@ -1,0 +1,33 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+[project]
+name = "dmt-operator-agent"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.141.1",
+    "httpx>=0.28.1",
+    "openai>=3.6.0",
+    "pillow>=12.3.0",
+    "pydantic>=2.13.5",
+    "reportlab>=5.0.1",
+    "rich>=15.0.0",
+    "uvicorn[standard]>=0.52.4",
+]
+
+[project.scripts]
+dmt-operator-agent = "dmt_operator_agent.agent:main"
+dmt-operator-api = "dmt_operator_agent.api:run"
+agentic-framework = "main:main"
+
+[dependency-groups]
+test = [
+    "pytest>=8.3",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"

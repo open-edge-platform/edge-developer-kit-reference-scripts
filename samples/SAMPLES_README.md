@@ -28,6 +28,7 @@ Refer to below samples to kickstart you own demo or application.
   - [Video Summarization](./ai/video_summarization/README.md)
   - [Visual Textual Query Document Reasoning Engine](./ai/visual-textual-query-driven-document-reasoning-engine/README.md)
   - [VLM Video Summarization & Interactive Chat](./ai/vlm-video-summarization-and-interactive-chat/README.md)
+  - [Device Managaeability Agent](./ai//device-manageability/README.md)
   - Vertical Reference Solutions Blueprint 
     - [Kiosk Operational Efficiency - Public Services](./ai/retail/public-service-kiosk/README.md)
 - **Camera**
