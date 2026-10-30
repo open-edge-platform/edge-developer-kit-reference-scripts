@@ -1,0 +1,59 @@
+services:
+  humanoid-rl-intel:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        HTTP_PROXY: ${HTTP_PROXY}
+        HTTPS_PROXY: ${HTTPS_PROXY}
+        NO_PROXY: ${NO_PROXY}
+        HUMANOID_RL_API_URL: http://127.0.0.1:${BACKEND_PORT:-8008}
+        NEXT_PUBLIC_HUMANOID_RL_TENSORBOARD_PORT: ${NEXT_PUBLIC_HUMANOID_RL_TENSORBOARD_PORT:-6767}
+        NEXT_PUBLIC_HUMANOID_RL_PLAYBACK_PORT: ${NEXT_PUBLIC_HUMANOID_RL_PLAYBACK_PORT:-8181}
+    environment:
+      DISPLAY: ${DISPLAY}
+      XAUTHORITY: /tmp/.Xauthority
+      QT_X11_NO_MITSHM: "1"
+      MUJOCO_GL: egl
+      HTTP_PROXY: ${HTTP_PROXY}
+      HTTPS_PROXY: ${HTTPS_PROXY}
+      NO_PROXY: ${NO_PROXY}
+      DEVICE: /dev/dri/renderD128
+      HUMANOID_RL_HOME: /app
+      HUMANOID_RL_DATA_DIR: /app/.data
+      BACKEND_HOST: 0.0.0.0
+      BACKEND_PORT: ${BACKEND_PORT:-8008}
+      FRONTEND_HOST: 0.0.0.0
+      FRONTEND_PORT: ${FRONTEND_PORT:-3008}
+      NEXT_PUBLIC_HUMANOID_RL_TENSORBOARD_PORT: ${NEXT_PUBLIC_HUMANOID_RL_TENSORBOARD_PORT:-6767}
+      NEXT_PUBLIC_HUMANOID_RL_PLAYBACK_PORT: ${NEXT_PUBLIC_HUMANOID_RL_PLAYBACK_PORT:-8181}
+      TENSORBOARD_HOST: 0.0.0.0
+    volumes:
+      - ${XAUTHORITY:-$HOME/.Xauthority}:/tmp/.Xauthority:ro
+      - humanoid_rl_data:/app/.data
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-3008}:${FRONTEND_PORT:-3008}"
+      - "127.0.0.1:${BACKEND_PORT:-8008}:${BACKEND_PORT:-8008}"
+      - "127.0.0.1:${NEXT_PUBLIC_HUMANOID_RL_TENSORBOARD_PORT:-6767}:${NEXT_PUBLIC_HUMANOID_RL_TENSORBOARD_PORT:-6767}"
+      - "127.0.0.1:${NEXT_PUBLIC_HUMANOID_RL_PLAYBACK_PORT:-8181}:${NEXT_PUBLIC_HUMANOID_RL_PLAYBACK_PORT:-8181}"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:mode=1777
+      - /var/tmp:mode=1777
+      - /home/ubuntu:rw,exec,mode=1777
+      - /app/application/frontend/.next/cache:mode=1777
+    working_dir: /app
+    init: true
+    restart: unless-stopped
+    devices:
+      - /dev/dri/renderD128:/dev/dri/renderD128:rw
+    group_add:
+      - "${RENDER_GID:?Set RENDER_GID to the host render group GID}"
+    user: ubuntu
+
+volumes:
+  humanoid_rl_data:

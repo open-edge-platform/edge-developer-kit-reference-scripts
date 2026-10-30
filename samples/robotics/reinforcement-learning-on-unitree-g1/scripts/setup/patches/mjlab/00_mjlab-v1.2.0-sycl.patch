@@ -1,0 +1,512 @@
+diff --git a/src/mjlab/envs/manager_based_rl_env.py b/src/mjlab/envs/manager_based_rl_env.py
+index 3b9f63d..02bf1ce 100644
+--- a/src/mjlab/envs/manager_based_rl_env.py
++++ b/src/mjlab/envs/manager_based_rl_env.py
+@@ -1,4 +1,5 @@
+ import math
++from functools import wraps
+ from dataclasses import dataclass, field
+ from typing import Any
+ 
+@@ -35,6 +36,7 @@ from mjlab.scene.scene import SceneCfg
+ from mjlab.sim import SimulationCfg
+ from mjlab.sim.sim import Simulation
+ from mjlab.utils import random as random_utils
++from mjlab.utils.gpu import xpu_stream_for_warp
+ from mjlab.utils.logging import print_info
+ from mjlab.utils.spaces import Box
+ from mjlab.utils.spaces import Dict as DictSpace
+@@ -43,6 +45,23 @@ from mjlab.viewer.offscreen_renderer import OffscreenRenderer
+ from mjlab.viewer.viewer_config import ViewerConfig
+ 
+ 
++def _on_xpu_stream(fn):
++  @wraps(fn)
++  def wrapper(self, *args, **kwargs):
++    if torch.device(self.device).type != "xpu" or not self.sim.wp_device.is_sycl:
++      return fn(self, *args, **kwargs)
++    device = torch.device(self.device)
++    current = torch.xpu.current_stream(device)
++    interop = xpu_stream_for_warp(device)
++    interop.wait_stream(current)
++    with torch.xpu.stream(interop):
++      result = fn(self, *args, **kwargs)
++    current.wait_stream(interop)
++    return result
++
++  return wrapper
++
++
+ @dataclass(kw_only=True)
+ class ManagerBasedRlEnvCfg:
+   """Configuration for a manager-based RL environment.
+@@ -157,6 +176,7 @@ class ManagerBasedRlEnv:
+     cfg: ManagerBasedRlEnvCfg,
+     device: str,
+     render_mode: str | None = None,
++    sim_device: str | None = None,
+     **kwargs,
+   ) -> None:
+     # Initialize base environment state.
+@@ -174,12 +194,14 @@ class ManagerBasedRlEnv:
+       cfg=self.cfg.sim,
+       model=self.scene.compile(),
+       device=device,
++      sim_device=sim_device,
+     )
+ 
+     self.scene.initialize(
+       mj_model=self.sim.mj_model,
+       model=self.sim.model,
+       data=self.sim.data,
++      sim_device=sim_device or device,
+     )
+ 
+     # Wire sensor context to simulation for sense_graph.
+@@ -317,6 +339,7 @@ class ManagerBasedRlEnv:
+     if "startup" in self.event_manager.available_modes:
+       self.event_manager.apply(mode="startup")
+ 
++  @_on_xpu_stream
+   def reset(
+     self,
+     *,
+@@ -336,6 +359,7 @@ class ManagerBasedRlEnv:
+     self.obs_buf = self.observation_manager.compute(update_history=True)
+     return self.obs_buf, self.extras
+ 
++  @_on_xpu_stream
+   def step(self, action: torch.Tensor) -> types.VecEnvStepReturn:
+     """Run one environment step: apply actions, simulate, compute RL signals.
+ 
+diff --git a/src/mjlab/scene/scene.py b/src/mjlab/scene/scene.py
+index 349d82d..c43e94d 100644
+--- a/src/mjlab/scene/scene.py
++++ b/src/mjlab/scene/scene.py
+@@ -174,6 +174,7 @@ class Scene:
+     mj_model: mujoco.MjModel,
+     model: mjwarp.Model,
+     data: mjwarp.Data,
++    sim_device: str | None = None,
+   ):
+     self._default_env_origins = torch.zeros(
+       (self._cfg.num_envs, 3), device=self._device, dtype=torch.float32
+@@ -181,7 +182,10 @@ class Scene:
+     for ent in self._entities.values():
+       ent.initialize(mj_model, model, data, self._device)
+     for sensor in self._sensors.values():
+-      sensor.initialize(mj_model, model, data, self._device)
++      if isinstance(sensor, RayCastSensor):
++        sensor.initialize(mj_model, model, data, self._device, sim_device=sim_device)
++      else:
++        sensor.initialize(mj_model, model, data, self._device)
+ 
+     # Create SensorContext if any sensors require it.
+     ctx_sensors = [s for s in self._sensors.values() if s.requires_sensor_context]
+@@ -194,7 +198,7 @@ class Scene:
+         data=data,
+         camera_sensors=camera_sensors,
+         raycast_sensors=raycast_sensors,
+-        device=self._device,
++        device=sim_device or self._device,
+       )
+ 
+   def reset(self, env_ids: torch.Tensor | slice | None = None) -> None:
+diff --git a/src/mjlab/sensor/raycast_sensor.py b/src/mjlab/sensor/raycast_sensor.py
+index 013bb1f..ff67b95 100644
+--- a/src/mjlab/sensor/raycast_sensor.py
++++ b/src/mjlab/sensor/raycast_sensor.py
+@@ -175,6 +175,7 @@ from mjlab.utils.lab_api.math import quat_from_matrix
+ 
+ if TYPE_CHECKING:
+   from mjlab.sensor.sensor_context import SensorContext
++  from mjlab.utils.gpu import warp_view_of_xpu
+   from mjlab.viewer.debug_visualizer import DebugVisualizer
+ 
+ 
+@@ -505,12 +506,13 @@ class RayCastSensor(Sensor[RayCastData]):
+     model: mjwarp.Model,
+     data: mjwarp.Data,
+     device: str,
++    sim_device: str | None = None,
+   ) -> None:
+     self._data = data
+     self._model = model
+     self._mj_model = mj_model
+     self._device = device
+-    self._wp_device = wp.get_device(device)
++    self._wp_device = wp.get_device(sim_device or device)
+     num_envs = data.nworld
+ 
+     frame = self.cfg.frame
+@@ -541,12 +543,13 @@ class RayCastSensor(Sensor[RayCastData]):
+     )
+     self._num_rays = self._local_offsets.shape[0]
+ 
+-    self._ray_pnt = wp.zeros((num_envs, self._num_rays), dtype=wp.vec3, device=device)
+-    self._ray_vec = wp.zeros((num_envs, self._num_rays), dtype=wp.vec3, device=device)
+-    self._ray_dist = wp.zeros((num_envs, self._num_rays), dtype=float, device=device)
+-    self._ray_geomid = wp.zeros((num_envs, self._num_rays), dtype=int, device=device)
++    wp_device = sim_device or device
++    self._ray_pnt = wp.zeros((num_envs, self._num_rays), dtype=wp.vec3, device=wp_device)
++    self._ray_vec = wp.zeros((num_envs, self._num_rays), dtype=wp.vec3, device=wp_device)
++    self._ray_dist = wp.zeros((num_envs, self._num_rays), dtype=float, device=wp_device)
++    self._ray_geomid = wp.zeros((num_envs, self._num_rays), dtype=int, device=wp_device)
+     self._ray_normal = wp.zeros(
+-      (num_envs, self._num_rays), dtype=wp.vec3, device=device
++      (num_envs, self._num_rays), dtype=wp.vec3, device=wp_device
+     )
+ 
+     body_exclude = (
+@@ -558,9 +561,23 @@ class RayCastSensor(Sensor[RayCastData]):
+       (self._num_rays,),
+       body_exclude,
+       dtype=int,  # pyright: ignore[reportArgumentType]
+-      device=device,
++      device=wp_device,
+     )
+ 
++    if torch.device(device).type == "xpu" and self._wp_device.is_sycl:
++      ray_dist = torch.zeros(
++        (num_envs, self._num_rays), device=device, dtype=torch.float32
++      )
++      ray_normal = torch.zeros(
++        (num_envs, self._num_rays, 3), device=device, dtype=torch.float32
++      )
++      self._ray_dist = warp_view_of_xpu(
++        ray_dist, dtype=float, shape=(num_envs, self._num_rays)
++      )
++      self._ray_normal = warp_view_of_xpu(
++        ray_normal, dtype=wp.vec3, shape=(num_envs, self._num_rays)
++      )
++
+     # Convert include_geom_groups to vec6 format (-1 = include, 0 = exclude).
+     if self.cfg.include_geom_groups is not None:
+       groups = [0, 0, 0, 0, 0, 0]
+@@ -753,8 +770,16 @@ class RayCastSensor(Sensor[RayCastData]):
+     num_envs = self._cached_frame_pos.shape[0]
+ 
+     assert self._ray_dist is not None and self._ray_normal is not None
+-    self._distances = wp.to_torch(self._ray_dist)
+-    self._normals_w = wp.to_torch(self._ray_normal).view(num_envs, self._num_rays, 3)
++    if (
++      torch.device(self._device).type == "xpu"
++      and self._wp_device is not None
++      and self._wp_device.is_sycl
++    ):
++      self._distances = self._ray_dist._ref
++      self._normals_w = self._ray_normal._ref.view(num_envs, self._num_rays, 3)
++    else:
++      self._distances = wp.to_torch(self._ray_dist)
++      self._normals_w = wp.to_torch(self._ray_normal).view(num_envs, self._num_rays, 3)
+     self._distances[self._distances > self.cfg.max_distance] = -1.0
+ 
+     hit_mask = self._distances >= 0
+diff --git a/src/mjlab/sim/sim.py b/src/mjlab/sim/sim.py
+index dc0dbb1..7892d49 100644
+--- a/src/mjlab/sim/sim.py
++++ b/src/mjlab/sim/sim.py
+@@ -1,5 +1,6 @@
+ from __future__ import annotations
+ 
++import os
+ from dataclasses import dataclass, field
+ from typing import TYPE_CHECKING, Literal, cast
+ 
+@@ -12,6 +13,7 @@ from mjlab.managers.event_manager import RecomputeLevel
+ from mjlab.sim.randomization import expand_model_fields
+ from mjlab.sim.sim_data import TorchArray, WarpBridge
+ from mjlab.utils.nan_guard import NanGuard, NanGuardCfg
++from mjlab.utils.gpu import promote_warp_array_to_xpu
+ 
+ if TYPE_CHECKING:
+   from mjlab.sensor.sensor_context import SensorContext
+@@ -27,6 +29,11 @@ else:
+ 
+ # Minimum CUDA driver version supported for conditional CUDA graphs.
+ _GRAPH_CAPTURE_MIN_DRIVER = (12, 4)
++_XPU_DATA_FIELDS = (
++  "ctrl", "cvel", "qacc", "qpos", "qvel", "sensordata", "site_xmat",
++  "site_xpos", "subtree_com", "time", "xmat", "xpos", "xquat",
++)
++_XPU_MODEL_FIELDS = ("body_ipos", "geom_friction", "jnt_range", "site_bodyid")
+ 
+ _JACOBIAN_MAP = {
+   "auto": mujoco.mjtJacobian.mjJAC_AUTO,
+@@ -132,11 +139,17 @@ class Simulation:
+   """
+ 
+   def __init__(
+-    self, num_envs: int, cfg: SimulationCfg, model: mujoco.MjModel, device: str
++    self,
++    num_envs: int,
++    cfg: SimulationCfg,
++    model: mujoco.MjModel,
++    device: str,
++    sim_device: str | None = None,
+   ):
+     self.cfg = cfg
+     self.device = device
+-    self.wp_device = wp.get_device(self.device)
++    self.wp_device = wp.get_device(sim_device or device)
++    self._xpu_model_originals: dict[str, wp.array] = {}
+     self.num_envs = num_envs
+     self._default_model_fields: dict[str, torch.Tensor] = {}
+     self._expanded_fields: set[str] = set()
+@@ -164,6 +177,16 @@ class Simulation:
+       self._reset_mask_wp = wp.zeros(num_envs, dtype=bool)
+       self._reset_mask = TorchArray(self._reset_mask_wp)
+ 
++    if torch.device(self.device).type == "xpu" and self.wp_device.is_sycl:
++      for name in _XPU_MODEL_FIELDS:
++        array = getattr(self._wp_model, name)
++        if array.size:
++          self._xpu_model_originals[name] = array
++      self._promote_fields(self._wp_model, _XPU_MODEL_FIELDS)
++      self._promote_fields(self._wp_data, _XPU_DATA_FIELDS)
++      self._reset_mask_wp, _ = promote_warp_array_to_xpu(self._reset_mask_wp)
++      self._reset_mask = TorchArray(self._reset_mask_wp)
++
+     self._model_bridge = WarpBridge(self._wp_model, nworld=self.num_envs)
+     self._data_bridge = WarpBridge(self._wp_data)
+     self._sensor_context: SensorContext | None = None
+@@ -192,6 +215,7 @@ class Simulation:
+     self.reset_graph = None
+     self.sense_graph = None
+     if self.use_cuda_graph:
++      self._synchronize_if_sycl()
+       with wp.ScopedDevice(self.wp_device):
+         with wp.ScopedCapture() as capture:
+           mjwarp.step(self.wp_model, self.wp_data)
+@@ -203,9 +227,11 @@ class Simulation:
+           mjwarp.reset_data(self.wp_model, self.wp_data, reset=self._reset_mask_wp)
+         self.reset_graph = capture.graph
+         if self._sensor_context is not None:
+-          with wp.ScopedCapture() as capture:
+-            self._sense_kernel()
+-          self.sense_graph = capture.graph
++          meshes = self._sensor_context.render_context.flex_mesh_registry.values()
++          if all(not getattr(mesh, "_sycl_winding", True) for mesh in meshes):
++            with wp.ScopedCapture() as capture:
++              self._sense_kernel()
++            self.sense_graph = capture.graph
+ 
+   # Properties.
+ 
+@@ -254,7 +280,18 @@ class Simulation:
+     if invalid_fields:
+       raise ValueError(f"Fields not found in model: {invalid_fields}")
+ 
++    if torch.device(self.device).type == "xpu" and self.wp_device.is_sycl:
++      for name in fields:
++        original = self._xpu_model_originals.pop(name, None)
++        if original is not None:
++          setattr(self._wp_model, name, original)
++
+     expand_model_fields(self._wp_model, self.num_envs, list(fields))
++    if torch.device(self.device).type == "xpu" and self.wp_device.is_sycl:
++      promoted_fields = fields
++      for name in promoted_fields:
++        self._xpu_model_originals[name] = getattr(self._wp_model, name)
++      self._promote_fields(self._wp_model, promoted_fields)
+     self._expanded_fields.update(fields)
+     self._model_bridge.clear_cache()
+ 
+@@ -295,6 +332,7 @@ class Simulation:
+     fn = getattr(mjwarp, level.name)
+     with wp.ScopedDevice(self.wp_device):
+       fn(self._wp_model, self._wp_data)
++    self._synchronize_if_sycl()
+ 
+   def forward(self) -> None:
+     with wp.ScopedDevice(self.wp_device):
+@@ -302,6 +340,7 @@ class Simulation:
+         wp.capture_launch(self.forward_graph)
+       else:
+         mjwarp.forward(self.wp_model, self.wp_data)
++    self._synchronize_if_sycl()
+ 
+   def step(self) -> None:
+     with wp.ScopedDevice(self.wp_device):
+@@ -310,6 +349,7 @@ class Simulation:
+           wp.capture_launch(self.step_graph)
+         else:
+           mjwarp.step(self.wp_model, self.wp_data)
++        self._synchronize_if_sycl()
+ 
+   def reset(self, env_ids: torch.Tensor | None = None) -> None:
+     with wp.ScopedDevice(self.wp_device):
+@@ -323,6 +363,7 @@ class Simulation:
+         wp.capture_launch(self.reset_graph)
+       else:
+         mjwarp.reset_data(self.wp_model, self.wp_data, reset=self._reset_mask_wp)
++    self._synchronize_if_sycl()
+ 
+   def set_sensor_context(self, ctx: SensorContext) -> None:
+     """Wire a SensorContext for camera/raycast sensing.
+@@ -352,8 +393,20 @@ class Simulation:
+       else:
+         self._sense_kernel()
+ 
++    self._synchronize_if_sycl()
+     ctx.finalize()
+ 
++  def _promote_fields(self, struct, names: tuple[str, ...]) -> None:
++    for name in names:
++      array = getattr(struct, name)
++      if array.size:
++        promoted, _ = promote_warp_array_to_xpu(array)
++        setattr(struct, name, promoted)
++
++  def _synchronize_if_sycl(self) -> None:
++    if self.wp_device.is_sycl:
++      wp.synchronize_device(self.wp_device)
++
+   # Private methods.
+ 
+   def _sense_kernel(self) -> None:
+@@ -373,6 +426,8 @@ class Simulation:
+ 
+   def _should_use_cuda_graph(self) -> bool:
+     """Determine if CUDA graphs can be used based on device and driver version."""
++    if self.wp_device.is_sycl:
++      return os.environ.get("MJLAB_SYCL_NO_GRAPH", "0") != "1"
+     if not self.wp_device.is_cuda:
+       return False
+ 
+diff --git a/src/mjlab/sim/sim_data.py b/src/mjlab/sim/sim_data.py
+index 0f000fe..82df8b6 100644
+--- a/src/mjlab/sim/sim_data.py
++++ b/src/mjlab/sim/sim_data.py
+@@ -18,6 +18,25 @@ class TorchArray:
+   def __init__(self, wp_array: wp.array, nworld: int | None = None) -> None:
+     """Initialize the tensor proxy with a Warp array."""
+     self._wp_array = wp_array
++    owner = getattr(wp_array, "_ref", None)
++    if (
++      wp_array.device.is_sycl
++      and isinstance(owner, torch.Tensor)
++      and owner.device.type == "xpu"
++    ):
++      self._tensor = owner
++      if (
++        nworld is not None
++        and nworld > 1
++        and owner.ndim > 0
++        and owner.shape[0] == 1
++        and wp_array.strides[0] == 0
++      ):
++        self._tensor = owner.expand((nworld, *owner.shape[1:]))
++      self._is_cuda = False
++      self._torch_stream = None
++      return
++
+     # Workaround for Warp bug: wp.to_torch fails on empty CPU arrays.
+     if wp_array.device.is_cpu and wp_array.size == 0:  # type: ignore[union-attr]
+       self._tensor = torch.zeros(
+diff --git a/src/mjlab/utils/gpu.py b/src/mjlab/utils/gpu.py
+index 244e603..275eece 100644
+--- a/src/mjlab/utils/gpu.py
++++ b/src/mjlab/utils/gpu.py
+@@ -1,8 +1,13 @@
+ """Utilities for GPU selection and management."""
+ 
++from __future__ import annotations
++
+ import os
+ from typing import Literal
+ 
++import torch
++import warp as wp
++
+ 
+ def select_gpus(
+   gpu_ids: list[int] | Literal["all"] | None,
+@@ -72,3 +77,56 @@ def select_gpus(
+   num_gpus = len(selected_gpus)
+ 
+   return selected_gpus, num_gpus
++
++
++def warp_view_of_xpu(
++  tensor: torch.Tensor, *, dtype=None, shape=None, strides=None
++) -> wp.array:
++  if tensor.device.type != "xpu" or tensor.device.index != torch.xpu.current_device():
++    raise ValueError("expected a tensor on the current XPU device")
++  if not tensor.is_contiguous() or tensor.numel() == 0 or tensor.requires_grad:
++    raise ValueError("expected a nonempty, contiguous XPU tensor without gradients")
++
++  sycl = wp._src.context.runtime.sycl
++  if sycl.wp_sycl_pointer_type(tensor.data_ptr()) not in (2, 3):
++    raise RuntimeError("XPU pointer is not device-accessible from the Warp SYCL queue")
++
++  if dtype is None:
++    dtype = wp.dtype_from_torch(tensor.dtype)
++  if shape is None:
++    shape = tuple(tensor.shape)
++  scalar_dtype = getattr(dtype, "_wp_scalar_type_", dtype)
++  type_shape = getattr(dtype, "_shape_", ())
++  if wp.dtype_from_torch(tensor.dtype) != scalar_dtype or tuple(tensor.shape) != (*shape, *type_shape):
++    raise ValueError("XPU tensor shape or dtype does not match the Warp array")
++
++  array = wp.array(
++    ptr=tensor.data_ptr(),
++    shape=shape,
++    strides=strides,
++    dtype=dtype,
++    device="sycl",
++    copy=False,
++  )
++  array._ref = tensor
++  return array
++
++
++def promote_warp_array_to_xpu(array: wp.array) -> tuple[wp.array, torch.Tensor]:
++  if not array.device.is_sycl or not array.is_contiguous or array.size == 0:
++    raise ValueError("expected a nonempty, contiguous Warp SYCL array")
++  wp.synchronize_device(array.device)
++  tensor = wp.to_torch(array).to(device="xpu", copy=True)
++  torch.xpu.current_stream(tensor.device).synchronize()
++  return warp_view_of_xpu(
++    tensor, dtype=array.dtype, shape=array.shape, strides=array.strides
++  ), tensor
++
++
++def xpu_stream_for_warp(device: torch.device) -> torch.xpu.Stream:
++  if device.type != "xpu":
++    raise ValueError("expected an XPU device")
++  sycl = wp._src.context.runtime.sycl
++  return torch.xpu.get_stream_from_external(
++    sycl.wp_sycl_queue_ptr(), device=device
++  )
+diff --git a/src/mjlab/utils/torch.py b/src/mjlab/utils/torch.py
+index 4275bf4..04883bf 100644
+--- a/src/mjlab/utils/torch.py
++++ b/src/mjlab/utils/torch.py
+@@ -1,3 +1,5 @@
++import os
++
+ import torch
+ from packaging.version import parse
+ 
+@@ -27,6 +29,20 @@ def configure_torch_backends(allow_tf32: bool = True, deterministic: bool = Fals
+   torch.backends.cudnn.deterministic = deterministic  # Ensure reproducibility.
+ 
+ 
++def configure_xpu_backends(allow_tf32: bool = True, deterministic: bool = False):
++  """Configure PyTorch XPU matmul precision and determinism."""
++  torch.set_float32_matmul_precision("high" if allow_tf32 else "highest")
++  if allow_tf32 and not torch.xpu.is_tf32_supported():
++    device_id = torch.xpu.current_device()
++    print(f"Warning: TF32 is allowed but not supported on XPU device {device_id}")
++  torch.use_deterministic_algorithms(deterministic, warn_only=True)
++
++
++def configure_torch_threads() -> None:
++  """Limit intra-op threads for environments that issue many small ops."""
++  torch.set_num_threads(int(os.environ.get("MJLAB_TORCH_THREADS", "2")))
++
++
+ def _configure_29(allow_tf32: bool):
+   """Configure PyTorch CUDA and cuDNN backends for PyTorch 2.9+."""
+   # tf32 for performance, ieee for full FP32 accuracy.

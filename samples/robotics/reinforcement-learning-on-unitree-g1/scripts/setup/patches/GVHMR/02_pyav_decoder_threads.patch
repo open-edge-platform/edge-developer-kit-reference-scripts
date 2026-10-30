@@ -1,0 +1,42 @@
+diff --git a/hmr4d/utils/video_io_utils.py b/hmr4d/utils/video_io_utils.py
+--- a/hmr4d/utils/video_io_utils.py
++++ b/hmr4d/utils/video_io_utils.py
+@@ -16,35 +16,36 @@
+ def read_video_np(video_path, start_frame=0, end_frame=-1, scale=1.0):
+     """
+     Args:
+         video_path: str
+     Returns:
+         frames: np.array, (N, H, W, 3) RGB, uint8
+     """
+     # If video path not exists, an error will be raised by ffmpegs
+     filter_args = []
+     should_check_length = False
+ 
+     # 1. Trim
+     if not (start_frame == 0 and end_frame == -1):
+         if end_frame == -1:
+             filter_args.append(("trim", f"start_frame={start_frame}"))
+         else:
+             should_check_length = True
+             filter_args.append(("trim", f"start_frame={start_frame}:end_frame={end_frame}"))
+ 
+     # 2. Scale
+     if scale != 1.0:
+         filter_args.append(("scale", f"iw*{scale}:ih*{scale}"))
+ 
+     # Excute then check
+-    frames = iio.imread(video_path, plugin="pyav", filter_sequence=filter_args)
++    # Avoid automatic libdav1d threading, which can fail with EAGAIN.
++    frames = iio.imread(video_path, plugin="pyav", filter_sequence=filter_args, thread_count=1)
+     if should_check_length:
+         assert len(frames) == end_frame - start_frame
+ 
+     return frames
+ 
+ 
+ def get_video_reader(video_path):
+-    return iio.imiter(video_path, plugin="pyav")
++    return iio.imiter(video_path, plugin="pyav", thread_count=1)
+ 
+ 
