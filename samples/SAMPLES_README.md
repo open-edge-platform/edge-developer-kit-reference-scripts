@@ -38,6 +38,7 @@ Refer to below samples to kickstart you own demo or application.
 - **Patient-Monitoring-Hub Reference Implementation**
   - [Patient-Monitoring-Hub Reference Implementation](./patient-monitoring-hub/README.md)
 - **Robotics**
+  - [Reinforcement Learning on Unitree G1](./robotics/reinforcement-learning-on-unitree-g1/README.md)
   - [Imitation Learning on Unitree G1](./robotics/imitation-learning-on-unitree-g1/README.md)
   - [ROS 2 Navigation on RHEL for Unitree A2](./robotics/ros2-navigation-on-RHEL-unitree-a2/README.md)
 

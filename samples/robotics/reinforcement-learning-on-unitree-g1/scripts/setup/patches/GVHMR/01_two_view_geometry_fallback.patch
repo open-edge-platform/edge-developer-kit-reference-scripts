@@ -1,0 +1,27 @@
+diff --git a/hmr4d/utils/preproc/relpose/solver_two_view.py b/hmr4d/utils/preproc/relpose/solver_two_view.py
+--- a/hmr4d/utils/preproc/relpose/solver_two_view.py
++++ b/hmr4d/utils/preproc/relpose/solver_two_view.py
+@@ -93,16 +93,23 @@ class PycolmapRansacTwoViewGeometrySolver:
+     def solve(self, pts0, pts1):
+         matches = np.stack([np.arange(len(pts0)), np.arange(len(pts0))], axis=-1)
+         answer = pycolmap.estimate_calibrated_two_view_geometry(
+             self.camera,
+             pts0.astype(np.float64),
+             self.camera,
+             pts1.astype(np.float64),
+             matches=matches,
+             options=self.options,
+         )
+ 
++        if answer.cam2_from_cam1 is None:
++            print(
++                "[PycolmapRansacTwoViewGeometrySolver] "
++                f"Failed to estimate two-view geometry (config={answer.config}), using identity."
++            )
++            return np.eye(4)
++
+         # cam2_from_cam1 means T_0_to_1 in our language
+         Rt = answer.cam2_from_cam1.matrix().astype(np.float32)  # shape (3, 4)
+         T = np.eye(4)
+         T[:3] = Rt
+         return T

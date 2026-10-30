@@ -1,0 +1,6 @@
+.data/
+data/
+third_party/
+application/.data
+
+.env

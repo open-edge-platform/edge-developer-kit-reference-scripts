@@ -1,0 +1,1878 @@
+diff --git a/.gitignore b/.gitignore
+index 61a7750..9f609cf 100755
+--- a/.gitignore
++++ b/.gitignore
+@@ -11,4 +11,5 @@ deploy/robots/g1_23dof/build
+ deploy/robots/r1/build
+ deploy/robots/a2/build
+ src/assets/motions/g1/dance1_subject2.npz
+-simulate/build
+\ No newline at end of file
++simulate/build
++__pycache__**
+\ No newline at end of file
+diff --git a/controller/README.md b/controller/README.md
+new file mode 100644
+index 0000000..9f0fc17
+--- /dev/null
++++ b/controller/README.md
+@@ -0,0 +1,15 @@
++# Robot Controller
++
++Policy to play multiple motion mimic RL policies.
++
++## Policy Design
++
++The policy is designed as a transition system, with:
++
++- Nodes: `PolicyNode(name, rl_policy, reference_motion)`
++- Edges: `PolicyEdge(condition, action)`
++
++The final controller has type:
++```
++PolicyGraph(List[PolicyNode], List[PolicyEdge], start=PolicyNode)
++```
+diff --git a/controller/__init__.py b/controller/__init__.py
+new file mode 100644
+index 0000000..f3a66bc
+--- /dev/null
++++ b/controller/__init__.py
+@@ -0,0 +1,55 @@
++from .actions import (
++  AlignTargetYaw,
++  CircularMeanTorsoYaw,
++  LatestTorsoYaw,
++  YawAlignment,
++)
++from .motion_command import (
++  ChainedMotionCommand,
++  ChainedMotionCommandCfg,
++)
++from .policy_graph import (
++  GraphPolicy,
++  MotionComplete,
++  PolicyEdge,
++  PolicyGraph,
++  PolicyNode,
++  TransitionContext,
++  build_sequential_graph,
++)
++from .types import (
++  MotionCommandAction,
++  Policy,
++  TorsoYawReference,
++  TransitionAction,
++  TransitionCondition,
++)
++from .viewer import (
++  MultiPolicyViewerMixin,
++  NativeMultiPlayViewer,
++  ViserMultiPlayViewer,
++)
++
++__all__ = [
++  "AlignTargetYaw",
++  "ChainedMotionCommand",
++  "ChainedMotionCommandCfg",
++  "CircularMeanTorsoYaw",
++  "GraphPolicy",
++  "LatestTorsoYaw",
++  "MotionCommandAction",
++  "MotionComplete",
++  "MultiPolicyViewerMixin",
++  "NativeMultiPlayViewer",
++  "Policy",
++  "PolicyEdge",
++  "PolicyGraph",
++  "PolicyNode",
++  "TorsoYawReference",
++  "TransitionAction",
++  "TransitionCondition",
++  "TransitionContext",
++  "ViserMultiPlayViewer",
++  "YawAlignment",
++  "build_sequential_graph",
++]
+diff --git a/controller/actions.py b/controller/actions.py
+new file mode 100644
+index 0000000..705d2f2
+--- /dev/null
++++ b/controller/actions.py
+@@ -0,0 +1,105 @@
++"""
++
++"""
++from __future__ import annotations
++
++from collections import deque
++from dataclasses import dataclass
++
++import torch
++
++from mjlab.utils.lab_api.math import quat_apply, quat_inv, quat_mul, yaw_quat
++
++from .motion_command import ChainedMotionCommand
++from .types import MotionCommandAction, TorsoYawReference
++
++
++class CircularMeanTorsoYaw:
++  def __init__(self, window: int) -> None:
++    if window < 1:
++      raise ValueError("Yaw reference window must be at least 1.")
++    self._samples: deque[torch.Tensor] = deque(maxlen=window)
++
++  def observe(self, torso_quat_w: torch.Tensor) -> None:
++    torso_quat_w = torso_quat_w.detach()
++    qw, qx, qy, qz = torso_quat_w.unbind(dim=-1)
++    yaw = torch.atan2(
++      2 * (qw * qz + qx * qy),
++      1 - 2 * (qy.square() + qz.square()),
++    )
++    self._samples.append(yaw)
++
++  def resolve(self) -> torch.Tensor:
++    if not self._samples:
++      raise RuntimeError("Cannot resolve torso yaw before observing a sample.")
++    samples = torch.stack(tuple(self._samples))
++    yaw = torch.atan2(samples.sin().mean(dim=0), samples.cos().mean(dim=0))
++    result = torch.zeros(yaw.shape + (4,), dtype=yaw.dtype, device=yaw.device)
++    result[..., 0] = torch.cos(yaw / 2)
++    result[..., 3] = torch.sin(yaw / 2)
++    return result
++
++  def reset(self) -> None:
++    self._samples.clear()
++
++
++class LatestTorsoYaw(CircularMeanTorsoYaw):
++  def __init__(self) -> None:
++    super().__init__(window=1)
++
++
++class YawAlignment(MotionCommandAction):
++  def __init__(
++    self, command: ChainedMotionCommand, reference_yaw: torch.Tensor
++  ) -> None:
++    if reference_yaw.shape != (command.num_envs, 4):
++      raise ValueError(
++        "Expected one yaw quaternion per environment, got "
++        f"{reference_yaw.shape}."
++      )
++    target_anchor_yaw = yaw_quat(
++      command.motion.body_quat_w[0, command.motion_anchor_body_index]
++    ).expand_as(reference_yaw)
++    self._offset = quat_mul(reference_yaw, quat_inv(target_anchor_yaw))
++
++  def _expanded_offset(self, values: torch.Tensor) -> torch.Tensor:
++    return self._offset[:, None, :].expand(*values.shape[:-1], 4)
++
++  def transform_body_pos(
++    self, command: ChainedMotionCommand, values: torch.Tensor
++  ) -> torch.Tensor:
++    pivot = command.motion.body_pos_w[0, command.motion_anchor_body_index]
++    pivot = pivot.view(1, 1, 3)
++    return pivot + quat_apply(self._expanded_offset(values), values - pivot)
++
++  def transform_body_quat(
++    self, command: ChainedMotionCommand, values: torch.Tensor
++  ) -> torch.Tensor:
++    del command
++    return quat_mul(self._expanded_offset(values), values)
++
++  def transform_body_lin_vel(
++    self, command: ChainedMotionCommand, values: torch.Tensor
++  ) -> torch.Tensor:
++    del command
++    return quat_apply(self._expanded_offset(values), values)
++
++  def transform_body_ang_vel(
++    self, command: ChainedMotionCommand, values: torch.Tensor
++  ) -> torch.Tensor:
++    del command
++    return quat_apply(self._expanded_offset(values), values)
++
++
++@dataclass
++class AlignTargetYaw:
++  reference: TorsoYawReference
++
++  def observe(self, command: ChainedMotionCommand) -> None:
++    self.reference.observe(command.robot_anchor_quat_w)
++
++  def apply(self, command: ChainedMotionCommand) -> None:
++    command.add_action(YawAlignment(command, self.reference.resolve()))
++
++  def reset(self) -> None:
++    self.reference.reset()
+diff --git a/controller/conditions.py b/controller/conditions.py
+new file mode 100644
+index 0000000..b2b7040
+--- /dev/null
++++ b/controller/conditions.py
+@@ -0,0 +1,11 @@
++from __future__ import annotations
++
++from typing import TYPE_CHECKING
++
++if TYPE_CHECKING:
++    from .policy_graph import TransitionContext 
++
++
++class MotionComplete:
++  def __call__(self, context: TransitionContext) -> bool:
++    return context.motion_was_on_final_frame
+\ No newline at end of file
+diff --git a/controller/motion_command.py b/controller/motion_command.py
+new file mode 100644
+index 0000000..fc85c85
+--- /dev/null
++++ b/controller/motion_command.py
+@@ -0,0 +1,115 @@
++from __future__ import annotations
++
++from contextlib import contextmanager
++from dataclasses import dataclass
++
++import torch
++
++from mjlab.envs import ManagerBasedRlEnv
++from mjlab.tasks.tracking.mdp import MotionCommand, MotionCommandCfg
++
++from .types import MotionCommandAction
++
++
++class ChainedMotionCommand(MotionCommand):
++  """Motion command that preserves robot state and supports composable actions."""
++
++  _reset_robot_state = False
++  _reset_mode = "default"
++
++  def __init__(self, cfg: MotionCommandCfg, env: ManagerBasedRlEnv) -> None:
++    super().__init__(cfg, env)
++    self._actions: list[MotionCommandAction] = []
++
++  def add_action(self, action: MotionCommandAction) -> None:
++    self._actions.append(action)
++
++  def reset_actions(self) -> None:
++    for action in reversed(self._actions):
++      action.reset(self)
++    self._actions.clear()
++
++  @property
++  def joint_pos(self) -> torch.Tensor:
++    values = self.motion.joint_pos[self.time_steps]
++    for action in self._actions:
++      values = action.transform_joint_pos(self, values)
++    return values
++
++  @property
++  def joint_vel(self) -> torch.Tensor:
++    values = self.motion.joint_vel[self.time_steps]
++    for action in self._actions:
++      values = action.transform_joint_vel(self, values)
++    return values
++
++  @property
++  def body_pos_w(self) -> torch.Tensor:
++    values = self.motion.body_pos_w[self.time_steps]
++    for action in self._actions:
++      values = action.transform_body_pos(self, values)
++    return values + self._env.scene.env_origins[:, None, :]
++
++  @property
++  def body_quat_w(self) -> torch.Tensor:
++    values = self.motion.body_quat_w[self.time_steps]
++    for action in self._actions:
++      values = action.transform_body_quat(self, values)
++    return values
++
++  @property
++  def body_lin_vel_w(self) -> torch.Tensor:
++    values = self.motion.body_lin_vel_w[self.time_steps]
++    for action in self._actions:
++      values = action.transform_body_lin_vel(self, values)
++    return values
++
++  @property
++  def body_ang_vel_w(self) -> torch.Tensor:
++    values = self.motion.body_ang_vel_w[self.time_steps]
++    for action in self._actions:
++      values = action.transform_body_ang_vel(self, values)
++    return values
++
++  @property
++  def anchor_pos_w(self) -> torch.Tensor:
++    return self.body_pos_w[:, self.motion_anchor_body_index]
++
++  @property
++  def anchor_quat_w(self) -> torch.Tensor:
++    return self.body_quat_w[:, self.motion_anchor_body_index]
++
++  @property
++  def anchor_lin_vel_w(self) -> torch.Tensor:
++    return self.body_lin_vel_w[:, self.motion_anchor_body_index]
++
++  @property
++  def anchor_ang_vel_w(self) -> torch.Tensor:
++    return self.body_ang_vel_w[:, self.motion_anchor_body_index]
++
++  def _resample_command(self, env_ids: torch.Tensor) -> None:
++    if self._reset_robot_state:
++      match self._reset_mode:
++        case "default":
++          super()._resample_command(env_ids)
++        case _:
++          raise ValueError(f"Unknown reset mode: {self._reset_mode}")
++      return
++    self.time_steps[env_ids] = torch.clamp(
++      self.time_steps[env_ids], max=self.motion.time_step_total - 1
++    )
++
++  @contextmanager
++  def full_reset_enabled(self):
++    previous = self._reset_robot_state
++    self._reset_robot_state = True
++    try:
++      yield
++    finally:
++      self._reset_robot_state = previous
++
++
++@dataclass(kw_only=True)
++class ChainedMotionCommandCfg(MotionCommandCfg):
++  def build(self, env: ManagerBasedRlEnv) -> MotionCommand:
++    return ChainedMotionCommand(self, env)
+diff --git a/controller/policy_graph.py b/controller/policy_graph.py
+new file mode 100644
+index 0000000..070c1a0
+--- /dev/null
++++ b/controller/policy_graph.py
+@@ -0,0 +1,196 @@
++from __future__ import annotations
++
++from dataclasses import dataclass
++from pathlib import Path
++from typing import Any, Mapping, Sequence
++
++import torch
++
++from mjlab.tasks.tracking.mdp.commands import MotionLoader
++
++from .actions import AlignTargetYaw, CircularMeanTorsoYaw
++from .conditions import MotionComplete
++from .motion_command import ChainedMotionCommand
++from .types import NodeId, Policy, TransitionAction, TransitionCondition
++
++
++@dataclass(frozen=True)
++class PolicyNode:
++  id: NodeId
++  name: str
++  policy: Policy
++  motion_path: Path
++  motion: MotionLoader
++
++
++@dataclass(frozen=True)
++class TransitionContext:
++  source: PolicyNode
++  step_result: tuple[Any, ...]
++  motion_was_on_final_frame: bool
++  step_count: int
++
++
++@dataclass(frozen=True)
++class PolicyEdge:
++  source: NodeId
++  target: NodeId
++  condition: TransitionCondition
++  priority: int = 0
++  name: str = ""
++  action: TransitionAction | None = None
++
++
++@dataclass(frozen=True)
++class PolicyGraph:
++  nodes: Mapping[NodeId, PolicyNode]
++  edges: tuple[PolicyEdge, ...]
++  start: NodeId
++
++  def __post_init__(self) -> None:
++    if self.start not in self.nodes:
++      raise ValueError(f"Unknown start node: {self.start}")
++    for edge in self.edges:
++      if edge.source not in self.nodes:
++        raise ValueError(f"Unknown edge source: {edge.source}")
++      if edge.target not in self.nodes:
++        raise ValueError(f"Unknown edge target: {edge.target}")
++
++  def outgoing(self, node_id: NodeId) -> tuple[PolicyEdge, ...]:
++    edges = (edge for edge in self.edges if edge.source == node_id)
++    return tuple(sorted(edges, key=lambda edge: edge.priority, reverse=True))
++
++
++class GraphPolicy:
++  def __init__(self, graph: PolicyGraph, command: ChainedMotionCommand) -> None:
++    self._graph = graph
++    self._command = command
++    self._active_node_id = graph.start
++    self._activate_node(graph.start)
++
++  @property
++  def active_node(self) -> PolicyNode:
++    return self._graph.nodes[self._active_node_id]
++
++  @property
++  def active_node_id(self) -> NodeId:
++    return self._active_node_id
++
++  def __call__(self, obs: Any) -> torch.Tensor:
++    return self.active_node.policy(obs)
++
++  def motion_is_on_final_frame(self) -> bool:
++    return bool(
++      torch.any(self._command.time_steps >= self._command.motion.time_step_total - 1)
++    )
++
++  def find_transition(self, context: TransitionContext) -> PolicyEdge | None:
++    for edge in self._graph.outgoing(self._active_node_id):
++      if edge.condition(context):
++        return edge
++    return None
++
++  def observe_transition_actions(self) -> None:
++    for edge in self._graph.outgoing(self._active_node_id):
++      if edge.action is not None:
++        edge.action.observe(self._command)
++
++  def transition(self, edge: PolicyEdge) -> None:
++    if edge.source != self._active_node_id:
++      raise ValueError(f"Edge does not leave active node: {edge.name or edge.source}")
++    source_edges = self._graph.outgoing(self._active_node_id)
++    self._reset_policy(self.active_node.policy)
++    self._activate_node(edge.target)
++    if edge.action is not None:
++      edge.action.apply(self._command)
++    for source_edge in source_edges:
++      if source_edge.action is not None:
++        source_edge.action.reset()
++
++  def reset(self) -> None:
++    for node in self._graph.nodes.values():
++      self._reset_policy(node.policy)
++    for edge in self._graph.edges:
++      if edge.action is not None:
++        edge.action.reset()
++    self._activate_node(self._graph.start)
++
++  def reset_environment(self, env: Any) -> None:
++    self.reset()
++    with self._command.full_reset_enabled():
++      env.reset()
++
++  def _activate_node(self, node_id: NodeId) -> None:
++    node = self._graph.nodes[node_id]
++    self._command.reset_actions()
++    self._active_node_id = node_id
++    self._command.motion = node.motion
++    self._command.cfg.motion_file = str(node.motion_path)
++    self._command.time_steps.zero_()
++    self._command.bin_count = int(
++      node.motion.time_step_total // (1 / self._command._env.step_dt)
++    ) + 1
++    self._command.bin_failed_count = torch.zeros(
++      self._command.bin_count, dtype=torch.float, device=self._command.device
++    )
++    self._command._current_bin_failed = torch.zeros_like(
++      self._command.bin_failed_count
++    )
++    print(f"[INFO]: Active node {node.id}: {node.name} / {node.motion_path.name}")
++
++  @staticmethod
++  def _reset_policy(policy: Policy) -> None:
++    reset_fn = getattr(policy, "reset", None)
++    if reset_fn is not None:
++      reset_fn()
++
++##################################################################################
++### Simpliest torso yaw-aligned, sequential chaining policy
++##################################################################################
++
++def build_sequential_graph(
++  policies: Sequence[Policy],
++  names: Sequence[str],
++  motion_paths: Sequence[Path],
++  command: ChainedMotionCommand,
++  yaw_reference_window: int = 1,
++) -> PolicyGraph:
++  if len(policies) < 2:
++    raise ValueError("A policy graph requires at least two policies.")
++  if len(policies) != len(names) or len(policies) != len(motion_paths):
++    raise ValueError("Policies, names, and motions must have matching lengths.")
++
++  motions = [command.motion]
++  motions.extend(
++    MotionLoader(str(path), command.body_indexes, device=command.device)
++    for path in motion_paths[1:]
++  )
++  joint_shape = motions[0].joint_pos.shape[1:]
++  for path, motion in zip(motion_paths, motions, strict=True):
++    if motion.joint_pos.shape[1:] != joint_shape:
++      raise ValueError(f"Motion has incompatible joint shape: {path}")
++
++  nodes = {
++    f"policy_{index + 1}": PolicyNode(
++      id=f"policy_{index + 1}",
++      name=name,
++      policy=policy,
++      motion_path=motion_path,
++      motion=motion,
++    )
++    for index, (policy, name, motion_path, motion) in enumerate(
++      zip(policies, names, motion_paths, motions, strict=True)
++    )
++  }
++  node_ids = tuple(nodes)
++  edges = tuple(
++    PolicyEdge(
++      source=node_id,
++      target=node_ids[(index + 1) % len(node_ids)],
++      condition=MotionComplete(),
++      name="motion_complete",
++      action=AlignTargetYaw(CircularMeanTorsoYaw(yaw_reference_window)),
++    )
++    for index, node_id in enumerate(node_ids)
++  )
++  return PolicyGraph(nodes=nodes, edges=edges, start=node_ids[0])
+diff --git a/controller/types.py b/controller/types.py
+new file mode 100644
+index 0000000..2894768
+--- /dev/null
++++ b/controller/types.py
+@@ -0,0 +1,79 @@
++from __future__ import annotations
++
++from typing import TYPE_CHECKING, Any, Protocol
++
++import torch
++
++if TYPE_CHECKING:
++  from .motion_command import ChainedMotionCommand
++  from .policy_graph import TransitionContext
++
++
++NodeId = str
++
++
++class Policy(Protocol):
++  def __call__(self, obs: Any) -> torch.Tensor: ...
++
++
++class TransitionCondition(Protocol):
++  def __call__(self, context: TransitionContext) -> bool: ...
++
++
++class TransitionAction(Protocol):
++  def observe(self, command: ChainedMotionCommand) -> None: ...
++
++  def apply(self, command: ChainedMotionCommand) -> None: ...
++
++  def reset(self) -> None: ...
++
++
++class TorsoYawReference(Protocol):
++  def observe(self, torso_quat_w: torch.Tensor) -> None: ...
++
++  def resolve(self) -> torch.Tensor: ...
++
++  def reset(self) -> None: ...
++
++
++class MotionCommandAction:
++  """Composable transform applied to motion values exposed by a command."""
++
++  def reset(self, command: ChainedMotionCommand) -> None:
++    del command
++
++  def transform_joint_pos(
++    self, command: ChainedMotionCommand, values: torch.Tensor
++  ) -> torch.Tensor:
++    del command
++    return values
++
++  def transform_joint_vel(
++    self, command: ChainedMotionCommand, values: torch.Tensor
++  ) -> torch.Tensor:
++    del command
++    return values
++
++  def transform_body_pos(
++    self, command: ChainedMotionCommand, values: torch.Tensor
++  ) -> torch.Tensor:
++    del command
++    return values
++
++  def transform_body_quat(
++    self, command: ChainedMotionCommand, values: torch.Tensor
++  ) -> torch.Tensor:
++    del command
++    return values
++
++  def transform_body_lin_vel(
++    self, command: ChainedMotionCommand, values: torch.Tensor
++  ) -> torch.Tensor:
++    del command
++    return values
++
++  def transform_body_ang_vel(
++    self, command: ChainedMotionCommand, values: torch.Tensor
++  ) -> torch.Tensor:
++    del command
++    return values
+\ No newline at end of file
+diff --git a/controller/viewer.py b/controller/viewer.py
+new file mode 100644
+index 0000000..f992cb5
+--- /dev/null
++++ b/controller/viewer.py
+@@ -0,0 +1,57 @@
++import time
++import traceback
++
++import torch
++
++from mjlab.viewer import NativeMujocoViewer, ViserPlayViewer
++from mjlab.viewer.base import VerbosityLevel
++
++from .policy_graph import GraphPolicy, TransitionContext
++
++
++class MultiPolicyViewerMixin:
++  policy: GraphPolicy
++
++  def _execute_step(self) -> bool:
++    try:
++      with torch.no_grad():
++        obs = self.env.get_observations()
++        actions = self.policy(obs)
++        motion_finished = self.policy.motion_is_on_final_frame()
++        step_result = self.env.step(actions)
++        self.policy.observe_transition_actions()
++        self._step_count += 1
++        self._stats_steps += 1
++        context = TransitionContext(
++          source=self.policy.active_node,
++          step_result=step_result,
++          motion_was_on_final_frame=motion_finished,
++          step_count=self._step_count,
++        )
++        edge = self.policy.find_transition(context)
++        if edge is not None:
++          self.policy.transition(edge)
++        return True
++    except Exception:
++      self._last_error = traceback.format_exc()
++      self.log(
++        f"[ERROR] Exception during step:\n{self._last_error}",
++        VerbosityLevel.SILENT,
++      )
++      self.pause()
++      return False
++
++  def reset_environment(self) -> None:
++    self.policy.reset_environment(self.env)
++    self._step_count = 0
++    self._sim_budget = 0.0
++    self._last_error = None
++    self._last_tick_time = time.perf_counter()
++
++
++class ViserMultiPlayViewer(MultiPolicyViewerMixin, ViserPlayViewer):
++  pass
++
++
++class NativeMultiPlayViewer(MultiPolicyViewerMixin, NativeMujocoViewer):
++  pass
+diff --git a/deploy/include/FSM/CtrlFSM.h b/deploy/include/FSM/CtrlFSM.h
+index 62aacf2..ac221ea 100644
+--- a/deploy/include/FSM/CtrlFSM.h
++++ b/deploy/include/FSM/CtrlFSM.h
+@@ -48,7 +48,7 @@ public:
+     void start() 
+     {
+         // Start From State_Passive
+-        currentState = states[0];
++        currentState = states[3];
+         currentState->enter();
+ 
+         fsm_thread_ = std::make_shared<unitree::common::RecurrentThread>(
+diff --git a/deploy/include/FSM/FSMState.h b/deploy/include/FSM/FSMState.h
+index cbbc2af..1323ffd 100644
+--- a/deploy/include/FSM/FSMState.h
++++ b/deploy/include/FSM/FSMState.h
+@@ -1,5 +1,7 @@
+ #pragma once
+ 
++#include <algorithm>
++
+ #include "Types.h"
+ #include "param.h"
+ #include "FSM/BaseState.h"
+@@ -57,6 +59,7 @@ public:
+     {
+         lowstate->update();
+         if(keyboard) keyboard->update();
++        if(use_keyboard && keyboard) keyboard_control();
+     }
+ 
+     void post_run()
+@@ -67,4 +70,76 @@ public:
+     static std::unique_ptr<LowCmd_t> lowcmd;
+     static std::shared_ptr<LowState_t> lowstate;
+     static std::shared_ptr<Keyboard> keyboard;
++
++    // Enabled by the `--keyboard` flag. When true, the keyboard drives a
++    // virtual joystick so the robot can be controlled without a gamepad.
++    inline static bool use_keyboard = false;
++
++    /**
++     * @brief Translate keyboard input into `lowstate->joystick`, so that both the
++     * velocity commands and the FSM transitions (which all read the joystick)
++     * behave exactly as if a real gamepad were connected.
++     *
++     * Controls:
++     *   Locomotion (latched velocity setpoints, tap to adjust):
++     *     w / s : forward / backward       (vx)
++     *     a / d : strafe left / right      (vy)
++     *     q / e : turn left / right        (yaw)
++     *     space / x : stop (zero velocity)
++     *   Mode switches (single press, emulate the gamepad combos):
++     *     1 : Passive   (LT + B)   -- damping / soft stop
++     *     2 : FixStand  (LT + up)  -- stand up
++     *     3 : Velocity  (RT + A)   -- start the walking policy
++     *     4 : Mimic     (RB + A)   -- dance
++     */
++    void keyboard_control()
++    {
++        auto & js = lowstate->joystick;
++
++        // Keyboard input is digital: disable the analog smoothing so a key press
++        // maps to the axis/trigger value immediately (and releases cleanly).
++        js.lx.smooth = js.ly.smooth = js.rx.smooth = 1.f;
++        js.LT.smooth = js.RT.smooth = 1.f;
++
++        // Latched velocity setpoints, in joystick-axis units [-1, 1].
++        static float sp_ly = 0.f;  // + forward
++        static float sp_lx = 0.f;  // + strafe right
++        static float sp_rx = 0.f;  // + turn right
++        constexpr float kStep = 0.2f;
++
++        const std::string k = keyboard->key();
++
++        // React only on the key-down edge (avoids terminal auto-repeat quirks).
++        if(keyboard->on_pressed)
++        {
++            bool cmd_changed = true;
++            if(k == "w")      sp_ly = std::clamp(sp_ly + kStep, -1.f, 1.f);
++            else if(k == "s") sp_ly = std::clamp(sp_ly - kStep, -1.f, 1.f);
++            else if(k == "d") sp_lx = std::clamp(sp_lx + kStep, -1.f, 1.f);
++            else if(k == "a") sp_lx = std::clamp(sp_lx - kStep, -1.f, 1.f);
++            else if(k == "e") sp_rx = std::clamp(sp_rx + kStep, -1.f, 1.f);
++            else if(k == "q") sp_rx = std::clamp(sp_rx - kStep, -1.f, 1.f);
++            else if(k == " " || k == "x") { sp_ly = sp_lx = sp_rx = 0.f; }
++            else cmd_changed = false;
++
++            if(cmd_changed)
++            {
++                // Observation mapping: vx = ly, vy = -lx, wz = -rx.
++                spdlog::info("[keyboard] cmd  vx={:+.2f}  vy={:+.2f}  wz={:+.2f}",
++                             sp_ly, -sp_lx, -sp_rx);
++            }
++
++            // FSM mode switches: press the corresponding virtual button combo for
++            // this single frame, and reset the velocity for a safe hand-off.
++            if(k == "1")      { js.LT(1.f); js.B(1);  sp_ly = sp_lx = sp_rx = 0.f; }
++            else if(k == "2") { js.LT(1.f); js.up(1); sp_ly = sp_lx = sp_rx = 0.f; }
++            else if(k == "3") { js.RT(1.f); js.A(1);  sp_ly = sp_lx = sp_rx = 0.f; }
++            else if(k == "4") { js.RB(1);   js.A(1);  sp_ly = sp_lx = sp_rx = 0.f; }
++        }
++
++        // Drive the velocity axes continuously from the latched setpoints.
++        js.lx(sp_lx);
++        js.ly(sp_ly);
++        js.rx(sp_rx);
++    }
+ };
+\ No newline at end of file
+diff --git a/deploy/include/param.h b/deploy/include/param.h
+index dae4bb4..c228c49 100644
+--- a/deploy/include/param.h
++++ b/deploy/include/param.h
+@@ -130,6 +130,7 @@ inline po::variables_map helper(int argc, char** argv)
+         ("version,v", "show version")
+         ("log", "record log file")
+         ("network,n", po::value<std::string>()->default_value(""), "dds network interface")
++        ("keyboard,k", "use the keyboard as a virtual joystick (no gamepad needed)")
+         ;
+ 
+     po::variables_map vm;
+diff --git a/deploy/robots/g1/main.cpp b/deploy/robots/g1/main.cpp
+index faa6d97..f1cb4e8 100644
+--- a/deploy/robots/g1/main.cpp
++++ b/deploy/robots/g1/main.cpp
+@@ -30,6 +30,9 @@ int main(int argc, char** argv)
+     // Load parameters
+     auto vm = param::helper(argc, argv);
+ 
++    // Use the keyboard as a virtual joystick when `--keyboard` is given.
++    FSMState::use_keyboard = vm.count("keyboard") > 0;
++
+     std::cout << " --- Unitree Robotics --- \n";
+     std::cout << "     G1-29dof Controller \n";
+ 
+@@ -48,9 +51,19 @@ int main(int argc, char** argv)
+     auto fsm = std::make_unique<CtrlFSM>(param::config["FSM"]);
+     fsm->start();
+ 
+-    std::cout << "Press [L2 + Up] to enter FixStand mode.\n";
+-    std::cout << "And then press [R2 + A] to start controlling the robot.\n";
+-    std::cout << "And then press [R1 + A/B/Y/X] to control the robot dance.\n";
++    if(FSMState::use_keyboard)
++    {
++        std::cout << "\n--- Keyboard control enabled (virtual joystick) ---\n";
++        std::cout << "  Mode:  [2] FixStand   [3] Velocity(walk)   [4] Mimic(dance)   [1] Passive(stop)\n";
++        std::cout << "  Move:  [w/s] forward/back   [a/d] strafe   [q/e] turn   [space] stop\n";
++        std::cout << "  Flow:  press 2 to stand, then 3 to walk, then use w/a/s/d/q/e.\n\n";
++    }
++    else
++    {
++        std::cout << "Press [L2 + Up] to enter FixStand mode.\n";
++        std::cout << "And then press [R2 + A] to start controlling the robot.\n";
++        std::cout << "And then press [R1 + A/B/Y/X] to control the robot dance.\n";
++    }
+ 
+     while (true)
+     {
+diff --git a/scripts/export_deploy.py b/scripts/export_deploy.py
+new file mode 100644
+index 0000000..2a8040e
+--- /dev/null
++++ b/scripts/export_deploy.py
+@@ -0,0 +1,218 @@
++"""Auto-generate ``deploy.yaml`` from a trained tracking (mimic) task.
++
++Motivation (see unitreerobotics/unitree_rl_mjlab#23): deploying a new motion
++policy currently requires hand-copying ``deploy.yaml`` from another run. A
++mismatched ``default_joint_pos`` / ``offset`` (the absolute joint target is
++``action * scale + offset``) commands the robot to the wrong pose and can
++damage the G1. This script derives every field directly from the instantiated
++environment so the deployed config always matches the trained policy.
++
++The PD gains, default joint pose, action scale/offset and observation layout
++are read from the *current* task config (which must match the config used at
++training time). Cross-check the exported observation dimension against the
++policy ONNX input with ``--onnx``.
++
++Example:
++  python scripts/export_deploy.py \
++    --task Unitree-G1-Tracking-No-State-Estimation \
++    --motion-file deploy/robots/g1/config/policy/mimic/dance_train/params/dance1_subject2.npz \
++    --output deploy/robots/g1/config/policy/mimic/dance_train/params/deploy.yaml \
++    --onnx deploy/robots/g1/config/policy/mimic/dance_train/exported/policy.onnx
++"""
++
++from __future__ import annotations
++
++import sys
++from dataclasses import dataclass
++from pathlib import Path
++
++import torch
++import tyro
++
++# Deployment-side observation naming. The C++ runtime identifies each observation
++# by these names, which differ from the env's internal term names. Maps
++# env-actor-term-name -> (deploy_name, deploy_params).
++TRACKING_OBS_MAP: dict[str, tuple[str, dict]] = {
++  "command": ("motion_command", {"command_name": "motion"}),
++  "motion_anchor_ori_b": ("motion_anchor_ori_b", {"command_name": "motion"}),
++  "base_ang_vel": ("base_ang_vel", {}),
++  "joint_pos": ("joint_pos_rel", {}),
++  "joint_vel": ("joint_vel_rel", {}),
++  "actions": ("last_action", {}),
++}
++
++
++@dataclass(frozen=True)
++class ExportConfig:
++  task: str
++  """Registered task id (must be the *deploy* variant, e.g. the No-State-Estimation one)."""
++  motion_file: str
++  """Path to the motion .npz the policy was trained on (needed to build the env)."""
++  output: str
++  """Where to write deploy.yaml."""
++  onnx: str | None = None
++  """Optional: policy .onnx to validate the observation dimension against."""
++  device: str = "cpu"
++
++
++def _fmt_num(v) -> str:
++  """Format a number, keeping floats float-typed in YAML (e.g. ``1`` -> ``1.0``)."""
++  if isinstance(v, float):
++    s = f"{v:.6g}"
++    if "." not in s and "e" not in s and "n" not in s:  # not nan/inf either
++      s += ".0"
++    return s
++  return str(v)
++
++
++def _fmt_list(values, per_line: int = 15, indent: int = 12) -> str:
++  """Format a numeric list as inline YAML, wrapping every ``per_line`` items."""
++  pad = " " * indent
++  parts = [_fmt_num(v) for v in values]
++  lines = []
++  for i in range(0, len(parts), per_line):
++    lines.append(", ".join(parts[i : i + per_line]))
++  body = (",\n" + pad).join(lines)
++  return f"[{body}]"
++
++
++def build_deploy_dict(cfg: ExportConfig):
++  import mjlab.tasks  # noqa: F401
++  import src.tasks  # noqa: F401
++  from mjlab.envs import ManagerBasedRlEnv
++  from mjlab.tasks.registry import load_env_cfg
++
++  env_cfg = load_env_cfg(cfg.task, play=True)
++
++  motion_path = Path(cfg.motion_file)
++  if not motion_path.exists():
++    raise FileNotFoundError(f"Motion file not found: {motion_path}")
++  env_cfg.commands["motion"].motion_file = str(motion_path)
++  env_cfg.scene.num_envs = 1
++
++  env = ManagerBasedRlEnv(cfg=env_cfg, device=cfg.device)
++  u = env.unwrapped
++  robot = u.scene["robot"]
++  joint_names = list(robot.joint_names)
++  n = len(joint_names)
++
++  # PD gains from the compiled MuJoCo model (position actuators):
++  #   kp = actuator_gainprm[0], kd = -actuator_biasprm[2].
++  mjm = u.sim.mj_model
++  name2kp: dict[str, float] = {}
++  name2kd: dict[str, float] = {}
++  for i in range(mjm.nu):
++    jname = mjm.joint(int(mjm.actuator_trnid[i, 0])).name.split("/")[-1]
++    name2kp[jname] = float(mjm.actuator_gainprm[i][0])
++    name2kd[jname] = float(-mjm.actuator_biasprm[i][2])
++  stiffness = [round(name2kp[j], 4) for j in joint_names]
++  damping = [round(name2kd[j], 4) for j in joint_names]
++
++  default_joint_pos = [
++    round(float(x), 6) for x in robot.data.default_joint_pos[0].tolist()
++  ]
++
++  action_term = u.action_manager.get_term("joint_pos")
++  scale_t = action_term.scale
++  offset_t = action_term.offset
++  scale = [
++    round(float(x), 6)
++    for x in (scale_t[0] if scale_t.ndim > 1 else scale_t).tolist()
++  ]
++  offset = [
++    round(float(x), 6)
++    for x in (offset_t[0] if offset_t.ndim > 1 else offset_t).tolist()
++  ]
++
++  # Observations (actor group only).
++  om = u.observation_manager
++  term_names = list(om._group_obs_term_names["actor"])
++  term_dims = [int(d[0]) for d in om._group_obs_term_dim["actor"]]
++  obs_block = []
++  total_obs = 0
++  for name, dim in zip(term_names, term_dims):
++    if name not in TRACKING_OBS_MAP:
++      raise KeyError(
++        f"Observation term '{name}' has no deploy mapping. "
++        f"Update TRACKING_OBS_MAP in {Path(__file__).name}."
++      )
++    deploy_name, params = TRACKING_OBS_MAP[name]
++    obs_block.append((deploy_name, params, dim))
++    total_obs += dim
++
++  step_dt = round(u.cfg.decimation * u.cfg.sim.mujoco.timestep, 6)
++
++  env.close()
++
++  return {
++    "joint_names": joint_names,
++    "n": n,
++    "step_dt": step_dt,
++    "stiffness": stiffness,
++    "damping": damping,
++    "default_joint_pos": default_joint_pos,
++    "scale": scale,
++    "offset": offset,
++    "obs_block": obs_block,
++    "total_obs": total_obs,
++  }
++
++
++def render_yaml(d) -> str:
++  n = d["n"]
++  lines = []
++  lines.append(f"joint_ids_map: {list(range(n))}")
++  lines.append(f"step_dt: {d['step_dt']}")
++  lines.append(f"stiffness: {_fmt_list(d['stiffness'])}")
++  lines.append(f"damping:   {_fmt_list(d['damping'])}")
++  lines.append(f"default_joint_pos: {_fmt_list(d['default_joint_pos'], per_line=n)}")
++  lines.append("commands: {}")
++  lines.append("actions:")
++  lines.append("  JointPositionAction:")
++  lines.append("    clip: null")
++  lines.append("    joint_names: [.*]")
++  lines.append(f"    scale: {_fmt_list(d['scale'])}")
++  lines.append(f"    offset: {_fmt_list(d['offset'], per_line=n)}")
++  lines.append("    joint_ids: null")
++  lines.append("observations:")
++  for deploy_name, params, dim in d["obs_block"]:
++    lines.append(f"  {deploy_name}:")
++    pstr = (
++      "{" + ", ".join(f"{k}: {v}" for k, v in params.items()) + "}" if params else "{}"
++    )
++    lines.append(f"    params: {pstr}")
++    lines.append("    clip: null")
++    lines.append(f"    scale: {_fmt_list([1.0] * dim)}")
++    lines.append("    history_length: 1")
++  return "\n".join(lines) + "\n"
++
++
++def main():
++  cfg = tyro.cli(ExportConfig)
++  d = build_deploy_dict(cfg)
++
++  print(f"[INFO] joints: {d['n']}  observation dim: {d['total_obs']}  step_dt: {d['step_dt']}")
++
++  if cfg.onnx is not None:
++    import onnx
++
++    m = onnx.load(cfg.onnx)
++    in_dim = m.graph.input[0].type.tensor_type.shape.dim[-1].dim_value
++    if in_dim != d["total_obs"]:
++      print(
++        f"[ERROR] ONNX input dim ({in_dim}) != exported observation dim "
++        f"({d['total_obs']}). Wrong task variant or stale config — aborting.",
++        file=sys.stderr,
++      )
++      sys.exit(1)
++    print(f"[INFO] ONNX input dim {in_dim} matches observation dim. OK.")
++
++  text = render_yaml(d)
++  out = Path(cfg.output)
++  out.parent.mkdir(parents=True, exist_ok=True)
++  out.write_text(text)
++  print(f"[INFO] Wrote {out}")
++
++
++if __name__ == "__main__":
++  main()
+diff --git a/scripts/play.py b/scripts/play.py
+index 98f45fc..d6d9661 100644
+--- a/scripts/play.py
++++ b/scripts/play.py
+@@ -6,6 +6,7 @@ from dataclasses import asdict, dataclass
+ from pathlib import Path
+ from typing import Literal
+ 
++import viser
+ import torch
+ import tyro
+ 
+@@ -14,24 +15,36 @@ from mjlab.rl import MjlabOnPolicyRunner, RslRlVecEnvWrapper
+ from mjlab.tasks.registry import list_tasks, load_env_cfg, load_rl_cfg, load_runner_cls
+ from mjlab.tasks.tracking.mdp import MotionCommandCfg
+ from mjlab.utils.os import get_wandb_checkpoint_path
+-from mjlab.utils.torch import configure_torch_backends
++from mjlab.utils.torch import (
++  configure_torch_backends,
++  configure_torch_threads,
++  configure_xpu_backends,
++)
+ from mjlab.utils.wrappers import VideoRecorder
+ from mjlab.viewer import NativeMujocoViewer, ViserPlayViewer
+ 
+ 
++def _run_root() -> Path:
++  data_root = os.environ.get("HUMANOID_RL_DATA_DIR")
++  if not data_root:
++    return Path("logs") / "rsl_rl"
++  return Path(data_root).expanduser().resolve() / "runs" / "rsl_rl"
++
++
+ @dataclass(frozen=True)
+ class PlayConfig:
+   agent: Literal["zero", "random", "trained"] = "trained"
+   checkpoint_file: str | None = None
+   motion_file: str | None = None
+   num_envs: int | None = None
+-  device: str | None = None
++  device: str | None = "cpu"
+   video: bool = False
+   video_length: int = 200
+   video_height: int | None = None
+   video_width: int | None = None
+   camera: int | str | None = None
+   viewer: Literal["auto", "native", "viser"] = "auto"
++  port: int = 8000
+   no_terminations: bool = False
+   """Disable all termination conditions (useful for viewing motions with dummy agents)."""
+ 
+@@ -40,9 +53,26 @@ class PlayConfig:
+ 
+ 
+ def run_play(task_id: str, cfg: PlayConfig):
+-  configure_torch_backends()
++  xpu_available = hasattr(torch, "xpu") and torch.xpu.is_available()
++  device = cfg.device or (
++    "xpu"
++    if xpu_available
++    else ("cuda:0" if torch.cuda.is_available() else "cpu")
++  )
+ 
+-  device = cfg.device or ("cuda:0" if torch.cuda.is_available() else "cpu")
++  sim_device = None
++  if device.startswith("xpu"):
++    if not xpu_available:
++      raise RuntimeError("XPU playback requires an available Torch XPU device")
++    import warp as wp
++
++    configure_torch_threads()
++    wp.init()
++    wp.get_device("sycl")
++    configure_xpu_backends()
++    sim_device = "sycl"
++  else:
++    configure_torch_backends()
+ 
+   env_cfg = load_env_cfg(task_id, play=True)
+   agent_cfg = load_rl_cfg(task_id)
+@@ -84,7 +114,7 @@ def run_play(task_id: str, cfg: PlayConfig):
+   log_dir: Path | None = None
+   resume_path: Path | None = None
+   if TRAINED_MODE:
+-    log_root_path = (Path("logs") / "rsl_rl" / agent_cfg.experiment_name).resolve()
++    log_root_path = (_run_root() / agent_cfg.experiment_name).resolve()
+     if cfg.checkpoint_file is not None:
+       resume_path = Path(cfg.checkpoint_file)
+       if not resume_path.exists():
+@@ -119,7 +149,9 @@ def run_play(task_id: str, cfg: PlayConfig):
+     print(
+       "[WARN] Video recording with dummy agents is disabled (no checkpoint/log_dir)."
+     )
+-  env = ManagerBasedRlEnv(cfg=env_cfg, device=device, render_mode=render_mode)
++  env = ManagerBasedRlEnv(
++    cfg=env_cfg, device=device, sim_device=sim_device, render_mode=render_mode
++  )
+ 
+   if TRAINED_MODE and cfg.video:
+     print("[INFO] Recording videos during play")
+@@ -170,7 +202,11 @@ def run_play(task_id: str, cfg: PlayConfig):
+   if resolved_viewer == "native":
+     NativeMujocoViewer(env, policy).run()
+   elif resolved_viewer == "viser":
+-    ViserPlayViewer(env, policy).run()
++    viser_server = viser.ViserServer(port=cfg.port, label="mjlab")
++    try:
++      ViserPlayViewer(env, policy, viser_server=viser_server).run()
++    finally:
++      viser_server.stop()
+   else:
+     raise RuntimeError(f"Unsupported viewer backend: {resolved_viewer}")
+ 
+diff --git a/scripts/play_chain.py b/scripts/play_chain.py
+new file mode 100644
+index 0000000..20edb37
+--- /dev/null
++++ b/scripts/play_chain.py
+@@ -0,0 +1,221 @@
++"""Play a looping sequence of same-task RSL-RL policies."""
++
++import os
++import sys
++from dataclasses import asdict, dataclass, fields
++from pathlib import Path
++from typing import Literal
++
++PROJECT_ROOT = Path(__file__).resolve().parents[1]
++if str(PROJECT_ROOT) not in sys.path:
++  sys.path.insert(0, str(PROJECT_ROOT))
++
++import viser
++import torch
++import tyro
++
++from mjlab.envs import ManagerBasedRlEnv
++from mjlab.rl import MjlabOnPolicyRunner, RslRlVecEnvWrapper
++from mjlab.tasks.registry import list_tasks, load_env_cfg, load_rl_cfg, load_runner_cls
++from mjlab.tasks.tracking.mdp import MotionCommandCfg
++from mjlab.utils.torch import (
++  configure_torch_backends,
++  configure_torch_threads,
++  configure_xpu_backends,
++)
++from mjlab.utils.wrappers import VideoRecorder
++
++from controller import (
++  ChainedMotionCommand,
++  ChainedMotionCommandCfg,
++  GraphPolicy,
++  NativeMultiPlayViewer,
++  ViserMultiPlayViewer,
++  build_sequential_graph,
++)
++
++
++@dataclass(frozen=True)
++class PlayConfig:
++  checkpoint_files: tuple[str, ...] = ()
++  """Ordered local checkpoints. At least two are required."""
++  motion_files: tuple[str, ...] = ()
++  """Ordered local motions, one for each checkpoint."""
++  num_envs: int | None = None
++  device: str | None = None
++  video: bool = False
++  video_length: int = 200
++  video_height: int | None = None
++  video_width: int | None = None
++  camera: int | str | None = None
++  viewer: Literal["auto", "native", "viser"] = "auto"
++  port: int = 8000
++  yaw_reference_window: int = 1
++  """Number of recent torso yaw samples used for circular-mean alignment."""
++
++
++def _resolve_paths(paths: tuple[str, ...]) -> tuple[Path, ...]:
++  return tuple(Path(path.strip()).expanduser().resolve() for path in paths)
++
++
++def run_play(task_id: str, cfg: PlayConfig):
++  xpu_available = hasattr(torch, "xpu") and torch.xpu.is_available()
++  device = cfg.device or (
++    "xpu"
++    if xpu_available
++    else ("cuda:0" if torch.cuda.is_available() else "cpu")
++  )
++
++  sim_device = None
++  if device.startswith("xpu"):
++    if not xpu_available:
++      raise RuntimeError("XPU playback requires an available Torch XPU device")
++    import warp as wp
++
++    configure_torch_threads()
++    wp.init()
++    wp.get_device("sycl")
++    configure_xpu_backends()
++    sim_device = "sycl"
++  else:
++    configure_torch_backends()
++
++  if len(cfg.checkpoint_files) < 2:
++    raise ValueError("Provide at least two ordered checkpoints with --checkpoint-files.")
++  if len(cfg.motion_files) != len(cfg.checkpoint_files):
++    raise ValueError(
++      "Provide exactly one --motion-files entry for each --checkpoint-files entry."
++    )
++
++  checkpoint_paths = _resolve_paths(cfg.checkpoint_files)
++  motion_paths = _resolve_paths(cfg.motion_files)
++  missing_paths = [
++    path for path in (*checkpoint_paths, *motion_paths) if not path.is_file()
++  ]
++  if missing_paths:
++    missing = "\n".join(f"  {path}" for path in missing_paths)
++    raise FileNotFoundError(f"Chain files not found:\n{missing}")
++
++  env_cfg = load_env_cfg(task_id, play=True)
++  agent_cfg = load_rl_cfg(task_id)
++
++  env_cfg.terminations = {}
++  print("[INFO]: Terminations disabled to preserve robot state across transitions.")
++
++  is_tracking_task = "motion" in env_cfg.commands and isinstance(
++    env_cfg.commands["motion"], MotionCommandCfg
++  )
++  if not is_tracking_task:
++    raise ValueError(f"Task does not expose a motion command: {task_id}")
++
++  motion_cmd = env_cfg.commands["motion"]
++  assert isinstance(motion_cmd, MotionCommandCfg)
++  motion_cfg_values = {
++    field.name: getattr(motion_cmd, field.name) for field in fields(motion_cmd)
++  }
++  motion_cfg_values["motion_file"] = str(motion_paths[0])
++  motion_cfg_values["sampling_mode"] = "start"
++  env_cfg.commands["motion"] = ChainedMotionCommandCfg(**motion_cfg_values)
++
++  if cfg.num_envs is not None:
++    env_cfg.scene.num_envs = cfg.num_envs
++  if cfg.video_height is not None:
++    env_cfg.viewer.height = cfg.video_height
++  if cfg.video_width is not None:
++    env_cfg.viewer.width = cfg.video_width
++
++  render_mode = "rgb_array" if cfg.video else None
++  env = ManagerBasedRlEnv(cfg=env_cfg, device=device, sim_device=sim_device, render_mode=render_mode)
++
++  if cfg.video:
++    print("[INFO] Recording videos during play")
++    env = VideoRecorder(
++      env,
++      video_folder=checkpoint_paths[0].parent / "videos" / "play_chain",
++      step_trigger=lambda step: step == 0,
++      video_length=cfg.video_length,
++      disable_logger=True,
++    )
++
++  env = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
++  try:
++    motion_command = env.unwrapped.command_manager.get_term("motion")
++    if not isinstance(motion_command, ChainedMotionCommand):
++      raise TypeError("The task's motion command is not a ChainedMotionCommand.")
++
++    runner_cls = load_runner_cls(task_id) or MjlabOnPolicyRunner
++    runners = []
++    policies = []
++    for checkpoint_path in checkpoint_paths:
++      print(f"[INFO]: Loading checkpoint: {checkpoint_path}")
++      runner = runner_cls(env, asdict(agent_cfg), device=device)
++      runner.load(
++        str(checkpoint_path),
++        load_cfg={"actor": True},
++        strict=True,
++        map_location=device,
++      )
++      runners.append(runner)
++      policies.append(runner.get_inference_policy(device=device))
++
++    graph = build_sequential_graph(
++      policies,
++      [path.name for path in checkpoint_paths],
++      motion_paths,
++      motion_command,
++      yaw_reference_window=cfg.yaw_reference_window,
++    )
++    graph_policy = GraphPolicy(graph, motion_command)
++
++    if cfg.viewer == "auto":
++      has_display = bool(
++        os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")
++      )
++      resolved_viewer = "native" if has_display else "viser"
++    else:
++      resolved_viewer = cfg.viewer
++
++    if resolved_viewer == "native":
++      NativeMultiPlayViewer(env, graph_policy).run()
++    elif resolved_viewer == "viser":
++      viser_server = viser.ViserServer(port=cfg.port, label="mjlab")
++      try:
++        ViserMultiPlayViewer(
++          env, graph_policy, viser_server=viser_server
++        ).run()
++      finally:
++        viser_server.stop()
++    else:
++      raise RuntimeError(f"Unsupported viewer backend: {resolved_viewer}")
++  finally:
++    env.close()
++
++
++def main():
++  # Parse first argument to choose the task.
++  # Import tasks to populate the registry.
++  import mjlab.tasks  # noqa: F401
++  import src.tasks
++
++  all_tasks = list_tasks()
++  chosen_task, remaining_args = tyro.cli(
++    tyro.extras.literal_type_from_choices(all_tasks),
++    add_help=False,
++    return_unknown_args=True,
++    config=mjlab.TYRO_FLAGS,
++  )
++
++  args = tyro.cli(
++    PlayConfig,
++    args=remaining_args,
++    default=PlayConfig(),
++    prog=sys.argv[0] + f" {chosen_task}",
++    config=mjlab.TYRO_FLAGS,
++  )
++  del remaining_args
++
++  run_play(chosen_task, args)
++
++
++if __name__ == "__main__":
++  main()
+diff --git a/scripts/train.py b/scripts/train.py
+index f727e28..b5af543 100644
+--- a/scripts/train.py
++++ b/scripts/train.py
+@@ -9,6 +9,7 @@ from pathlib import Path
+ from typing import Literal, cast
+ 
+ import tyro
++import torch
+ 
+ from mjlab.envs import ManagerBasedRlEnv, ManagerBasedRlEnvCfg
+ from mjlab.rl import MjlabOnPolicyRunner, RslRlBaseRunnerCfg, RslRlVecEnvWrapper
+@@ -16,10 +17,36 @@ from mjlab.tasks.registry import list_tasks, load_env_cfg, load_rl_cfg, load_run
+ from mjlab.tasks.tracking.mdp import MotionCommandCfg
+ from mjlab.utils.gpu import select_gpus
+ from mjlab.utils.os import dump_yaml, get_checkpoint_path
+-from mjlab.utils.torch import configure_torch_backends
++from mjlab.utils.torch import (
++  configure_torch_backends,
++  configure_torch_threads,
++  configure_xpu_backends,
++)
+ from mjlab.utils.wrappers import VideoRecorder
+ 
+ 
++Device = Literal["cpu", "xpu", "cuda"]
++
++
++def _run_root() -> Path:
++  data_root = os.environ.get("HUMANOID_RL_DATA_DIR")
++  if not data_root:
++    return Path("logs") / "rsl_rl"
++  return Path(data_root).expanduser().resolve() / "runs" / "rsl_rl"
++
++
++def _default_device() -> Device:
++  if hasattr(torch, "xpu") and torch.xpu.is_available():
++    return "xpu"
++  if torch.cuda.is_available():
++    return "cuda"
++  return "cpu"
++
++
++def _default_sim_backend() -> Literal["cpu", "sycl"]:
++  return "sycl" if hasattr(torch, "xpu") and torch.xpu.is_available() else "cpu"
++
++
+ @dataclass(frozen=True)
+ class TrainConfig:
+   env: ManagerBasedRlEnvCfg
+@@ -31,6 +58,9 @@ class TrainConfig:
+   enable_nan_guard: bool = False
+   torchrunx_log_dir: str | None = None
+   gpu_ids: list[int] | Literal["all"] | None = field(default_factory=lambda: [0])
++  sim_backend: Literal["cpu", "sycl"] = field(default_factory=_default_sim_backend)
++  device: Device = field(default_factory=_default_device)
++  env_device: Device = field(default_factory=_default_device)
+ 
+   @staticmethod
+   def from_task(task_id: str) -> "TrainConfig":
+@@ -38,23 +68,38 @@ class TrainConfig:
+     agent_cfg = load_rl_cfg(task_id)
+     return TrainConfig(env=env_cfg, agent=agent_cfg)
+ 
+-
+ def run_train(task_id: str, cfg: TrainConfig, log_dir: Path) -> None:
+-  cuda_visible = os.environ.get("CUDA_VISIBLE_DEVICES", "")
+-  if cuda_visible == "":
+-    device = "cpu"
+-    seed = cfg.agent.seed
+-    rank = 0
+-  else:
++  if cfg.env_device == "xpu" and cfg.sim_backend != "sycl":
++    raise ValueError("XPU environment tensors require the SYCL simulation backend")
++
++  if cfg.sim_backend == "sycl":
++    if not hasattr(torch, "xpu") or not torch.xpu.is_available():
++      raise RuntimeError("The SYCL simulation backend requires an available Torch XPU device")
++    import warp as wp
++
++    configure_torch_threads()
++    wp.init()
++    wp.get_device("sycl")
++    configure_xpu_backends()
+     local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+     rank = int(os.environ.get("RANK", "0"))
+-    # Set EGL device to match the CUDA device.
+-    os.environ["MUJOCO_EGL_DEVICE_ID"] = str(local_rank)
+-    device = f"cuda:{local_rank}"
+-    # Set seed to have diversity in different processes.
+     seed = cfg.agent.seed + local_rank
+-
+-  configure_torch_backends()
++  else:
++    cuda_visible = os.environ.get("CUDA_VISIBLE_DEVICES", "")
++    if cuda_visible == "":
++      device = "cpu"
++      env_device = "cpu"
++      seed = cfg.agent.seed
++      rank = 0
++    else:
++      local_rank = int(os.environ.get("LOCAL_RANK", "0"))
++      rank = int(os.environ.get("RANK", "0"))
++      os.environ["MUJOCO_EGL_DEVICE_ID"] = str(local_rank)
++      seed = cfg.agent.seed + local_rank
++    configure_torch_backends()
++
++  device = f"cuda:{local_rank}" if cfg.device == "cuda" else cfg.device
++  env_device = f"cuda:{local_rank}" if cfg.env_device == "cuda" else cfg.env_device
+ 
+   cfg.agent.seed = seed
+   cfg.env.seed = seed
+@@ -90,7 +135,10 @@ def run_train(task_id: str, cfg: TrainConfig, log_dir: Path) -> None:
+     print(f"[INFO] Logging experiment in directory: {log_dir}")
+ 
+   env = ManagerBasedRlEnv(
+-    cfg=cfg.env, device=device, render_mode="rgb_array" if cfg.video else None
++    cfg=cfg.env,
++    device=env_device,
++    sim_device="sycl" if cfg.sim_backend == "sycl" else None,
++    render_mode="rgb_array" if cfg.video else None,
+   )
+ 
+   log_root_path = log_dir.parent  # Go up from specific run dir to experiment dir.
+@@ -146,21 +194,24 @@ def launch_training(task_id: str, args: TrainConfig | None = None):
+   args = args or TrainConfig.from_task(task_id)
+ 
+   # Create log directory once before launching workers.
+-  log_root_path = Path("logs") / "rsl_rl" / args.agent.experiment_name
+-  log_root_path.resolve()
++  log_root_path = _run_root() / args.agent.experiment_name
+   log_dir_name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+   if args.agent.run_name:
+     log_dir_name += f"_{args.agent.run_name}"
+   log_dir = log_root_path / log_dir_name
+ 
+-  # Select GPUs based on CUDA_VISIBLE_DEVICES and user specification.
+-  selected_gpus, num_gpus = select_gpus(args.gpu_ids)
+-
+-  # Set environment variables for all modes.
+-  if selected_gpus is None:
+-    os.environ["CUDA_VISIBLE_DEVICES"] = ""
++  if args.sim_backend == "sycl":
++    if not hasattr(torch, "xpu") or not torch.xpu.is_available():
++      raise RuntimeError("The SYCL simulation backend requires an available Torch XPU device")
++    num_gpus = 1
++    if args.device != "cuda" and args.env_device != "cuda":
++      os.environ["CUDA_VISIBLE_DEVICES"] = ""
+   else:
+-    os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(map(str, selected_gpus))
++    selected_gpus, num_gpus = select_gpus(args.gpu_ids)
++    if selected_gpus is None:
++      os.environ["CUDA_VISIBLE_DEVICES"] = ""
++    else:
++      os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(map(str, selected_gpus))
+   os.environ["MUJOCO_GL"] = "egl"
+ 
+   if num_gpus <= 1:
+diff --git a/simulate/src/joystick/jstest.cc b/simulate/src/joystick/jstest.cc
+index 47f8d1c..85fef19 100755
+--- a/simulate/src/joystick/jstest.cc
++++ b/simulate/src/joystick/jstest.cc
+@@ -1,4 +1,5 @@
+ #include <unistd.h>
++#include <cstdint>
+ #include <iostream>
+ #include <map>
+ #include "joystick.h"
+diff --git a/src/tasks/tracking/config/g1/__init__.py b/src/tasks/tracking/config/g1/__init__.py
+index 99aa2ee..ca2a170 100644
+--- a/src/tasks/tracking/config/g1/__init__.py
++++ b/src/tasks/tracking/config/g1/__init__.py
+@@ -19,3 +19,20 @@ register_mjlab_task(
+   rl_cfg=unitree_g1_tracking_ppo_runner_cfg(),
+   runner_cls=MotionTrackingOnPolicyRunner,
+ )
++
++# with modified sim2real and curriculum learning
++register_mjlab_task(
++  task_id="Unitree-G1-Tracking-Sim2Real",
++  env_cfg=unitree_g1_flat_tracking_env_cfg(has_state_estimation=False, has_extra_domain_randomization=True, has_curriculum=True),
++  play_env_cfg=unitree_g1_flat_tracking_env_cfg(has_state_estimation=False, has_extra_domain_randomization=True, has_curriculum=True, play=True),
++  rl_cfg=unitree_g1_tracking_ppo_runner_cfg(),
++  runner_cls=MotionTrackingOnPolicyRunner,
++)
++
++register_mjlab_task(
++  task_id="Unitree-G1-Tracking-Sim2Real-No-Curriculum",
++  env_cfg=unitree_g1_flat_tracking_env_cfg(has_state_estimation=False, has_extra_domain_randomization=True, has_curriculum=False),
++  play_env_cfg=unitree_g1_flat_tracking_env_cfg(has_state_estimation=False, has_extra_domain_randomization=True, has_curriculum=False, play=True),
++  rl_cfg=unitree_g1_tracking_ppo_runner_cfg(),
++  runner_cls=MotionTrackingOnPolicyRunner,
++)
+\ No newline at end of file
+diff --git a/src/tasks/tracking/config/g1/env_cfgs.py b/src/tasks/tracking/config/g1/env_cfgs.py
+index 6eedfe4..5ead148 100644
+--- a/src/tasks/tracking/config/g1/env_cfgs.py
++++ b/src/tasks/tracking/config/g1/env_cfgs.py
+@@ -15,10 +15,15 @@ from src.tasks.tracking.tracking_env_cfg import make_tracking_env_cfg
+ 
+ def unitree_g1_flat_tracking_env_cfg(
+   has_state_estimation: bool = True,
++  has_extra_domain_randomization: bool = False,
++  has_curriculum: bool = False,
+   play: bool = False,
+ ) -> ManagerBasedRlEnvCfg:
+   """Create Unitree G1 flat terrain tracking configuration."""
+-  cfg = make_tracking_env_cfg()
++  cfg = make_tracking_env_cfg(
++    has_extra_domain_randomization=has_extra_domain_randomization,
++    has_curriculum=has_curriculum,
++  )
+ 
+   cfg.scene.entities = {"robot": get_g1_robot_cfg()}
+ 
+@@ -91,6 +96,9 @@ def unitree_g1_flat_tracking_env_cfg(
+ 
+     cfg.observations["actor"].enable_corruption = False
+     cfg.events.pop("push_robot", None)
++    
++    if has_curriculum:
++      cfg.curriculum.clear()
+ 
+     # Disable RSI randomization.
+     motion_cmd.pose_range = {}
+diff --git a/src/tasks/tracking/mdp/__init__.py b/src/tasks/tracking/mdp/__init__.py
+index fd0a633..9d6d65c 100644
+--- a/src/tasks/tracking/mdp/__init__.py
++++ b/src/tasks/tracking/mdp/__init__.py
+@@ -1,6 +1,7 @@
+ from mjlab.envs.mdp import *  # noqa: F401, F403
+ 
+ from .commands import *  # noqa: F403
++from .curriculums import * # noqa: F403
+ from .metrics import *  # noqa: F403
+ from .observations import *  # noqa: F403
+ from .rewards import *  # noqa: F403
+diff --git a/src/tasks/tracking/mdp/curriculums.py b/src/tasks/tracking/mdp/curriculums.py
+new file mode 100644
+index 0000000..92bfe7b
+--- /dev/null
++++ b/src/tasks/tracking/mdp/curriculums.py
+@@ -0,0 +1,101 @@
++from typing import TYPE_CHECKING, Any
++
++import torch
++
++if TYPE_CHECKING:
++    from mjlab.envs import ManagerBasedRlEnv
++    from mjlab.managers.curriculum_manager import CurriculumTermCfg
++    from mjlab.managers.reward_manager import RewardTermCfg
++
++def _resolve_env_ids(
++    env,
++    env_ids: torch.Tensor | slice,
++):
++    if isinstance(env_ids, slice):
++        env_ids = torch.arange(env.num_envs, device=env.device, dtype=torch.long)[env_ids]
++    return env_ids.to(env.device, dtype=torch.long)
++
++class penalty_curriculum:
++    """Linearly ramp penalty reward weights as the policy survives longer episodes.
++
++    Reference: mjlab's ``reward_curriculum``
++    
++    term_cfgs are resolved once and mutated in place, 
++    but the ramp is driven by an EMA of episode length
++    instead of fixed training-step stages.
++
++    TODO: verify scaling is correct (not tested yet)
++    """
++
++    def __init__(self, cfg: "CurriculumTermCfg", env: "ManagerBasedRlEnv"):
++        term_names: tuple[str, ...] = cfg.params["term_names"]
++        self._current_scale = 1.0
++        self._ema_eps_len = 0.0
++        self._min_scale = cfg.params.get("min_scale", 0.0)
++        self._degree = cfg.params.get("degree", 0.01)
++        self._level_down_threshold = cfg.params.get("level_down_threshold", 0.3)
++        self._level_up_threshold = cfg.params.get("level_up_threshold", 0.7)
++        self._term_cfgs: dict[str, "RewardTermCfg"] = {
++            name: env.reward_manager.get_term_cfg(name) for name in term_names
++        }
++        self._base_weights: dict[str, float] = {
++            name: term_cfg.weight for name, term_cfg in self._term_cfgs.items()
++        }
++
++    def __call__(
++        self,
++        env: "ManagerBasedRlEnv",
++        env_ids: torch.Tensor | slice,
++        term_names: tuple[str, ...],
++        min_scale: float,
++        degree: float,
++        level_down_threshold: float,
++        level_up_threshold: float,
++    ) -> dict[str, Any]:
++        del term_names, min_scale, degree, level_down_threshold, level_up_threshold
++
++        env_ids = _resolve_env_ids(env, env_ids)
++        if env_ids.numel() == 0:
++            return {
++                "value": 1.0, 
++            }
++
++        normalized_mean_length = env.episode_length_buf[env_ids].float().mean().item() / env.max_episode_length
++        
++        scale = self._scale(normalized_mean_length)
++        
++        for name, term_cfg in self._term_cfgs.items():
++            term_cfg.weight = self._base_weights[name] * scale
++
++        return {
++            "value": scale, 
++            "current_scale": self._current_scale,
++            "mean_normalized_episode_steps": normalized_mean_length,
++            "degree": self._degree,
++            "min_scale": self._min_scale,
++            "level_down_threshold": self._level_down_threshold,
++            "level_up_threshold": self._level_up_threshold,
++        }
++
++    def _scale(self, normalized_eps_len: float) -> float:
++        self._ema_eps_len = (1.0 - self._degree) * self._ema_eps_len + self._degree * normalized_eps_len
++
++        if self._ema_eps_len < self._level_down_threshold:
++            self._current_scale *= 1.0 - self._degree
++        elif self._ema_eps_len > self._level_up_threshold:
++            self._current_scale *= 1.0 + self._degree
++
++        self._current_scale = max(self._min_scale, min(1.0, self._current_scale))
++
++        return self._current_scale
++
++
++
++"""TODO: Implement a domain randomization curriculum for the environment."""
++
++
++def dr_curriculum(
++    env: "ManagerBasedRlEnv",
++    env_ids: torch.Tensor | slice,
++) -> dict[str, torch.Tensor]:
++    return {}
+\ No newline at end of file
+diff --git a/src/tasks/tracking/tracking_env_cfg.py b/src/tasks/tracking/tracking_env_cfg.py
+index 3356c17..c4833cf 100644
+--- a/src/tasks/tracking/tracking_env_cfg.py
++++ b/src/tasks/tracking/tracking_env_cfg.py
+@@ -19,6 +19,7 @@ from mjlab.managers.observation_manager import ObservationGroupCfg, ObservationT
+ from mjlab.managers.reward_manager import RewardTermCfg
+ from mjlab.managers.scene_entity_config import SceneEntityCfg
+ from mjlab.managers.termination_manager import TerminationTermCfg
++from mjlab.managers.curriculum_manager import CurriculumTermCfg
+ from mjlab.scene import SceneCfg
+ from mjlab.sim import MujocoCfg, SimulationCfg
+ from mjlab.tasks.tracking import mdp
+@@ -39,7 +40,10 @@ VELOCITY_RANGE = {
+ }
+ 
+ 
+-def make_tracking_env_cfg() -> ManagerBasedRlEnvCfg:
++def make_tracking_env_cfg(
++    has_extra_domain_randomization: bool = False,
++    has_curriculum: bool = False,
++) -> ManagerBasedRlEnvCfg:
+   """Create base tracking task configuration."""
+ 
+   ##
+@@ -168,7 +172,7 @@ def make_tracking_env_cfg() -> ManagerBasedRlEnvCfg:
+     "push_robot": EventTermCfg(
+       func=mdp.push_by_setting_velocity,
+       mode="interval",
+-      interval_range_s=(1.0, 3.0),
++      interval_range_s=(5.0, 10.0), # Updated from (1.0, 3.0)
+       params={"velocity_range": VELOCITY_RANGE},
+     ),
+     "base_com": EventTermCfg(
+@@ -204,6 +208,45 @@ def make_tracking_env_cfg() -> ManagerBasedRlEnvCfg:
+     ),
+   }
+ 
++  if has_extra_domain_randomization:
++    events["base_mass"] = EventTermCfg(
++      mode="startup",
++      func=dr.pseudo_inertia,
++      params={
++        "asset_cfg": SceneEntityCfg("robot", body_names=("torso_link",)),  # Base mass.
++        "alpha_range": (-0.1, 0.2), # TODO: add 1 to 3 kg on torso
++        "t_range": (-0.02, 0.02),   # ±2 cm COM shift
++      }
++    )
++    events["link_mass"] = EventTermCfg(
++      mode="startup",
++      func=dr.pseudo_inertia,
++      params={
++        "asset_cfg": SceneEntityCfg("robot", body_names=(".*",)),  # Link masses.
++        "alpha_range": (-0.1, 0.2), # -10% to +20% mass/inertia scaling
++        "t_range": (-0.02, 0.02),   # ±2 cm COM shift
++      }
++    )
++    events["pd_gains"] = EventTermCfg(
++      mode="reset",
++      func=dr.pd_gains,
++      params={
++        "asset_cfg": SceneEntityCfg("robot", joint_names=(".*",)),  # Set per-robot.
++        "kp_range": (0.9, 1.1),  # ±10% gain scaling
++        "kd_range": (0.9, 1.1),  # ±10% gain scaling
++      },
++    )
++    events["joint_offset"] = EventTermCfg(
++      mode="startup",
++      func=dr.joint_default_pos,
++      params={
++        "asset_cfg": SceneEntityCfg("robot", joint_names=(".*",)),
++        "ranges": (-0.01, 0.01),
++        "operation": "add",
++      }
++    )
++
++
+   ##
+   # Rewards
+   ##
+@@ -280,6 +323,25 @@ def make_tracking_env_cfg() -> ManagerBasedRlEnvCfg:
+     ),
+   }
+ 
++  ##
++  # Curriculum
++  ##
++
++  curriculum = {}
++  if has_curriculum:
++    curriculum = {
++      "penalty": CurriculumTermCfg(
++        func=mdp.penalty_curriculum,
++        params={
++          "term_names": ("action_rate_l2", "joint_limit", "self_collisions"),
++          "min_scale": 0.05,
++          "degree": 0.01,
++          "level_down_threshold": 0.3,
++          "level_up_threshold": 0.7,
++        },
++      )
++    }
++
+   ##
+   # Assemble and return
+   ##
+@@ -292,6 +354,7 @@ def make_tracking_env_cfg() -> ManagerBasedRlEnvCfg:
+     events=events,
+     rewards=rewards,
+     terminations=terminations,
++    curriculum=curriculum,
+     viewer=ViewerConfig(
+       origin_type=ViewerConfig.OriginType.ASSET_BODY,
+       entity_name="robot",
