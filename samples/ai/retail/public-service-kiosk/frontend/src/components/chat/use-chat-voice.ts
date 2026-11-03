@@ -8,9 +8,10 @@ import type { KioskUIMessage } from "@/app/api/chat/route";
 import { useServiceHealth } from "@/hooks/use-kiosk-api";
 import { useSpeechPlayback, type SpeechPlayback } from "@/hooks/use-speech-playback";
 import { useVoiceInput, type VoiceInput } from "@/hooks/use-voice-input";
-import type { VoiceActivityOptions } from "@/lib/audio/voice-activity";
+import type { VadOptions } from "@/lib/audio/utterance-recorder";
 import { publicBoolean, publicNumber } from "@/lib/public-config";
 import { speakableText } from "./use-chat";
+import { useLipsyncAvatar, type LipsyncAvatar } from "./use-lipsync-avatar";
 
 /**
  * The voice half of the assistant kiosk: a hands-free microphone, speaker
@@ -32,6 +33,8 @@ import { speakableText } from "./use-chat";
  * Availability comes from the same health poll the touch kiosk uses: with
  * speech-to-text down the mic is not offered, and with text-to-speech down
  * the kiosk simply stays quiet — the conversation still works by typing.
+ * With the lipsync service up too, replies are said by the lip-synced person
+ * on the avatar panel instead of from the page (use-lipsync-avatar.ts).
  */
 
 /** Kiosks in loud halls can ship with hands-free off; the mic then waits for a tap. */
@@ -47,26 +50,25 @@ const narrateDefault = () => publicBoolean("NEXT_PUBLIC_KIOSK_READ_ALOUD", true)
 const bargeInDefault = () => publicBoolean("NEXT_PUBLIC_KIOSK_BARGE_IN", false);
 
 /** Deployment tuning for the end-of-utterance pause and the speech threshold. */
-const vadOptions = (): VoiceActivityOptions => {
+const vadOptions = (): VadOptions => {
   const silenceMs = publicNumber("NEXT_PUBLIC_KIOSK_VAD_SILENCE_MS", 0);
+  const threshold = publicNumber("NEXT_PUBLIC_KIOSK_VAD_THRESHOLD", 0);
   const sensitivity = publicNumber("NEXT_PUBLIC_KIOSK_VAD_SENSITIVITY", 0);
   return {
     ...(silenceMs > 0 ? { silenceMs } : {}),
+    ...(threshold > 0 && threshold < 1 ? { threshold } : {}),
     ...(sensitivity > 0 ? { sensitivity } : {}),
   };
 };
 
 /**
- * Which voice reads a message aloud. Flow turns carry the pack's own words
- * whatever the citizen spoke, so they keep the default voice; only the free
- * LLM replies — no `data-flow` part — follow the citizen's language.
+ * Which voice reads a message aloud: the language the reply was written in.
+ * The model writes every reply — a step of a service as much as small talk —
+ * in the language its turn named, and the chat route stamps that on the
+ * reply, so one already on screen keeps its voice after the citizen switches.
  */
-export function narrationLanguage(
-  message: KioskUIMessage | undefined,
-  language: string,
-): string | undefined {
-  if (!message || message.parts.some((part) => part.type === "data-flow")) return undefined;
-  return language;
+export function narrationLanguage(message: KioskUIMessage | undefined): string | undefined {
+  return message?.metadata?.language;
 }
 
 /** What tapping the microphone does right now. */
@@ -83,10 +85,10 @@ export type ChatVoice = {
   canListen: boolean;
   /** Text-to-speech is up: show the speaker controls. */
   canSpeak: boolean;
-  /** Language the citizen was last detected speaking. */
-  language: string;
   input: VoiceInput;
   playback: SpeechPlayback;
+  /** The lip-synced assistant; while its stream is up, the replies are said through it. */
+  avatar: LipsyncAvatar;
   /** Mic open for every utterance, no tapping. */
   handsFree: boolean;
   setHandsFree: (on: boolean) => void;
@@ -109,12 +111,12 @@ export function useChatVoice({
   busy: boolean;
   /** The citizen is mid physical step — a spoken turn would cut across it. */
   blocked?: boolean;
-  /** The session's current language — the STT hint and the narration voice. */
+  /** The session's current language — the STT hint. */
   language: string;
   /** An utterance came back detected as a different supported language. */
   onLanguage: (language: string) => void;
-  /** A hands-free utterance, sent as a turn on the citizen's behalf. */
-  onSend: (text: string) => void;
+  /** A hands-free utterance, sent as a turn on the citizen's behalf in the language it was heard in. */
+  onSend: (text: string, language: string) => void;
   /** A dictated utterance, for the composer to show before it is sent. */
   onDraft: (text: string) => void;
 }): ChatVoice {
@@ -122,7 +124,9 @@ export function useChatVoice({
   const canListen = services?.stt === "ok";
   const canSpeak = services?.tts === "ok";
 
-  const playback = useSpeechPlayback();
+  // The avatar speaks with the same voice, synthesized server-side, so it needs text-to-speech up too.
+  const avatar = useLipsyncAvatar(services?.avatar);
+  const playback = useSpeechPlayback(canSpeak ? avatar : undefined);
   const [handsFree, setHandsFree] = useState(handsFreeDefault);
   const { speak, stop } = playback;
 
@@ -134,8 +138,10 @@ export function useChatVoice({
 
   const onTranscript = useCallback(
     (text: string, source: "hands-free" | "dictation", heard?: string) => {
-      if (heard && heard !== language) onLanguage(heard);
-      if (source === "hands-free") onSend(text);
+      // The session's language only catches up on the next render; the turn sent now is already in the new one.
+      const spoken = heard ?? language;
+      if (spoken !== language) onLanguage(spoken);
+      if (source === "hands-free") onSend(text, spoken);
       else onDraft(text);
     },
     [language, onLanguage, onSend, onDraft],
@@ -167,7 +173,7 @@ export function useChatVoice({
   const lastReply = messages.findLast((message) => message.role !== "user");
   const replyId = lastReply?.id ?? null;
   const replyText = lastReply ? speakableText(lastReply) : "";
-  const replyLanguage = narrationLanguage(lastReply, language);
+  const replyLanguage = narrationLanguage(lastReply);
 
   const narratedRef = useRef<string | null>(null);
   useEffect(() => {
@@ -188,9 +194,9 @@ export function useChatVoice({
   return {
     canListen,
     canSpeak,
-    language,
     input,
     playback,
+    avatar,
     handsFree,
     setHandsFree,
     paused,

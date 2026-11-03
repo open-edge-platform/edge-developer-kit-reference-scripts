@@ -8,6 +8,9 @@
   "studio": {
     "sampleId": "public-service-kiosk",
     "title": "Public Service Kiosk",
-    "port": 8035
+    "port": 8035,
+    "description": "A self-service government kiosk — touch and chat terminals with identity verification and AI document checks.",
+    "tags": ["Kiosk", "Government Services", "Touch", "Chat", "OCR"],
+    "icon": "Landmark"
   }
 }

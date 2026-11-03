@@ -246,7 +246,6 @@ async function capturePack() {
     promptVars: malaysia.promptVars,
     messages: malaysia.messages,
     speech: malaysia.speech,
-    nlu: malaysia.nlu,
   };
 }
 
@@ -326,14 +325,14 @@ async function captureFlows(base, services) {
     };
   }
 
-  const requestsProbe = await mcpToolCall(base, "start_service_flow", { serviceId: "requests" });
-  flows.requests = {
-    unreachable:
-      "REQUESTS_FLOW_ID (\"requests\") is dispatched only by /api/chat's " +
-      "startRequestsFlow/continueRequestsFlow — engine.startFlow used by the MCP " +
-      "start_service_flow tool calls getService(\"requests\"), which is not a real " +
-      "ServiceDefinition. Confirmed live: " + JSON.stringify(requestsProbe.body),
-  };
+  // My Requests through its identity hand-off only: once verified it lists the
+  // drafts the flows above just saved, timestamps and all, which no run repeats.
+  const requestsStart = await mcpToolCall(base, "start_service_flow", { serviceId: "requests" });
+  const requestsRead = await mcpToolCall(base, "continue_service_flow", {
+    serviceId: "requests",
+    answers: { insertDocument: "done" },
+  });
+  flows.requests = { responses: [requestsStart.body, requestsRead.body] };
   return flows;
 }
 
@@ -425,20 +424,17 @@ async function captureOutcomes(base) {
     });
   }
 
-  // police
   const policeReview = pickCitizen("police", (c) => c.criminalRecord?.officerReviewRequired === true);
   await capture("officer-review", "police", policeReview, { purpose: "others", country: "Singapore" });
   const policeOk = pickCitizen("police", (c) => c.criminalRecord?.officerReviewRequired !== true);
   await capture("ok", "police", policeOk, { purpose: "studies", country: "United Kingdom" });
   await capture("duplicate", "police", policeOk, { purpose: "studies", country: "United Kingdom" });
 
-  // fine
   const citizen1 = citizens.find((c) => c.citizenKey === 1);
   const fineData = { lookupBy: "mykad", reference: citizen1.citizenId };
   await capture("repeatable-first", "fine", citizen1, fineData);
   await capture("repeatable-second", "fine", citizen1, fineData);
 
-  // dl_renew
   const noLicense = pickCitizen("dl_renew", (c) => licensesOf(c).length === 0);
   await capture("no-license", "dl_renew", noLicense, { licenseClass: "D", requestType: "renewal", duration: "1" });
   const cancelledHolder = pickCitizen("dl_renew", (c) => licensesOf(c).some(isLicenseCancelled));
@@ -480,7 +476,6 @@ async function captureOutcomes(base) {
     requestType: "replacement",
   });
 
-  // dl_new
   const alreadyHeld = pickCitizen("dl_new", (c) => ["B2", "D", "DA"].some((k) => activeLicenseClass(c, k)));
   const alreadyHeldClass = alreadyHeld
     ? ["B2", "D", "DA"].find((k) => activeLicenseClass(alreadyHeld, k))
@@ -491,7 +486,6 @@ async function captureOutcomes(base) {
   const dlNewOk = pickCitizen("dl_new", (c) => licensesOf(c).length === 0);
   await capture("ok", "dl_new", dlNewOk, { licenseClass: "B2" });
 
-  // roadtax
   const notOwned = pickCitizen("roadtax", () => true);
   await capture("not-owned", "roadtax", notOwned, { plate: "ZZZ 0000", period: "12" });
   const roadtaxBlacklisted = pickCitizen("roadtax", (c) => c.hasOutstandingFines && vehiclesOf(c).length > 0);
@@ -505,7 +499,6 @@ async function captureOutcomes(base) {
     period: "12",
   });
 
-  // welfare
   const bweAge = pickCitizen("welfare", (c) => (c.age ?? 0) < 60);
   await capture("bwe-under-60", "welfare", bweAge, { scheme: "bwe", income: "1500" });
   const notOku = pickCitizen("welfare", (c) => !c.isOku);
@@ -515,7 +508,6 @@ async function captureOutcomes(base) {
   const welfareOk = pickCitizen("welfare", (c) => c.isOku === true);
   await capture("ok", "welfare", welfareOk, { scheme: "epoku", income: "1500" });
 
-  // idcard
   const foreign = pickCitizen("idcard", (c) => c.country !== "Malaysia");
   await capture("foreign", "idcard", foreign, { caseType: "first" });
   const lost = pickCitizen("idcard", (c) => c.country === "Malaysia");
@@ -523,7 +515,6 @@ async function captureOutcomes(base) {
   const damaged = pickCitizen("idcard", (c) => c.country === "Malaysia");
   await capture("damaged-ok", "idcard", damaged, { caseType: "damaged" });
 
-  // marriage
   const islam = pickCitizen("marriage", (c) => c.religion === "Islam");
   await capture("islam", "marriage", islam, { venueType: "office", date: "2026-12-01", witness1: "Ali", witness2: "Bala" });
   const existingMarriage = pickCitizen("marriage", (c) => c.religion !== "Islam" && c.maritalStatus === "married");
@@ -536,13 +527,11 @@ async function captureOutcomes(base) {
   const marriageOk = pickCitizen("marriage", (c) => c.religion !== "Islam" && c.maritalStatus === "single");
   await capture("ok", "marriage", marriageOk, { venueType: "office", date: "2026-12-01", witness1: "Ali", witness2: "Bala" });
 
-  // address
   const addressApply = pickCitizen("address", () => true);
   await capture("apply", "address", addressApply, { newAddress: "12, Jalan Aman, 88000 Kota Kinabalu, Malaysia" });
   const addressNoNew = pickCitizen("address", () => true);
   await capture("no-new-address-ok", "address", addressNoNew, {});
 
-  // birth
   const birthAny = pickCitizen("birth", () => true);
   await capture("default-ok", "birth", birthAny, {
     childName: "Test Child",

@@ -2,15 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { badRequest, readJson, unavailable } from "../../_lib/http";
-import { voiceForLanguage } from "../../_lib/languages";
 import { SpeechServiceError, synthesizeSpeech, ttsEnabled } from "../../_lib/speech";
 
 /**
  * Text → speech for the assistant kiosk. Returns the synthesized audio as-is
  * so the browser can hand it straight to an <audio> element; `voice` and
  * `speed` are optional per-request overrides of the configured defaults, and
- * `language` picks the voice configured for that language (`voice.languages`)
- * without the client having to know voice ids.
+ * `language` picks the voice `voice.languages` gives that language — on
+ * whichever studio instance speaks it — without the client having to know
+ * voice ids.
  */
 export async function POST(req: Request) {
   if (!ttsEnabled()) {
@@ -26,8 +26,11 @@ export async function POST(req: Request) {
   if (!text) return badRequest("text is required");
 
   try {
-    const voice = body.voice ?? (body.language ? voiceForLanguage(body.language) : undefined);
-    const speech = await synthesizeSpeech(text, { voice, speed: body.speed });
+    const speech = await synthesizeSpeech(text, {
+      voice: body.voice,
+      language: body.language,
+      speed: body.speed,
+    });
     return new Response(speech.audio, {
       headers: { "content-type": speech.contentType, "cache-control": "no-store" },
     });

@@ -35,7 +35,7 @@ Usage: common\scripts\dev\dev.bat [--kiosk <name>] [options] [-- <extra args>]
 
 Development mode: ensures the Edge AI Studio gateway is running, then starts
 the Next.js dev server (hot reload) on the kiosk's port (kiosk.json "port":
-public-service http://localhost:3000, healthcare http://localhost:3001; PORT
+public-service http://127.0.0.1:3000, healthcare http://127.0.0.1:3001; PORT
 overrides it). One kiosk at a time. setup_win.bat --dev sets the kiosks up
 first, then runs this.
 
@@ -102,11 +102,11 @@ if ($Desktop) {
 
 if (-not $env:PORT) { $env:PORT = "$(Get-KioskPort $KioskDir)" }
 $port = $env:PORT
-Write-Info "Starting the Next.js dev server for $(Get-KioskLabel $KioskDir) at http://localhost:$port"
-Write-Host "    kiosk UI      http://localhost:$port"
-Write-Host "    chat/voice    http://localhost:$port/chat"
-Write-Host "    enroll desk   http://localhost:$port/enroll"
-Write-Host "    admin (CMS)   http://localhost:$port/admin  ($(Get-AdminLogin))"
-Write-Host "    health        http://localhost:$port/api/health"
+Write-Info "Starting the Next.js dev server for $(Get-KioskLabel $KioskDir) at http://127.0.0.1:$port"
+Write-Host "    kiosk UI      http://127.0.0.1:$port"
+Write-Host "    chat/voice    http://127.0.0.1:$port/chat"
+Write-Host "    enroll desk   http://127.0.0.1:$port/enroll"
+Write-Host "    admin (CMS)   http://127.0.0.1:$port/admin  ($(Get-AdminLogin))"
+Write-Host "    health        http://127.0.0.1:$port/api/health"
 Write-Host ''
 Invoke-Npm -NpmArgs (@('run', 'dev') + $ExtraArgs) -WorkingDirectory $FrontendDir

@@ -1,7 +1,14 @@
 // Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-import { analyzeStoredDocument, documentResponse, resolveRequirement } from "../_lib/documents";
+import {
+  analyzeStoredDocument,
+  documentPayload,
+  documentResponse,
+  resolveRequirement,
+  sortCapture,
+  type RequirementLookup,
+} from "../_lib/documents";
 import { badRequest } from "../_lib/http";
 import { ACCEPTED_DOCUMENT_FORMATS, documentMimeType } from "../_lib/media";
 import { storeDocument } from "../_lib/uploads";
@@ -31,7 +38,28 @@ export async function POST(req: Request) {
     );
   }
 
+  // `sortInto`: the other requirements still open. The capture is then filed under whichever
+  // each document in it satisfies, and the reply is { filed: UploadedDocument[], leftOut }.
+  const sortInto = lookup.isRelationshipProof ? null : form.get("sortInto");
+  const open: RequirementLookup[] = [lookup];
+  for (const id of typeof sortInto === "string" ? sortInto.split(",").filter(Boolean) : []) {
+    const other = resolveRequirement(lookup.service.id, id);
+    if ("error" in other) return badRequest(other.error);
+    if (other.requirement.id !== lookup.requirement.id) open.push(other);
+  }
+
   const stored = await storeDocument(lookup.service.id, lookup.requirement.id, file);
+  if (typeof sortInto === "string") {
+    const sorted = await sortCapture(
+      open,
+      stored,
+      typeof documentNumber === "string" ? documentNumber : undefined,
+    );
+    return Response.json({
+      filed: sorted.filed.map((doc) => documentPayload(doc.requirement, doc.stored, doc.analysis)),
+      leftOut: sorted.leftOut,
+    });
+  }
   const analysis = await analyzeStoredDocument(
     lookup,
     stored,

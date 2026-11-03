@@ -20,13 +20,13 @@ From the repository's **Actions** tab (**Kiosk CI → Run workflow**), or:
 
 ```bash
 gh workflow run kiosk-ci.yml                                  # both kiosks
-gh workflow run kiosk-ci.yml -f kiosk=healthcare -f studio_ref=my-branch
+gh workflow run kiosk-ci.yml -f kiosk=healthcare-service-kiosk -f studio_ref=my-branch
 gh workflow run kiosk-ci.yml -f fresh_studio=true             # cold studio setup
 ```
 
 | Input | Default | Effect |
 |---|---|---|
-| `kiosk` | `all` | `all`, `public-service-kiosk` or `healthcare` |
+| `kiosk` | `all` | `all`, `public-service-kiosk` or `healthcare-service-kiosk` |
 | `studio_ref` | `main` | Edge AI Studio branch, tag or SHA to set up |
 | `fresh_studio` | `false` | Wipe the studio checkout's untracked files (worker venvs, models, builds) first, so its setup runs from scratch |
 
@@ -56,7 +56,7 @@ on a runner skips those downloads.
 
 ```
 Setup ──► Playwright (public-service-kiosk)
-      └─► Playwright (healthcare)
+      └─► Playwright (healthcare-service-kiosk)
 ```
 
 **Setup.** This job checks out the kit into `kit/` and the studio into
@@ -120,8 +120,8 @@ To run a suite against a server you started yourself, set `KIOSK_BASE`. It also
 stops Playwright from starting `npm run dev` on its own:
 
 ```bash
-KIOSK_BASE=http://localhost:3005 npm test
-KIOSK_BASE=http://localhost:3005 npm run test:ui
+KIOSK_BASE=http://127.0.0.1:3005 npm test
+KIOSK_BASE=http://127.0.0.1:3005 npm run test:ui
 ```
 
 ---

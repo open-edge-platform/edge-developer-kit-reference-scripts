@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "wayfinder-map.schema.json",
+  "title": "Wayfinder map",
+  "description": "Multi-level indoor map with a routing graph. Coordinates: x east, y north, in `units`.",
+  "type": "object",
+  "required": ["version", "name", "levels", "nodes", "edges"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "const": 1 },
+    "name": { "type": "string" },
+    "units": { "enum": ["meters", "feet"], "default": "meters" },
+    "upBearing": { "type": "number", "description": "True compass bearing (deg, clockwise from north) of the map's +y axis. Default 0." },
+    "attribution": { "type": "string", "description": "Data attribution / caveats shown on the map." },
+    "defaultStart": { "type": "string", "description": "Place id the user starts at." },
+    "categories": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "label": { "type": "string" },
+          "color": { "type": "string" },
+          "icon": { "type": "string" }
+        }
+      }
+    },
+    "levels": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "ordinal", "outline"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "shortName": { "type": "string" },
+          "subtitle": { "type": "string", "description": "Precinct / description shown next to the level name." },
+          "ordinal": { "type": "integer", "description": "0 = ground, negative = basement" },
+          "elevation": { "type": "number", "description": "Height of the floor slab. Default ordinal × 4." },
+          "height": { "type": "number", "description": "Floor-to-ceiling height (3D). Default 4." },
+          "outline": { "$ref": "#/$defs/polygon" }
+        }
+      }
+    },
+    "rooms": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "level", "polygon"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "level": { "type": "string" },
+          "polygon": { "$ref": "#/$defs/polygon" },
+          "category": { "type": "string" },
+          "node": { "type": "string", "description": "Routing node used to reach the room. Default: nearest node on the level." },
+          "color": { "type": "string" },
+          "icon": { "type": "string" },
+          "height": { "type": "number" },
+          "searchable": { "type": "boolean", "default": true }
+        }
+      }
+    },
+    "pois": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "level", "x", "y"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "level": { "type": "string" },
+          "x": { "type": "number" },
+          "y": { "type": "number" },
+          "category": { "type": "string" },
+          "node": { "type": "string" },
+          "icon": { "type": "string" },
+          "color": { "type": "string" }
+        }
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "level", "x", "y"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "level": { "type": "string" },
+          "x": { "type": "number" },
+          "y": { "type": "number" },
+          "kind": { "enum": ["junction", "door", "stairs", "elevator", "escalator", "ramp", "entrance"], "default": "junction" },
+          "name": { "type": "string", "description": "Used in instructions, e.g. \"Turn left at West stairs\"." }
+        }
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["from", "to"],
+        "additionalProperties": false,
+        "properties": {
+          "from": { "type": "string" },
+          "to": { "type": "string" },
+          "via": { "enum": ["walk", "stairs", "elevator", "escalator", "ramp"], "default": "walk" },
+          "oneWay": { "type": "boolean", "default": false },
+          "weight": { "type": "number", "description": "Override computed cost." },
+          "accessible": { "type": "boolean", "description": "Override wheelchair accessibility." }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "point": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "polygon": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/point" },
+      "minItems": 3,
+      "description": "Closed ring; do not repeat the first point."
+    }
+  }
+}

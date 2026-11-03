@@ -1,8 +1,13 @@
 // Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-import { mkdir, writeFile } from "fs/promises";
+import { execFile } from "child_process";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "fs/promises";
+import { tmpdir } from "os";
 import path from "path";
+import { promisify } from "util";
+
+const exec = promisify(execFile);
 
 /**
  * Storage for captured documents. Every document is a PDF — a picked file
@@ -62,22 +67,55 @@ export function describePdf(bytes: Buffer): Pick<StoredDocument, "title" | "page
   };
 }
 
-export async function storeDocument(
+async function writeStored(
   serviceId: string,
   documentId: string,
-  file: File,
+  fileName: string,
+  bytes: Buffer,
 ): Promise<StoredDocument> {
   await mkdir(UPLOADS_DIR, { recursive: true });
-  const bytes = Buffer.from(await file.arrayBuffer());
   const filePath = path.join(
     UPLOADS_DIR,
     `upload-${Date.now()}-${serviceId}-${documentId}.pdf`,
   );
   await writeFile(filePath, bytes);
   return {
-    fileName: file.name,
+    fileName,
     filePath,
     ...describePdf(bytes),
     uploadedAt: new Date().toISOString(),
   };
+}
+
+export async function storeDocument(
+  serviceId: string,
+  documentId: string,
+  file: File,
+): Promise<StoredDocument> {
+  return writeStored(serviceId, documentId, file.name, Buffer.from(await file.arrayBuffer()));
+}
+
+/** Stores `sheets` (PDF page numbers, from 1) of `source` as a document of their own. */
+export async function storeDocumentPages(
+  serviceId: string,
+  documentId: string,
+  source: StoredDocument,
+  sheets: number[],
+): Promise<StoredDocument> {
+  const dir = await mkdtemp(path.join(tmpdir(), "kiosk-split-"));
+  try {
+    const parts = sheets.map((sheet) => path.join(dir, `sheet-${sheet}.pdf`));
+    for (const [index, sheet] of sheets.entries()) {
+      await exec("pdfseparate", ["-f", String(sheet), "-l", String(sheet), source.filePath, parts[index]]);
+    }
+    const merged = path.join(dir, "document.pdf");
+    await exec("pdfunite", [...parts, merged]);
+    return await writeStored(serviceId, documentId, source.fileName, await readFile(merged));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+export async function discardDocument(stored: StoredDocument): Promise<void> {
+  await rm(stored.filePath, { force: true });
 }

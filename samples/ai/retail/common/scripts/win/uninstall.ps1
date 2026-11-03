@@ -77,31 +77,47 @@ for ($i = 0; $i -lt $Arguments.Count; $i++) {
     }
 }
 
-# Several kiosks: one run each, every one with its own list and confirmation.
+# One run per installed identity, every one with its own list and
+# confirmation: the platform app (common\platform.json - the embedded bundle,
+# whichever kiosks it carries) and each kiosk's own (its mocked app, or an
+# app from before the kiosks shared one studio) when that differs.
 Resolve-Kiosks $KioskArg
-if ($KioskDirs.Count -gt 1) {
+if (-not $env:KIOSK_PKG_JSON) {
+    $pkgFiles = @()
+    $platformId = $null
+    if (Test-Path -LiteralPath $PlatformJson) {
+        $pkgFiles += $PlatformJson
+        $platformId = (Read-PlatformJson).appId
+    }
+    foreach ($dir in $KioskDirs) {
+        if ((Read-KioskJson $dir).appId -ne $platformId) { $pkgFiles += (Join-Path $dir 'kiosk.json') }
+    }
     $status = 0
     $psExe = (Get-Process -Id $PID).Path
-    foreach ($dir in $KioskDirs) {
-        Write-Host ''
-        $env:KIOSK_DIR = $dir
+    foreach ($file in $pkgFiles) {
+        if ($pkgFiles.Count -gt 1) { Write-Host '' }
+        $env:KIOSK_PKG_JSON = $file
         & $psExe -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath @PassArgs
         if ($LASTEXITCODE -ne 0) { $status = $LASTEXITCODE }
     }
+    Remove-Item -Path Env:KIOSK_PKG_JSON -ErrorAction SilentlyContinue
     exit $status
 }
 
-# The package identity lives in the kiosk's kiosk.json; the defaults are the
-# fallback for a copy of this script that travels without the checkout.
+# The package identity lives in platform.json or a kiosk's kiosk.json; the
+# defaults are the fallback for a copy of this script that travels without
+# the checkout.
 $Product = 'Vertical Reference Solutions Blueprint'
 $Identifier = 'com.verticalreferencesolutionsblueprint.desktop'
 $Binary = 'kiosk-desktop'
 $DataName = 'VRSB'
-if ($Kiosk) {
-    if ($Kiosk.productName) { $Product = $Kiosk.productName }
-    if ($Kiosk.appId) { $Identifier = $Kiosk.appId }
-    if ($Kiosk.executableName) { $Binary = $Kiosk.executableName }
-    if ($Kiosk.dataDir) { $DataName = $Kiosk.dataDir }
+$pkg = $null
+if (Test-Path -LiteralPath $env:KIOSK_PKG_JSON) { $pkg = Get-Content -LiteralPath $env:KIOSK_PKG_JSON -Raw | ConvertFrom-Json }
+if ($pkg) {
+    if ($pkg.productName) { $Product = $pkg.productName }
+    if ($pkg.appId) { $Identifier = $pkg.appId }
+    if ($pkg.executableName) { $Binary = $pkg.executableName }
+    if ($pkg.dataDir) { $DataName = $pkg.dataDir }
 }
 
 # Data lives under the short dataDir name (MAX_PATH); earlier builds used the

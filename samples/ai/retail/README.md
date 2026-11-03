@@ -5,13 +5,32 @@ verification, document capture and AI-assisted service flows, running on
 local hardware. `common/` holds the shared tooling; each vertical is its own
 kiosk with its own frontend.
 
+## Demo
+
+**Healthcare**: a patient signs in with their MyKad and a face match, checks in
+for today's appointment, and gets a queue number and the way to the clinic.
+
+![The healthcare kiosk: MyKad sign-in, face match, same-day check-in, queue number and directions](common/docs/media/healthcare-demo.gif)
+
+**Public service**: a citizen applies for a Certificate of Good Conduct:
+consent, MyKad and a face match, the purpose, two documents checked against
+the ID, a card payment and the receipt.
+
+![The public-service kiosk: Certificate of Good Conduct with a MyKad, a face match, checked documents, payment and receipt](common/docs/media/public-service-demo.gif)
+
+Both are the touch kiosk with nothing live behind it: the AI is mocked, the
+card reader and scanners are simulated, and the camera is a drawn stand-in.
+To record them again, see each kiosk's tests README
+([healthcare](healthcare-service-kiosk/frontend/tests/README.md#demo-recording),
+[public service](public-service-kiosk/frontend/tests/README.md#demo-recording)).
+
 ## Layout
 
 | Path | What |
 |---|---|
 | [common/](common/) | Shared tooling: launcher scripts, Electron desktop shell, studio bundler, kit docs. Drives the kiosks you chose at setup. |
 | [public-service-kiosk/](public-service-kiosk/) | The Public Service Operational Efficiency Kiosk, for civic services: `frontend/` (Next.js app with its 10 services), `kiosk.json`, `deployment.json`, `scripts/` (launchers). |
-| [healthcare/](healthcare/) | The hospital concierge kiosk: `frontend/` (Next.js app with the 19 services of [service-hierarchy.xlsx](healthcare/docs/service-hierarchy.xlsx)), `kiosk.json`, `deployment.json`, `scripts/` (launchers), [docs/](healthcare/docs/). |
+| [healthcare-service-kiosk/](healthcare-service-kiosk/) | The hospital concierge kiosk: `frontend/` (Next.js app with the 19 services of [service-hierarchy.xlsx](healthcare-service-kiosk/docs/service-hierarchy.xlsx)), `kiosk.json`, `deployment.json`, `scripts/` (launchers), [docs/](healthcare-service-kiosk/docs/). |
 
 Each kiosk folder has the same shape: `frontend/` (the app), `kiosk.json`
 (product name, app id, local port, studio sample id and port), `deployment.json` (the
@@ -51,13 +70,13 @@ so both can run side by side against one studio:
 
 | Kiosk | URL |
 |---|---|
-| public-service | http://localhost:3000 |
-| healthcare | http://localhost:3001 |
+| public-service | http://127.0.0.1:3000 |
+| healthcare | http://127.0.0.1:3001 |
 
 `--kiosk <public-service|healthcare|all>` overrides the choice: on `./setup.sh`
 it changes what is set up (and saved), on the others it applies to that run
 only (`./start.sh --kiosk healthcare --mock`). A kiosk folder's own scripts
-(`healthcare/scripts/start.sh`, …) always drive that kiosk alone. Packages and exported
+(`healthcare-service-kiosk/scripts/start.sh`, …) always drive that kiosk alone. Packages and exported
 bundles of every kiosk land in `build/` at the repo root (bundles in
 `build/kiosk-studio/<kiosk>/`).
 
@@ -71,6 +90,6 @@ equivalents (`setup_win.bat`, `start_win.bat`, `uninstall_win.bat`).
   reference, country packs, i18n
 - [common/docs/ci.md](common/docs/ci.md) — the manual CI workflow (setup, test run,
   Playwright suites)
-- [healthcare/README.md](healthcare/README.md) — the healthcare kiosk's services
+- [healthcare-service-kiosk/README.md](healthcare-service-kiosk/README.md) — the healthcare kiosk's services
 
 Licensed Apache-2.0 — every source file carries its own SPDX header.

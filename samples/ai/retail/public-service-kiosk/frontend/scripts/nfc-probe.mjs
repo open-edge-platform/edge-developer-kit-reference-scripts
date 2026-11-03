@@ -63,9 +63,17 @@ const client = new pcsc.Client()
     }
     console.log(`reader ready: ${name}`);
 
+    // Once per card on the pad: reading changes the reader's state too (on
+    // Windows every connect and disconnect does), which would read it again.
+    let onPad = false;
     reader.on("change", async (status, atr) => {
-      if (!status.has(ReaderStatus.PRESENT)) return;
+      if (!status.has(ReaderStatus.PRESENT)) {
+        onPad = false;
+        return;
+      }
       if (status.hasAny(ReaderStatus.MUTE, ReaderStatus.IN_USE)) return;
+      if (onPad) return;
+      onPad = true;
       try {
         const { uid, fromAtr } = await readCard(reader, atr);
         console.log(`\n  card serial : ${uid}${fromAtr ? "   (from ATR — see below)" : ""}`);
@@ -98,8 +106,11 @@ try {
 } catch (err) {
   console.error(`could not attach to the PC/SC service: ${err.message} (${err.code})`);
   console.error(
-    "Is pcscd running? On Debian/Ubuntu: sudo apt install libpcsclite1 pcscd && " +
-      "sudo systemctl start pcscd",
+    process.platform === "win32"
+      ? "Windows starts its Smart Card service only once it sees a reader: is one plugged in " +
+          "and listed under Device Manager -> Smart card readers?"
+      : "Is pcscd running? On Debian/Ubuntu: sudo apt install libpcsclite1 pcscd && " +
+          "sudo systemctl start pcscd",
   );
   process.exit(1);
 }

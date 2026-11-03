@@ -23,12 +23,13 @@ import {
 } from "../../requests/route";
 import { fetchQuote } from "./bridge";
 import { activeChains } from "@/packs/index.server";
-import { REQUESTS_FLOW_ID } from "./types";
+import { PHYSICAL_STEP_ANSWERS, REQUESTS_FLOW_ID } from "./types";
 import {
   grantVerification,
   joinSession,
   splitSession,
   verificationHolds,
+  verifiedHolder,
 } from "./verified-sessions";
 import type {
   Ask,
@@ -43,6 +44,7 @@ type DocumentAnalysis = {
   /** "unverified" is a check that could not run — never a pass. */
   status: "accepted" | "rejected" | "unverified";
   typeMatches: boolean;
+  documentType: string;
   holderName: string | null;
   address: string | null;
   summary: string;
@@ -110,10 +112,6 @@ function failure(serviceId: string, serviceLabel: string, say: string): FlowResp
 function biometricMethod(answer: string | undefined): string | undefined {
   return answer === "done" ? "face" : answer;
 }
-
-/** Physical-step confirmations — never merged into the persisted flow data.
- *  `faceFrame` especially: a saved draft must never hold a picture of a citizen. */
-const TRANSIENT_ANSWERS = new Set(["insertDocument", "biometric", "faceFrame", "payment"]);
 
 /** Engine-internal flow-data keys. Answers come straight off the client, so
  *  an answer may never write one. */
@@ -213,16 +211,65 @@ function identityStep(
   };
 }
 
-export async function startFlow(serviceId: string): Promise<FlowResponse> {
+/** A citizen still signed in from their last service: straight to this one, no card. */
+async function signedInFlow(
+  service: ServiceDefinition,
+  documentNumber: string,
+  token: string,
+  answers: Record<string, string> = {},
+): Promise<FlowResponse | null> {
+  const citizen = await findCitizenByDocument(documentNumber);
+  if (!citizen) return null;
+  const ctx: ChainContext = { service, documentNumber, profile: toProfile(citizen), data: {}, notes: [] };
+  mergeAnswers(ctx, answers);
+  const requestId = await saveDraft(ctx, {}, "identity").catch(() => null);
+  if (!requestId) return null;
+  ctx.notes.push(`You're still signed in, ${ctx.profile.name.split(" ")[0]}, so there's no need to insert your card again.`);
+  return advance(ctx, {}, requestId, token);
+}
+
+/** `answers`: what the citizen already said the service will ask ("for WXY 1234, 12 months"), kept until the flow gets there. */
+export async function startFlow(
+  serviceId: string,
+  signIn?: string | null,
+  answers: Record<string, string> = {},
+): Promise<FlowResponse> {
   const service = getService(serviceId);
   if (!service) {
     return failure(serviceId, serviceId, `There is no service "${serviceId}" at this kiosk.`);
   }
-  return identityStep(
-    service,
-    `${service.label} — I'll walk you through it step by step. First, let's confirm who you are.`,
-    [INSERT_DOCUMENT_ASK],
+  const holder = signIn ? verifiedHolder(signIn) : null;
+  const resumed = holder && signIn ? await signedInFlow(service, holder, signIn, answers) : null;
+  if (resumed) return resumed;
+  return holding(
+    identityStep(
+      service,
+      `${service.label} — I'll walk you through it step by step. First, let's confirm who you are.`,
+      [INSERT_DOCUMENT_ASK],
+    ),
+    answers,
   );
+}
+
+/** Answers off the client that may enter the flow data — never a physical step's or an internal key. */
+function keptAnswers(answers: Record<string, string>): Record<string, string> {
+  const kept: Record<string, string> = {};
+  for (const [key, value] of Object.entries(answers)) {
+    if (PHYSICAL_STEP_ANSWERS.has(key) || isInternalKey(key)) continue;
+    const trimmed = String(value ?? "").trim();
+    if (trimmed) kept[key] = trimmed;
+  }
+  return kept;
+}
+
+function mergeAnswers(ctx: ChainContext, answers: Record<string, string>): void {
+  Object.assign(ctx.data, keptAnswers(answers));
+}
+
+/** Before the card is read there is no draft to keep answers in, so they ride on the response — see `FlowResponse.heldAnswers`. */
+function holding(flow: FlowResponse, answers: Record<string, string>): FlowResponse {
+  const held = keptAnswers(answers);
+  return Object.keys(held).length > 0 ? { ...flow, heldAnswers: held } : flow;
 }
 
 export async function continueFlow(args: ContinueFlowArgs): Promise<FlowResponse> {
@@ -234,13 +281,16 @@ export async function continueFlow(args: ContinueFlowArgs): Promise<FlowResponse
     if (!service) {
       return failure("", "Kiosk services", "No active request — tell me which service you need.");
     }
+    const holder = args.signIn ? verifiedHolder(args.signIn) : null;
+    const resumed = holder && args.signIn ? await signedInFlow(service, holder, args.signIn, answers) : null;
+    if (resumed) return resumed;
     if (answers.insertDocument !== "done") {
-      return identityStep(service, "Let's confirm who you are first.", [INSERT_DOCUMENT_ASK]);
+      return holding(identityStep(service, "Let's confirm who you are first.", [INSERT_DOCUMENT_ASK]), answers);
     }
     const read = await callRoute(readIdDocumentRoute);
     if (!read.ok) {
       const again = insertDocumentRetry(read, routeError(read, "reader unavailable"));
-      return identityStep(service, again.say, [again.ask]);
+      return holding(identityStep(service, again.say, [again.ask]), answers);
     }
     const doc = read.body as {
       documentType: string;
@@ -254,7 +304,8 @@ export async function continueFlow(args: ContinueFlowArgs): Promise<FlowResponse
         documentNumber: doc.documentNumber,
         stepId: "identity",
         stepIndex: service.flow.indexOf("identity") + 1,
-        data: {},
+        // Answers held since the start move into the draft, ready for the application step.
+        data: keptAnswers(answers),
         documents: {},
       },
     });
@@ -348,11 +399,7 @@ export async function continueFlow(args: ContinueFlowArgs): Promise<FlowResponse
     );
   }
 
-  for (const [key, value] of Object.entries(answers)) {
-    if (TRANSIENT_ANSWERS.has(key) || isInternalKey(key)) continue;
-    const trimmed = String(value ?? "").trim();
-    if (trimmed) ctx.data[key] = trimmed;
-  }
+  mergeAnswers(ctx, answers);
 
   const documents: UploadedDocuments = { ...(draft.documents ?? {}) };
   for (const upload of args.uploads ?? []) {
@@ -403,6 +450,13 @@ async function applyUpload(
   // A relationship proof must name both the applicant and the original holder.
   const relatedName = parent ? documents[parent.id]?.analysis?.holderName : null;
   if (relatedName) form.set("relatedName", relatedName);
+  // Every document ask is on screen at once, so a scan may hold any of them, or several.
+  if (!parent) {
+    const others = ctx.service.documents.filter(
+      (doc) => doc.id !== requirement.id && !isAccepted(documents[doc.id]),
+    );
+    form.set("sortInto", others.map((doc) => doc.id).join(","));
+  }
   const fileName =
     upload.fileName ?? (upload.filePath ? path.basename(upload.filePath) : `${requirement.id}.pdf`);
   form.set("file", new File([new Uint8Array(bytes)], fileName, {
@@ -416,12 +470,54 @@ async function applyUpload(
     );
     return;
   }
-  const stored = res.body as UploadedDocument;
-  documents[requirement.id] = stored;
-  // The new address is read off the proof, never typed — and only off an accepted one.
-  if (requirement.addressField && isAccepted(stored) && stored.analysis?.address) {
-    ctx.data[requirement.addressField] = stored.analysis.address;
+  const { filed, leftOut } = parent
+    ? { filed: [res.body as UploadedDocument], leftOut: [] }
+    : (res.body as { filed: UploadedDocument[]; leftOut: string[] });
+  for (const stored of filed) {
+    const target = findRequirement(ctx.service, stored.documentId)?.requirement ?? requirement;
+    documents[target.id] = stored;
+    // The new address is read off the proof, never typed — and only off an accepted one.
+    if (target.addressField && isAccepted(stored) && stored.analysis?.address) {
+      ctx.data[target.addressField] = stored.analysis.address;
+    }
   }
+  const note = sortedNote(ctx.service, requirement, filed, leftOut);
+  if (note) ctx.notes.push(note);
+}
+
+/** What a scan held, when it was not simply the document asked for. */
+function sortedNote(
+  service: ServiceDefinition,
+  asked: { id: string; label: string },
+  filed: UploadedDocument[],
+  leftOut: string[],
+): string | null {
+  const label = (doc: UploadedDocument) =>
+    service.documents.find((requirement) => requirement.id === doc.documentId)?.label ??
+    doc.documentId;
+  const kind = (doc: UploadedDocument) =>
+    doc.analysis && doc.analysis.status !== "unverified" ? doc.analysis.documentType : "document";
+  const list = (items: string[]) =>
+    items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
+  const lines: string[] = [];
+  if (filed.length > 1) {
+    lines.push(
+      `I found ${filed.length} documents in that scan and filed each one: ` +
+        `${list(filed.map((doc) => `the ${kind(doc)} as your ${label(doc)}`))}.`,
+    );
+  } else if (filed[0] && filed[0].documentId !== asked.id) {
+    lines.push(
+      `That scan was your ${kind(filed[0])} rather than your ${asked.label}, so I've filed it ` +
+        `as your ${label(filed[0])}.`,
+    );
+  }
+  if (leftOut.length > 0) {
+    lines.push(
+      `The ${list(leftOut)} ${leftOut.length > 1 ? "aren't" : "isn't"} needed for ` +
+        `${service.label}, so I've left ${leftOut.length > 1 ? "them" : "it"} out.`,
+    );
+  }
+  return lines.length > 0 ? lines.join(" ") : null;
 }
 
 /** Document asks for every requirement not yet satisfied. */
@@ -534,6 +630,20 @@ async function advance(
   /** The live verification grant, folded back into every sessionId returned. */
   token: string | undefined,
   confirmations: Record<string, string> = {},
+): Promise<FlowResponse> {
+  const result = await advanceFlow(ctx, documents, requestId, token, confirmations);
+  // The grant rides on every answer to a verified citizen, so their next service can skip the card.
+  return token && verificationHolds(token, ctx.documentNumber)
+    ? { ...result, signIn: { token, name: ctx.profile.name } }
+    : result;
+}
+
+async function advanceFlow(
+  ctx: ChainContext,
+  documents: UploadedDocuments,
+  requestId: string | null,
+  token: string | undefined,
+  confirmations: Record<string, string>,
 ): Promise<FlowResponse> {
   const { service } = ctx;
   const session = (id: string | null) => (id ? joinSession(id, token) : null);
@@ -755,7 +865,12 @@ function requestsResponse(
   };
 }
 
-export async function startRequestsFlow(): Promise<FlowResponse> {
+export async function startRequestsFlow(signIn?: string | null): Promise<FlowResponse> {
+  const holder = signIn ? verifiedHolder(signIn) : null;
+  const citizen = holder ? await findCitizenByDocument(holder) : null;
+  if (citizen && signIn) {
+    return listRequests({ name: citizen.name, documentNumber: citizen.citizenId }, signIn, "You're still signed in.");
+  }
   return identityStep(
     REQUESTS_SERVICE,
     "I can show you your saved and pending requests. First, let's confirm who you are — " +
@@ -768,13 +883,18 @@ export async function continueRequestsFlow(args: {
   answers?: Record<string, string>;
   citizen?: FlowResponse["citizen"];
   sessionId?: string | null;
+  signIn?: string | null;
 }): Promise<FlowResponse> {
   const answers = args.answers ?? {};
   const citizen = args.citizen ?? null;
   // `citizen` is client-echoed state — a claim, not a fact. The grant is the
   // fact, checked against the very document number being claimed.
-  const token = args.sessionId ?? undefined;
+  const token = args.sessionId ?? args.signIn ?? undefined;
   const verified = Boolean(citizen) && verificationHolds(token, citizen?.documentNumber ?? "");
+
+  if (!citizen && args.signIn && verifiedHolder(args.signIn) && !answers.resumeRequest) {
+    return startRequestsFlow(args.signIn);
+  }
 
   // Resume pick: only for a citizen verified on this session, and only for a
   // draft filed under their own identity.
@@ -862,9 +982,16 @@ export async function continueRequestsFlow(args: {
   const profile = (verify.body as { profile: CitizenProfile }).profile;
   const holder = { name: profile.name, documentNumber: citizen.documentNumber };
   // The check passed: mint the grant; it rides back as the flow's sessionId.
-  const granted = grantVerification(holder.documentNumber);
+  return listRequests(holder, grantVerification(holder.documentNumber), `Identity verified — welcome, ${holder.name}.`);
+}
 
-  // Verified — fetch this citizen's requests and nobody else's.
+/** Verified — this citizen's requests and nobody else's. */
+async function listRequests(
+  holder: { name: string; documentNumber: string },
+  granted: string,
+  greeting: string,
+): Promise<FlowResponse> {
+  const signIn = { token: granted, name: holder.name };
   const res = await callRoute(requestsGetRoute, {
     params: { documentNumber: holder.documentNumber },
   });
@@ -879,13 +1006,13 @@ export async function continueRequestsFlow(args: {
   const saved = rows.filter((r) => r.kind === "saved");
   const pending = rows.filter((r) => r.kind === "pending");
 
-  const lines = [`Identity verified — welcome, ${holder.name}.`];
+  const lines = [greeting];
   if (rows.length === 0) {
     lines.push(
       "You have no saved or pending requests. Tell me which service you need and I can " +
         "start a new application.",
     );
-    return requestsResponse(holder, { status: "completed", say: lines.join("\n\n") }, granted);
+    return requestsResponse(holder, { status: "completed", say: lines.join("\n\n"), signIn }, granted);
   }
   if (saved.length > 0) {
     lines.push(
@@ -913,13 +1040,14 @@ export async function continueRequestsFlow(args: {
     );
   }
   if (saved.length === 0) {
-    return requestsResponse(holder, { status: "completed", say: lines.join("\n\n") }, granted);
+    return requestsResponse(holder, { status: "completed", say: lines.join("\n\n"), signIn }, granted);
   }
   return requestsResponse(
     holder,
     {
       status: "need_input",
       say: lines.join("\n\n"),
+      signIn,
       asks: [
         {
           id: "resumeRequest",

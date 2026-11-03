@@ -69,7 +69,7 @@ export const SETTINGS_SECTIONS: SettingSection[] = [
     id: "terminal",
     title: "Terminal",
     fields: [
-      pick("terminal.mode", "Terminal mode", ["touch", "chat", "agent"]),
+      pick("terminal.mode", "Terminal mode", ["touch", "chat"]),
       text("country.pack", "Country pack", undefined, "malaysia"),
       text("locale.language", "Language", "BCP-47 tag.", "en"),
       text("locale.currency", "Currency", "ISO 4217.", "MYR"),
@@ -84,7 +84,7 @@ export const SETTINGS_SECTIONS: SettingSection[] = [
   {
     id: "llm",
     title: "LLM",
-    note: "Document analysis, the chat assistant and the agent.",
+    note: "Document analysis and the chat assistant.",
     fields: [
       bool("llm.mock", "Mock the LLM", "Simulated verdicts — no model needed.", "true"),
       pick("llm.mock_verdict", "Mock verdict", ["match", "mismatch"], undefined, "match"),
@@ -126,9 +126,8 @@ export const SETTINGS_SECTIONS: SettingSection[] = [
     title: "Speech-to-text",
     fields: [
       text("voice.stt.base_url", "Base URL", "Blank hides the microphone."),
-      text("voice.stt.language", "Language", "auto lets the recognizer detect each utterance's language; a code (en) pins it.", "auto"),
-      bool("voice.stt.denoise", "Denoise", "Uploaded clips only; streamed audio is not denoised.", "false"),
-      num("voice.stt.vad_threshold", "Worker VAD threshold", "Streaming only. Silero speech probability (0–1) on OVMS, RMS level on OEP; blank = the worker's default."),
+      text("voice.stt.language", "Language", "auto lets Whisper detect each utterance's language; a code (en) pins it.", "auto"),
+      bool("voice.stt.denoise", "Denoise", "OVMS backend only.", "false"),
       text("voice.stt.vocabulary", "Vocabulary", "Term=alias|alias;Term=alias"),
       num("voice.stt.timeout_ms", "Timeout (ms)", undefined, "60000"),
       ...service("voice.stt", "/../healthcheck"),
@@ -148,16 +147,27 @@ export const SETTINGS_SECTIONS: SettingSection[] = [
     ],
   },
   {
+    id: "avatar",
+    title: "Avatar",
+    note: "The chat's lip-synced assistant (the studio's lipsync service). It speaks with the text-to-speech voice above.",
+    fields: [
+      text("voice.avatar.base_url", "Base URL", "Blank: no avatar, the chat takes the whole width."),
+      num("voice.avatar.timeout_ms", "Timeout (ms)", undefined, "60000"),
+      ...service("voice.avatar", ""),
+    ],
+  },
+  {
     id: "voice",
     title: "Voice behaviour",
     fields: [
-      { key: "voice.languages", label: "Spoken languages", kind: "map", hint: "language=voice;language= — more than one turns on language detection." },
+      { key: "voice.languages", label: "Spoken languages", kind: "map", hint: "language=voice;language= — more than one turns on language detection. Blank voice: the language's default; voice@instance: on another text-to-speech instance." },
       bool("voice.hands_free", "Hands-free", undefined, "true"),
       bool("voice.read_aloud", "Read replies aloud", undefined, "true"),
       bool("voice.wait_for_speech", "Wait for speech to finish", undefined, "false"),
       bool("voice.barge_in", "Barge-in", "Speaking interrupts the narration.", "false"),
-      num("voice.vad_silence_ms", "Utterance silence (ms)", "Pause that ends an utterance; blank = 1000 when streaming (OVMS counts whole 0.5 s chunks), 1200 for browser-cut clips."),
-      num("voice.vad_sensitivity", "Browser VAD sensitivity", "Only when the recognizer cannot stream and clips are cut in the browser.", "2.5"),
+      num("voice.vad_silence_ms", "Utterance silence (ms)", "Pause that ends an utterance.", "800"),
+      num("voice.vad_threshold", "Speech threshold", "Silero VAD speech probability (0–1) that starts an utterance: lower hears quieter speech, and more noise.", "0.5"),
+      num("voice.vad_sensitivity", "Loudness fallback sensitivity", "Only when the Silero model cannot load: how far above the room's noise floor counts as speech.", "2.5"),
     ],
   },
   {
@@ -165,7 +175,7 @@ export const SETTINGS_SECTIONS: SettingSection[] = [
     title: "Agent",
     fields: [
       text("agent.mcp_url", "MCP endpoint", undefined, "/api/mcp"),
-      pick("agent.turns", "Planning", ["multi", "single"], "multi discovers steps by tool calls; single plans the whole path upfront.", "multi"),
+      pick("agent.turns", "Planning", ["single", "multi"], "single knows every service's steps, fields and values upfront; multi discovers them by tool calls.", "single"),
       num("agent.max_steps", "Max tool steps per turn", undefined, "8"),
       { key: "agent.stop", label: "Extra stop sequences", kind: "list", hint: "Comma-separated." },
     ],

@@ -7,7 +7,13 @@ import path from "path";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/server";
 import { categories, getService } from "@/services";
-import { continueFlow, startFlow } from "../_lib/flows/engine";
+import {
+  continueFlow,
+  continueRequestsFlow,
+  startFlow,
+  startRequestsFlow,
+} from "../_lib/flows/engine";
+import { REQUESTS_FLOW_ID, type FlowResponse, type QueuedService } from "../_lib/flows/types";
 import { documentMimeType } from "../_lib/media";
 import { callRoute, type RouteResult } from "../_lib/route-call";
 import { POST as applicationsRoute } from "../applications/route";
@@ -76,6 +82,46 @@ const uploadsField = z
   )
   .describe("PDF uploads answering document asks");
 
+const citizenField = z
+  .object({ name: z.string(), documentNumber: z.string() })
+  .describe(
+    `My Requests flow only: the previous response's \`citizen\`, passed back unchanged`,
+  );
+
+const signInField = z
+  .string()
+  .optional()
+  .describe("Set by the kiosk from the citizen's earlier flow — leave it out");
+
+const thenField = z
+  .array(
+    z.object({
+      serviceId: z.string().describe("Service id from the kiosk's service list"),
+      answers: z
+        .record(z.string(), z.string())
+        .optional()
+        .describe(
+          "What the citizen already said for that service — a plate, a period, a licence class — keyed by its field ids",
+        ),
+    }),
+  )
+  .describe(
+    "The other services the citizen asked for in the same breath, in the order they asked — " +
+      'the road tax in "pay my saman, then renew my road tax". Each one starts when the one before it ends.',
+  );
+
+/** A queue holds what one person asks for at once, not a script: unknown ids go, and so does a long tail. */
+const MAX_QUEUED = 3;
+
+/** The flow, carrying the services queued behind it — see `FlowResponse.queued`. */
+function withQueue(flow: FlowResponse, then: QueuedService[] | undefined): FlowResponse {
+  const queued = (then ?? [])
+    .filter(({ serviceId }) => serviceId === REQUESTS_FLOW_ID || getService(serviceId))
+    .slice(0, MAX_QUEUED)
+    .map(({ serviceId, answers }) => (answers && Object.keys(answers).length > 0 ? { serviceId, answers } : { serviceId }));
+  return queued.length > 0 ? { ...flow, queued } : flow;
+}
+
 export function registerKioskTools(server: McpServer): void {
   server.registerTool(
     "start_service_flow",
@@ -89,12 +135,33 @@ export function registerKioskTools(server: McpServer): void {
         "answer, \"document\" asks want a PDF upload, and \"action\" asks are physical " +
         `steps at the kiosk (insert ${ID_DOC}, tap card) the citizen performs and then confirms ` +
         "with the answer \"done\". Relay each ask, then call continue_service_flow. No " +
-        "other tools are needed for a standard application.",
+        `other tools are needed for a standard application. Pass in \`answers\` whatever the ` +
+        "citizen already said the service will ask (a plate, a period, a licence class): it " +
+        "is kept through the identity check and used when the flow gets there. Asked for " +
+        "several services at once? Start the first and put the rest in `then`: the response " +
+        "carries them as `queued`, and the next one starts — with the citizen's verification " +
+        "— once this flow ends. serviceId " +
+        `"${REQUESTS_FLOW_ID}" runs My Requests instead: verify identity, then list the ` +
+        "citizen's saved and pending applications and offer to resume a saved one.",
       inputSchema: z.object({
-        serviceId: z.string().describe("Service id from get_service_catalog"),
+        serviceId: z
+          .string()
+          .describe(`Service id from the kiosk's service list, or "${REQUESTS_FLOW_ID}" for My Requests`),
+        answers: z
+          .record(z.string(), z.string())
+          .optional()
+          .describe("What the citizen already said, keyed by the service's field ids (as listed with the service, or by get_service_details)"),
+        then: thenField.optional(),
+        signIn: signInField,
       }),
     },
-    async ({ serviceId }) => flowResult(await startFlow(serviceId)),
+    async ({ serviceId, answers, then, signIn }) =>
+      flowResult(
+        withQueue(
+          await (serviceId === REQUESTS_FLOW_ID ? startRequestsFlow(signIn) : startFlow(serviceId, signIn, answers)),
+          then,
+        ),
+      ),
   );
 
   server.registerTool(
@@ -106,8 +173,12 @@ export function registerKioskTools(server: McpServer): void {
         "start_service_flow. Answer an \"action\" ask with the string \"done\" once the " +
         "citizen confirms the physical step. Repeat until status is \"completed\" or " +
         "\"failed\". Pass the previous response's sessionId once it is non-null; before " +
-        "that (during the identity hand-off) pass its serviceId instead. A need_input flow " +
-        "is saved as a draft the citizen can also resume at the kiosk touch UI.",
+        "that (during the identity hand-off) pass its serviceId instead, and its " +
+        "`heldAnswers` back in `answers`. A need_input flow " +
+        "is saved as a draft the citizen can also resume at the kiosk touch UI. The My " +
+        `Requests flow always takes serviceId "${REQUESTS_FLOW_ID}" and the previous ` +
+        "response's citizen. Something else the citizen wants once this one is done goes in " +
+        "`then`, added after any services already queued.",
       inputSchema: z.object({
         sessionId: z
           .string()
@@ -119,10 +190,20 @@ export function registerKioskTools(server: McpServer): void {
           .describe("The flow's serviceId — required while sessionId is still null"),
         answers: answersField.optional(),
         uploads: uploadsField.optional(),
+        citizen: citizenField.optional(),
+        then: thenField.optional(),
+        signIn: signInField,
       }),
     },
-    async ({ sessionId, serviceId, answers, uploads }) =>
-      flowResult(await continueFlow({ sessionId, serviceId, answers, uploads })),
+    async ({ sessionId, serviceId, answers, uploads, citizen, then, signIn }) =>
+      flowResult(
+        withQueue(
+          await (serviceId === REQUESTS_FLOW_ID
+            ? continueRequestsFlow({ sessionId, answers, citizen, signIn })
+            : continueFlow({ sessionId, serviceId, answers, uploads, signIn })),
+          then,
+        ),
+      ),
   );
 
   server.registerTool(

@@ -6,6 +6,7 @@ import { citizenForCard } from "../../_lib/citizens";
 import {
   NFC_FAILURE_MESSAGE,
   NfcError,
+  handOnCard,
   nfcReaders,
   nfcSimulatedAlways,
   readCardUid,
@@ -26,6 +27,8 @@ const DEFAULT_WAIT_MS = 15_000;
  *   GET /api/identity/card              wait up to 15s for a tap
  *   GET /api/identity/card?timeout=0    what is on the reader right now
  *   GET /api/identity/card?timeout=60000
+ *   GET /api/identity/card?handoff=1    the chat's card step: the card it sees
+ *                                       is the one that step reads next
  *
  * It is deliberately NOT /api/identity/document with extra fields. That route
  * is the identity step and stands a citizen in when no reader answers, which
@@ -45,6 +48,8 @@ export async function GET(req: Request) {
 
   try {
     const card = await readCardUid({ timeoutMs });
+    // Handed on before anything slower: the step reads it as soon as this answers.
+    if (param(req, "handoff") === "1") handOnCard(card);
     const citizen = await citizenForCard(card.uid);
     return Response.json({
       readers: await readers(),

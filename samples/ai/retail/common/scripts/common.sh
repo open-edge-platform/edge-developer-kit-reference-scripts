@@ -20,7 +20,6 @@ kit_path() {
 }
 STUDIO_LOG="$REPO_ROOT/.studio.log"
 
-# Local launcher overrides — a plain shell file at the repo root, gitignored.
 if [ -f "$REPO_ROOT/.kioskrc" ]; then
   # shellcheck disable=SC1091
   . "$REPO_ROOT/.kioskrc"
@@ -49,12 +48,16 @@ BUILD_DIR="$WORKSPACE_ROOT/build"
 # or .kioskrc; see docs/configuration.md "Launcher script configuration".
 EDGE_AI_STUDIO_DIR="$(kit_path "${EDGE_AI_STUDIO_DIR:-$(cd "$REPO_ROOT/../.." && pwd)/edge-ai-demo-studio}")"
 STUDIO_AUTOSTART="${STUDIO_AUTOSTART:-1}"
-STUDIO_URL="${STUDIO_URL:-http://localhost:8080}"
+STUDIO_URL="${STUDIO_URL:-http://127.0.0.1:8080}"
+# Loopback never goes to a proxy: the studio boots on its own readiness probe to 127.0.0.1.
+NO_PROXY="$(printf '%s,%s,localhost,127.0.0.1,::1' "${NO_PROXY:-}" "${no_proxy:-}" | tr ',' '\n' | sed 's/^ *//; s/ *$//' | awk 'NF && !seen[$0]++' | paste -sd, -)"
+export NO_PROXY no_proxy="$NO_PROXY"
 STUDIO_WAIT_SECS="${STUDIO_WAIT_SECS:-600}"
 STUDIO_RUN_MODE="${STUDIO_RUN_MODE:-auto}" # auto | packaged | headless
 # Forces one fixed studio deployment.json instead of the kiosks' own (scripts/studio-deployment.mjs).
 STUDIO_DEPLOYMENT_FILE="$(kit_path "${STUDIO_DEPLOYMENT_FILE:-}")"
 STUDIO_DEPLOYMENT_MANAGE="${STUDIO_DEPLOYMENT_MANAGE:-1}" # 0 = never touch the studio's deployment.json
+STUDIO_LLAMACPP_BACKEND="${STUDIO_LLAMACPP_BACKEND:-sycl}" # sycl | vulkan
 # frontend/config.yaml is per-install and gitignored: the launchers copy it out
 # of frontend/configs/ on the first run. reference | hardware | simulated, or
 # any other <name>.yaml in that directory.
@@ -177,9 +180,23 @@ kiosk_port() {
   node -e 'process.stdout.write(String(require(process.argv[1]).port ?? 3000))' "$1/kiosk.json"
 }
 
-# Where scripts/bundle.mjs exports the current kiosk's embedded bundle.
+# Where scripts/bundle.mjs exports the embedded bundle: one studio, every
+# chosen kiosk a sample of it.
 kiosk_bundle_dir() {
-  kit_path "${KIOSK_BUNDLE_DIR:-$BUILD_DIR/kiosk-studio/$(kiosk_id "$KIOSK_DIR")}"
+  kit_path "${KIOSK_BUNDLE_DIR:-$BUILD_DIR/kiosk-studio}"
+}
+
+# Hand the chosen kiosks to the Node side (scripts/bundle.mjs, electron/scripts/build.mjs).
+export_kiosk_list() {
+  KIOSK_DIR_LIST="$(IFS=:; printf '%s' "${KIOSK_DIRS[*]}")"
+  export KIOSK_DIR_LIST
+}
+
+# The packaged platform app's identity (common/platform.json): the embedded
+# bundle ships as one app, whichever kiosks it carries.
+PLATFORM_JSON="$REPO_ROOT/platform.json"
+platform_value() { # platform_value <key>
+  sed -n "s/^[[:space:]]*\"$1\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$PLATFORM_JSON" | head -1
 }
 
 # ---------------------------------------------------------------------------
@@ -357,7 +374,7 @@ studio_packaged_bin() {
   return 1
 }
 
-studio_deployment() { # studio_deployment install <studio dir> | services — for every selected kiosk
+studio_deployment() { # studio_deployment install <studio dir> | addresses — for every selected kiosk
   require_node
   node "$REPO_ROOT/scripts/studio-deployment.mjs" "$1" --profile "$KIOSK_PROFILE" \
     --file "$STUDIO_DEPLOYMENT_FILE" "${@:2}" "${KIOSK_DIRS[@]}"
@@ -415,22 +432,25 @@ studio_wait() {
 }
 
 # The kiosk's health semantics: any HTTP reply < 500 counts as up (the gateway
-# answers 500 for an inactive service, 404 for a path a live worker doesn't serve).
+# answers 500 for an inactive service, 404 for a path a live worker doesn't serve),
+# except the gateway's 404 for an instance it does not have.
 svc_up() {
-  local code
-  code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$1")" || true
-  [ "$code" != "000" ] && [ "$code" -lt 500 ]
+  local reply code
+  reply="$(curl -s -w '\n%{http_code}' --max-time 10 "$1")" || true
+  code="${reply##*$'\n'}"
+  case "$reply" in *'"Unknown service instance'*) return 1 ;; esac
+  [ -n "$code" ] && [ "$code" != "000" ] && [ "$code" -lt 500 ]
 }
 
 studio_check_services() {
-  local services service url all_ok=1
-  services="$(studio_deployment services)" || exit 1
-  for service in $services; do
-    case "$service" in
-      text-generation) url="$STUDIO_URL/api/text-generation@text-generation/v1/models" ;;
-      *) url="$STUDIO_URL/api/$service@$service/healthcheck" ;;
+  local addresses address url all_ok=1
+  addresses="$(studio_deployment addresses)" || exit 1
+  for address in $addresses; do
+    case "$address" in
+      text-generation@*) url="$STUDIO_URL/api/$address/v1/models" ;;
+      *) url="$STUDIO_URL/api/$address/healthcheck" ;;
     esac
-    svc_up "$url" || { warn "studio service '$service' is not active"; all_ok=0; }
+    svc_up "$url" || { warn "studio service '$address' is not active"; all_ok=0; }
   done
   if [ "$all_ok" -eq 1 ]; then
     ok "All studio AI services the kiosks' deployment.json runs are reachable"
@@ -457,10 +477,15 @@ ensure_studio() {
 
 # The packaged desktop app: newest .AppImage from the shell's build output,
 # else the unpacked shell (--shell-only). Non-zero if neither exists.
-desktop_app_path() { # desktop_app_path [mock] — the current kiosk's newest packaged app, or its mocked build
+desktop_app_path() { # desktop_app_path [mock] — the platform's newest packaged app, or the current kiosk's mocked build
   local app="" f product binary
-  product="$(kiosk_value "$KIOSK_DIR" productName)"
-  binary="$(kiosk_value "$KIOSK_DIR" executableName)"
+  if [ "${1:-}" = mock ]; then
+    product="$(kiosk_value "$KIOSK_DIR" productName)"
+    binary="$(kiosk_value "$KIOSK_DIR" executableName)"
+  else
+    product="$(platform_value productName)"
+    binary="$(platform_value executableName)"
+  fi
   for f in "$BUILD_DIR/$product"-*.AppImage; do
     [ -f "$f" ] || continue
     case "$f" in
@@ -476,10 +501,12 @@ desktop_app_path() { # desktop_app_path [mock] — the current kiosk's newest pa
   printf '%s\n' "$app"
 }
 
-# The build's questions for the current kiosk, answered now: prints the full
-# argument list for its build, one per line, so the build has nothing left to ask.
-# The first argument is the flow: --bundle-app, or --mock for the kiosk alone.
+# The build's questions, answered now: prints the full argument list for the
+# build, one per line, so the build has nothing left to ask. The first argument
+# is the flow: --bundle-app (every chosen kiosk, one platform app), or --mock
+# for the current kiosk alone.
 build_answers() {
+  [ "${1:-}" != --bundle-app ] || export_kiosk_list
   node "$ELECTRON_DIR/scripts/build.mjs" --ask-only "$@"
 }
 
@@ -494,6 +521,7 @@ export_mock_env() {
   export KIOSK_FACE_BASE_URL=""
   export KIOSK_STT_BASE_URL=""
   export KIOSK_TTS_BASE_URL=""
+  export KIOSK_AVATAR_BASE_URL=""
   # The production config.yaml is strict about hardware and face matching
   # (face.require_match: true, nfc/scanner simulate: never) — right for a real
   # terminal, fatal without one: health fail-closes on the missing face

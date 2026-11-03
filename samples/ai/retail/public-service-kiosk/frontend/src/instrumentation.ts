@@ -8,5 +8,7 @@ export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     const { applyKioskConfig } = await import("./lib/kiosk-config");
     applyKioskConfig();
+    const { applySystemProxy } = await import("./lib/system-proxy");
+    applySystemProxy();
   }
 }

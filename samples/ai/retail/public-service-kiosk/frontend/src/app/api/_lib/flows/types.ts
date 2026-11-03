@@ -15,19 +15,27 @@ import type { ServiceDefinition } from "@/services";
 /**
  * Pseudo-service id for the "My Requests" flow: verify identity, then list
  * (and optionally resume) only the verified citizen's saved/pending requests.
- * Not a real ServiceDefinition — the chat route dispatches it specially.
+ * Not a real ServiceDefinition — the MCP flow tools dispatch it specially.
  */
 export const REQUESTS_FLOW_ID = "requests";
+
+/** Physical-step confirmations — only the kiosk hardware may supply them, and
+ *  they are never merged into the persisted flow data. `faceFrame` especially:
+ *  a saved draft must never hold a picture of a citizen. */
+export const PHYSICAL_STEP_ANSWERS: ReadonlySet<string> = new Set([
+  "insertDocument",
+  "biometric",
+  "faceFrame",
+  "payment",
+]);
 
 /**
  * What the kiosk says when the citizen answers a physical step with words.
  *
  * "Done", spoken or typed, cannot finish a step that ends at the hardware:
  * the reader has to report a card before there is anything to verify. The
- * chat route replies with this line, and the assistant UI recognises it and
- * folds it into the step card — under the picture of the device, next to a
- * button that does finish the step — rather than leaving it as a bubble that
- * tells the citizen they are stuck without saying what to press.
+ * step card shows this line under the picture of the device, next to a
+ * button that does finish the step.
  */
 export const DEVICE_STEP_REPLY =
   "This step happens at the kiosk itself — please follow the on-screen prompt and " +
@@ -82,6 +90,8 @@ export type ContinueFlowArgs = {
   serviceId?: string | null;
   answers?: Record<string, string>;
   uploads?: FlowUpload[];
+  /** The citizen's live sign-in (`FlowResponse.signIn`), spliced in by the kiosk: an identity step is skipped while it holds. */
+  signIn?: string | null;
 };
 
 /** A PDF supplied in answer to a `document` ask. */
@@ -154,7 +164,28 @@ export type FlowResponse = {
   say: string;
   asks: Ask[];
   receipt: FlowReceipt | null;
+  /**
+   * The verification this flow ran under, while it holds: the kiosk passes it
+   * back on the citizen's next service so they are not asked for their card
+   * again. Never in a response to someone who has not verified.
+   */
+  signIn?: { token: string; name: string };
+  /**
+   * Answers given before the citizen identified — the plate and period in "renew road tax
+   * for WXY 1234 for 12 months" — while there is no draft yet to keep them in. Pass them back
+   * in the next call's `answers` while `sessionId` is null; the card read moves them into the draft.
+   */
+  heldAnswers?: Record<string, string>;
+  /**
+   * The other services the citizen asked for in the same breath — the road tax in "pay my
+   * saman, then renew my road tax" — in the order they run. Each starts once the one before it
+   * ends: the kiosk's chat does that itself, another MCP host calls start_service_flow with the first.
+   */
+  queued?: QueuedService[];
 };
+
+/** A service waiting on the one in progress, with what the citizen already said for it. */
+export type QueuedService = { serviceId: string; answers?: Record<string, string> };
 
 /** Registry profile facts the chains gate options on (from identity verify). */
 export type CitizenProfile = {

@@ -31,6 +31,7 @@ Refer to below samples to kickstart you own demo or application.
   - [Device Managaeability Agent](./ai//device-manageability/README.md)
   - Vertical Reference Solutions Blueprint 
     - [Kiosk Operational Efficiency - Public Services](./ai/retail/public-service-kiosk/README.md)
+    - [Healthcare Patient Service Kiosk](./ai/retail/healthcare-service-kiosk/README.md)
 - **Camera**
   - [MIPI and GMSL Setup Tutorial](./camera/README.md)
 - **Real-Time**

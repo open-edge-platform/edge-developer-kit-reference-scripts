@@ -103,19 +103,20 @@ Options:
   --package-studio    set up the studio and build its distributable executable
                       (scripts\win\package.ps1 under EDGE_AI_STUDIO_DIR)
   --bundle            embedded-bundle setup: instead of setting up the studio
-                      checkout, export a minimal studio with the kiosk injected
-                      as a studio sample into build\kiosk-studio\<kiosk>\ and install it
-                      (run it with start_win.bat --bundle [--desktop]);
-                      the kiosk's terminal mode picks the exported services
-                      (touch: OCR+face, LLM remote; chat/agent: all five)
+                      checkout, export a minimal studio with every chosen kiosk
+                      injected as a studio sample into build\kiosk-studio\ and
+                      install it (run it with start_win.bat --bundle [--desktop]);
+                      the kiosks' terminal modes pick the auto-started services
+                      (touch: OCR+face, LLM remote; chat: all five)
   --start             after setup, start the kiosks (start_win.bat; with --mock,
                       start_win.bat --mock)
   --dev               after setup, run one kiosk in development mode
                       (scripts\dev\dev.bat, hot reload; with --mock, no studio) -
                       with several kiosks, asks which (or pass --kiosk <name>)
   --build             after the kiosk dependencies, run the production build
-                      (scripts\build.bat: the embedded bundle packaged as a
-                      desktop app per kiosk under build\). Implies --skip-studio unless
+                      (scripts\build.bat: the embedded bundle - one studio, every
+                      chosen kiosk a sample of it - packaged as one desktop app
+                      under build\; with --mock, one mocked app per kiosk). Implies --skip-studio unless
                       --studio is also given. Everything after -- goes to the
                       build (see scripts\build.bat --help); --yes is forwarded
   --hardware          report the peripheral drivers Windows needs (the automated
@@ -322,11 +323,15 @@ Use-Kiosk $KioskDirs[0]
 # Everything below this block is unattended work (npm installs, the studio's
 # setup, the build), so whatever needs an answer is asked here. Setup itself
 # has nothing more to ask on Windows (the studio's system-package step is Linux
-# only); the build's questions are the build script's own, asked per kiosk.
-# Each answer is the complete argument list for that kiosk's build.
+# only); the build's questions are the build script's own, asked once for the
+# platform app that carries every kiosk, or per kiosk for the mocked apps.
+# Each answer is the complete argument list for that build.
 $BuildAnswers = @()
 $BuildFlow = if ($Mock) { @('--mock') } else { @('--bundle-app') }
-if ($Build) {
+if ($Build -and -not $Mock) {
+    if ($Yes) { $BuildArgs = @('--yes') + $BuildArgs }
+    $BuildAnswers += , (Get-BuildAnswers (@($BuildFlow) + @($BuildArgs)))
+} elseif ($Build) {
     if ($Yes) { $BuildArgs = @('--yes') + $BuildArgs }
     foreach ($dir in $KioskDirs) {
         Use-Kiosk $dir
@@ -356,16 +361,13 @@ if ($Hardware) {
 # 3. Edge AI Studio prerequisite -------------------------------------------
 if ($Bundle) {
     # Embedded-bundle path: the studio checkout is only the export source; the
-    # runnable copy (minimal studio + injected kiosk sample) lives in build\.
+    # runnable copy (minimal studio + injected kiosk samples) lives in build\.
     # The Linux flow's install_dependencies.sh step has no Windows analog - the
     # bundle's own setup_win.bat covers what it needs.
-    foreach ($dir in $KioskDirs) {
-        Use-Kiosk $dir
-        Write-Info "Building and installing the embedded bundle ($(Get-KioskBundleDir))"
-        & node (Join-Path $RepoRoot 'scripts\bundle.mjs') --install
-        if ($LASTEXITCODE -ne 0) { Stop-WithError "the bundle build failed (exit $LASTEXITCODE)" }
-    }
-    Use-Kiosk $KioskDirs[0]
+    Write-Info "Building and installing the embedded bundle with $(Get-SelectedKioskIds) as its samples ($(Get-KioskBundleDir))"
+    Set-KioskDirList
+    & node (Join-Path $RepoRoot 'scripts\bundle.mjs') --install
+    if ($LASTEXITCODE -ne 0) { Stop-WithError "the bundle build failed (exit $LASTEXITCODE)" }
 } elseif ($Mock) {
     Write-Info 'No Edge AI Studio (--mock) - the AI services are mocked'
 } elseif (-not $Studio -and $Build) {
@@ -399,10 +401,14 @@ if ($Bundle) {
 }
 
 # 4. Production build (--build) ---------------------------------------------
-if ($Build) {
+if ($Build -and -not $Mock) {
+    Write-Info "Building the desktop app with $(Get-SelectedKioskIds) as studio samples (electron\build.ps1)"
+    Set-KioskDirList
+    Invoke-DesktopBuild (@($BuildFlow) + @($BuildAnswers[0]))
+} elseif ($Build) {
     for ($i = 0; $i -lt $KioskDirs.Count; $i++) {
         Use-Kiosk $KioskDirs[$i]
-        Write-Info "Building the $(Get-KioskLabel $KioskDir) desktop app (scripts\build.bat)"
+        Write-Info "Building the $(Get-KioskLabel $KioskDir) mocked desktop app (scripts\build.bat --mock)"
         Invoke-DesktopBuild (@($BuildFlow) + @($BuildAnswers[$i]))
     }
     Use-Kiosk $KioskDirs[0]
@@ -464,11 +470,10 @@ Next steps:
 Docs: README.md and common/docs/ (getting-started, dev-mode, build, configuration)
 "@
 } elseif ($Build) {
-    $pick = if ($s) { ' --kiosk <name>' } else { '' }
     Write-Host @"
 
-Installer(s) are in build\. Next steps:
-  ${run}start_win.bat --desktop$pick   launch a packaged app from this checkout
+Installer(s) are in build\ - one app, its studio carrying the kiosk$s as samples. Next steps:
+  ${run}start_win.bat --desktop   launch the packaged app from this checkout
   build\*.exe                       install it on a terminal
 
 Docs: common/docs/build.md (deploying a terminal, uninstalling)
@@ -479,8 +484,8 @@ Docs: common/docs/build.md (deploying a terminal, uninstalling)
 Next steps:
   ${run}start_win.bat               start the Edge AI Studio and the kiosk$s (production build)
   ${run}start_win.bat --no-studio   kiosk$s only, against a gateway that is already up
-  ${run}setup_win.bat --build       package the kiosk$s as desktop apps (.exe / .msi; installs the
-                                electron/ deps itself)
+  ${run}setup_win.bat --build       package the kiosk$s as one desktop app (.exe / .msi; each kiosk
+                                a studio sample; installs the electron/ deps itself)
   common\scripts\dev\dev.bat --kiosk $(if ($s) { '<name>' } else { Get-KioskId $KioskDir })
                                 one kiosk in development mode (hot reload; --mock: no studio needed)
 

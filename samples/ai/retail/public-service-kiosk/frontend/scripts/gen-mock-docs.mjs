@@ -33,8 +33,10 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.resolve(HERE, "../../assets/mocks");
 const CSV = path.resolve(HERE, "../data/citizens.csv");
 
-/** Characters a mock-document path may consist of. */
-const PATH_CHARS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._/";
+/** Characters a mock-document path may consist of; Windows adds its drive colon and separator. */
+const PATH_CHARS =
+  "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._/" +
+  (process.platform === "win32" ? ":\\" : "");
 
 /** Joined path, refused when a segment (e.g. "../..") would escape OUT. */
 function insideOut(...segments) {
@@ -44,8 +46,6 @@ function insideOut(...segments) {
   }
   return target;
 }
-
-/* ------------------------------------------------------------- registry rows */
 
 function loadCitizens() {
   const [head, ...rows] = readFileSync(CSV, "utf8").trim().split(/\r?\n/);
@@ -94,7 +94,6 @@ function loadPayloadCitizen(token) {
   }
 }
 
-/** One rendered document into `dir`. */
 function writeDoc(dir, file, bytes) {
   // Rebuilt inline, character by character off the allowlist: the security
   // scan only trusts sanitization done in the same function as the write.
@@ -134,8 +133,6 @@ async function writeSet(dir, P, donor) {
   writeFileSync(target + "/manifest.json", JSON.stringify(manifestOf(P, donor), null, 2) + "\n");
 }
 
-/* ----------------------------------------------------------------------- run */
-
 const citizens = loadCitizens().map(person);
 const byKeyOrId = (token) =>
   citizens.find((c) => String(c.key) === token || c.id === token.toUpperCase());
@@ -162,7 +159,6 @@ if (argv.includes("--all")) {
   }
 }
 
-// Default run (no flags): citizen 1 only.
 if (!selected.length) selected = [citizens[0]];
 
 for (const P of selected) {

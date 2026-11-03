@@ -76,7 +76,7 @@ The kiosk answer is saved in `common/.kiosks` (Enter keeps the saved one) and th
 root `./start.sh` and `./uninstall.sh` follow it. Answer up
 front with `--kiosk public-service`, `--kiosk healthcare` or `--kiosk all`;
 `--yes` without `--kiosk` keeps the saved choice (public-service on a fresh
-checkout). A kiosk folder's own `scripts/setup.sh` (`healthcare/scripts/setup.sh`) sets up
+checkout). A kiosk folder's own `scripts/setup.sh` (`healthcare-service-kiosk/scripts/setup.sh`) sets up
 that kiosk alone and leaves the saved choice untouched.
 
 It then installs npm dependencies for each chosen kiosk's `frontend/`, then sets up the
@@ -143,26 +143,26 @@ exits, the other is stopped too. A missing studio checkout is an error.
 
 | Kiosk | Port (`kiosk.json` `"port"`) |
 |---|---|
-| public-service | **http://localhost:3000** |
-| healthcare | **http://localhost:3001** |
+| public-service | **http://127.0.0.1:3000** |
+| healthcare | **http://127.0.0.1:3001** |
 
 Other entry points (shown for public-service; healthcare has the same on :3001,
-plus `/staff`, the staff hub, and `/queue`, the queue board):
+plus `/staff`, the staff hub, `/queue`, the queue board, and `/outbox`, the SMS and emails it sent):
 
 | URL | What |
 |---|---|
-| http://localhost:3000 | Kiosk terminal UI |
-| http://localhost:3000/enroll | Staff registration desk |
-| http://localhost:3000/settings | Settings page — edits `config.yaml`, restarts the kiosk to apply (same login as `/admin`) |
-| http://localhost:3000/mock-documents | Mock documents — a registered citizen's genuine and tampered test documents, as PDFs or a zip (same login as `/admin`) |
-| http://localhost:3000/admin | Admin dashboard (Payload CMS) — `admin@demo.local`, password generated on first setup/start and printed by the launcher (`cms.admin_password` in the gitignored `<kiosk>/frontend/config.yaml`) |
-| http://localhost:3000/api/health | Aggregated health of all AI services |
-| http://localhost:8080 | Edge AI Studio gateway UI |
+| http://127.0.0.1:3000 | Kiosk terminal UI |
+| http://127.0.0.1:3000/enroll | Staff registration desk |
+| http://127.0.0.1:3000/settings | Settings page — edits `config.yaml`, restarts the kiosk to apply (same login as `/admin`) |
+| http://127.0.0.1:3000/mock-documents | Mock documents — a registered citizen's genuine and tampered test documents, as PDFs or a zip; in healthcare also presented to the kiosk's simulated card reader, barcode scanner and document scanner (same login as `/admin`) |
+| http://127.0.0.1:3000/admin | Admin dashboard (Payload CMS) — `admin@demo.local`, password generated on first setup/start and printed by the launcher (`cms.admin_password` in the gitignored `<kiosk>/frontend/config.yaml`) |
+| http://127.0.0.1:3000/api/health | Aggregated health of all AI services |
+| http://127.0.0.1:8080 | Edge AI Studio gateway UI |
 
 Variants:
 
 ```bash
-./start.sh --kiosk healthcare  # just that kiosk, this run only (or: healthcare/scripts/start.sh)
+./start.sh --kiosk healthcare  # just that kiosk, this run only (or: healthcare-service-kiosk/scripts/start.sh)
 ./start.sh --no-studio   # don't start or wait for the studio; use whatever gateway is live
 ./start.sh --wait-studio # don't start it, but wait for a gateway someone else launches
 ./start.sh --desktop     # launch the packaged desktop app (one kiosk: --kiosk <name> when both are set up)
@@ -192,13 +192,13 @@ waited for unless you pass `--no-studio`.
 
 1. **Checks Node ≥ 20** and that each kiosk's dependencies (`<kiosk>/frontend/node_modules`) are installed (installs if not).
 2. **Brings the Edge AI Studio up.** If its gateway isn't already answering at
-   `STUDIO_URL` (default `http://localhost:8080`), launches the studio from
+   `STUDIO_URL` (default `http://127.0.0.1:8080`), launches the studio from
    `EDGE_AI_STUDIO_DIR` — failing if no checkout is there — preferring the packaged
    executable under `out/EdgeAIDemoStudio/` if you built one, falling back to the
    studio's headless `start.sh` — and waits until the gateway answers
    (`STUDIO_WAIT_SECS`, default 600 s; the first launch loads AI models). Then warns
    about any service the kiosk's mode needs that isn't active (OCR + face for touch,
-   all five for chat/agent). Two flags change
+   all five for chat). Two flags change
    this: `--wait-studio` only waits, for a gateway something else launches;
    `--no-studio` only probes the gateway and carries on regardless.
 3. **Primes the database on first run.** Payload CMS only creates and seeds the
@@ -220,11 +220,12 @@ gateway on port 8080:
 
 | Kiosk feature | Studio service | Endpoint |
 |---|---|---|
-| Document analysis, chat, agent | text-generation | `/api/text-generation@text-generation/v1` |
+| Document analysis, chat, agent | text-generation | `/api/text-generation@kiosk-llm/v1` |
 | Document OCR | ocr (PaddleOCR) | `/api/ocr@ocr` |
 | Face verification | face-recognition | `/api/face-recognition@face-recognition` |
-| Voice input | speech-to-text | `/api/speech-to-text@speech-to-text/v1` |
-| Voice output | text-to-speech | `/api/text-to-speech@text-to-speech/v1` |
+| Voice input | speech-to-text | `/api/speech-to-text@kiosk-stt/v1` |
+| Voice output | text-to-speech | `/api/text-to-speech@kiosk-tts-en/v1` |
+| Lip-synced avatar (chat) | lipsync | `/api/lipsync@kiosk-avatar/v1` |
 
 **The gateway being up is not enough — the individual services must be started.**
 The launcher scripts handle this whenever they set up or start the studio for you
@@ -235,32 +236,41 @@ kiosk's **terminal mode** (from `NEXT_PUBLIC_KIOSK_MODE` / `config.local.yaml` /
 ```json
 {
   "modes": {
-    "touch": { "services": { "ocr": { "status": "online", "models": { "default": { "device": "NPU" } } }, "…": {} } },
-    "chat": { "services": { "text-generation": { "status": "online", "…": {} }, "…": {} } },
-    "agent": "chat"
+    "touch": { "services": { "ocr": [{ "instanceId": "ocr", "status": "online", "models": { "default": { "device": "NPU" } } }], "…": {} } },
+    "chat": { "services": { "text-generation": [{ "label": "Kiosk LLM", "instanceId": "kiosk-llm", "status": "online", "…": {} }], "…": {} } }
   }
 }
 ```
 
 Each mode's `services` is written in the studio's own `deployment.json` format (the studio's
 `docs/deployment-config.md`): `"status": "online"` auto-starts a service, `models` pins its model and
-device. A string in place of a block reuses another mode's services. Both kiosks ship the same blocks
-today:
+device, and `instanceId` pins the address the kiosk's `config.yaml` calls (see
+[Configuration](configuration.md#ai-services)) — an entry without one takes over whatever
+instance an earlier deployment left. A string in place of a block reuses another mode's services.
+Both kiosks ship the same blocks today:
 
 | Kiosk mode | Services auto-started |
 |---|---|
 | `touch` | **ocr + face-recognition** only (text-generation/STT/TTS offline) |
-| `chat` (and public service's `agent`) | all five services |
+| `chat` | all five services |
 
 `touch` puts OCR on `NPU` and face on `CPU` and starts **no local LLM at all**: a touch
 terminal calls a cloud LLM — a touch build ships Gemini (`gemini-3.5-flash-lite`) with the
 API key left for `/settings` (see [build.md](build.md#the-build)); from a checkout, set
 `llm.base_url`, `llm.model` and `llm.api_key` yourself or document analysis has nothing to
 talk to. Its text-generation entry still carries the model preset, offline, for bundles built
-with `--llm local`. `chat`/`agent` run everything locally — LLM on `GPU`, speech-to-text on
-`NPU`, the rest on `CPU` — and pin text-generation to Gemma 4 E4B
+with `--llm local`. `chat` runs everything locally — LLM and speech-to-text on
+`GPU`, the rest on `CPU` (healthcare's lip-synced avatar on `NPU`) — and pins text-generation to Gemma 4 E4B
 (`unsloth/gemma-4-E4B-it-GGUF`, Q4_K_M on llama.cpp), the model the kiosk's `config.yaml`
-asks for as `llamacpp:unsloth/gemma-4-E4B-it-GGUF:Q4_K_M`. Edit a kiosk's file to retarget its devices or models;
+asks for as `llamacpp:unsloth/gemma-4-E4B-it-GGUF:Q4_K_M`. Its `metadata.serverArgs` are the
+llama-server flags the chat agent is tuned for: one slot (`-np 1`) and a full sliding-window cache
+(`--swa-full`) so each turn reuses the prompt the last one left in the cache, a 16k context, and
+a 128-token cap on Gemma's thinking (`--reasoning-budget 128` — 64 made it answer without calling
+its tools). Gemma's MTP drafter roughly halves the wait again (27 → 45–55 tokens/s; the chat
+turn's median 7.7 s → 3.8 s on a Core Ultra X7 358H), but it is a file the studio does not download:
+fetch `mtp-gemma-4-E4B-it-Q8_0.gguf` from `ggml-org/gemma-4-E4B-it-GGUF` and add
+`-md <its absolute path> --spec-type draft-mtp --spec-draft-n-max 3` to `serverArgs` — a path that
+does not exist stops the LLM from starting. Edit a kiosk's file to retarget its devices or models;
 to add a terminal mode, add its block — the launchers, the health check, the embedded bundle and
 the desktop build's questions all follow the file. A kiosk with no `deployment.json`, or none
 for its mode, stops the launcher with an error naming the file.
@@ -276,7 +286,7 @@ or force one fixed file with `STUDIO_DEPLOYMENT_FILE`.
 
 The presets are read on every studio boot — if the studio was already running before
 they were installed, restart it (or start the services by hand in the studio UI at
-http://localhost:8080) for them to take effect.
+http://127.0.0.1:8080) for them to take effect.
 
 With LLM or OCR down and document verification required (the default), or face
 recognition down while `face.require_match: true` (the `reference` profile), the
@@ -288,7 +298,7 @@ only when one of its enabled services takes documents.
 ## Verifying everything is up
 
 ```bash
-curl -s localhost:3000/api/health | python3 -m json.tool
+curl -s 127.0.0.1:3000/api/health | python3 -m json.tool
 ```
 
 returns `{ ok, services: { llm, ocr, verification, face, stt, tts, nfc, scanner } }`
@@ -328,4 +338,4 @@ Studio logs from launches made by these scripts land in `common/.studio.log`.
 - **NFC/scanner issues** — see the hardware section of
   [configuration.md](configuration.md) and each kiosk's `frontend/README.md`
   ([public-service](../../public-service-kiosk/frontend/README.md#peripheral-drivers),
-  [healthcare](../../healthcare/frontend/README.md#peripheral-drivers)).
+  [healthcare](../../healthcare-service-kiosk/frontend/README.md#peripheral-drivers)).

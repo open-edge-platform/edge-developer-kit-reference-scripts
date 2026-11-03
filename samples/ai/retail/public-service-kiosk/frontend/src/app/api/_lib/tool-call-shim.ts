@@ -11,6 +11,10 @@
  * assistant text and `tool_calls` comes back empty. Any agent loop built on
  * the AI SDK then sees a model that simply narrates what it would do.
  *
+ * Gemma 4 has markup of its own. A llama.cpp server parses it while tools are
+ * offered, but a step that withdrew them still gets the call written out as
+ * text — and that has to be stripped just the same.
+ *
  * This transform sits in the provider's `fetch` and repairs the SSE stream:
  * text is passed through untouched until a tool-call block starts, from
  * which point it is captured instead of streamed, and at the end of the
@@ -34,10 +38,25 @@
  * all follows the same opening marker — so the response simply ends there.
  */
 
-const OPEN = "<tool_call>";
-const CLOSE = "</tool_call>";
+/** A tool-call block's markers: Qwen's, then Gemma 4's. Neither opener is a prefix of the other. */
+const MARKERS = [
+  { open: "<tool_call>", close: "</tool_call>" },
+  { open: "<|tool_call>", close: "<tool_call|>" },
+] as const;
 
-/** Both shapes Qwen-family models emit inside the block. */
+type Marker = (typeof MARKERS)[number];
+
+/** The earliest opening marker in `text`, of either dialect. */
+function findOpening(text: string): { at: number; marker: Marker } | null {
+  let first: { at: number; marker: Marker } | null = null;
+  for (const marker of MARKERS) {
+    const at = text.indexOf(marker.open);
+    if (at !== -1 && (first === null || at < first.at)) first = { at, marker };
+  }
+  return first;
+}
+
+/** The shapes models emit inside the block. */
 type ParsedCall = { name: string; args: Record<string, unknown> };
 
 /** `{"name": "x", "arguments": {...}}` — the JSON dialect. */
@@ -82,8 +101,32 @@ function parseXmlCall(block: string): ParsedCall | null {
   return { name, args };
 }
 
+/**
+ * `call:name{key:<|"|>text<|"|>,n:3}` — Gemma 4's dialect: bare keys, and
+ * strings fenced by `<|"|>` instead of quotes. Rebuilt as JSON piece by piece,
+ * so nothing inside a fenced string is ever taken for a key.
+ */
+function parseGemmaCall(block: string): ParsedCall | null {
+  const match = /^\s*call:([\w.-]+)\s*(\{[\s\S]*\})\s*$/.exec(block);
+  if (!match) return null;
+  const json = match[2]
+    .split('<|"|>')
+    .map((piece, index) =>
+      index % 2 === 1 ? JSON.stringify(piece) : piece.replace(/([{,]\s*)([A-Za-z_][\w-]*)\s*:/g, '$1"$2":'),
+    )
+    .join("");
+  try {
+    const args = JSON.parse(json) as unknown;
+    return args && typeof args === "object" && !Array.isArray(args)
+      ? { name: match[1], args: args as Record<string, unknown> }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 function parseCall(block: string): ParsedCall | null {
-  return parseJsonCall(block) ?? parseXmlCall(block);
+  return parseJsonCall(block) ?? parseXmlCall(block) ?? parseGemmaCall(block);
 }
 
 /** How much of `text`'s tail could still grow into `marker`. */
@@ -96,7 +139,11 @@ function danglingPrefix(text: string, marker: string): number {
 }
 
 type Chunk = {
-  choices?: { index?: number; delta?: { content?: string | null }; finish_reason?: string | null }[];
+  choices?: {
+    index?: number;
+    delta?: { content?: string | null; tool_calls?: unknown[] };
+    finish_reason?: string | null;
+  }[];
 };
 
 /**
@@ -118,6 +165,7 @@ export function repairToolCallStream(
   let held = ""; // Text withheld because it may open a tool-call block.
   let captured = ""; // The tool-call block being collected.
   let capturing = false;
+  let close = ""; // Closing marker of the block being collected.
   let stopped = false; // The response is finished; everything after is noise.
   let template: Chunk | null = null; // Shape to model synthetic chunks on.
 
@@ -161,7 +209,23 @@ export function repairToolCallStream(
     reason: "tool_calls" | "stop",
   ) => send(controller, { ...template, choices: [{ index: 0, delta: {}, finish_reason: reason }] });
 
-  const handleLine = (line: string, controller: TransformStreamDefaultController<Uint8Array>) => {
+  /** Once the block's closing marker has arrived, emit the call it holds. */
+  const closeBlock = (controller: TransformStreamDefaultController<Uint8Array>) => {
+    const end = captured.indexOf(close);
+    if (end === -1) return;
+    const block = captured.slice(0, end);
+    const rest = captured.slice(end + close.length);
+    captured = block;
+    if (flushCall(controller)) {
+      // Anything after the block belongs to a call already made.
+      held = "";
+      sendFinish(controller, "tool_calls");
+      return;
+    }
+    held += block + close + rest;
+  };
+
+  const handleLine =(line: string, controller: TransformStreamDefaultController<Uint8Array>) => {
     if (!line.startsWith("data:")) {
       // Comments and blank separators are structural — pass them along.
       if (line.trim()) controller.enqueue(encoder.encode(`${line}\n\n`));
@@ -188,6 +252,17 @@ export function repairToolCallStream(
     const content = choice?.delta?.content;
     // Remember the envelope (id, model, created…) for synthetic chunks.
     if (!template) template = { ...chunk, choices: undefined };
+
+    // A server that parses calls itself (OVMS) turns that markup into
+    // `tool_calls` even on a step that offered no tools — the same invention
+    // as a marker in the text, so the turn ends there just the same.
+    if (mode === "strip" && choice?.delta?.tool_calls?.length) {
+      if (held) send(controller, { ...chunk, choices: [{ ...choice, delta: { content: held }, finish_reason: null }] });
+      held = "";
+      stopped = true;
+      sendFinish(controller, "stop");
+      return;
+    }
 
     // The turn ended: close out any captured call before the final chunk.
     if (choice?.finish_reason) {
@@ -217,27 +292,15 @@ export function repairToolCallStream(
 
     if (capturing) {
       captured += content;
-      const end = captured.indexOf(CLOSE);
-      if (end !== -1) {
-        const block = captured.slice(0, end);
-        const rest = captured.slice(end + CLOSE.length);
-        captured = block;
-        if (flushCall(controller)) {
-          // Anything after the block belongs to a call already made.
-          held = "";
-          sendFinish(controller, "tool_calls");
-          return;
-        }
-        held += block + CLOSE + rest;
-      }
+      closeBlock(controller);
       return;
     }
 
     held += content;
-    const open = held.indexOf(OPEN);
-    if (open !== -1) {
-      const before = held.slice(0, open);
-      const after = held.slice(open + OPEN.length);
+    const opening = findOpening(held);
+    if (opening) {
+      const before = held.slice(0, opening.at);
+      const after = held.slice(opening.at + opening.marker.open.length);
       held = "";
       if (before) {
         send(controller, { ...chunk, choices: [{ ...choice, delta: { content: before } }] });
@@ -251,11 +314,14 @@ export function repairToolCallStream(
       }
       capturing = true;
       captured = after;
+      close = opening.marker.close;
+      // A short call can open and close within one delta.
+      closeBlock(controller);
       return;
     }
 
     // Hold back only the tail that could still become an opening marker.
-    const dangling = danglingPrefix(held, OPEN);
+    const dangling = Math.max(...MARKERS.map((marker) => danglingPrefix(held, marker.open)));
     const emit = held.slice(0, held.length - dangling);
     held = held.slice(held.length - dangling);
     if (emit) {

@@ -7,20 +7,22 @@
   Build the Vertical Reference Solutions Blueprint for production (Windows).
 
 .DESCRIPTION
-  The PowerShell counterpart of scripts/build.sh: the embedded bundle packaged
-  as a desktop app, one per kiosk setup_win.bat set up (or --kiosk) - or, with
-  --mock, the kiosk alone with its AI mocked, no studio anywhere. Hands over to electron\build.ps1 --bundle-app, which checks
+  The PowerShell counterpart of scripts/build.sh: the embedded bundle - one
+  studio, every kiosk setup_win.bat set up (or --kiosk) a sample of it -
+  packaged as one desktop app; or, with --mock, each kiosk alone with its AI
+  mocked, no studio anywhere. Hands over to electron\build.ps1 --bundle-app, which checks
   the toolchain, asks the install questions, exports the bundle
   (scripts/bundle.mjs) and packages it - all in one process, so the questions
   come before the long work.
 
 .EXAMPLE
   common\scripts\build.bat
-  Ask for the install settings, then build every kiosk setup_win.bat set up.
+  Ask for the install settings, then build the platform with every kiosk
+  setup_win.bat set up.
 
 .EXAMPLE
   common\scripts\build.bat --kiosk healthcare
-  Just that one.
+  With just that one.
 
 .EXAMPLE
   common\scripts\build.bat --mock
@@ -47,29 +49,33 @@ function Show-Usage {
 Usage: common\scripts\build.bat [--kiosk <names>] [--mock] [-- <extra args>]
    or: setup_win.bat --build [--kiosk <names>] [--mock] [-- <extra args>]   (sets the kiosks up first)
 
-Builds the embedded bundle packaged as a desktop app (.exe and/or .msi - the
-build asks which, before any long work starts) for every kiosk setup_win.bat
-set up: a minimal studio export with the kiosk injected as a sample, shipped
-pre-setup. First launch on the
-terminal unpacks it, runs the studio's setup (runtimes, worker envs -
-downloads), then starts the studio as the main process - the window opens on
-it - and the studio runs the blueprint as its own worker on another URL.
-Packages are copied to build\ at the repo root, the exported bundles go to
-build\kiosk-studio\<kiosk>\. Works from a totally clean checkout: missing
-dependencies are installed on the way. The Edge AI Studio checkout at
+Builds the embedded bundle packaged as one desktop app (.exe and/or .msi - the
+build asks which, before any long work starts): a minimal studio export with
+every kiosk setup_win.bat set up injected as a sample of it, shipped
+pre-setup. First launch on the terminal unpacks it, runs the studio's setup
+(runtimes, worker envs - downloads), then starts the studio as the main
+process, and the studio runs each kiosk as its own worker on its own URL. The
+window opens on the studio's samples gallery, or on the kiosk the build's
+questions chose. Packages are copied to build\ at the repo root, the
+exported bundle goes to build\kiosk-studio\. Works from a totally clean
+checkout: missing dependencies are installed on the way. The Edge AI Studio checkout at
 EDGE_AI_STUDIO_DIR is only the export source - it does not need to be set up.
 
 Options:
   --kiosk <names>   which kiosks: $(Get-KioskIds) or all, comma separated
                     (default: what setup_win.bat saved)
-  --mock            no studio: package the kiosk alone, its AI mocked and its
+  --mock            no studio: package each kiosk alone, its AI mocked and its
                     hardware simulated when absent, as build\<product>-<version>-mock.exe.
                     Needs no studio checkout. Run it with start_win.bat --desktop --mock
   -h, --help        this help
 
-Extra args after --, for every kiosk's build:
+Extra args after --:
   --yes, --fullscreen, --windowed, --targets=nsis,msi          go to the shell
-  anything else (--mode, --llm, --port, --allow-missing, ...)  goes to scripts/bundle.mjs
+  --opens-on <studio|kiosk>                                    what the window opens on
+                                                               (default: studio)
+  --mode [<kiosk>=]<mode>                                      a kiosk's terminal mode
+                                                               (plain: every kiosk's)
+  anything else (--llm, --port, --allow-missing, ...)          goes to scripts/bundle.mjs
 
 Studio location: EDGE_AI_STUDIO_DIR (env or .kioskrc), currently:
   $EdgeAiStudioDir
@@ -102,9 +108,21 @@ for ($i = 0; $i -lt $Arguments.Count; $i++) {
 Resolve-Kiosks $KioskArg
 Assert-Node
 
-# The embedded bundle, or with --mock the kiosk alone.
-$Flow = if ($Mock) { @('--mock') } else { @('--bundle-app') }
+# The embedded bundle: one studio, every kiosk a sample of it, one app.
+if (-not $Mock) {
+    foreach ($dir in $KioskDirs) {
+        Use-Kiosk $dir
+        Confirm-Config
+        Confirm-AdminPassword
+    }
+    Use-Kiosk $KioskDirs[0]
+    Set-KioskDirList
+    Invoke-DesktopBuild (@('--bundle-app') + @($BuildArgs))
+    exit 0
+}
 
+# With --mock, each kiosk alone.
+$Flow = @('--mock')
 if ($KioskDirs.Count -eq 1) {
     Confirm-Config
     Confirm-AdminPassword
@@ -112,8 +130,8 @@ if ($KioskDirs.Count -eq 1) {
     exit 0
 }
 
-# Several kiosks: every kiosk's questions first, then the builds one after
-# another (they share electron\'s staging directories).
+# Several mocked kiosks: every kiosk's questions first, then the builds one
+# after another (they share electron\'s staging directories).
 $answers = @()
 foreach ($dir in $KioskDirs) {
     Use-Kiosk $dir
@@ -127,4 +145,4 @@ for ($i = 0; $i -lt $KioskDirs.Count; $i++) {
     Write-Info "Building $(Get-KioskLabel $KioskDir) ($($i + 1) of $($KioskDirs.Count))"
     Invoke-DesktopBuild (@($Flow) + @($answers[$i]))
 }
-Write-Ok "Installers for $(Get-SelectedKioskIds) are in build\"
+Write-Ok "Mocked installers for $(Get-SelectedKioskIds) are in build\"

@@ -6,13 +6,14 @@
 #
 #   ./build.sh                      ask for the install settings, then build
 #   ./build.sh --yes                take the defaults from <kiosk>/frontend/config.yaml
-#   KIOSK_DIR=healthcare ./build.sh  build another kiosk (default: public-service-kiosk)
+#   KIOSK_DIR=healthcare-service-kiosk ./build.sh  build another kiosk (default: public-service-kiosk)
 #   ./build.sh --mode=touch --targets=appimage,deb --windowed
 #   ./build.sh --no-build           reuse the last kiosk server build
 #   ./build.sh --stage-only         assemble the bundle, don't package it
 #   ./build.sh --dev                run the shell without packaging
 #   ./build.sh --shell-only         package just the shell, unpacked (external-target mode)
-#   ./build.sh --bundle-app         package build/kiosk-studio/<kiosk> as the app
+#   ./build.sh --bundle-app         package build/kiosk-studio (every kiosk in
+#                                   KIOSK_DIR_LIST a sample of one studio) as the app
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
@@ -35,13 +36,18 @@ fi
 # The shipped config.yaml is baked into the package, so it has to exist and
 # carry an admin password before the build reads it (a direct run here skips
 # the root launchers, which is where ensure_config/ensure_admin_password live).
+# --bundle-app carries every kiosk in KIOSK_DIR_LIST (colon separated), so each gets the same.
 KIOSK_DIR="${KIOSK_DIR:-public-service-kiosk}"
 case "$KIOSK_DIR" in /*) ;; *) KIOSK_DIR="$(cd ../.. && pwd)/$KIOSK_DIR" ;; esac
 export KIOSK_DIR
-if [ ! -f "$KIOSK_DIR/frontend/config.yaml" ]; then
-  cp "$KIOSK_DIR/frontend/configs/${KIOSK_PROFILE:-reference}.yaml" "$KIOSK_DIR/frontend/config.yaml"
-  echo "Created $KIOSK_DIR/frontend/config.yaml from the ${KIOSK_PROFILE:-reference} profile"
-fi
-node ../scripts/ensure-admin-password.mjs
+IFS=: read -r -a kiosk_dirs <<<"${KIOSK_DIR_LIST:-$KIOSK_DIR}"
+for dir in "${kiosk_dirs[@]}"; do
+  case "$dir" in /*) ;; *) dir="$(cd ../.. && pwd)/$dir" ;; esac
+  if [ ! -f "$dir/frontend/config.yaml" ]; then
+    cp "$dir/frontend/configs/${KIOSK_PROFILE:-reference}.yaml" "$dir/frontend/config.yaml"
+    echo "Created $dir/frontend/config.yaml from the ${KIOSK_PROFILE:-reference} profile"
+  fi
+  KIOSK_DIR="$dir" node ../scripts/ensure-admin-password.mjs
+done
 
 exec node scripts/build.mjs "$@"

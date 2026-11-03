@@ -41,7 +41,6 @@ async function rasterize(pdfPath: string, dir: string): Promise<string[]> {
   return pages.map((page) => path.join(dir, page));
 }
 
-/** OCR one page image via the OCR service (`POST {base}/ocr`). */
 async function ocrPage(pagePath: string): Promise<string> {
   const bytes = await readFile(pagePath);
   const name = path.basename(pagePath);
@@ -81,13 +80,20 @@ export type TextExtraction =
        * does not read as a document of its own.
        */
       pages: string[];
+      /** The PDF page number (from 1) each entry of `pages` was read off. */
+      sheets: number[];
     }
   | { ok: false; reason: ExtractionFailure };
 
 const extracted = (raw: string[]): TextExtraction => {
-  const pages = raw.map((page) => page.trim()).filter(Boolean);
+  const read = raw
+    .map((page, index) => ({ text: page.trim(), sheet: index + 1 }))
+    .filter((page) => page.text);
+  const pages = read.map((page) => page.text);
   const text = pages.join("\n");
-  return text ? { ok: true, text, pages } : { ok: false, reason: "empty" };
+  return text
+    ? { ok: true, text, pages, sheets: read.map((page) => page.sheet) }
+    : { ok: false, reason: "empty" };
 };
 
 /**

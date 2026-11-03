@@ -69,7 +69,6 @@ command -v apt-get >/dev/null 2>&1 \
 APT_YES=""
 [ "$YES" -eq 1 ] && APT_YES="-y"
 
-# 1. Distro packages: PC/SC (NFC), SANE frontend, poppler (OCR) ---------------
 info "Installing system packages (sudo): pcscd, pcsc-tools, sane-utils, poppler-utils"
 sudo apt-get update
 sudo apt-get install $APT_YES libpcsclite1 pcscd pcsc-tools sane-utils poppler-utils
@@ -78,7 +77,6 @@ info "Enabling the PC/SC daemon (pcscd)"
 sudo systemctl enable --now pcscd \
   || warn "could not start pcscd — NFC reads will be simulated until it runs"
 
-# 2. PFU fi Series scanner driver (pfufs) -------------------------------------
 if command -v pfufsgetscstatus >/dev/null 2>&1 || dpkg -s pfufs >/dev/null 2>&1; then
   ok "PFU fi Series driver (pfufs) is already installed"
 else
@@ -114,7 +112,6 @@ else
   fi
 fi
 
-# 3. Verify -------------------------------------------------------------------
 echo
 info "Checking what answers"
 if systemctl is-active --quiet pcscd 2>/dev/null; then

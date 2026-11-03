@@ -4,8 +4,9 @@
 
 /**
  * Build the embedded bundle: a minimal (non-Electron) Edge AI Studio export
- * with the Vertical Reference Solutions Blueprint injected as a studio sample,
- * started by the studio as a hidden worker process — like the Edge AI suites.
+ * with every chosen kiosk of the Vertical Reference Solutions Blueprint
+ * injected as a studio sample, each started by the studio as a hidden worker
+ * process — like the Edge AI suites.
  *
  * One script for both platforms: scripts/bundle.sh and the Windows launchers
  * run it on the Node the kit already requires. Invoked by scripts/build.sh /
@@ -18,16 +19,10 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
-import { installDeployment, kioskTerminalMode, onlineServices, resolveDeployment } from "./studio-deployment.mjs";
+import { installDeployment, instances, kioskTerminalMode, online, onlineServices, resolveDeployment } from "./studio-deployment.mjs";
+import { chosenKiosks, modeArgs, resolveModes } from "./kiosks.mjs";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const KIOSK_DIR = path.resolve(REPO_ROOT, "..", process.env.KIOSK_DIR || "public-service-kiosk");
-process.env.KIOSK_DIR = KIOSK_DIR;
-const FRONTEND_DIR = path.join(KIOSK_DIR, "frontend");
-const KIOSK = JSON.parse(fs.readFileSync(path.join(KIOSK_DIR, "kiosk.json"), "utf8"));
-const SAMPLE_ID = KIOSK.studio.sampleId;
-const KIOSK_FOLDER = path.basename(KIOSK_DIR);
-const SAMPLE_TITLE = KIOSK.studio.title;
 const ELECTRON_DIR = path.join(REPO_ROOT, "electron");
 const WINDOWS = process.platform === "win32";
 
@@ -57,14 +52,17 @@ function loadKioskRc() {
 loadKioskRc();
 
 const setting = (name, fallback) => process.env[name] || fallback;
-const EDGE_AI_STUDIO_DIR = setting("EDGE_AI_STUDIO_DIR", path.resolve(REPO_ROOT, "..", "..", "edge-ai-demo-studio"));
+// Relative path settings resolve against common/, where .kioskrc lives — never the caller's cwd.
+const kitPath = (value) => value && path.resolve(REPO_ROOT, value);
+const EDGE_AI_STUDIO_DIR = kitPath(setting("EDGE_AI_STUDIO_DIR", path.resolve(REPO_ROOT, "..", "..", "edge-ai-demo-studio")));
 const KIOSK_PROFILE = setting("KIOSK_PROFILE", "reference");
 const STUDIO_DEPLOYMENT_MANAGE = setting("STUDIO_DEPLOYMENT_MANAGE", "1");
+const STUDIO_LLAMACPP_BACKEND = setting("STUDIO_LLAMACPP_BACKEND", "sycl");
 
 
-function runOk(argv, { cwd, env } = {}) {
+function runOk(argv, { cwd, env, replaceEnv = false } = {}) {
   const result = spawnSync(argv[0], argv.slice(1), {
-    cwd, stdio: "inherit", env: env ? { ...process.env, ...env } : process.env,
+    cwd, stdio: "inherit", env: env ? (replaceEnv ? env : { ...process.env, ...env }) : process.env,
   });
   if (result.error) die(`could not run ${argv[0]}: ${result.error.message}`);
   if (result.status !== 0) die(`\`${argv.join(" ")}\` exited with ${result.status}`);
@@ -74,31 +72,45 @@ function git(args, opts = {}) {
   return spawnSync("git", ["-C", EDGE_AI_STUDIO_DIR, ...args], { stdio: "pipe", ...opts });
 }
 
+let KIOSKS;
+try {
+  KIOSKS = chosenKiosks();
+} catch (error) {
+  die(error.message);
+}
+const KIOSK_LIST = KIOSKS.map((k) => k.id).join(", ");
+
 function usage() {
   console.log(`Usage: scripts/bundle.mjs [options]   (also reached via: scripts/build.sh -- [options])
 
-Produces build/kiosk-studio/<kiosk>/ at the repo root: a source export of the Edge AI Studio (no
-Electron) carrying its full AI service catalog, with the kiosk injected as the
-gallery's only sample. The studio starts the kiosk as a hidden child process
-(workers/<kiosk.json studio.sampleId>) and its samples gallery links to the kiosk UI.
+Produces build/kiosk-studio/ at the repo root: a source export of the Edge AI Studio (no
+Electron) carrying its full AI service catalog, with every chosen kiosk
+(${KIOSK_LIST}) injected as a sample of its gallery. The studio starts each
+kiosk as a hidden child process (workers/<kiosk.json studio.sampleId>) and its
+samples gallery links to each kiosk's UI. The launchers choose the kiosks
+(KIOSK_DIR_LIST, else KIOSK_DIR).
 
 Options:
-  --mode <mode>              kiosk terminal mode, one of ${KIOSK_FOLDER}/deployment.json's
-                             modes; its online services are what the bundle
+  --mode [<kiosk>=]<mode>    terminal mode, one of the kiosk's deployment.json
+                             modes: a plain <mode> sets every kiosk's,
+                             <kiosk>=<mode> one kiosk's (repeat it per kiosk).
+                             The modes' online services are what the bundle
                              auto-starts (the LLM follows --llm) and what the
                              checkout must have. Every service is exported
                              either way.
-                             default: the kiosk's configured mode (${kioskTerminalMode(KIOSK_DIR, KIOSK_PROFILE)})
+                             default: each kiosk's configured mode
   --llm <remote|local>       where the LLM runs: remote = Gemini in the cloud
                              (or the remote llm.base_url config.yaml names), no
                              text-generation started here; local = the platform
                              runs it with the mode's text-generation preset.
-                             default: local when the mode runs text-generation
-  --out <dir>                output directory (default: build/kiosk-studio/${KIOSK.id})
-  --port <n>                 port the embedded kiosk listens on (default: kiosk.json studio.port)
+                             default: local when a kiosk's mode runs text-generation
+  --out <dir>                output directory (default: build/kiosk-studio)
+  --port <n>                 port the embedded kiosk listens on, for a one-kiosk
+                             bundle (default, and always with several: each
+                             kiosk.json's studio.port)
   --install                  run the bundle's own setup afterwards (npm install,
                              worker venvs, frontend build — long, downloads a lot)
-  --skip-stage               reuse the existing kiosk stage (electron/resources)
+  --skip-stage               reuse the kiosks' last stage (<out>/.stage/)
   --allow-missing            build even if the studio checkout lacks some of the
                              mode's services (default: hard error — no silent
                              fallback to degraded/mocked kiosk features)
@@ -108,43 +120,66 @@ Options:
   -h, --help                 this help`);
 }
 
-let MODE = "", LLM = "", OUT = "", PORT = setting("KIOSK_BUNDLE_PORT", String(KIOSK.studio.port));
+let LLM = "", OUT = "", PORT = "";
 let INSTALL = false, SKIP_STAGE = false, ALLOW_MISSING = false;
 let BRAND = setting("STUDIO_BRAND_NAME", "Vertical Reference Solutions Blueprint");
 
 const argv = process.argv.slice(2);
 for (let i = 0; i < argv.length; i++) {
-  switch (argv[i]) {
-    case "--mode": MODE = argv[++i] ?? ""; break;
-    case "--llm": LLM = argv[++i] ?? ""; break;
-    case "--out": OUT = argv[++i] ?? ""; break;
-    case "--port": PORT = argv[++i] ?? ""; break;
+  const [name, inline] = argv[i].startsWith("--") && argv[i].includes("=")
+    ? [argv[i].slice(0, argv[i].indexOf("=")), argv[i].slice(argv[i].indexOf("=") + 1)]
+    : [argv[i], undefined];
+  const value = () => inline ?? argv[++i] ?? "";
+  switch (name) {
+    case "--mode": value(); break; // collected by modeArgs below
+    case "--llm": LLM = value(); break;
+    case "--out": OUT = value(); break;
+    case "--port": PORT = value(); break;
     case "--install": INSTALL = true; break;
     case "--skip-stage": SKIP_STAGE = true; break;
     case "--allow-missing": ALLOW_MISSING = true; break;
-    case "--brand": BRAND = argv[++i] ?? ""; if (!BRAND) die("--brand needs a value"); break;
+    case "--brand": BRAND = value(); if (!BRAND) die("--brand needs a value"); break;
     case "-h": case "--help": usage(); process.exit(0); break;
     default: usage(); die(`unknown option: ${argv[i]}`);
   }
 }
 
-MODE = MODE || kioskTerminalMode(KIOSK_DIR, KIOSK_PROFILE);
-OUT = OUT || path.join(REPO_ROOT, "..", "build", "kiosk-studio", KIOSK.id);
+try {
+  resolveModes(KIOSKS, modeArgs(argv), (kiosk) => kioskTerminalMode(kiosk.dir, KIOSK_PROFILE));
+} catch (error) {
+  die(error.message);
+}
+if (PORT) {
+  if (KIOSKS.length > 1) die(`--port is for a one-kiosk bundle — ${KIOSK_LIST} each keep their kiosk.json studio.port`);
+  if (!/^\d+$/.test(PORT)) die(`--port takes a number, not "${PORT}"`);
+  KIOSKS[0].port = Number(PORT);
+} else if (KIOSKS.length === 1 && process.env.KIOSK_BUNDLE_PORT) {
+  KIOSKS[0].port = Number(process.env.KIOSK_BUNDLE_PORT);
+}
+const MODES = KIOSKS.map((k) => `${k.id}=${k.mode}`).join(", ");
+
+OUT = OUT || path.join(REPO_ROOT, "..", "build", "kiosk-studio");
 const STUDIO_OUT = path.join(OUT, "studio");
 const TEMPLATES = path.join(REPO_ROOT, "scripts", "bundle");
 const STAGE = path.join(ELECTRON_DIR, "resources");
+// Each kiosk's stage is kept here between its staging and the export, and for --skip-stage.
+const HELD_STAGES = path.join(OUT, ".stage");
 
 let RESOLVED;
 try {
-  RESOLVED = resolveDeployment([{ dir: KIOSK_DIR, mode: MODE }], { file: process.env.STUDIO_DEPLOYMENT_FILE, warn });
+  RESOLVED = resolveDeployment(KIOSKS.map(({ dir, mode }) => ({ dir, mode })), { file: kitPath(process.env.STUDIO_DEPLOYMENT_FILE), warn });
 } catch (error) {
   die(error.message);
 }
 const DEPLOYMENT = structuredClone(RESOLVED.deployment);
-const LLM_PRESET = DEPLOYMENT.services["text-generation"] ?? {};
-LLM = LLM || (LLM_PRESET.status === "online" ? "local" : "remote");
+const LLM_PRESET = instances(DEPLOYMENT.services["text-generation"]);
+LLM = LLM || (online(LLM_PRESET) ? "local" : "remote");
 if (LLM !== "local" && LLM !== "remote") die(`--llm takes remote or local, not "${LLM}"`);
-DEPLOYMENT.services["text-generation"] = { ...LLM_PRESET, status: LLM === "local" ? "online" : "offline" };
+// --llm turns every text-generation instance the modes list on or off.
+DEPLOYMENT.services["text-generation"] = (LLM_PRESET.length ? LLM_PRESET : [{}]).map((instance) => ({
+  ...instance,
+  status: LLM === "local" ? "online" : "offline",
+}));
 let KIOSK_SERVICES = onlineServices(DEPLOYMENT);
 
 if (!fs.existsSync(EDGE_AI_STUDIO_DIR)) die(`Edge AI Studio not found at ${EDGE_AI_STUDIO_DIR} (set EDGE_AI_STUDIO_DIR)`);
@@ -166,7 +201,7 @@ if (MISSING_SERVICES.length) {
     if (!KIOSK_SERVICES.length) die("none of the kiosk's services exist in this studio checkout");
   } else {
     die(`this studio checkout (${EDGE_AI_STUDIO_DIR}) is missing: ${MISSING_SERVICES.join(" ")}
-'${MODE}' mode needs them. Check out the studio branch that provides them
+The kiosks' modes (${MODES}) need them. Check out the studio branch that provides them
 (git -C "$EDGE_AI_STUDIO_DIR" branch -a), or pass --allow-missing to
 knowingly build a reduced bundle without them.`);
   }
@@ -175,7 +210,7 @@ knowingly build a reduced bundle without them.`);
 // The bundle ships the studio's whole service catalog, not just the kiosk's
 // dependencies — the demo studio is meant to show every service it has. Samples
 // are the opposite: the exporter keeps only the ones named by --samples, so the
-// injected kiosk ends up as the gallery's single tile.
+// injected kiosks end up as the gallery's only tiles.
 const listing = spawnSync(process.execPath, [EXPORTER, "--list", "--json"], {
   cwd: EDGE_AI_STUDIO_DIR, encoding: "utf8",
 });
@@ -215,48 +250,73 @@ if (SKIPPED_SERVICES.length) {
   info(`Leaving out ${SKIPPED_SERVICES.length} service(s) whose worker lives outside workers/: ${SKIPPED_SERVICES.join(" ")}`);
 }
 for (const s of KIOSK_SERVICES) {
-  if (!SERVICES.includes(s)) die(`${s} is not exportable but '${MODE}' mode needs it`);
+  if (!SERVICES.includes(s)) die(`${s} is not exportable but the kiosks' modes (${MODES}) need it`);
 }
 
-info(`Embedded bundle: mode=${MODE}, LLM=${LLM}, kiosk port=${PORT}`);
-info(`Exporting all ${SERVICES.length} studio services (kiosk needs: ${KIOSK_SERVICES.join(",")})`);
+info(`Embedded bundle: ${KIOSKS.map((k) => `${k.id} (mode ${k.mode}, port ${k.port})`).join(", ")}; LLM=${LLM}`);
+info(`Exporting all ${SERVICES.length} studio services (kiosks need: ${KIOSK_SERVICES.join(",")})`);
 info(`Output: ${OUT}`);
 
-// 1. Stage the kiosk's standalone server (server + assets + primed db + config)
-if (SKIP_STAGE && fs.existsSync(path.join(STAGE, "server"))) {
-  info(`Reusing existing kiosk stage (${STAGE})`);
-  const stagedAt = fs.existsSync(path.join(STAGE, "config.yaml"))
-    ? fs.statSync(path.join(STAGE, "config.yaml")).mtimeMs
-    : 0;
-  const newer = (entry) => {
-    if (!fs.existsSync(entry)) return false;
-    if (fs.statSync(entry).isFile()) return fs.statSync(entry).mtimeMs > stagedAt;
-    return fs.readdirSync(entry).some((name) => newer(path.join(entry, name)));
-  };
-  if (stagedAt && (newer(path.join(FRONTEND_DIR, "src")) || newer(path.join(FRONTEND_DIR, "package.json")))) {
-    warn("the reused stage is OLDER than the current frontend sources — a stale");
-    warn("stage can crash the embedded kiosk (module mismatches); drop --skip-stage to rebuild it");
-  }
-} else {
-  info(`Staging the kiosk server (electron stage, mode=${MODE}, live AI)`);
-  runOk([process.execPath, path.join(ELECTRON_DIR, "scripts", "build.mjs"), "--stage-only", `--mode=${MODE}`, `--llm=${LLM}`, "--live"],
-    { cwd: ELECTRON_DIR });
+// 1. Stage each kiosk's standalone server (server + assets + primed db +
+// config). The electron stage is one directory, so each kiosk's is moved out
+// of it into .stage/<sample id> before the next kiosk is staged.
+const STAGED = ["server", "assets", "database", "config.yaml"];
+function newerThan(entry, stagedAt) {
+  if (!fs.existsSync(entry)) return false;
+  if (fs.statSync(entry).isFile()) return fs.statSync(entry).mtimeMs > stagedAt;
+  return fs.readdirSync(entry).some((name) => newerThan(path.join(entry, name), stagedAt));
 }
-if (!fs.existsSync(path.join(STAGE, "server"))) die(`kiosk stage failed — ${path.join(STAGE, "server")} missing`);
+fs.mkdirSync(HELD_STAGES, { recursive: true });
+for (const kiosk of KIOSKS) {
+  kiosk.stage = path.join(HELD_STAGES, kiosk.sampleId);
+  const frontend = path.join(kiosk.dir, "frontend");
+  if (SKIP_STAGE && fs.existsSync(path.join(kiosk.stage, "server"))) {
+    info(`Reusing the ${kiosk.id} kiosk's last stage (${kiosk.stage})`);
+    const configYaml = path.join(kiosk.stage, "config.yaml");
+    const stagedAt = fs.existsSync(configYaml) ? fs.statSync(configYaml).mtimeMs : 0;
+    if (stagedAt && (newerThan(path.join(frontend, "src"), stagedAt) || newerThan(path.join(frontend, "package.json"), stagedAt))) {
+      warn(`the reused ${kiosk.id} stage is OLDER than its current frontend sources — a stale`);
+      warn("stage can crash the embedded kiosk (module mismatches); drop --skip-stage to rebuild it");
+    }
+    continue;
+  }
+  info(`Staging the ${kiosk.id} kiosk server (electron stage, mode=${kiosk.mode}, live AI)`);
+  const env = { ...process.env, KIOSK_DIR: kiosk.dir };
+  delete env.KIOSK_DIR_LIST;
+  runOk([process.execPath, path.join(ELECTRON_DIR, "scripts", "build.mjs"), "--stage-only", `--mode=${kiosk.mode}`, `--llm=${LLM}`, "--live"],
+    { cwd: ELECTRON_DIR, env, replaceEnv: true });
+  if (!fs.existsSync(path.join(STAGE, "server"))) die(`${kiosk.id} kiosk stage failed — ${path.join(STAGE, "server")} missing`);
+  fs.rmSync(kiosk.stage, { recursive: true, force: true });
+  fs.mkdirSync(kiosk.stage, { recursive: true });
+  for (const entry of STAGED) {
+    if (fs.existsSync(path.join(STAGE, entry))) fs.renameSync(path.join(STAGE, entry), path.join(kiosk.stage, entry));
+  }
+}
+for (const kiosk of KIOSKS) {
+  for (const entry of STAGED) {
+    if (!fs.existsSync(path.join(kiosk.stage, entry))) die(`the ${kiosk.id} kiosk stage has no ${entry} (${kiosk.stage}) — drop --skip-stage to rebuild it`);
+  }
+}
 
-// 2. Register the kiosk in the studio checkout, temporarily, so the studio's
-// own samples-driven exporter can resolve it: `--samples=public-service-kiosk`
-// makes the kiosk the only sample carried over, while `--services=…` asks for
-// the full catalog. The exporter only copies git-visible files, so the injected
-// files are made visible with `git add -N` (intent-to-add — nothing is staged
-// or committed) and removed again right after the export, success or failure.
-const INJECTED = [
-  `frontend/src/services/${SAMPLE_ID}`,
-  `frontend/src/samples/${SAMPLE_ID}`,
-  `workers/${SAMPLE_ID}`,
-];
-const [SRC_SVC, SRC_SMP, SRC_WRK] = INJECTED.map((p) => path.join(EDGE_AI_STUDIO_DIR, ...p.split("/")));
-for (const dir of [SRC_SVC, SRC_SMP, SRC_WRK]) {
+// 2. Register the kiosks in the studio checkout, temporarily, so the studio's
+// own samples-driven exporter can resolve them: `--samples=<sample ids>`
+// makes the kiosks the only samples carried over, while `--services=…` asks
+// for the full catalog. The exporter only copies git-visible files, so the
+// injected files are made visible with `git add -N` (intent-to-add — nothing
+// is staged or committed) and removed again right after the export, success
+// or failure.
+for (const kiosk of KIOSKS) {
+  kiosk.injected = [
+    `frontend/src/services/${kiosk.sampleId}`,
+    `frontend/src/samples/${kiosk.sampleId}`,
+    `workers/${kiosk.sampleId}`,
+  ];
+  [kiosk.srcService, kiosk.srcSample, kiosk.srcWorker] =
+    kiosk.injected.map((p) => path.join(EDGE_AI_STUDIO_DIR, ...p.split("/")));
+}
+const INJECTED = KIOSKS.flatMap((k) => k.injected);
+const INJECTED_DIRS = KIOSKS.flatMap((k) => [k.srcService, k.srcSample, k.srcWorker]);
+for (const dir of INJECTED_DIRS) {
   if (fs.existsSync(dir)) die(`${dir} already exists in the studio checkout — remove it first (a previous bundle run may have been interrupted)`);
 }
 if (git(["rev-parse", "--is-inside-work-tree"]).status !== 0) {
@@ -265,43 +325,61 @@ if (git(["rev-parse", "--is-inside-work-tree"]).status !== 0) {
 
 function cleanupStudioInjection() {
   git(["reset", "-q", "--", ...INJECTED]);
-  for (const dir of [SRC_SVC, SRC_SMP, SRC_WRK]) fs.rmSync(dir, { recursive: true, force: true });
+  for (const dir of INJECTED_DIRS) fs.rmSync(dir, { recursive: true, force: true });
 }
 const onSignal = () => { cleanupStudioInjection(); process.exit(130); };
 process.on("SIGINT", onSignal);
 process.on("SIGTERM", onSignal);
 
-const render = (template) =>
-  fs.readFileSync(path.join(TEMPLATES, template), "utf8")
-    .replaceAll("__KIOSK_PORT__", PORT)
-    .replaceAll("public-service-kiosk", SAMPLE_ID)
-    .replaceAll("Public Service Kiosk", SAMPLE_TITLE);
+// The templates are written for the public-service kiosk; each kiosk's
+// kiosk.json studio block fills in its own id, title, port and tile.
+function render(template, kiosk) {
+  const studio = kiosk.json.studio;
+  const icon = studio.icon || "Landmark";
+  if (!/^[A-Z][A-Za-z0-9]*$/.test(icon)) die(`${kiosk.id}: kiosk.json studio.icon must be a lucide-react icon name, not "${icon}"`);
+  const description = studio.description || `${kiosk.title} — a self-service kiosk running embedded in the studio.`;
+  const tags = Array.isArray(studio.tags) && studio.tags.length ? studio.tags : ["Kiosk"];
+  return fs.readFileSync(path.join(TEMPLATES, template), "utf8")
+    .replaceAll("__KIOSK_PORT__", String(kiosk.port))
+    .replaceAll("__ICON__", icon)
+    .replaceAll("__DESCRIPTION__", JSON.stringify(description))
+    .replaceAll("__TAGS__", JSON.stringify(tags.map(String)))
+    .replaceAll("public-service-kiosk", kiosk.sampleId)
+    .replaceAll("Public Service Kiosk", kiosk.title);
+}
 
-info("Registering the kiosk sample in the studio checkout (temporary, via git add -N)");
+info(`Registering the kiosk samples in the studio checkout (temporary, via git add -N): ${KIOSKS.map((k) => k.sampleId).join(", ")}`);
 try {
-  for (const dir of [SRC_SVC, SRC_SMP, SRC_WRK]) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(SRC_SVC, "data.ts"), render("service-data.ts"));
-  // Drop dependency lines for services this studio version doesn't have — the
-  // exporter resolves deps from these literal lines and crashes on unknown ids.
-  const sample = render("sample-data.ts").split("\n")
-    .filter((line) => !MISSING_SERVICES.some((s) => line.includes(`serviceId: '${s}'`)))
-    .join("\n");
-  fs.writeFileSync(path.join(SRC_SMP, "data.ts"), sample);
-  // The gallery tile's image: the first frame of docs/media/touch-kiosk-flow.gif.
-  fs.copyFileSync(path.join(TEMPLATES, "sample-image.png"), path.join(SRC_SMP, "image.png"));
-  // Both platforms' worker entry points, whichever platform builds the bundle:
-  // the studio's process handler runs start.sh via bash on Linux and start.ps1
-  // via powershell on Windows.
-  fs.writeFileSync(path.join(SRC_WRK, "start.sh"), render("worker-start.sh"), { mode: 0o755 });
-  fs.writeFileSync(path.join(SRC_WRK, "start.ps1"), render("worker-start.ps1"));
+  for (const kiosk of KIOSKS) {
+    for (const dir of [kiosk.srcService, kiosk.srcSample, kiosk.srcWorker]) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(kiosk.srcService, "data.ts"), render("service-data.ts", kiosk));
+    // Drop dependency lines for services this studio version doesn't have — the
+    // exporter resolves deps from these literal lines and crashes on unknown ids.
+    const sample = render("sample-data.ts", kiosk).split("\n")
+      .filter((line) => !MISSING_SERVICES.some((s) => line.includes(`serviceId: '${s}'`)))
+      .join("\n");
+    fs.writeFileSync(path.join(kiosk.srcSample, "data.ts"), sample);
+    // The gallery tile's image: kiosk.json studio.image (relative to the kiosk
+    // folder), else the first frame of docs/media/touch-kiosk-flow.gif.
+    const image = kiosk.json.studio.image
+      ? path.resolve(kiosk.dir, kiosk.json.studio.image)
+      : path.join(TEMPLATES, "sample-image.png");
+    if (!fs.existsSync(image)) die(`${kiosk.id}: the sample image ${image} does not exist`);
+    fs.copyFileSync(image, path.join(kiosk.srcSample, "image.png"));
+    // Both platforms' worker entry points, whichever platform builds the bundle:
+    // the studio's process handler runs start.sh via bash on Linux and start.ps1
+    // via powershell on Windows.
+    fs.writeFileSync(path.join(kiosk.srcWorker, "start.sh"), render("worker-start.sh", kiosk), { mode: 0o755 });
+    fs.writeFileSync(path.join(kiosk.srcWorker, "start.ps1"), render("worker-start.ps1", kiosk));
+  }
   if (git(["add", "-N", ...INJECTED]).status !== 0) die("git add -N failed in the studio checkout");
 
   // 3. Export the minimal studio (source tree; no Electron, no models)
-  info("Exporting the studio: all services, kiosk sample only");
+  info("Exporting the studio: all services, the kiosk samples only");
   fs.rmSync(STUDIO_OUT, { recursive: true, force: true });
   fs.mkdirSync(OUT, { recursive: true });
   runOk([process.execPath, EXPORTER,
-    `--samples=${SAMPLE_ID}`, `--services=${SERVICES.join(",")}`, `--out=${STUDIO_OUT}`],
+    `--samples=${KIOSKS.map((k) => k.sampleId).join(",")}`, `--services=${SERVICES.join(",")}`, `--out=${STUDIO_OUT}`],
     { cwd: EDGE_AI_STUDIO_DIR });
 } finally {
   cleanupStudioInjection();
@@ -310,23 +388,25 @@ try {
 }
 
 if (!fs.existsSync(path.join(STUDIO_OUT, "frontend", "src"))) die(`studio export failed — ${path.join(STUDIO_OUT, "frontend", "src")} missing`);
-const EXPORTED_SAMPLE = path.join(STUDIO_OUT, "frontend", "src", "samples", SAMPLE_ID);
-if (!fs.existsSync(path.join(EXPORTED_SAMPLE, "data.ts"))) die("export did not carry the kiosk sample — check the exporter output above");
-if (!fs.existsSync(path.join(EXPORTED_SAMPLE, "image.png"))) die("export did not carry the kiosk sample image — the studio build needs it (data.ts imports it)");
 
-// 3a. Drop the kiosk's server payload into the exported worker
-info(`Copying the staged kiosk server into workers/${SAMPLE_ID}/bundle`);
-const WORKER = path.join(STUDIO_OUT, "workers", SAMPLE_ID);
-if (!fs.existsSync(path.join(WORKER, "start.sh"))) die(`export did not carry workers/${SAMPLE_ID}/start.sh`);
-if (!fs.existsSync(path.join(WORKER, "start.ps1"))) die(`export did not carry workers/${SAMPLE_ID}/start.ps1`);
-fs.chmodSync(path.join(WORKER, "start.sh"), 0o755);
-fs.mkdirSync(path.join(WORKER, "bundle"), { recursive: true });
-// verbatimSymlinks: the staged server's node_modules carry relative symlinks
-// (see electron/scripts/build.mjs stage()) that must not be rewritten.
-fs.cpSync(path.join(STAGE, "server"), path.join(WORKER, "bundle", "server"), { recursive: true, verbatimSymlinks: true });
-fs.cpSync(path.join(STAGE, "assets"), path.join(WORKER, "bundle", "assets"), { recursive: true });
-fs.cpSync(path.join(STAGE, "database"), path.join(WORKER, "bundle", "database"), { recursive: true });
-fs.copyFileSync(path.join(STAGE, "config.yaml"), path.join(WORKER, "bundle", "config.yaml"));
+// 3a. Drop each kiosk's server payload into its exported worker
+for (const kiosk of KIOSKS) {
+  const exportedSample = path.join(STUDIO_OUT, "frontend", "src", "samples", kiosk.sampleId);
+  if (!fs.existsSync(path.join(exportedSample, "data.ts"))) die(`export did not carry the ${kiosk.sampleId} sample — check the exporter output above`);
+  if (!fs.existsSync(path.join(exportedSample, "image.png"))) die(`export did not carry the ${kiosk.sampleId} sample image — the studio build needs it (data.ts imports it)`);
+
+  info(`Copying the staged ${kiosk.id} kiosk server into workers/${kiosk.sampleId}/bundle`);
+  const worker = path.join(STUDIO_OUT, "workers", kiosk.sampleId);
+  if (!fs.existsSync(path.join(worker, "start.sh"))) die(`export did not carry workers/${kiosk.sampleId}/start.sh`);
+  if (!fs.existsSync(path.join(worker, "start.ps1"))) die(`export did not carry workers/${kiosk.sampleId}/start.ps1`);
+  fs.chmodSync(path.join(worker, "start.sh"), 0o755);
+  fs.mkdirSync(path.join(worker, "bundle"), { recursive: true });
+  // verbatimSymlinks: the staged server's node_modules carry relative symlinks
+  // (see electron/scripts/build.mjs stage()) that must not be rewritten.
+  for (const entry of STAGED) {
+    fs.cpSync(path.join(kiosk.stage, entry), path.join(worker, "bundle", entry), { recursive: true, verbatimSymlinks: true });
+  }
+}
 
 // 3b. Rebrand the exported studio: overwrite its display name everywhere in
 // the frontend source (it is a hardcoded string, not a constant) before the
@@ -349,7 +429,7 @@ walkFiles(path.join(STUDIO_OUT, "frontend", "src"), (file) => {
 });
 if (fs.existsSync(path.join(STUDIO_OUT, "README.md"))) rebrand(path.join(STUDIO_OUT, "README.md"));
 
-// 4. Widen the generated registries' key types: the kiosk's id is not in the
+// 4. Widen the generated registries' key types: the kiosks' ids are not in the
 // studio's baked Payload type union (the exporter already widens serviceMap;
 // these two are the remaining union-typed spots in codegen).
 const CODEGEN = path.join(STUDIO_OUT, "frontend", "scripts", "generate-registries.mjs");
@@ -357,15 +437,19 @@ fs.writeFileSync(CODEGEN, fs.readFileSync(CODEGEN, "utf8")
   .replace('Partial<Record<Service["type"], WorkerConfig>>', "Partial<Record<string, WorkerConfig>>")
   .replace('type: Service["type"],', "type: string,"));
 
-// 5. Re-run codegen so the injected service + sample enter the registries
+// 5. Re-run codegen so the injected services + samples enter the registries
 info("Regenerating studio registries");
 runOk([process.execPath, path.join("scripts", "generate-registries.mjs")], { cwd: path.join(STUDIO_OUT, "frontend") });
 const meta = fs.readFileSync(path.join(STUDIO_OUT, "frontend", "src", "services", "_generated", "meta.ts"), "utf8");
-if (!meta.includes(SAMPLE_ID)) die("codegen did not pick up the kiosk service");
 const samples = fs.readFileSync(path.join(STUDIO_OUT, "frontend", "src", "samples", "_generated", "samples.ts"), "utf8");
-if (!samples.includes(SAMPLE_ID)) die("codegen did not pick up the kiosk sample");
+for (const kiosk of KIOSKS) {
+  if (!meta.includes(kiosk.sampleId)) die(`codegen did not pick up the ${kiosk.sampleId} service`);
+  if (!samples.includes(kiosk.sampleId)) die(`codegen did not pick up the ${kiosk.sampleId} sample`);
+}
 const sampleCount = (samples.match(/^import \{ sample as/gm) || []).length;
-if (sampleCount !== 1) die(`the exported gallery carries ${sampleCount} samples — expected only ${SAMPLE_ID}`);
+if (sampleCount !== KIOSKS.length) {
+  die(`the exported gallery carries ${sampleCount} samples — expected only ${KIOSKS.map((k) => k.sampleId).join(", ")}`);
+}
 
 // 6. Pre-seed the bundled runtimes from the studio checkout when present, so
 // the bundle's setup doesn't have to download them again (it still can).
@@ -381,56 +465,76 @@ if (fs.existsSync(path.join(EDGE_AI_STUDIO_DIR, "thirdparty", "node"))
   }
 }
 
-// 7. Deployment presets: the mode's services + auto-start for the embedded kiosk.
-// (The exporter does not carry deployment.json, so the bundle gets its own.)
-info(`Writing bundle deployment.json (${KIOSK_FOLDER}/deployment.json '${MODE}' services + ${SAMPLE_ID} autostart)`);
+// 7. Deployment presets: every kiosk's mode services + auto-start for each
+// embedded kiosk. (The exporter does not carry deployment.json, so the bundle
+// gets its own.)
+info(`Writing bundle deployment.json (services for ${RESOLVED.source || MODES} + ${KIOSKS.map((k) => k.sampleId).join(", ")} autostart)`);
 DEPLOYMENT.services = Object.fromEntries(
   Object.entries(DEPLOYMENT.services).filter(([name]) => SERVICES.includes(name)),
 );
-DEPLOYMENT.services[SAMPLE_ID] = { status: "online" };
+for (const kiosk of KIOSKS) DEPLOYMENT.services[kiosk.sampleId] = { status: "online" };
 fs.writeFileSync(path.join(STUDIO_OUT, "deployment.json"), JSON.stringify(DEPLOYMENT, null, 2));
 
-// The checkout gets the mode's services as the kiosk lists them (no LLM override, no kiosk autostart).
+// The checkout gets the modes' services as the kiosks list them (no LLM override, no kiosk autostart).
 if (STUDIO_DEPLOYMENT_MANAGE === "1" && fs.existsSync(EDGE_AI_STUDIO_DIR)) {
   installDeployment(EDGE_AI_STUDIO_DIR, RESOLVED, { info, ok });
 }
 
-// 8. Bundle metadata + top-level README
-fs.writeFileSync(path.join(OUT, "bundle.env"), `# Written by scripts/bundle.mjs — read by start.sh / start_win.bat --bundle
-KIOSK_BUNDLE_MODE=${MODE}
+// 8. Bundle metadata + top-level README. bundle.env lists the kiosks as
+// parallel space-separated lists, which both the bash and the PowerShell
+// launchers read without a JSON parser.
+const list = (key) => KIOSKS.map((k) => k[key]).join(" ");
+fs.writeFileSync(path.join(OUT, "bundle.env"), `# Written by scripts/bundle.mjs — read by start.sh / start_win.bat --bundle and the desktop build
+KIOSK_BUNDLE_KIOSKS="${list("id")}"
+KIOSK_BUNDLE_SAMPLES="${list("sampleId")}"
+KIOSK_BUNDLE_PORTS="${list("port")}"
+KIOSK_BUNDLE_MODES="${list("mode")}"
 KIOSK_BUNDLE_LLM=${LLM}
-KIOSK_BUNDLE_PORT=${PORT}
 KIOSK_BUNDLE_BRAND="${BRAND}"
 `);
-fs.writeFileSync(path.join(OUT, "README.md"), `# ${SAMPLE_TITLE} — ${BRAND} bundle
+const rows = KIOSKS.map((k) => `| ${k.title} | \`${k.sampleId}\` | ${k.mode} | http://127.0.0.1:${k.port} |`).join("\n");
+fs.writeFileSync(path.join(OUT, "README.md"), `# ${BRAND} bundle
 
 ${BRAND} carrying the studio's full service catalog (${SERVICES.length} services),
-with the ${SAMPLE_TITLE} as its only sample. The platform starts the kiosk
-as a hidden worker process and auto-starts the kiosk plus the services its
-'${MODE}' mode runs (${KIOSK_SERVICES.join(",")}) per \`studio/deployment.json\`; the rest
+with ${KIOSKS.length === 1 ? "one kiosk as its only sample" : `${KIOSKS.length} kiosks as its samples`}. The platform starts each kiosk
+as a hidden worker process and auto-starts the kiosks plus the services their
+modes run (${KIOSK_SERVICES.join(",")}) per \`studio/deployment.json\`; the rest
 are exported but idle until started from the studio UI.
 
-Built for kiosk mode: **${MODE}** · LLM: **${LLM === "local" ? "on this machine" : "remote (set llm.api_key at /settings)"}** · kiosk port: **${PORT}**
+| Kiosk | Sample | Mode | URL |
+|---|---|---|---|
+${rows}
+
+LLM: **${LLM === "local" ? "on this machine" : "remote (set llm.api_key at each kiosk's /settings)"}**
 
     cd studio
     sudo ./install_dependencies.sh   # once, system packages (Linux)
     ./setup.sh                       # once, runtimes + worker venvs + frontend build
-    ./start.sh                       # studio gateway on :8080, kiosk on :${PORT}
+    ./start.sh                       # studio gateway on :8080, the kiosks on their ports
 
 On Windows, run \`setup_win.bat\` and \`start_win.bat\` instead (no
-install_dependencies step). Or from the kiosk repo: \`${KIOSK_FOLDER}/scripts/start.sh --bundle\` /
-\`${KIOSK_FOLDER}\\scripts\\start_win.bat --bundle\` (add \`--desktop\` for the desktop shell).
-Kiosk UI: http://localhost:${PORT} · studio: http://localhost:8080
+install_dependencies step). Or from the kiosk repo: \`./start.sh --bundle\` /
+\`start_win.bat --bundle\` (add \`--desktop\` for the desktop shell).
+Studio: http://127.0.0.1:8080 — each kiosk is a tile of its samples gallery.
 `);
 
-ok(`Bundle staged at ${OUT}`);
+// Bundles from before the kiosks shared one studio: build/kiosk-studio/<kiosk id>/.
+for (const entry of fs.readdirSync(OUT, { withFileTypes: true })) {
+  const legacy = path.join(OUT, entry.name);
+  if (entry.isDirectory() && fs.existsSync(path.join(legacy, "bundle.env")) && fs.existsSync(path.join(legacy, "studio"))) {
+    info(`Removing ${legacy} — a per-kiosk bundle from an earlier build; every kiosk is in ${STUDIO_OUT} now`);
+    fs.rmSync(legacy, { recursive: true, force: true });
+  }
+}
+
+ok(`Bundle staged at ${OUT} (samples: ${KIOSKS.map((k) => k.sampleId).join(", ")})`);
 const setupCmd = WINDOWS ? ["cmd.exe", "/c", "setup_win.bat"] : ["bash", "./setup.sh"];
 if (INSTALL) {
   info("Running the bundle's setup (this installs worker environments and builds the frontend — long)");
-  runOk(setupCmd, { cwd: STUDIO_OUT });
-  ok(`Bundle is ready — start it with: ${WINDOWS ? `${KIOSK_FOLDER}\\scripts\\start_win.bat` : `${KIOSK_FOLDER}/scripts/start.sh`} --bundle`);
+  runOk(setupCmd, { cwd: STUDIO_OUT, env: { BackendChoice: STUDIO_LLAMACPP_BACKEND } });
+  ok(`Bundle is ready — start it with: ${WINDOWS ? "start_win.bat" : "./start.sh"} --bundle`);
 } else if (WINDOWS) {
-  info(`Next: (cd ${STUDIO_OUT} && setup_win.bat) or ${KIOSK_FOLDER}\\scripts\\setup_win.bat --bundle, then ${KIOSK_FOLDER}\\scripts\\start_win.bat --bundle`);
+  info(`Next: (cd ${STUDIO_OUT} && setup_win.bat) or setup_win.bat --bundle, then start_win.bat --bundle`);
 } else {
-  info(`Next: (cd ${STUDIO_OUT} && bash ./setup.sh) or ${KIOSK_FOLDER}/scripts/setup.sh --bundle, then ${KIOSK_FOLDER}/scripts/start.sh --bundle`);
+  info(`Next: (cd ${STUDIO_OUT} && bash ./setup.sh) or ./setup.sh --bundle, then ./start.sh --bundle`);
 }

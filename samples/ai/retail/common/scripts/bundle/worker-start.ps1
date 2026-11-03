@@ -49,7 +49,10 @@ if (-not (Test-Path -LiteralPath $Node)) { $Node = 'node' }
 
 Set-Location -LiteralPath (Join-Path $Bundle 'server')
 $env:NODE_ENV = 'production'
-$env:PORT = $Port
+# --port is allocated by the studio, which health-checks it there; kiosk.cjs
+# relays it to the kiosk's own fixed port, where the shell and links find it.
+$env:KIOSK_RELAY_PORT = $Port
+$env:PORT = '__KIOSK_PORT__'
 $env:HOSTNAME = '127.0.0.1'
 $env:KIOSK_DATA_DIR = $Data
 $env:KIOSK_UPLOADS_DIR = Join-Path $Data 'documents'

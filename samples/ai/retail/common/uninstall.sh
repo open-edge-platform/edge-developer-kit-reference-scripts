@@ -21,8 +21,9 @@ usage() {
   cat <<EOF
 Usage: ./uninstall.sh [options]
 
-Removes the packaged kiosk (.deb or .AppImage) and reports what it left
-behind. The app data directory holds the terminal's own database, captured
+Removes the packaged desktop app (.deb or .AppImage) — the platform app,
+whose studio carries the kiosks, and each kiosk's own mocked app — and
+reports what it left behind. The app data directory holds the terminal's own database, captured
 documents and enrolled portraits — and, for the embedded bundle, the unpacked
 platform with its worker environments and models (tens of GB) — so it is kept
 unless --data says otherwise.
@@ -58,20 +59,30 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-# Several kiosks: one run each, every one with its own list and confirmation.
+# One run per installed identity, every one with its own list and
+# confirmation: the platform app (common/platform.json — the embedded bundle,
+# whichever kiosks it carries) and each kiosk's own (its mocked app, or an
+# app from before the kiosks shared one studio) when that differs.
 resolve_kiosks "$KIOSK_ARG"
-if [ "${#KIOSK_DIRS[@]}" -gt 1 ]; then
-  status=0
+if [ -z "${KIOSK_PKG_JSON:-}" ]; then
+  PKG_FILES=()
+  [ ! -f "$PLATFORM_JSON" ] || PKG_FILES+=("$PLATFORM_JSON")
   for dir in "${KIOSK_DIRS[@]}"; do
-    echo
-    KIOSK_DIR="$dir" "$0" ${PASS_ARGS[@]+"${PASS_ARGS[@]}"} || status=$?
+    [ -f "$PLATFORM_JSON" ] && [ "$(kiosk_value "$dir" appId)" = "$(platform_value appId)" ] \
+      || PKG_FILES+=("$dir/kiosk.json")
+  done
+  status=0
+  for file in "${PKG_FILES[@]}"; do
+    [ "${#PKG_FILES[@]}" -eq 1 ] || echo
+    KIOSK_PKG_JSON="$file" "$0" ${PASS_ARGS[@]+"${PASS_ARGS[@]}"} || status=$?
   done
   exit "$status"
 fi
 
-# The package identity lives in the kiosk's kiosk.json; the defaults are the
-# fallback for a copy of this script that travels without the checkout.
-PKG_JSON="$KIOSK_DIR/kiosk.json"
+# The package identity lives in platform.json or a kiosk's kiosk.json; the
+# defaults are the fallback for a copy of this script that travels without
+# the checkout.
+PKG_JSON="$KIOSK_PKG_JSON"
 pkg_value() {
   [ -f "$PKG_JSON" ] || return 1
   sed -n "s/^[[:space:]]*\"$1\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$PKG_JSON" | head -1

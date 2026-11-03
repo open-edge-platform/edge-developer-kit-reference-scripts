@@ -1,0 +1,132 @@
+{
+  "modes": {
+    "touch": {
+      "services": {
+        "text-generation": [
+          {
+            "label": "Kiosk LLM",
+            "instanceId": "kiosk-llm",
+            "status": "offline",
+            "models": {
+              "default": {
+                "name": "unsloth/gemma-4-E4B-it-GGUF",
+                "backend": "llamacpp",
+                "quant": "Q4_K_M",
+                "source": "huggingface",
+                "device": "GPU"
+              }
+            }
+          }
+        ],
+        "ocr": [
+          {
+            "instanceId": "ocr",
+            "status": "online",
+            "models": { "default": { "device": "NPU" } }
+          }
+        ],
+        "face-recognition": [
+          {
+            "instanceId": "face-recognition",
+            "status": "online",
+            "models": { "default": { "device": "CPU" } }
+          }
+        ],
+        "speech-to-text": [
+          { "label": "Kiosk Speech to Text", "instanceId": "kiosk-stt", "status": "offline" }
+        ],
+        "text-to-speech": [
+          { "label": "Kiosk Text to Speech (English)", "instanceId": "kiosk-tts-en", "status": "offline" }
+        ],
+        "lipsync": [
+          { "label": "Kiosk Avatar", "instanceId": "kiosk-avatar", "status": "offline" }
+        ]
+      }
+    },
+    "chat": {
+      "services": {
+        "text-generation": [
+          {
+            "label": "Kiosk LLM",
+            "instanceId": "kiosk-llm",
+            "status": "online",
+            "metadata": { "serverArgs": "-c 16384 -np 1 --swa-full --reasoning-budget 128" },
+            "models": {
+              "default": {
+                "name": "unsloth/gemma-4-E4B-it-GGUF",
+                "backend": "llamacpp",
+                "quant": "Q4_K_M",
+                "source": "huggingface",
+                "device": "GPU"
+              }
+            }
+          }
+        ],
+        "ocr": [
+          {
+            "instanceId": "ocr",
+            "status": "online",
+            "models": { "default": { "device": "CPU" } }
+          }
+        ],
+        "face-recognition": [
+          {
+            "instanceId": "face-recognition",
+            "status": "online",
+            "models": { "default": { "device": "CPU" } }
+          }
+        ],
+        "speech-to-text": [
+          {
+            "label": "Kiosk Speech to Text",
+            "instanceId": "kiosk-stt",
+            "status": "online",
+            "metadata": { "sttBackend": "oep" },
+            "models": { "default": { "name": "openai/whisper-large-v3-turbo", "device": "GPU" } }
+          }
+        ],
+        "text-to-speech": [
+          {
+            "label": "Kiosk Text to Speech (English)",
+            "instanceId": "kiosk-tts-en",
+            "status": "online",
+            "models": { "default": { "name": "kokoro", "device": "CPU" } }
+          },
+          {
+            "label": "Text to Speech (Malay)",
+            "instanceId": "text-to-speech-ms",
+            "status": "online",
+            "models": { "default": { "name": "malaya", "device": "CPU" } }
+          },
+          {
+            "label": "Text to Speech (Indonesian)",
+            "instanceId": "text-to-speech-id",
+            "status": "online",
+            "models": { "default": { "name": "pocket-tts", "device": "CPU" } }
+          },
+          {
+            "label": "Text to Speech (Vietnamese)",
+            "instanceId": "text-to-speech-vi",
+            "status": "online",
+            "models": { "default": { "name": "vieneu", "device": "CPU" } }
+          },
+          {
+            "label": "Text to Speech (Tamil)",
+            "instanceId": "text-to-speech-ta",
+            "status": "online",
+            "models": { "default": { "name": "fastspeech2-hs", "device": "CPU" } }
+          }
+        ],
+        "lipsync": [
+          {
+            "label": "Kiosk Avatar",
+            "instanceId": "kiosk-avatar",
+            "status": "online",
+            "metadata": { "batchSize": 1 },
+            "models": { "default": { "name": "Wav2Lip", "device": "NPU", "quant": "fp16" } }
+          }
+        ]
+      }
+    }
+  }
+}

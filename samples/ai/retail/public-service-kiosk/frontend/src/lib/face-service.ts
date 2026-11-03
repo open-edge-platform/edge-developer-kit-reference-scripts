@@ -21,7 +21,6 @@ import { safeUrl, URL_CHARS } from "@/lib/validation";
 const baseUrl = () => process.env.KIOSK_FACE_BASE_URL?.replace(/\/$/, "");
 const timeoutMs = () => Number(process.env.KIOSK_FACE_TIMEOUT_MS ?? 30_000);
 
-/** Whether a face service is configured at all. */
 export const faceServiceConfigured = () => Boolean(baseUrl());
 
 /** An error reply from the worker. The status separates "you sent something

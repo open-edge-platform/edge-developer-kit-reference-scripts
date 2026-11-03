@@ -20,8 +20,6 @@ is a settings change and a restart — not a rebuild.
                  prompt vars — plus the modules below
   messages.ts    every UI/flow string another country would say differently
   speech.ts      STT repair vocabulary + transcript-repair prompt examples
-  nlu.ts         keyword router tables (service synonyms, "my requests"
-                 phrases), phonetic hints and routing examples (public-service)
   catalog.ts     folder discovery over services/ (categories, groups, services)
   steps.tsx      folder discovery of custom step screens in services/
   chains.ts      static imports of every service's chain.ts (server-only;
@@ -56,7 +54,7 @@ Pack discovery is deliberately static (Turbopack dedupes `require.context`
 calls on the same directory, and the client and server bundles must agree),
 so a new pack is registered by hand in four places:
 
-1. `src/packs/index.ts` — add it to `PACKS` (messages, locale, speech; NLU in public-service).
+1. `src/packs/index.ts` — add it to `PACKS` (messages, locale, speech).
 2. `src/services/catalog.ts` — add its `catalog.ts` to `CATALOGS`.
 3. `src/services/registry.tsx` — add its `steps.tsx` to `PACK_STEPS`.
 4. `src/packs/index.server.ts` — add its `chains.ts` to `CHAINS` (healthcare:
@@ -70,12 +68,11 @@ catalog).
 
 1. `src/packs/vietnam/` with `pack.ts`: `countries`, `idDocuments`
    (which document a citizen presents, and what the card is called),
-   `locale` (`language: "vi"`, Intl locales, `currency: "VND"`, and in
-   public-service `minKeywordWordLength: 2` — Vietnamese words are short),
+   `locale` (`language: "vi"`, Intl locales, `currency: "VND"`),
    `formatAddress`, `promptVars` (`country_adjective`, `id_document`, and a
    `language_instruction` such as `"\nAlways reply in Vietnamese."`).
 2. `messages.ts` covering every `MessageKey`, `speech.ts` (Vietnamese STT
-   vocabulary), and in public-service `nlu.ts` (Vietnamese keywords).
+   vocabulary).
 3. A `services/` tree for the services that country actually offers, each
    with `service.ts` + `chain.ts` (+ custom steps if needed), and the pack's
    `catalog.ts`/`steps.tsx`/`chains.ts` — `server.ts` in healthcare (copy

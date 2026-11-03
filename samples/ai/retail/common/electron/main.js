@@ -52,8 +52,13 @@ let platformUrl = null;
 
 /// The kiosk's own origin, once the shell knows it — where the staff menu's
 /// entries (the registration desk, the settings page) live. Null on the
-/// platform when nothing said which port the kiosk took.
+/// platform when nothing said which port the kiosk took, or when it runs
+/// several kiosks (each kiosk's page then serves its own entries).
 let kioskUrl = null;
+
+/// Every kiosk the platform runs, as { title, url } — the staff menu's
+/// entries on the platform's own pages when there are several.
+let kioskLinks = [];
 
 /// Exit code the kiosk server ends with when it wants to be started again —
 /// a settings save at /settings. Next's own restart code, so `next dev` and
@@ -65,6 +70,17 @@ const RESTART_EXIT_CODE = 77;
 let shell = { fullscreen: false };
 try { shell = require("./shell.json"); } catch {}
 
+/// The kiosks the embedded bundle's studio runs as samples (shell.json
+/// "kiosks"), or the one a shell.json naming a single kiosk describes.
+function bundleKiosks() {
+  if (Array.isArray(shell.kiosks) && shell.kiosks.length) return shell.kiosks;
+  return [{
+    sampleId: shell.sampleId || "public-service-kiosk",
+    title: shell.title || "Kiosk",
+    port: Number(shell.kioskPort) || 8035,
+  }];
+}
+
 /// Injected into every page the window loads.
 ///
 /// The window has no chrome — no tabs, no back button, no address bar — so
@@ -72,7 +88,8 @@ try { shell = require("./shell.json"); } catch {}
 /// a citizen's way:
 ///
 ///   - a staff menu (the kiosk, the registration desk, the settings page,
-///     the admin, and the platform when there is one), opened with F9 or by
+///     the admin, and the platform when there is one — on the platform's own
+///     pages, each kiosk it runs), opened with F9 or by
 ///     tapping the top-right corner five times within three seconds — the
 ///     pages it leads to are all behind the admin login, this is only the
 ///     way to reach them without an address bar;
@@ -85,6 +102,7 @@ function shellNavigation() {
     home: platformUrl,
     homePort: platformUrl ? String(new URL(platformUrl).port || 80) : null,
     kiosk: kioskUrl,
+    kiosks: kioskLinks,
   });
   return `
 (function () {
@@ -110,6 +128,8 @@ function shellNavigation() {
     entries.push(["Registration desk", kiosk + "/enroll"]);
     entries.push(["Kiosk settings", kiosk + "/settings"]);
     entries.push(["Admin (CMS)", kiosk + "/admin"]);
+  } else if (onHome) {
+    (options.kiosks || []).forEach(function (k) { entries.push([k.title, k.url + "/"]); });
   }
   if (HOME !== null && !onHome) entries.push(["Platform", HOME]);
 
@@ -271,6 +291,12 @@ function splashNote(win, message) {
 /// entries. No-op outside an AppImage (APPDIR unset).
 function scrubbedEnv(extra = {}) {
   const env = { ...process.env, ...extra };
+  // Loopback never goes to a proxy: the studio boots on its own readiness probe to 127.0.0.1.
+  const noProxy = [env.NO_PROXY, env.no_proxy, "localhost,127.0.0.1,::1"]
+    .flatMap((value) => value?.split(",") ?? [])
+    .map((host) => host.trim())
+    .filter(Boolean);
+  env.NO_PROXY = env.no_proxy = [...new Set(noProxy)].join(",");
   const appdir = process.env.APPDIR;
   if (!appdir) return env;
   for (const [key, value] of Object.entries(env)) {
@@ -505,15 +531,15 @@ function startServer(serverDir, data, port) {
 }
 
 /// Unpack (first launch, or a new build), set up (same) and start the
-/// embedded bundle, then point the window at the kiosk once it answers.
-///
-/// The kiosk is the terminal's whole reason to exist, so it is what the window
-/// opens on; the studio that runs it stays one staff-menu entry away. A kiosk
-/// that never answers falls back to the studio, where its worker's log is.
-async function runBundle(win, tar, data) {
+/// embedded bundle, then point the window at what the build chose to open on
+/// (shell.json "opensOn"): the studio's samples gallery, where every kiosk is
+/// a tile, or one kiosk straight away, with the studio one staff-menu entry
+/// away. A kiosk that never answers falls back to the studio, where its
+/// worker's log is.
+async function runBundle(win, tar, data, kiosks) {
   const studio = path.join(data, "kiosk-studio");
   try {
-    await prepareBundle(win, tar, data, studio);
+    await prepareBundle(win, tar, data, studio, kiosks);
   } catch (error) {
     console.error(`kiosk-shell: ${error.message}`);
     showFailed(win);
@@ -533,9 +559,15 @@ async function runBundle(win, tar, data) {
   }
 
   const timeoutMs = (Number(process.env.KIOSK_SHELL_TIMEOUT_SECS) || 900) * 1000;
-  const kioskPort = Number(shell.kioskPort) || 8035;
+  const opensOn = kiosks.find((kiosk) => kiosk.sampleId === (shell.opensOn || "studio"));
+  if (!opensOn) {
+    if (await waitForPort(STUDIO_PORT, timeoutMs)) navigate(win, platformUrl);
+    else showFailed(win);
+    return;
+  }
+  const kioskPort = Number(opensOn.port) || 8035;
   if (await waitForPort(kioskPort, timeoutMs)) {
-    navigate(win, kioskUrl);
+    navigate(win, `http://127.0.0.1:${kioskPort}`);
   } else if (await waitForPort(STUDIO_PORT, 1000)) {
     splashNote(win, "The kiosk did not start - opening the platform...");
     navigate(win, platformUrl);
@@ -544,7 +576,7 @@ async function runBundle(win, tar, data) {
   }
 }
 
-async function prepareBundle(win, tar, data, studio) {
+async function prepareBundle(win, tar, data, studio, kiosks) {
   let dir = "";
   for (const ch of data) {
     let ok = "";
@@ -571,7 +603,7 @@ async function prepareBundle(win, tar, data, studio) {
   // a newer build finds an older stamp (or none — a tree from before stamps
   // existed) and replaces the tree: the platform's source and the kiosk
   // server are the build's, and stale copies would keep serving old pages.
-  // What the terminal itself owns is carried across: the kiosk worker's
+  // What the terminal itself owns is carried across: each kiosk worker's
   // data (its config.yaml, database, documents, portraits) and the runtimes
   // the setup downloaded (thirdparty/, skipped by the setup when present).
   // The worker environments are made again by the setup that follows.
@@ -600,11 +632,13 @@ async function prepareBundle(win, tar, data, studio) {
   }
 
   if (fs.existsSync(previous)) {
-    const worker = path.join("workers", shell.sampleId || "public-service-kiosk", "data");
-    if (fs.existsSync(path.join(previous, worker))) {
-      fs.rmSync(path.join(target, worker), { recursive: true, force: true });
-      fs.mkdirSync(path.dirname(path.join(target, worker)), { recursive: true });
-      fs.renameSync(path.join(previous, worker), path.join(target, worker));
+    for (const kiosk of kiosks) {
+      const worker = path.join("workers", kiosk.sampleId, "data");
+      if (fs.existsSync(path.join(previous, worker))) {
+        fs.rmSync(path.join(target, worker), { recursive: true, force: true });
+        fs.mkdirSync(path.dirname(path.join(target, worker)), { recursive: true });
+        fs.renameSync(path.join(previous, worker), path.join(target, worker));
+      }
     }
     if (fs.existsSync(path.join(previous, "thirdparty")) && !fs.existsSync(path.join(target, "thirdparty"))) {
       fs.renameSync(path.join(previous, "thirdparty"), path.join(target, "thirdparty"));
@@ -614,12 +648,13 @@ async function prepareBundle(win, tar, data, studio) {
 
   if (!fs.existsSync(path.join(target, "frontend", ".next", "BUILD_ID"))) {
     splashNote(win, "Installing services (first launch) - this downloads and can take a while...");
-    // There is no console to answer prompts on, so the Windows setup runs
-    // with its confirmations pre-answered.
+    // There is no console to answer prompts on, so the setup runs with its
+    // answers given: the confirmations on Windows, the llama.cpp backend on Linux.
     const setup = process.platform === "win32"
       ? ["cmd.exe", "/c", "setup_win.bat", "-AutoYes"]
       : ["bash", "./setup.sh"];
-    await runOk(setup, { cwd: target, env: scrubbedEnv() });
+    const backend = process.env.STUDIO_LLAMACPP_BACKEND || "sycl";
+    await runOk(setup, { cwd: target, env: scrubbedEnv({ BackendChoice: backend }) });
   }
 }
 
@@ -654,6 +689,16 @@ app.whenReady().then(async () => {
     kioskUrl = (process.env.KIOSK_SHELL_KIOSK_URL || (port === STUDIO_PORT ? "" : url)).replace(/\/+$/, "") || null;
     platformUrl =
       (process.env.KIOSK_SHELL_PLATFORM_URL || (port === STUDIO_PORT ? url : "")).replace(/\/+$/, "") || null;
+    // A platform running several kiosks lists them for the staff menu:
+    // KIOSK_SHELL_KIOSKS = [{ "title": ..., "url": ... }, ...].
+    try {
+      const listed = JSON.parse(process.env.KIOSK_SHELL_KIOSKS || "[]");
+      kioskLinks = (Array.isArray(listed) ? listed : [])
+        .filter((k) => k && typeof k.title === "string" && /^https?:\/\/[^\s"'<>]+$/.test(String(k.url)))
+        .map((k) => ({ title: k.title, url: String(k.url).replace(/\/+$/, "") }));
+    } catch {
+      console.error("kiosk-shell: KIOSK_SHELL_KIOSKS is not a JSON list — ignoring it");
+    }
     const cmd = process.env.KIOSK_SHELL_CMD;
     if (cmd) {
       let script = "";
@@ -705,17 +750,20 @@ app.whenReady().then(async () => {
 
   const resources = resourceDir();
 
-  // Embedded-bundle mode: the package carries the minimal studio export (kiosk
-  // injected as a sample) as a single tar. First launch unpacks it into the
-  // data directory and runs the studio's own setup there — the worker
+  // Embedded-bundle mode: the package carries the minimal studio export (every
+  // kiosk injected as a sample) as a single tar. First launch unpacks it into
+  // the data directory and runs the studio's own setup there — the worker
   // environments must be created where they will live, and the install itself
-  // is read-only. Every launch then starts the studio, which brings the kiosk
-  // up as its own worker process; the window opens on the kiosk.
+  // is read-only. Every launch then starts the studio, which brings each kiosk
+  // up as its own worker process; the window opens on the studio's samples
+  // gallery, or on the kiosk the build chose.
   const bundleTar = bundled(resources, "kiosk-studio.tar");
   if (fs.existsSync(bundleTar)) {
+    const kiosks = bundleKiosks();
     platformUrl = `http://127.0.0.1:${STUDIO_PORT}`;
-    kioskUrl = `http://127.0.0.1:${Number(shell.kioskPort) || 8035}`;
-    await runBundle(win, bundleTar, dataDir());
+    kioskLinks = kiosks.map((kiosk) => ({ title: kiosk.title, url: `http://127.0.0.1:${Number(kiosk.port) || 8035}` }));
+    kioskUrl = kioskLinks.length === 1 ? kioskLinks[0].url : null;
+    await runBundle(win, bundleTar, dataDir(), kiosks);
     return;
   }
 

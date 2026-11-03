@@ -24,7 +24,10 @@ export const chain: ChainSpec = {
     if (warning) ctx.notes.push(warning);
 
     if (!ctx.data.plate && vehicles.length === 1) ctx.data.plate = vehicles[0].plateNumber;
-    const vehicle = vehicles.find((v) => v.plateNumber === ctx.data.plate);
+    // A plate said up front loses or gains its space: "WXY1234" is the registry's "WXY 1234".
+    const plateKey = (plate = "") => plate.replace(/\s+/g, "").toUpperCase();
+    const vehicle = vehicles.find((v) => plateKey(v.plateNumber) === plateKey(ctx.data.plate));
+    if (vehicle) ctx.data.plate = vehicle.plateNumber;
 
     const asks: Ask[] = [];
     if (!vehicle) {

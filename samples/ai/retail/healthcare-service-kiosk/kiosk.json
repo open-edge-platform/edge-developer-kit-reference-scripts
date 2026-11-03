@@ -1,0 +1,20 @@
+{
+  "id": "healthcare",
+  "productName": "Hospital Concierge Kiosk",
+  "appId": "com.verticalreferencesolutionsblueprint.healthcare",
+  "executableName": "healthcare-kiosk-desktop",
+  "dataDir": "VRSB-healthcare",
+  "port": 3001,
+  "studio": {
+    "sampleId": "hospital-concierge-kiosk",
+    "title": "Hospital Concierge Kiosk",
+    "port": 8036,
+    "description": "A hospital concierge kiosk — patient registration, appointments, payments and wayfinding, with identity verification and AI document checks.",
+    "tags": ["Kiosk", "Healthcare", "Hospital", "Touch", "Chat", "OCR"],
+    "icon": "Hospital",
+    "image": "studio-image.png"
+  },
+  "ci": {
+    "uiEnv": { "KIOSK_READER_CITIZEN": "6", "KIOSK_BARCODE_DRIVER": "mock" }
+  }
+}

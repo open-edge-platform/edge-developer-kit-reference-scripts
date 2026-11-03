@@ -11,6 +11,7 @@
 #   ./start.sh --wait-studio  wait for a gateway started elsewhere
 #   ./start.sh --mock       start with mocked AI (no studio required)
 #   ./start.sh --desktop --mock   open the mocked desktop apps (./setup.sh --build --mock)
+#   ./start.sh --bundle     start the embedded bundle: one studio, every kiosk a sample
 #   ./start.sh --rebuild    force a fresh production build first
 #
 # See docs/getting-started.md.
@@ -28,7 +29,7 @@ Starts the blueprint for normal use — every kiosk ./setup.sh set up, or the
 ones --kiosk names:
   1. builds each kiosk's frontend if no production build exists
   2. serves each kiosk on its own port (kiosk.json "port": public-service
-     http://localhost:3000, healthcare http://localhost:3001)
+     http://127.0.0.1:3000, healthcare http://127.0.0.1:3001)
 
 The Edge AI Studio is started from \$EDGE_AI_STUDIO_DIR when its gateway isn't
 already live at \$STUDIO_URL, and waited for before the kiosks serve — a missing
@@ -47,15 +48,16 @@ Options:
                  \$STUDIO_URL (someone else launches it — another machine, a
                  service unit, the studio app)
   --mock         run with mocked AI services (skips the studio entirely)
-  --desktop      launch the desktop shell instead of the web server
-                 (usually combined with --bundle — build the app with
-                 ./setup.sh --build). One kiosk only — except with --mock, which
-                 opens the mocked app of every kiosk (./setup.sh --build --mock)
-  --bundle       start the embedded bundle (build/kiosk-studio/<kiosk>): the
-                 minimal studio boots and starts the kiosk as its own hidden child
-                 process. Combine with --desktop for a desktop window on the
-                 studio (its kiosk sample runs the kit on its own URL).
-                 Build it first: ./setup.sh --bundle. One kiosk only
+  --desktop      launch the packaged desktop app instead of the web server
+                 (./setup.sh --build: one app, its studio carrying every kiosk
+                 as a sample). With --mock, the mocked app of every kiosk
+                 (./setup.sh --build --mock), side by side
+  --bundle       start the embedded bundle (build/kiosk-studio): the minimal
+                 studio boots and starts each kiosk it carries as its own
+                 hidden child process, every kiosk a tile of its samples
+                 gallery. Combine with --desktop for a desktop window on the
+                 studio — or, with --kiosk <name>, on that kiosk.
+                 Build it first: ./setup.sh --bundle
   --rebuild      force a fresh production build
   --port <n>     serve on a different port (with several kiosks: the first on
                  <n>, the next on <n+1>, ...; with --desktop this pins
@@ -86,42 +88,76 @@ while [ $# -gt 0 ]; do
 done
 
 resolve_kiosks "$KIOSK_ARG"
-if [ "${#KIOSK_DIRS[@]}" -gt 1 ] && { [ "$BUNDLE" -eq 1 ] || { [ "$DESKTOP" -eq 1 ] && [ "$MOCK" -eq 0 ]; }; }; then
-  die "--bundle and --desktop start one kiosk — pick it with --kiosk <$(kiosk_ids | tr ' ' '|')> (--desktop --mock opens them all)"
+if [ "$BUNDLE" -eq 1 ] && [ -n "$KIOSK_ARG" ] && [ "${#KIOSK_DIRS[@]}" -gt 1 ]; then
+  die "--bundle --kiosk names the one kiosk the window opens on — the bundle runs every kiosk it carries"
 fi
 require_node
 
 # Embedded-bundle mode: the bundle's own studio is the process manager — it
-# boots on :8080 and starts the kiosk as a hidden worker process, so none of
-# the normal studio/build/serve steps below apply.
+# boots on :8080 and starts every kiosk it carries as a hidden worker process,
+# so none of the normal studio/build/serve steps below apply.
 if [ "$BUNDLE" -eq 1 ]; then
   BUNDLE_DIR="$(kiosk_bundle_dir)"
   [ -f "$BUNDLE_DIR/bundle.env" ] \
     || die "no bundle at $BUNDLE_DIR — build one first: ./setup.sh --bundle"
   # shellcheck disable=SC1091
   . "$BUNDLE_DIR/bundle.env"
+  read -r -a BUNDLE_KIOSKS <<<"${KIOSK_BUNDLE_KIOSKS:-}"
+  read -r -a BUNDLE_PORTS <<<"${KIOSK_BUNDLE_PORTS:-}"
+  read -r -a BUNDLE_MODES <<<"${KIOSK_BUNDLE_MODES:-}"
+  [ "${#BUNDLE_KIOSKS[@]}" -gt 0 ] \
+    || die "$BUNDLE_DIR/bundle.env is from an older build — export it again: ./setup.sh --bundle"
   [ -f "$BUNDLE_DIR/studio/frontend/.next/BUILD_ID" ] \
     || die "bundle not set up yet — run: ./setup.sh --bundle  (or: cd $BUNDLE_DIR/studio && ./setup.sh)"
+
+  # The kiosks the bundle carries, as "<id> :<port> (<mode>)" and as the
+  # shell's staff-menu list; --kiosk picks the one the window opens on.
+  SUMMARY="" LINKS="" OPEN_URL="http://127.0.0.1:8080"
+  for i in "${!BUNDLE_KIOSKS[@]}"; do
+    id="${BUNDLE_KIOSKS[$i]}" url="http://127.0.0.1:${BUNDLE_PORTS[$i]:-}"
+    title="$id"
+    if dir="$(kiosk_by_name "$id")"; then title="$(kiosk_value "$dir" title)"; fi
+    SUMMARY="$SUMMARY${SUMMARY:+, }$id :${BUNDLE_PORTS[$i]:-?} (${BUNDLE_MODES[$i]:-?})"
+    LINKS="$LINKS${LINKS:+,}{\"title\":\"$title\",\"url\":\"$url\"}"
+    if [ -n "$KIOSK_ARG" ] && [ "$(kiosk_id "$KIOSK_DIR")" = "$id" ]; then OPEN_URL="$url"; fi
+  done
+  if [ -n "$KIOSK_ARG" ] && [ "$OPEN_URL" = "http://127.0.0.1:8080" ]; then
+    die "the bundle at $BUNDLE_DIR does not carry $(kiosk_id "$KIOSK_DIR") — it carries ${BUNDLE_KIOSKS[*]} (export it again: ./setup.sh --bundle --kiosk <names>)"
+  fi
 
   if [ "$DESKTOP" -eq 1 ]; then
     APP="$(desktop_app_path || true)"
     [ -n "$APP" ] || die "no desktop build found — build one first: ./setup.sh --build"
-    info "Launching the desktop shell on the embedded bundle (studio :8080, kiosk :$KIOSK_BUNDLE_PORT)"
+    info "Launching the desktop shell on the embedded bundle (studio :8080; $SUMMARY)"
     # External-target mode of the shell (electron/main.js): it runs the
-    # bundle's start script and opens the window on the kiosk; the studio that
-    # runs it stays reachable from the staff menu (F9) and F2.
-    export KIOSK_SHELL_KIOSK_URL="${KIOSK_SHELL_KIOSK_URL:-http://127.0.0.1:$KIOSK_BUNDLE_PORT}"
+    # bundle's start script and opens the window on the studio's samples
+    # gallery (or the --kiosk one); the staff menu (F9) and F2 reach the rest.
+    if [ "${#BUNDLE_KIOSKS[@]}" -eq 1 ]; then
+      export KIOSK_SHELL_KIOSK_URL="${KIOSK_SHELL_KIOSK_URL:-http://127.0.0.1:${BUNDLE_PORTS[0]}}"
+    fi
+    export KIOSK_SHELL_KIOSKS="${KIOSK_SHELL_KIOSKS:-[$LINKS]}"
     export KIOSK_SHELL_PLATFORM_URL="${KIOSK_SHELL_PLATFORM_URL:-http://127.0.0.1:8080}"
-    export KIOSK_SHELL_URL="${KIOSK_SHELL_URL:-$KIOSK_SHELL_KIOSK_URL}"
+    export KIOSK_SHELL_URL="${KIOSK_SHELL_URL:-$OPEN_URL}"
     export KIOSK_SHELL_CMD="bash ./start.sh"
     export KIOSK_SHELL_CWD="$BUNDLE_DIR/studio"
     export KIOSK_SHELL_TIMEOUT_SECS="${KIOSK_SHELL_TIMEOUT_SECS:-900}"
     exec "$APP"
   fi
 
-  info "Starting the embedded bundle (studio :8080, kiosk :$KIOSK_BUNDLE_PORT, mode: ${KIOSK_BUNDLE_MODE:-?})"
+  info "Starting the embedded bundle (studio :8080; $SUMMARY)"
   cd "$BUNDLE_DIR/studio" || die "cannot enter $BUNDLE_DIR/studio"
   exec bash ./start.sh
+fi
+
+# The packaged desktop app is the platform: it unpacks, sets up and starts its
+# own studio on :8080, which runs every kiosk it was built with — so the
+# checkout's studio must not be started here.
+if [ "$DESKTOP" -eq 1 ] && [ "$MOCK" -eq 0 ]; then
+  APP="$(desktop_app_path || true)"
+  [ -n "$APP" ] || die "no desktop build — package one first: ./setup.sh --build"
+  [ -z "$PORT_ARG" ] || die "--port is for the mocked apps — the platform app's kiosks keep their kiosk.json studio.port"
+  info "Launching the desktop app: $APP"
+  exec "$APP"
 fi
 
 # Each kiosk's dependencies, config and port. --port (or PORT) is the first
@@ -190,11 +226,11 @@ else
 fi
 
 # 2. Desktop app mode -------------------------------------------------------
-# The packaged desktop app carries its own frontend build and a pre-seeded
+# A mocked desktop app carries its own frontend build and a pre-seeded
 # database, and spawns its own web-server process on a loopback port — so
-# after step 1 we just launch the app.
+# after step 1 we just launch the apps.
 if [ "$DESKTOP" -eq 1 ]; then
-  if [ "$MOCK" -eq 1 ]; then VARIANT=mock; else VARIANT=""; fi
+  VARIANT=mock
   APPS=()
   for dir in "${KIOSK_DIRS[@]}"; do
     use_kiosk "$dir"
@@ -235,7 +271,7 @@ for i in "${!KIOSK_DIRS[@]}"; do
     echo "$PRIME_PID" >"$KIOSK_DIR/.prime.pid"
     waited=0
     until [ -s "$FRONTEND_DIR/db.sqlite" ]; do
-      curl -s -o /dev/null --max-time 5 "http://localhost:$PORT/admin" || true
+      curl -s -o /dev/null --max-time 5 "http://127.0.0.1:$PORT/admin" || true
       sleep 3
       waited=$((waited + 3))
       if [ "$waited" -ge 240 ]; then
@@ -262,10 +298,10 @@ done
 
 # 5. Serve ------------------------------------------------------------------
 banner() { # banner <port>
-  info "Starting $(kiosk_label "$KIOSK_DIR") at http://localhost:$1"
-  echo "    kiosk UI      http://localhost:$1"
-  echo "    admin (CMS)   http://localhost:$1/admin  ($(kiosk_admin_login))"
-  echo "    health        http://localhost:$1/api/health"
+  info "Starting $(kiosk_label "$KIOSK_DIR") at http://127.0.0.1:$1"
+  echo "    kiosk UI      http://127.0.0.1:$1"
+  echo "    admin (CMS)   http://127.0.0.1:$1/admin  ($(kiosk_admin_login))"
+  echo "    health        http://127.0.0.1:$1/api/health"
   echo
 }
 

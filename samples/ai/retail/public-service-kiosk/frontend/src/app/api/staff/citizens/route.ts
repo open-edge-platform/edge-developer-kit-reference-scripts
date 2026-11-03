@@ -56,7 +56,6 @@ export async function GET(req: Request) {
     return Response.json({ citizens: recent.docs.map(summary) });
   }
 
-  // Two queries rather than one `or`: the REST client speaks field-and-operator only.
   const [byName, byId] = await Promise.all([
     cmsFind<CitizenDoc>("citizens", {
       where: { name: { like: q } },

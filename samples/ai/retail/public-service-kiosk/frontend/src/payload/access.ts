@@ -14,7 +14,6 @@ export const KIOSK_CMS_KEY =
     throw new Error('KIOSK_CMS_KEY is not set — configure cms.kiosk_key in config.yaml')
   })()
 
-/** Allow logged-in admin users and requests bearing the kiosk key. */
 export const kioskOrAdmin: Access = ({ req }) =>
   Boolean(req.user) || req.headers.get('x-kiosk-key') === KIOSK_CMS_KEY
 

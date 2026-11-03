@@ -1,0 +1,165 @@
+/* Copyright (C) 2026 Intel Corporation
+ * SPDX-License-Identifier: Apache-2.0 */
+
+.shell {
+  display: flex;
+  height: 100dvh;
+  min-height: 0;
+  flex-direction: column;
+  background: var(--background);
+}
+
+.header {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--card);
+  padding: 1rem 1.5rem;
+}
+
+/* The room the assistant and the conversation share, as a size container: the
+   layout follows its shape, not the window's. Capped at 1600px wide, the room
+   on a big screen is far squarer than the screen itself. */
+.workspace {
+  display: flex;
+  width: 100%;
+  max-width: 1600px;
+  min-height: 0;
+  flex: 1;
+  margin-inline: auto;
+  padding: 1.5rem;
+  container: workspace / size;
+}
+
+.layout {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 1.5rem;
+}
+
+/* A kiosk without the avatar gives the conversation the whole width. */
+.layout[data-avatar="false"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* In a wide room the assistant presents down the left: the tile as tall as
+   the room allows once its caption has 13rem, and never over 40% of the
+   width. A squarer room stacks it on top — see the container query below —
+   since a column there is a strip, too thin for the tile or too tall for it. */
+.assistant {
+  display: flex;
+  width: min(40cqw, (100cqh - 14rem) * 0.8);
+  min-height: 0;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* The assistant as a video tile, head and shoulders like a video call, in the
+   stream's own 4:5 shape. */
+.avatar {
+  position: relative;
+  flex: none;
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 1.5rem;
+  background: linear-gradient(160deg, var(--card), var(--accent));
+}
+
+/* The lip-synced assistant is a standing person in an 868x1080 frame, face
+   about 29% of the way down. Zoomed 2x about a point 16% down, the tile shows
+   the head and both shoulders with the face 42% down, as the pmjb kiosk frames
+   the studio's sample person. */
+.avatarVideo {
+  object-position: 50% 20%;
+  transform: scale(2);
+  transform-origin: 50% 16%;
+}
+
+/* What the assistant is saying, as a speech bubble from the tile, in type that
+   reads from a step back. Under the tile it fills the column's foot; a caption
+   too long to centre starts at the top rather than losing its first line. */
+.caption {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  justify-content: safe center;
+  gap: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 1.75rem;
+  background: var(--card);
+  padding: 1.25rem 1.75rem;
+  box-shadow: 0 10px 32px color-mix(in srgb, var(--foreground) 7%, transparent);
+}
+
+/* The bubble's tail, pointing at the assistant: up at the tile above it. */
+.caption::before {
+  position: absolute;
+  top: -0.6rem;
+  left: 50%;
+  width: 1.125rem;
+  height: 1.125rem;
+  margin-left: -0.5625rem;
+  border-top: 1px solid var(--border);
+  border-left: 1px solid var(--border);
+  background: var(--card);
+  content: "";
+  transform: rotate(45deg);
+}
+
+.conversation {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 1.5rem;
+  background: var(--card);
+  box-shadow: 0 8px 32px color-mix(in srgb, var(--foreground) 4%, transparent);
+}
+
+@container workspace (max-aspect-ratio: 4 / 3) {
+  /* A stage across the top: the tile as tall as the row, its speech bubble
+     beside it sized to the words, and the conversation underneath. */
+  .layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: clamp(13rem, 28cqh, 28rem) minmax(0, 1fr); }
+  .layout[data-avatar="false"] { grid-template-rows: minmax(0, 1fr); }
+  .assistant { width: auto; flex-direction: row; align-items: center; gap: 2rem; }
+  .avatar { width: auto; height: 100%; }
+  .caption { flex: 0 1 auto; max-width: 48rem; }
+  .caption::before { top: 50%; left: -0.6rem; margin: -0.5625rem 0 0; border-top: 0; border-bottom: 1px solid var(--border); }
+  .transcript[data-empty="true"] { justify-content: center; }
+}
+
+@media (orientation: portrait) and (min-width: 900px) {
+  .transcript [aria-label="Popular services"] > button { min-height: 5rem; }
+  .transcript [aria-label="Popular services"] > button > span:nth-child(2) { font-size: 1.125rem; }
+}
+
+@media (max-width: 899px), (max-height: 650px) {
+  .workspace { padding: 1rem; }
+  .layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+  .assistant { display: none; }
+}
+
+@media (max-width: 599px) {
+  .header { gap: 0.5rem; padding: 0.75rem; }
+  .header > :first-child { gap: 0.5rem; }
+  .header > :first-child > :first-child { width: 2.5rem; height: 2.5rem; }
+  .header > :first-child > :last-child > :first-child { font-size: 1rem; }
+  .header > :first-child > :last-child > :last-child { display: none; }
+  .header > :last-child { width: 100%; justify-content: flex-end; }
+  .workspace { padding: 0; }
+  .conversation { border: 0; border-radius: 0; box-shadow: none; }
+}

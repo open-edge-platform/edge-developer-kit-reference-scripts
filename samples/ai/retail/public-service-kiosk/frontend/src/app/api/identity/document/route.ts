@@ -10,6 +10,7 @@ import {
   readCardUid,
   shouldSimulate,
   simulatedUid,
+  takeHandedCard,
   type CardRead,
   type NfcFailure,
 } from "../../_lib/nfc";
@@ -21,13 +22,16 @@ const READ_MS = Number(process.env.KIOSK_IDENTITY_READ_MS ?? 2800);
 const UNKNOWN_CARD_ANY = (process.env.KIOSK_NFC_UNKNOWN_CARD ?? "reject") === "any";
 
 export async function GET() {
-  let card: CardRead | null = null;
-  try {
-    card = await readCardUid();
-  } catch (error) {
-    if (!(error instanceof NfcError)) throw error;
-    if (!shouldSimulate(error.reason)) return refusal(error.reason);
-    console.info(`[nfc] standing a citizen in: ${error.message}`);
+  // The chat's step watch saw this card; a tap is off the pad again before this read.
+  let card: CardRead | null = takeHandedCard();
+  if (!card) {
+    try {
+      card = await readCardUid();
+    } catch (error) {
+      if (!(error instanceof NfcError)) throw error;
+      if (!shouldSimulate(error.reason)) return refusal(error.reason);
+      console.info(`[nfc] standing a citizen in: ${error.message}`);
+    }
   }
 
   if (!card) {

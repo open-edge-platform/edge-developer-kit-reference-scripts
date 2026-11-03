@@ -8,7 +8,7 @@
 import { publicText } from "@/lib/public-config";
 import { safeUrl, URL_CHARS } from "@/lib/validation";
 
-/** The kiosk API address of `path`, for what reaches the API without `send`: downloads. */
+/** The kiosk API address of `path`, for what reaches the API without `send`: downloads, image sources. */
 export const apiUrl = (path: string) => `${publicText("NEXT_PUBLIC_KIOSK_API_URL", "/api")}${path}`;
 
 export class ApiError extends Error {
@@ -89,8 +89,13 @@ export function apiDelete<T>(path: string): Promise<T> {
  * Send multipart form data (file uploads); the browser sets the content type.
  * PATCH for the routes that amend an existing record rather than create one.
  */
-export function apiUpload<T>(path: string, form: FormData, method = "POST"): Promise<T> {
-  return request<T>(path, { method, body: form });
+export function apiUpload<T>(
+  path: string,
+  form: FormData,
+  method = "POST",
+  signal?: AbortSignal,
+): Promise<T> {
+  return request<T>(path, { method, body: form, signal });
 }
 
 /** POST JSON and read back a binary body (synthesized speech, files, …). */
@@ -101,4 +106,20 @@ export async function apiPostBlob(path: string, body: unknown): Promise<Blob> {
     body: JSON.stringify(body),
   });
   return res.blob();
+}
+
+/** POST JSON and read the reply as it arrives (NDJSON progress, …). */
+export async function apiPostStream(
+  path: string,
+  body: unknown,
+  signal?: AbortSignal,
+): Promise<ReadableStream<Uint8Array>> {
+  const res = await send(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!res.body) throw new ApiError(res.status, "the reply had no body");
+  return res.body;
 }

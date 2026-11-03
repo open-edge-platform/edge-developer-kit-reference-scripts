@@ -22,7 +22,7 @@ override each other.
 
 All kiosk settings are read through one loader, each kiosk's
 `frontend/src/lib/kiosk-config.ts` ([public-service](../../public-service-kiosk/frontend/src/lib/kiosk-config.ts),
-[healthcare](../../healthcare/frontend/src/lib/kiosk-config.ts)), with this
+[healthcare](../../healthcare-service-kiosk/frontend/src/lib/kiosk-config.ts)), with this
 precedence (highest wins):
 
 1. **Real environment variables** — shell exports, CI variables.
@@ -32,7 +32,7 @@ precedence (highest wins):
 3. **`<kiosk>/frontend/config.yaml`** — this terminal's own settings. **Gitignored**: the
    launchers copy it out of the kiosk's `frontend/configs/`
    ([public-service](../../public-service-kiosk/frontend/configs/),
-   [healthcare](../../healthcare/frontend/configs/)) on the first
+   [healthcare](../../healthcare-service-kiosk/frontend/configs/)) on the first
    run (`--profile`, default `reference`) and generate its admin password there, so
    no credential ever reaches git. Until one exists, the loader falls back to the
    committed `configs/reference.yaml`, the default profile; this page documents
@@ -66,7 +66,7 @@ face: #         service would fail /api/health (out-of-service screen)
 ```
 
 > **Note:** the `reference` profile ships with `llm.mock: false`, i.e. it expects a
-> live LLM gateway on `http://localhost:8080`, and is strict about hardware
+> live LLM gateway on `http://127.0.0.1:8080`, and is strict about hardware
 > (`nfc.simulate` and `documents.scanner.simulate` are `never`,
 > `face.require_match` is `true`). Without the gateway (and without the
 > override above) the kiosk shows its out-of-service screen. The `./common/scripts/dev/dev.sh --mock` and
@@ -84,7 +84,7 @@ same CMS admin login as the registration desk, and linked from the admin nav
 
 - **Settings** — a form over the documented keys, section by section
   (`frontend/src/lib/settings-schema.ts`: [public-service](../../public-service-kiosk/frontend/src/lib/settings-schema.ts),
-  [healthcare](../../healthcare/frontend/src/lib/settings-schema.ts)).
+  [healthcare](../../healthcare-service-kiosk/frontend/src/lib/settings-schema.ts)).
   A blank field leaves the code default in place. Every key is editable — a
   change takes effect on the next restart ([below](#when-a-change-takes-effect));
   keys that `config.local.yaml` sets are marked as overridden.
@@ -136,19 +136,20 @@ STUDIO_AUTOSTART=1
 |---|---|---|
 | `EDGE_AI_STUDIO_DIR` | `../../edge-ai-demo-studio` from `common/` (a sibling of this repo) | Path to the Edge AI Studio checkout. Setup builds it from here; start/dev launch it from here. |
 | `STUDIO_AUTOSTART` | `1` | Set to `0` to never launch the studio: `./start.sh` then only waits for its gateway (as with `--wait-studio`), and `common/scripts/dev/dev.sh` just probes it (as with `--no-studio`). |
-| `STUDIO_URL` | `http://localhost:8080` | Where the studio gateway is expected. Used for the pre-flight health check. |
+| `STUDIO_URL` | `http://127.0.0.1:8080` | Where the studio gateway is expected. Used for the pre-flight health check. |
 | `STUDIO_WAIT_SECS` | `600` | How long `start`/`dev` wait for the studio gateway to become healthy before giving up (first launch loads AI models, which is slow). |
 | `STUDIO_RUN_MODE` | `auto` | How the studio is launched: `auto` (packaged executable if built, else headless), `packaged` (require the executable from the studio's own `scripts/bash/package.sh`), `headless` (always the studio's `start.sh` server — no app window; right for servers/CI). |
 | `STUDIO_DEPLOYMENT_FILE` | *(unset)* | One fixed file the launchers and the embedded-bundle build install as the studio's `deployment.json`, instead of the one they assemble from each kiosk's own `<kiosk>/deployment.json` for its terminal mode (see [Getting started](getting-started.md#the-edge-ai-studio-prerequisite)). Either way the checkout's previous file is kept as `.bak`; set `STUDIO_DEPLOYMENT_MANAGE=0` to keep a hand-managed file untouched. |
 | `STUDIO_DEPLOYMENT_MANAGE` | `1` | Set `0` to never touch the studio's `deployment.json`. |
+| `STUDIO_LLAMACPP_BACKEND` | `sycl` | The llama.cpp build the studio's Linux setup installs for its multiserve engine: `sycl` (Intel GPUs) or `vulkan`. `./setup.sh`, `./setup.sh --bundle` and a packaged desktop app's first launch pass it on, so the studio setup doesn't ask. Setting it when launching the AppImage changes that app's choice. The studio's Windows setup has no such choice. |
 | `KIOSKS` | *(the saved choice)* | Which kiosks the root `./setup.sh`, `./start.sh` and `./uninstall.sh` (and `common/scripts/build.sh`) drive: `kiosk.json` ids or folder names, comma separated, or `all` — the same values `--kiosk` takes (the flag wins). Unset, they follow `common/.kiosks`, the gitignored list `./setup.sh` saves (one kiosk id per line; edit or delete it freely), else `public-service`. |
-| `KIOSK_DIR` | *(unset)* | Pins one kiosk, bypassing `KIOSKS` and the saved choice: a repo-root folder holding `kiosk.json` and `frontend/`, by name or absolute path. Each kiosk folder's own launchers (`healthcare/scripts/start.sh`, …) set it, and so does `common/scripts/dev/dev.sh --kiosk <name>`; without either, `common/scripts/dev/dev.sh` and the bundler default to `public-service-kiosk`. |
+| `KIOSK_DIR` | *(unset)* | Pins one kiosk, bypassing `KIOSKS` and the saved choice: a repo-root folder holding `kiosk.json` and `frontend/`, by name or absolute path. Each kiosk folder's own launchers (`healthcare-service-kiosk/scripts/start.sh`, …) set it, and so does `common/scripts/dev/dev.sh --kiosk <name>`; without either, `common/scripts/dev/dev.sh` and the bundler default to `public-service-kiosk`. |
 | `KIOSK_PROFILE` | `reference` | Which `<kiosk>/frontend/configs/<name>.yaml` the launchers copy to `<kiosk>/frontend/config.yaml` on a checkout that has none (also `./setup.sh --profile <name>`). An existing `config.yaml` is never replaced — delete it to re-pick. |
 | `KIOSK_NODE_VERSION` | `v22.18.0` | Portable Node.js release `./setup.sh` falls back on when the machine has no Node ≥ 20 (also `./setup.sh --node-version <v>`). Matches the version the Edge AI Studio unpacks. |
 | `KIOSK_NODE_DIR` | `common/thirdparty/node` | Where that portable Node is unpacked. Every launcher prepends its `bin/` to `PATH` when a binary is there, so it also carries `npm`. Gitignored; delete the directory to go back to the machine's Node. |
 | `KIOSK_NODE_MIRROR` | `https://nodejs.org/dist` | Where the portable Node and its `SHASUMS256.txt` are downloaded from. Point it at an internal mirror on an air-gapped terminal. |
-| `KIOSK_BUNDLE_DIR` | `build/kiosk-studio/<kiosk id>` | Where `./start.sh --bundle` looks for the [embedded studio bundle](embedded-studio.md) (`build/` is at the repo root, shared by every kiosk). |
-| `KIOSK_BUNDLE_PORT` | `kiosk.json` `studio.port` | Port the embedded kiosk listens on inside the bundle (set when the bundle is exported — `./setup.sh --build` / `common/scripts/bundle.mjs`). |
+| `KIOSK_BUNDLE_DIR` | `build/kiosk-studio` | Where `./start.sh --bundle` looks for the [embedded studio bundle](embedded-studio.md) — one studio carrying every chosen kiosk (`build/` is at the repo root). |
+| `KIOSK_BUNDLE_PORT` | `kiosk.json` `studio.port` | Port the embedded kiosk listens on inside a one-kiosk bundle (set when the bundle is exported — `./setup.sh --build` / `common/scripts/bundle.mjs`); with several kiosks each keeps its own `studio.port`. |
 | `PORT` | `kiosk.json` `"port"` | Port `./start.sh` and `common/scripts/dev/dev.sh` serve on: public-service 3000, healthcare 3001 (also `--port`). With several kiosks it is the first one's port and the rest count up from it. |
 
 Command-line flags always beat `.kioskrc` and env vars. See each script's `--help`.
@@ -180,7 +181,7 @@ var is the equivalent override.
 | YAML key | Env var | Default | Purpose |
 |---|---|---|---|
 | `api.base_url` | `NEXT_PUBLIC_KIOSK_API_URL` | `/api` | API base URL used by the browser. Point at a remote backend to split UI and server. |
-| `terminal.mode` | `NEXT_PUBLIC_KIOSK_MODE` | `chat` (yaml) | `touch` \| `chat` \| `agent`. UI interaction style. |
+| `terminal.mode` | `NEXT_PUBLIC_KIOSK_MODE` | `chat` (yaml) | `touch` \| `chat`. UI interaction style. Chat is a tool-calling model driving the kiosk's own MCP server, so it needs a live LLM. |
 | `session.restart_ms` | `NEXT_PUBLIC_KIOSK_RESTART_MS` | `30000` | Countdown on the receipt screen before restarting the session. |
 | `session.idle_ms` | `NEXT_PUBLIC_KIOSK_IDLE_MS` | `60000` | Idle time before the session is wiped. |
 | `session.verification_ttl_ms` | `KIOSK_VERIFICATION_TTL_MS` | `900000` | How long a completed identity verification stays valid (15 min). |
@@ -207,29 +208,42 @@ changes nothing.
 ## AI services
 
 All five AI services are provided by the **Edge AI Studio** gateway (default
-`http://localhost:8080`). Each has a `base_url` (unset = feature off/mocked), a
+`http://127.0.0.1:8080`). Each has a `base_url` (unset = feature off/mocked), a
 timeout, and a health check. `GET /api/health` on the kiosk reports the live status of
 all of them; any reply below HTTP 500 counts as *up*, except the studio's 404 for an
 instance it does not have.
 
 The studio addresses every service by instance, `/api/<type>@<instance>/…`; a bare
-`/api/<type>/…` answers 404. The yaml defaults name each type's first instance,
-whose id is the type itself (`/api/ocr@ocr`). An instance created under another
-name, or a second one (`text-generation-2`), is addressed by its own id — the
-studio's Services page shows it.
+`/api/<type>/…` answers 404. The yaml defaults name the instances each kiosk's
+`deployment.json` pins: `kiosk-llm`, `kiosk-stt`, `kiosk-tts-en` and `kiosk-avatar`
+(ids shared with other kiosk projects on the same studio, which then reuse them
+rather than start a second LLM), `ocr` and `face-recognition`. The studio never
+renames an instance, and a pinned id it does not have takes over the type's oldest
+instance under that one's id, so a studio set up before the ids were pinned
+(`text-generation@text-generation`) keeps its old addresses: delete those instances on
+its Services page and restart it. Any other instance is addressed by its own id, which
+the Services page shows.
 
-### LLM (document analysis, chat, agent)
+**Behind a proxy.** The kiosk server sends its outbound calls — a remote LLM such as
+Gemini, the notification webhook — through the system proxy: `https_proxy` /
+`http_proxy` (either case) in the environment it starts with, `/etc/environment` for
+a desktop session. Loopback (`localhost`, `127.0.0.1`, `::1`) is added to `no_proxy`
+by the kiosk, the launchers and the desktop shell, so the studio on `127.0.0.1:8080`
+is always reached directly. A proxy set only in the desktop's network settings is not
+seen by the server; put it in `/etc/environment`.
+
+### LLM (document analysis, chat)
 
 | YAML key | Env var | Default | Purpose |
 |---|---|---|---|
 | `llm.mock` | `KIOSK_LLM_MOCK` | `false` (yaml) / `true` (code) | Mock the LLM entirely. Any value other than `"false"` means mock. |
 | `llm.mock_verdict` | `KIOSK_LLM_MOCK_VERDICT` | `match` | Mocked document-check verdict: `match` \| `mismatch`. |
-| `llm.base_url` | `KIOSK_LLM_BASE_URL` | `http://localhost:8080/api/text-generation@text-generation/v1` | OpenAI-compatible endpoint. Unset disables analysis. Ollama works too: `http://localhost:11434/v1`. |
+| `llm.base_url` | `KIOSK_LLM_BASE_URL` | `http://127.0.0.1:8080/api/text-generation@kiosk-llm/v1` | OpenAI-compatible endpoint. Unset disables analysis. Ollama works too: `http://127.0.0.1:11434/v1`. |
 | `llm.model` | `KIOSK_LLM_MODEL` | `llamacpp:unsloth/gemma-4-E4B-it-GGUF:Q4_K_M` (yaml) | Model id as known by the gateway. A touch build ships `gemini-3.5-flash-lite` (see [build.md](build.md#the-build)). |
 | `llm.api_key` | `KIOSK_LLM_API_KEY` | unset | Sent as a Bearer token if set. Gemini and OpenAI with no key report the LLM `off`. |
 | `llm.timeout_ms` | `KIOSK_LLM_TIMEOUT_MS` | `120000` (yaml) | Request timeout. |
 | `llm.max_tokens` | `KIOSK_LLM_MAX_TOKENS` | `2048` | Completion cap. |
-| `llm.extra_body` | `KIOSK_LLM_EXTRA_BODY` | `{"chat_template_kwargs":{"enable_thinking":true}}` (yaml) | Extra JSON merged into every request body. Gemma 4 E4B needs thinking on to call the chat tools reliably; Gemini rejects `chat_template_kwargs`. |
+| `llm.extra_body` | `KIOSK_LLM_EXTRA_BODY` | `{"chat_template_kwargs":{"enable_thinking":true}}` (yaml) | Extra JSON merged into every request body. Gemma 4 E4B needs thinking on to call the chat tools reliably; Gemini rejects `chat_template_kwargs`. The kiosk turns an `enable_thinking` set here off where it decides nothing — document checks, and the chat steps that relay a flow's result or make a call the screen already settled — so the agent thinks only while working out what was said. |
 | `llm.tool_call_shim` | `KIOSK_LLM_TOOL_CALL_SHIM` | `auto` | Text-based tool-call parsing for models without native tool support: `auto` \| `off`. |
 | `llm.health_path` | `KIOSK_LLM_HEALTH_PATH` | `/models` | Path appended to `base_url` for health checks. |
 | `llm.health_check` | `KIOSK_LLM_HEALTH_CHECK` | `true` | Disable to skip health-gating this service. |
@@ -238,7 +252,7 @@ studio's Services page shows it.
 
 | YAML key | Env var | Default | Purpose |
 |---|---|---|---|
-| `ocr.base_url` | `KIOSK_OCR_BASE_URL` | `http://localhost:8080/api/ocr@ocr` (yaml) | PaddleOCR worker. Unset disables OCR. |
+| `ocr.base_url` | `KIOSK_OCR_BASE_URL` | `http://127.0.0.1:8080/api/ocr@ocr` (yaml) | PaddleOCR worker. Unset disables OCR. |
 | `ocr.timeout_ms` | `KIOSK_OCR_TIMEOUT_MS` | `60000` | |
 | `ocr.dpi` | `KIOSK_OCR_DPI` | `300` | Rasterization DPI (PDFs are rendered with `pdftoppm`). |
 | `ocr.health_path` | `KIOSK_OCR_HEALTH_PATH` | `/healthcheck` (yaml) | |
@@ -251,7 +265,7 @@ studio's Services page shows it.
 
 | YAML key | Env var | Default | Purpose |
 |---|---|---|---|
-| `face.base_url` | `KIOSK_FACE_BASE_URL` | `http://localhost:8080/api/face-recognition@face-recognition` (yaml) | Unset = simulated face scan. |
+| `face.base_url` | `KIOSK_FACE_BASE_URL` | `http://127.0.0.1:8080/api/face-recognition@face-recognition` (yaml) | Unset = simulated face scan. |
 | `face.require_match` | `KIOSK_FACE_REQUIRE_MATCH` | `false` | If `true`, a failed/unavailable face match blocks verification. |
 | `face.min_similarity` | `KIOSK_FACE_MIN_SIMILARITY` | unset (trust model) | Similarity floor, e.g. `0.4` (OMZ) / `0.363` (SFace). |
 | `face.timeout_ms` | `KIOSK_FACE_TIMEOUT_MS` | `30000` | |
@@ -265,35 +279,43 @@ studio's Services page shows it.
 
 | YAML key | Env var | Default | Purpose |
 |---|---|---|---|
-| `voice.stt.base_url` | `KIOSK_STT_BASE_URL` | `http://localhost:8080/api/speech-to-text@speech-to-text/v1` (yaml) | Unset hides the microphone button. |
+| `voice.stt.base_url` | `KIOSK_STT_BASE_URL` | `http://127.0.0.1:8080/api/speech-to-text@kiosk-stt/v1` (yaml) | Unset hides the microphone button. |
 | `voice.stt.timeout_ms` | `KIOSK_STT_TIMEOUT_MS` | `60000` | |
-| `voice.stt.language` | `KIOSK_STT_LANGUAGE` | `auto` | `auto`: the recognizer detects each utterance's language. A code (`en`) pins it, and is also the language every session starts in. |
-| `voice.stt.denoise` | `KIOSK_STT_DENOISE` | `false` | Noise suppression on uploaded clips (OVMS backend only); streamed audio is not denoised. |
-| `voice.stt.vad_threshold` | `KIOSK_STT_VAD_THRESHOLD` | worker default | The worker VAD's threshold when streaming: Silero speech probability (0–1, default 0.5) on the OVMS backend, RMS level (default 0.02) on OEP. Lower hears quieter speech, and more noise. |
+| `voice.stt.language` | `KIOSK_STT_LANGUAGE` | `auto` | `auto`: Whisper detects each utterance's language (sent as `language=auto`; with a single spoken language the kiosk sends that one instead). A code (`en`) pins it, and is also the language every session starts in. |
+| `voice.stt.denoise` | `KIOSK_STT_DENOISE` | `false` | Noise suppression before Whisper (OVMS backend only). |
 | `voice.stt.vocabulary` | `KIOSK_STT_VOCABULARY` | unset | Correction hints: `Term=alias\|alias;Term=alias`. |
 | `voice.stt.health_path` | `KIOSK_STT_HEALTH_PATH` | `/../healthcheck` (yaml) | |
 | `voice.stt.health_check` | `KIOSK_STT_HEALTH_CHECK` | `true` | |
 
-**Streaming.** When `base_url` is a studio instance address on this machine, the
-microphone streams to the speech-to-text worker over a WebSocket and the worker's
-own VAD cuts the utterances: Silero VAD on the OVMS backend (`/v1/audio/stream`),
-an energy VAD on OEP (`/v1/realtime`). Each transcript is back as soon as its
-utterance is recognized; the kiosk server then settles its language and repairs
-local terms (`POST /api/speech/transcript`). The socket is on the worker's own
-port, which the studio allocates when the instance starts, so the kiosk server
-looks it up in the studio's service list for every socket (`GET /api/speech/stream`).
-Workers listen on 127.0.0.1 only: a studio on another machine, or any
-recognizer that is not a studio instance, gets whole clips instead — cut by the
-browser VAD and uploaded to `/audio/transcriptions`. Which backend a studio
-instance runs is its `metadata.sttBackend` (`oep` by default, `ovms` for Silero);
-see the studio's `deployment.json` schema.
+**Listening.** The browser listens the way the pmjb kiosk does: the microphone
+runs as 16 kHz mono frames of 32 ms, Silero VAD (v6, ONNX Runtime Web on one
+CPU thread) scores each frame, and an endpointer cuts the utterances — speech
+starts after 160 ms above `voice.vad_threshold`, keeps the 300 ms before it,
+and ends after `voice.vad_silence_ms` below a lower bar, with a 160 ms tail of
+the silence kept for Whisper. Each utterance goes up as a 16-bit WAV to
+`POST /api/speech/transcribe`, and from there to `/audio/transcriptions` with
+`response_format=verbose_json`. Recognition starts at the utterance's first
+240 ms pause: when the citizen stays quiet, that transcript is the one used,
+ready before the closing silence is over; when they go on, its request is
+aborted. The model and runtime are served from `public/vad/`, which
+`scripts/vad-assets.mjs` fills before every `npm run dev|build|start` (the
+runtime from `node_modules/onnxruntime-web`, the model downloaded once from
+the pinned Silero release); without them the browser cuts utterances by
+loudness against the room's noise floor (`voice.vad_sensitivity`) instead.
+
+The language is Whisper's: see [Spoken languages](#spoken-languages-chat-mode).
+Only the studio's OEP backend (`metadata.sttBackend: oep`, the default) names
+the language it heard; on the OVMS and MERaLiON backends the session keeps its
+language. Chat mode's `deployment.json` runs Whisper large-v3-turbo on OEP:
+Whisper base's language identification is too unreliable for Malay,
+Indonesian or Vietnamese.
 
 ### Text-to-speech
 
 | YAML key | Env var | Default | Purpose |
 |---|---|---|---|
-| `voice.tts.base_url` | `KIOSK_TTS_BASE_URL` | `http://localhost:8080/api/text-to-speech@text-to-speech/v1` (yaml) | Unset disables read-aloud. |
-| `voice.tts.voice` | `KIOSK_TTS_VOICE` | `af_heart` | Kokoro voice id. |
+| `voice.tts.base_url` | `KIOSK_TTS_BASE_URL` | `http://127.0.0.1:8080/api/text-to-speech@kiosk-tts-en/v1` (yaml) | Unset disables read-aloud. |
+| `voice.tts.voice` | `KIOSK_TTS_VOICE` | `af_heart` | Kokoro voice id: the pack's own language, and every language without a voice of its own. |
 | `voice.tts.speed` | `KIOSK_TTS_SPEED` | `1.3` | |
 | `voice.tts.format` | `KIOSK_TTS_FORMAT` | `mp3` | `mp3` \| `wav` \| `opus` \| `flac` \| `pcm`. |
 | `voice.tts.max_chars` | `KIOSK_TTS_MAX_CHARS` | `1500` | Longest text sent per request. |
@@ -301,39 +323,82 @@ see the studio's `deployment.json` schema.
 | `voice.tts.health_path` | `KIOSK_TTS_HEALTH_PATH` | `""` | |
 | `voice.tts.health_check` | `KIOSK_TTS_HEALTH_CHECK` | `true` | |
 
+### Lip-synced avatar (chat mode)
+
+| YAML key | Env var | Default | Purpose |
+|---|---|---|---|
+| `voice.avatar.base_url` | `KIOSK_AVATAR_BASE_URL` | `http://127.0.0.1:8080/api/lipsync@kiosk-avatar/v1` (yaml) | The studio's lipsync instance. Unset: no avatar tile; replies play from the page. |
+| `voice.avatar.timeout_ms` | `KIOSK_AVATAR_TIMEOUT_MS` | `60000` | |
+| `voice.avatar.health_path` | `KIOSK_AVATAR_HEALTH_PATH` | `""` (yaml: `/../healthcheck`) | |
+| `voice.avatar.health_check` | `KIOSK_AVATAR_HEALTH_CHECK` | `true` | |
+
+With the instance up, the chat's assistant panel shows a real person streamed
+by the lipsync worker (Wav2Lip) over WebRTC, and every reply is said by it: the
+kiosk server synthesizes the reply with the voice of its language
+(`voice.languages`, else `voice.tts.voice`; as WAV) a sentence or two at a time and hands each piece to the worker
+(`POST /api/avatar/say`, answered as NDJSON, one line per piece), which queues
+them and lip-syncs them into the stream. The voice is heard from the stream, in
+step with the lips, under a second after the first piece is handed over. The browser negotiates the stream through
+`/api/avatar/offer` (the worker admits only the studio's own origins), and the
+media then flows directly between the browser and the worker, so the two must
+reach each other; on one machine they meet on its LAN address. The browser
+starts connecting as soon as the avatar is configured, without waiting for the
+health poll to see the worker up, so a worker still loading at boot is picked up
+within seconds of answering. While the stream connects, the tile holds a
+softened still of the person (`/api/avatar/preview`, which the browser keeps a
+day). Until the stream is up, or if it drops, the tile says it is not connected
+and replies play from the page; the browser keeps retrying, and starts over at
+once when the network changes. The face is the
+worker's sample person; upload another on the studio's Lipsync page. Like voice,
+the avatar is report-only in `/api/health`: it never takes the kiosk out of
+service.
+
 ### Spoken languages (chat mode)
 
 | YAML key | Env var | Default | Purpose |
 |---|---|---|---|
-| `voice.languages` | `KIOSK_VOICE_LANGUAGES` | unset | Languages the chat kiosk may follow a citizen into, as a mapping of language code → TTS voice. More than one entry (counting the default language) turns on spoken-language detection. |
+| `voice.languages` | `KIOSK_VOICE_LANGUAGES` | unset | Languages the chat kiosk may follow a citizen into, as a mapping of language code → voice. More than one entry (counting the default language) turns on spoken-language detection. |
 
 ```yaml
 voice:
   languages:
-    en: af_heart      # Kokoro American English
-    zh: zf_xiaobei    # Kokoro Mandarin
-    ms:               # no voice configured — narrated with voice.tts.voice
+    en: af_heart                          # Kokoro, on voice.tts
+    zh: zf_xiaobei
+    ms:                                   # blank: the language's default voice (below)
+    vi: Ngọc Huyền@text-to-speech-vi      # another voice, on another studio instance
+    id: male_1@http://10.0.0.5:8080/api/text-to-speech@tts-id/v1   # or any base URL
 ```
 
-With this set, each recognized utterance is language-detected (an LLM call
-against the configured set — see [i18n.md](i18n.md#spoken-language-detection-chat-mode)
-for exactly what follows the citizen and what stays in the pack's language).
-The recognizer itself detects the language it transcribes in (`voice.stt.language: auto`),
-so the transcript is already in the citizen's language; the detected language
-becomes an `Always reply in …` instruction on the conversational prompts, and the
-narration voice for LLM replies. A language whose voice is left empty is
-still detected and replied to, just narrated with the default `voice.tts.voice`.
+A voice is a voice id on `voice.tts`, or `voice@instance` for one on another
+of the studio's text-to-speech instances — the instance id is put into
+`voice.tts.base_url`'s address in place of its own — or `voice@<base URL>`.
+The YAML form `ms: { voice: Husein, instance: text-to-speech-ms }` is the same.
+A blank voice is the language's default:
 
-**Which voices exist depends on the deployed TTS worker.** The default
-Kokoro worker keys its voices by prefix: `a`/`b` American/British English
-(`af_heart`, `bf_emma`, …), `e` Spanish, `f` French, `h` Hindi, `i` Italian,
-`j` Japanese, `p` Portuguese, `z` Mandarin (`zf_xiaobei`). It has no Malay
-or Vietnamese voice — the studio's `malaya` worker (VITS voices `Husein`,
-`Shafiqah Idayu`, `Anwar Ibrahim`) or the `piper` worker covers those, and
-which worker serves `voice.tts.base_url` is a studio `deployment.json` choice.
-STT is Whisper (multilingual) and accepts any of the codes; only the
-languages listed here are ever chosen, so a deployment with a Kokoro-only
-studio simply lists the languages Kokoro can speak.
+| Code | Language | Default voice | Studio worker | Instance (chat `deployment.json`) |
+|---|---|---|---|---|
+| `en` | English | `af_heart` (`voice.tts.voice` for the pack's language) | Kokoro | `voice.tts` |
+| `zh` `es` `fr` `hi` `it` `ja` `pt` | Mandarin, Spanish, French, Hindi, Italian, Japanese, Portuguese | `zf_xiaobei` `ef_dora` `ff_siwis` `hf_alpha` `if_sara` `jf_alpha` `pf_dora` | Kokoro | `voice.tts` |
+| `ms` | Malay | `Shafiqah Idayu` (also `Husein`, `Anwar Ibrahim`) | `malaya` | `text-to-speech-ms` |
+| `id` | Indonesian | `female_1` (also `female_2`, `male_1`, `male_2`) | `pocket-tts` | `text-to-speech-id` |
+| `vi` | Vietnamese | `Trúc Ly` (25 VieNeu presets, northern and southern) | `vieneu` | `text-to-speech-vi` |
+| `ta` | Tamil | `tamil_female` (also `tamil_male`) | `fastspeech2-hs` | `text-to-speech-ta` |
+
+Any other code Whisper knows works with a voice spelled out — the studio's
+`piper` worker has voices for dozens more languages; a language with neither
+is still detected and replied to, and narrated with `voice.tts.voice`. Chat
+mode's `deployment.json` starts the four extra instances (all on the CPU, each
+faster than real time); a language whose instance is not running is shown but
+not read aloud.
+
+Each utterance's language is the one Whisper names (the studio's OEP backend
+reports it — see [i18n.md](i18n.md#spoken-language-detection-chat-mode) for
+what follows the citizen and what stays in the pack's language). It becomes an
+`Always reply in …` instruction on the conversational prompts and picks the
+narration voice for LLM replies. Every language listed is one more Whisper may
+land on when it misjudges a short utterance — short Malay is sometimes heard as
+Portuguese or Spanish — so list the languages the kiosk's visitors speak, not
+every one there is a voice for.
 
 ### Voice behaviour
 
@@ -343,15 +408,16 @@ studio simply lists the languages Kokoro can speak.
 | `voice.read_aloud` | `NEXT_PUBLIC_KIOSK_READ_ALOUD` | on | Read assistant replies aloud. |
 | `voice.wait_for_speech` | `NEXT_PUBLIC_KIOSK_WAIT_FOR_SPEECH` | `false` (yaml) | Wait for TTS to finish before listening again. |
 | `voice.barge_in` | `NEXT_PUBLIC_KIOSK_BARGE_IN` | off | `"true"` lets the user interrupt TTS by speaking. |
-| `voice.vad_silence_ms` | `NEXT_PUBLIC_KIOSK_VAD_SILENCE_MS` | `1000` streaming, `1200` clips | Silence that ends an utterance. The OVMS worker counts it in whole 0.5 s chunks. |
-| `voice.vad_sensitivity` | `NEXT_PUBLIC_KIOSK_VAD_SENSITIVITY` | `2.5` | Browser VAD threshold, as a multiple of the measured noise floor — only when clips are cut in the browser (see *Streaming* above). |
+| `voice.vad_silence_ms` | `NEXT_PUBLIC_KIOSK_VAD_SILENCE_MS` | `800` | Silence that ends an utterance (see *Listening* above). Recognition already starts at the first 240 ms pause, so a longer value costs no recognition time — only the wait before the turn is sent. |
+| `voice.vad_threshold` | `NEXT_PUBLIC_KIOSK_VAD_THRESHOLD` | `0.5` | Silero speech probability (0–1) that starts an utterance; a frame is silence below it minus 0.15. Lower hears quieter speech, and more noise. |
+| `voice.vad_sensitivity` | `NEXT_PUBLIC_KIOSK_VAD_SENSITIVITY` | `2.5` | Only when the Silero model cannot load: how many times the measured noise floor counts as speech. |
 
-### Agent mode (MCP)
+### Chat agent (MCP)
 
 | YAML key | Env var | Default | Purpose |
 |---|---|---|---|
 | `agent.mcp_url` | `KIOSK_MCP_URL` | `/api/mcp` (same server) | MCP endpoint the agent connects to. |
-| `agent.turns` | `KIOSK_AGENT_TURNS` | `multi` | `multi` — the model decides after each citizen action, discovering steps through tool calls. `single` — every service's complete step map is fed into the system prompt upfront, so the model plans the whole path, asks for several answers at once and batches them into one flow call (the catalog tools are withheld). |
+| `agent.turns` | `KIOSK_AGENT_TURNS` | `single` | `single` — every service's steps, fields and accepted values are fed into the system prompt upfront, so the model starts the right service at once with everything the citizen already said and needs only the two flow tools (the catalog tools are withheld). `multi` — the model sees one line per service and discovers the rest through tool calls. |
 | `agent.max_steps` | `KIOSK_AGENT_MAX_STEPS` | `8` | Tool-call steps per turn. |
 | `agent.stop` | `KIOSK_AGENT_STOP` | chat-template markers | Extra stop sequences (YAML list / comma-joined env). |
 
@@ -362,7 +428,7 @@ studio simply lists the languages Kokoro can speak.
 All peripheral drivers install in one go with `npm run drivers:install` in
 `<kiosk>/frontend/` (or `./setup.sh --hardware`) — see each kiosk's `frontend/README.md`
 ([public-service](../../public-service-kiosk/frontend/README.md#peripheral-drivers),
-[healthcare](../../healthcare/frontend/README.md#peripheral-drivers)).
+[healthcare](../../healthcare-service-kiosk/frontend/README.md#peripheral-drivers)).
 
 ### NFC / PC-SC ID card reader
 
@@ -390,12 +456,12 @@ without a scanner, use SANE's virtual `test` backend or `documents.source: mock`
 
 | YAML key | Env var | Default | Purpose |
 |---|---|---|---|
-| `documents.source` | `NEXT_PUBLIC_KIOSK_DOCUMENT_SOURCE` | `scanner` (yaml) | `upload` \| `scanner` \| `mock`. `scanner` uses real hardware when present and (with `scanner.simulate: auto`) falls back to the `mocks_dir` stand-ins when not. |
+| `documents.source` | `NEXT_PUBLIC_KIOSK_DOCUMENT_SOURCE` | `scanner` (yaml) | `upload` \| `scanner` \| `mock`. `scanner` uses real hardware when present and (with `scanner.simulate: auto`) falls back to stand-in documents when not. |
 | `documents.require_verification` | `KIOSK_REQUIRE_DOCUMENT_VERIFICATION` | `true` | Documents must pass OCR + LLM checks. |
-| `documents.single_document_per_capture` | `KIOSK_SINGLE_DOCUMENT_PER_CAPTURE` | `true` | One document per scan/upload. |
+| `documents.single_document_per_capture` | `KIOSK_SINGLE_DOCUMENT_PER_CAPTURE` | `true` | Each document is checked on its own pages. A scan holding different documents is refused on touch; in chat (public-service) it is split and each document filed under the open requirement it satisfies, with anything not needed left out. `false` checks a whole scan as one document. |
 | `documents.uploads_dir` | `KIOSK_UPLOADS_DIR` | `../assets/pdf` | Where captured PDFs are written. |
 | `documents.max_upload_bytes` | `KIOSK_UPLOAD_MAX_BYTES` | `10485760` | Upload size cap (10 MB). |
-| `documents.mocks_dir` | `KIOSK_SCANNER_MOCKS` | `../assets/mocks/citizens/1-nadia-rahman/good` (yaml) | Folder the stand-in documents come from (mock mode, or simulated scans). ⚠️ Keep the citizen here consistent with `mock.identity.citizen`. |
+| `documents.mocks_dir` | `KIOSK_SCANNER_MOCKS` | public-service: `../assets/mocks/citizens/1-nadia-rahman/good`; healthcare: blank (yaml) | Folder the stand-in documents come from (mock mode, or simulated scans). ⚠️ public-service: keep the citizen here consistent with `mock.identity.citizen`. Healthcare: leave it blank and a simulated scan is the mock paperwork of whoever verified at the terminal, generated on the spot ([patient-journey.md](../../healthcare-service-kiosk/docs/patient-journey.md#test-documents-and-simulated-peripherals)); a folder here is used instead. |
 | `documents.scanner.bin` | `KIOSK_SCANNER_BIN` | `scanimage` | |
 | `documents.scanner.device` | `KIOSK_SCANNER_DEVICE` | first SANE device | e.g. `pfufs:fi-800R:003:004`, or `test:0`. |
 | `documents.scanner.resolution` | `KIOSK_SCANNER_RESOLUTION` | driver default (300) | |
@@ -465,7 +531,7 @@ and point the config at it:
 ```yaml
 cms:
   database_adapter: postgres
-  database_url: postgres://kiosk:secret@localhost:5432/kiosk
+  database_url: postgres://kiosk:secret@127.0.0.1:5432/kiosk
 ```
 
 `config.yaml` alone decides this — no launcher sets `DATABASE_URL` any more. A relative
@@ -493,9 +559,10 @@ be repointed without editing the file by hand.
 | `mock.currency` | `KIOSK_CURRENCY` | `MYR` | Currency code for fees/fines. |
 | `mock.processing_fee` | `KIOSK_PROCESSING_FEE` | `2` | Flat processing fee. |
 | `mock.latency_ms` | `KIOSK_MOCK_LATENCY_MS` | `900` | Artificial API latency for demo realism. |
+| `mock.clinics_always_open` | `NEXT_PUBLIC_KIOSK_CLINICS_ALWAYS_OPEN` | `false` | Healthcare only. `true`: on a day they consult, every specialist offers every half-hour left today, at any hour, so a same-day visit can be booked, checked in, paid and collected in one demo. `false`: today offers only what is left of a doctor's real clinic times ([patient-journey.md](../../healthcare-service-kiosk/docs/patient-journey.md#bookings-and-appointment-slips)). |
 | `mock.identity.read_ms` | `KIOSK_IDENTITY_READ_MS` | `2800` | Simulated card-read duration. |
 | `mock.identity.scan_ms` | `KIOSK_IDENTITY_SCAN_MS` | `2300` | Simulated document-scan duration. |
-| `mock.identity.citizen` | `KIOSK_READER_CITIZEN` | `1` (yaml; unset = random) | Which registry citizen the simulated reader returns. ⚠️ Must match the person in `documents.mocks_dir` or the LLM holder check fails. |
+| `mock.identity.citizen` | `KIOSK_READER_CITIZEN` | `1` (yaml; unset = random) | Which registry citizen the simulated reader returns. ⚠️ public-service: must match the person in `documents.mocks_dir` or the LLM holder check fails. Healthcare: staff can put any patient's card on the simulated reader from `/mock-documents`. |
 
 ---
 
@@ -505,31 +572,37 @@ be repointed without editing the file by hand.
 |---|---|---|---|
 | `wayfinding.start` | `NEXT_PUBLIC_KIOSK_WAYFINDING_START` | the map's default start (`a-l2-information-counter`) | Map place id where this kiosk stands. |
 | `wayfinding.search` | `NEXT_PUBLIC_KIOSK_WAYFINDING_SEARCH` | `astar` | Route search: `astar` \| `dijkstra`. |
-| `modules.disabled` | `NEXT_PUBLIC_KIOSK_MODULES_DISABLED` | unset | Module ids to switch off (YAML list or comma string) — see [modules.md](../../healthcare/docs/modules.md). |
+| `modules.disabled` | `NEXT_PUBLIC_KIOSK_MODULES_DISABLED` | unset | Module ids to switch off (YAML list or comma string) — see [modules.md](../../healthcare-service-kiosk/docs/modules.md). |
 | `modules.only` | `NEXT_PUBLIC_KIOSK_MODULES_ONLY` | unset (every part) | Run just these modules and what they need. |
 | `queue.visit_minutes` | `KIOSK_QUEUE_VISIT_MIN` | `12` | Minutes per consultation, for the clinic queue's wait estimates. |
 | `barcode.driver` | `KIOSK_BARCODE_DRIVER` | `hid` | `hid` (keyboard wedge typing into the page) \| `serial` (USB-CDC scanner the server reads) \| `mock` (simulated scans). |
 | `barcode.device` | `KIOSK_BARCODE_DEVICE` | `/dev/ttyACM0` | Serial device, for the `serial` driver only. |
+| `printer.enabled` | `NEXT_PUBLIC_KIOSK_PRINTER_ENABLED` | `true` | `false` hides every Print button on the kiosk, the browser's included, and the printer is never probed. Read at start-up: restart, no rebuild. |
+| `printer.driver` | `KIOSK_PRINTER_DRIVER` | `off` | `escpos` (an ESC/POS thermal printer prints the patient card and appointment slip) \| `mock` (printing is pretended) \| `off` (Print uses the browser dialog). |
+| `printer.device` | `KIOSK_PRINTER_DEVICE` | `usb` | `usb` (the first USB printer), a device path (`/dev/usb/lp0`, a Windows `\\?\USB#…` interface), part of one (`VID_0483&PID_7540`), or `tcp://host:9100`. |
+| `printer.width_dots` | `KIOSK_PRINTER_WIDTH_DOTS` | `576` | Printable width in dots: `576` for 80 mm paper, `384` for 58 mm. |
+| `notify.driver` | `KIOSK_NOTIFY_DRIVER` | `outbox` | Booking confirmations (SMS and email), lab results by email, payment receipts and arrival notes to the clinic: `outbox` keeps them on this terminal for staff at `/outbox`, `webhook` POSTs each one as JSON, `off` sends nothing. |
+| `notify.webhook_url` | `KIOSK_NOTIFY_WEBHOOK_URL` | unset | Where `webhook` posts: the hospital's SMS gateway, mail relay or integration engine. |
 
 The barcode scanner reads MRN cards and signed slips — see
-[patient-journey.md](../../healthcare/docs/patient-journey.md#barcode-scanner-setup).
+[patient-journey.md](../../healthcare-service-kiosk/docs/patient-journey.md#barcode-scanner-setup). The receipt
+printer prints them — see
+[patient-journey.md](../../healthcare-service-kiosk/docs/patient-journey.md#receipt-printer-setup).
 
 ---
 
 ## Prompt overrides
 
-Eleven system prompts can be overridden via env vars (or `prompts:` keys in
-config.yaml) in public-service — eight in healthcare, which has no
-`ASSISTANT`, `ROUTE_SERVICE` or `EXTRACT_ANSWERS`; defaults live in each kiosk's
+Seven system prompts can be overridden via env vars (or `prompts:` keys in
+config.yaml); defaults live in each kiosk's
 `frontend/src/app/api/_lib/prompts.ts` ([public-service](../../public-service-kiosk/frontend/src/app/api/_lib/prompts.ts),
-[healthcare](../../healthcare/frontend/src/app/api/_lib/prompts.ts)).
-`{{services}}` is templated with the live service catalog.
+[healthcare](../../healthcare-service-kiosk/frontend/src/app/api/_lib/prompts.ts)).
+`{{services}}` is templated with the live service catalog; healthcare's agent
+prompts also take `{{calendar}}` — today's date and the next two weeks.
 
-`KIOSK_PROMPT_ASSISTANT`, `KIOSK_PROMPT_AGENT`, `KIOSK_PROMPT_AGENT_SINGLE`, `KIOSK_PROMPT_DOCUMENT`,
+`KIOSK_PROMPT_AGENT`, `KIOSK_PROMPT_AGENT_SINGLE`, `KIOSK_PROMPT_DOCUMENT`,
 `KIOSK_PROMPT_ADDRESS_PROOF`, `KIOSK_PROMPT_RELATIONSHIP_PROOF`,
-`KIOSK_PROMPT_GROUP_CAPTURE`, `KIOSK_PROMPT_ROUTE_SERVICE`,
-`KIOSK_PROMPT_EXTRACT_ANSWERS`, `KIOSK_PROMPT_REPAIR_TRANSCRIPT`,
-`KIOSK_PROMPT_DETECT_LANGUAGE`.
+`KIOSK_PROMPT_GROUP_CAPTURE`, `KIOSK_PROMPT_REPAIR_TRANSCRIPT`.
 
 ---
 
@@ -561,8 +634,8 @@ not here: the kiosk layout serves the live values with each page
 `frontend/src/lib/public-config.ts` (public-service:
 [kiosk-env.tsx](../../public-service-kiosk/frontend/src/components/kiosk-env.tsx),
 [public-config.ts](../../public-service-kiosk/frontend/src/lib/public-config.ts);
-healthcare: [kiosk-env.tsx](../../healthcare/frontend/src/components/kiosk-env.tsx),
-[public-config.ts](../../healthcare/frontend/src/lib/public-config.ts)), so a
+healthcare: [kiosk-env.tsx](../../healthcare-service-kiosk/frontend/src/components/kiosk-env.tsx),
+[public-config.ts](../../healthcare-service-kiosk/frontend/src/lib/public-config.ts)), so a
 packaged build picks up whatever `config.yaml` says on the terminal it runs on.
 
 A restart is still needed because `config.yaml` is copied into the environment
