@@ -6,12 +6,12 @@ name = "dmt-amt-client"
 version = "2.0.0"
 description = "Intel AMT & DMT Console REST API Client and MCP Server"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "requests>=2.31.0",
     "cryptography>=42.0.0",
-    "PyJWT>=2.8.0",
-    "Pillow>=10.0.0",
+    "PyJWT>=2.15.0",
+    "Pillow>=13.0.0",
     "mcp>=1.0.0",
     "starlette>=0.37.0",
     "uvicorn>=0.29.0",
