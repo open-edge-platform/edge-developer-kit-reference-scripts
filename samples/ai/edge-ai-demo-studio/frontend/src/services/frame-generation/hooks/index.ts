@@ -1,95 +1,110 @@
 // Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-import { useMutation, useQuery } from '@tanstack/react-query'
-
-const API_BASE = '/api/frame-generation'
-
-function resultVideoUrl(taskId: string) {
-  return `${API_BASE}/v1/frame-generation/video/${taskId}`
-}
+import { useQuery } from '@tanstack/react-query'
+import { requireApiBase } from '@/lib/browser/api-base'
+import { fetchJson, fetchOk } from '@/lib/browser/fetch-json'
+import { demoStateKey } from '@/services/common/demo/demo-session'
+import { type JobDefinition, jobFailure } from '@/services/common/jobs/job-run'
+import { useJobRun } from '@/services/common/jobs/use-job-run'
+import type { Service } from '@/services/types'
 
 export type InterpolationMode = 'fps' | 'slowmo'
 
 export interface VideoTaskStatus {
-  status: 'queued' | 'running' | 'finished' | 'error' | 'not_found'
+  status:
+    'queued' | 'running' | 'finished' | 'error' | 'cancelled' | 'not_found'
   progress?: number
   position?: number
+  /** While running: output frames written so far. */
+  frames_done?: number
+  /** While running: the output frames expected in all (an estimate). */
+  frames_total?: number
+  /** While running: a cancel was asked for; it stops at its next chunk. */
+  cancel_requested?: boolean
   mode?: InterpolationMode
   multiplier?: number
   input_fps?: number
   output_fps?: number
   frames?: number
   detail?: string
+  /** Once finished: the frames and the time they took, for Live metrics. */
+  perf?: unknown
 }
 
-const TERMINAL_TASK_STATUSES = ['finished', 'error', 'not_found']
+export interface InterpolationRequest {
+  videoFile: File
+  multiplier: number
+  mode: InterpolationMode
+}
 
-export function useInterpolateVideo() {
-  return useMutation({
-    mutationFn: async (params: {
-      videoFile: File
-      multiplier: number
-      mode: InterpolationMode
-    }): Promise<{ taskId: string }> => {
+/**
+ * Worker background task: `POST /v1/frame-generation/video` returns a `taskId`, followed via
+ * `/v1/tasks/{taskId}/events` and cancelled with `DELETE /v1/tasks/{taskId}`.
+ */
+function interpolationJob(
+  apiBase: string | undefined,
+): JobDefinition<InterpolationRequest, VideoTaskStatus, VideoTaskStatus> {
+  return {
+    // Not aborted with the run: a cut-off upload may still start a task whose id never comes back.
+    // `JobRun` cancels the task once the id arrives instead.
+    submit: async ({ videoFile, multiplier, mode }) => {
+      requireApiBase(apiBase, 'Frame Generation')
       const formData = new FormData()
-      formData.append('video', params.videoFile)
-      formData.append('multiplier', String(params.multiplier))
-      formData.append('mode', params.mode)
-
-      const url = new URL(
-        `${API_BASE}/v1/frame-generation/video`,
-        window.location.origin,
+      formData.append('video', videoFile)
+      formData.append('multiplier', String(multiplier))
+      formData.append('mode', mode)
+      const { taskId } = await fetchJson<{ taskId: string }>(
+        `${apiBase}/v1/frame-generation/video`,
+        { method: 'POST', body: formData },
       )
-      const res = await fetch(url, {
-        method: 'POST',
-        body: formData,
-      })
-      if (!res.ok) throw new Error(await res.text())
-      return res.json()
+      return taskId
     },
-  })
+    jobUrl: (taskId) => `${apiBase}/v1/tasks/${encodeURIComponent(taskId)}`,
+    toResult: (status) => {
+      if (status.status !== 'finished') {
+        throw jobFailure(
+          status,
+          status.status === 'not_found'
+            ? 'The interpolation task was not found'
+            : 'unknown error',
+        )
+      }
+      return status
+    },
+    metricsApiBase: apiBase,
+    followErrorMessage: 'Unable to check interpolation status',
+  }
 }
 
-export function useVideoTaskStatus(taskId: string | null) {
-  return useQuery<VideoTaskStatus>({
-    queryKey: ['frame-generation', 'task', taskId],
-    enabled: !!taskId,
-    queryFn: async () => {
-      const url = new URL(
-        `${API_BASE}/v1/tasks/${taskId}`,
-        window.location.origin,
-      )
-      const res = await fetch(url)
-      if (!res.ok) throw new Error(await res.text())
-      return res.json()
-    },
-    refetchInterval: (query) => {
-      const status = query.state.data?.status
-      return status && TERMINAL_TASK_STATUSES.includes(status) ? false : 1500
-    },
+/**
+ * One task at a time, kept per instance for the page visit. Starting another, `reset` or leaving
+ * the page cancels the running one, since nothing else could pick its result up.
+ */
+export function useInterpolationJob(service: Service) {
+  return useJobRun(interpolationJob(service.apiBase), {
+    sessionKey: demoStateKey(service, 'frame-generation:job'),
   })
 }
 
 /**
- * Download a finished task's video as a Blob. Playing from a local blob
- * instead of streaming through the dev proxy keeps previews working when
- * the UI is accessed from another machine, and lets download reuse the
- * same bytes.
+ * A finished task's video as a Blob: unlike streaming through the dev proxy, this plays when the UI
+ * is opened from another machine, and Download reuses the bytes.
  */
-export function useResultVideo(taskId: string | null, enabled: boolean) {
+export function useResultVideo(
+  taskId: string | null,
+  enabled: boolean,
+  apiBase: string | undefined,
+) {
   return useQuery<Blob>({
-    queryKey: ['frame-generation', 'result', taskId],
-    enabled: !!taskId && enabled,
+    queryKey: ['frame-generation', 'result', apiBase, taskId],
+    enabled: !!taskId && enabled && Boolean(apiBase),
     staleTime: Infinity,
     retry: 1,
     queryFn: async () => {
-      const url = new URL(
-        resultVideoUrl(taskId as string),
-        window.location.origin,
+      const res = await fetchOk(
+        `${apiBase}/v1/frame-generation/video/${encodeURIComponent(taskId ?? '')}`,
       )
-      const res = await fetch(url)
-      if (!res.ok) throw new Error(await res.text())
       return res.blob()
     },
   })

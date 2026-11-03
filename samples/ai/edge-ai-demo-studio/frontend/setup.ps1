@@ -3,22 +3,18 @@
 
 $ErrorActionPreference = "Stop"
 
-# Set UTF-8 encoding for console output
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
-# Global variables to track PATH changes
 $script:originalPath = $null
 $script:nodePathAdded = $false
 
 function Add-FrontendEnv {
-    # Ensure .env is created based on .env.example in frontend
     $envPath = Join-Path $PSScriptRoot ".env"
     $envExamplePath = Join-Path $PSScriptRoot ".env.example"
     if (-not (Test-Path $envPath)) {
         if (Test-Path $envExamplePath) {
             Copy-Item $envExamplePath $envPath
-            # Generate a random 32-byte hex string for PAYLOAD_SECRET using cryptographic RNG
             $bytes = New-Object byte[] 32
             [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
             $payloadSecret = [System.BitConverter]::ToString($bytes) -replace '-', ''
@@ -73,7 +69,6 @@ function Test-NodeInstalled {
             & $nodePaths.NodeExecutable --version | Out-Null
             Write-Host "Node.js is ready to use." -ForegroundColor Green
             
-            # Add Node.js to PATH for easier npm usage
             Add-NodeToPath -NodeBinPath $nodePaths.NodeDir | Out-Null
             return $true
         } catch {
@@ -100,6 +95,8 @@ function Install-Dependencies {
     Write-Host "Installing Frontend node dependencies..." -ForegroundColor Yellow
     try {
         npm install
+        # A failing native command does not throw, even under Stop.
+        if ($LASTEXITCODE -ne 0) { throw "npm install exited with $LASTEXITCODE" }
         Write-Host "Frontend node dependencies installed successfully." -ForegroundColor Green
     } catch {
         Write-Host "Failed to install Frontend node dependencies." -ForegroundColor Red
@@ -111,6 +108,7 @@ function Build-Frontend {
     Write-Host "Building the frontend..." -ForegroundColor Yellow
     try {
         npm run build
+        if ($LASTEXITCODE -ne 0) { throw "npm run build exited with $LASTEXITCODE" }
         Write-Host "Frontend built successfully." -ForegroundColor Green
     } catch {
         Write-Host "Failed to build the frontend." -ForegroundColor Red
@@ -118,7 +116,6 @@ function Build-Frontend {
     }
 }
 
-# Main execution
 try {
     Write-Host "Starting setup..." -ForegroundColor Green
     Add-FrontendEnv
@@ -132,6 +129,5 @@ try {
     Read-Host "Press Enter to continue..."
     exit 1
 } finally {
-    # Always restore the original PATH
     Remove-NodeFromPath
 }

@@ -4,6 +4,18 @@
 import type { ServiceDocsData } from '@/services/types'
 
 export const getDocsData = ({ host }: { host: string }): ServiceDocsData => ({
+  quickStart: {
+    steps: [
+      "Start listening on the server's microphone with `POST /v1/wake-word-detection/start`.",
+      'Read detections from `GET /v1/wake-word-detection/events`, or follow `GET /v1/wake-word-detection/events/stream` as Server-Sent Events.',
+      'Optionally, subscribe a webhook with `POST /v1/wake-word-detection/webhooks/subscribe` to have each detection POSTed to your app.',
+    ],
+    request: {
+      language: 'cURL',
+      languageCode: 'bash',
+      code: `curl ${host}/v1/wake-word-detection/models/list`,
+    },
+  },
   serviceDescription:
     "The Wake Word Detection service listens on the server's microphone for configurable wake words using OpenWakeWord models and sends webhook notifications when detections occur.",
   overview:
@@ -13,7 +25,7 @@ export const getDocsData = ({ host }: { host: string }): ServiceDocsData => ({
       method: 'POST',
       path: '/v1/wake-word-detection/webhooks/subscribe',
       description:
-        'Subscribe a webhook URL to receive wake word detection events.',
+        'Subscribe a webhook URL to receive wake word detection events. Each call times out after 5 seconds; notifications a slow subscriber cannot keep up with are dropped rather than delaying detection.',
       params: [
         {
           name: 'url',
@@ -94,7 +106,7 @@ export const getDocsData = ({ host }: { host: string }): ServiceDocsData => ({
       method: 'POST',
       path: '/v1/wake-word-detection/start',
       description:
-        "Start listening for wake words on the server's microphone. Requires at least one subscriber.",
+        "Start listening for wake words on the server's microphone. Detections are recorded whether or not any webhook is subscribed. Answers 503 with the reason in `detail` when there is nothing to listen on: the server has no microphone, or not the `device_id` asked for.",
       params: [
         {
           name: 'device_id',
@@ -108,6 +120,59 @@ export const getDocsData = ({ host }: { host: string }): ServiceDocsData => ({
       method: 'POST',
       path: '/v1/wake-word-detection/stop',
       description: 'Stop listening for wake words.',
+    },
+    {
+      method: 'POST',
+      path: '/v1/wake-word-detection/detect',
+      description:
+        "Look for the loaded wake words in an uploaded recording instead of the microphone. Answers each model's best score and the second it first reached the threshold. Live detection is unaffected, and nothing is recorded or sent to webhooks.",
+      params: [
+        {
+          name: 'file',
+          type: 'file',
+          required: true,
+          desc: 'Recording in any format ffmpeg reads (WAV, MP3, ...).',
+        },
+        {
+          name: 'threshold',
+          type: 'number',
+          required: false,
+          desc: 'Score (0.0–1.0) that counts as a detection. Default 0.5.',
+        },
+      ],
+    },
+    {
+      method: 'GET',
+      path: '/v1/wake-word-detection/events/stream',
+      description:
+        'Follow detections and the microphone level as Server-Sent Events. The stream opens with an "events" event listing the buffered detections, then sends "detection" for each new one, "cleared" when the buffer is cleared, and "level" (level, active) about ten times a second while detection runs.',
+      params: [
+        {
+          name: 'since',
+          type: 'string',
+          required: false,
+          desc: 'ISO timestamp; the opening "events" only lists detections after it.',
+        },
+      ],
+    },
+    {
+      method: 'GET',
+      path: '/v1/wake-word-detection/events',
+      description: 'Recent detection events, newest first (up to 200).',
+      params: [
+        {
+          name: 'since',
+          type: 'string',
+          required: false,
+          desc: 'ISO timestamp; only events after it are returned.',
+        },
+      ],
+    },
+    {
+      method: 'GET',
+      path: '/v1/wake-word-detection/audio-level',
+      description:
+        'Current microphone input RMS level (0.0–1.0) and whether detection is active.',
     },
     {
       method: 'GET',

@@ -12,13 +12,15 @@
         "build": "electron-builder",
         "build:dir": "electron-builder --dir",
         "build:linux": "electron-builder --linux",
-        "build:win": "electron-builder --win"
+        "build:win": "electron-builder --win",
+        "update": "npx -y npm-check-updates -u --target minor && npm install",
+        "update:check": "npx -y npm-check-updates --target latest"
     },
     "license": "ISC",
     "description": "Edge AI Demo Studio - Electron Builder Version",
     "devDependencies": {
         "@electron/fuses": "^2.0.0",
-        "electron": ">=43.5.1",
+        "electron": "^43.8.1",
         "electron-builder": "^26.2.0"
     },
     "dependencies": {
@@ -42,6 +44,9 @@
             }
         ],
         "afterPack": "./electron-fuses.js",
+        "toolsets": {
+            "appimage": "1.0.3"
+        },
         "linux": {
             "target": [
                 {
@@ -51,7 +56,7 @@
                     ]
                 },
                 {
-                    "target": "deb",
+                    "target": "AppImage",
                     "arch": [
                         "x64"
                     ]
@@ -86,6 +91,6 @@
         ]
     },
     "overrides": {
-        "glob": ">=11.0.3"
+        "glob": ">=14.0.2"
     }
 }

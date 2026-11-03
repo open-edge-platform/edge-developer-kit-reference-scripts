@@ -3,18 +3,11 @@
 
 'use client'
 
-import { AlertTriangle, Cpu, Film, Info, Network, Upload } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
-import { Button } from '@/components/ui/button'
+import { AlertTriangle, Network } from 'lucide-react'
+import type { SettingDescriptions } from '@/components/configure/applied-settings'
+import { ConfigSection } from '@/components/configure/config-section'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Switch } from '@/components/ui/switch'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
 import {
   Select,
   SelectContent,
@@ -23,539 +16,254 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
-import { useSystemInfo } from '@/context/system-info-context'
-import { useDevicesQuery, resolveDeviceOptions } from '@/hooks/use-devices'
-import { useUpdateServiceConfig } from '@/hooks/use-service-config'
-import { ClearModelCacheSection } from '@/services/common/demo/components/clear-model-cache-section'
-import {
-  CpuAffinitySection,
-  isCpuAffinityValid,
-  normalizeCpuAffinity,
-} from '@/components/common/cpu-affinity-section'
-import {
-  type ConfigurePanelStatus,
-  ServiceConfigurePanel,
-} from '@/components/common/service-configure-panel'
-import {
-  type ModelWeight,
-  type Service,
-  getBackendForModel,
-  getDevicesForModel,
-  getWeightForModel,
-  isDeviceMatch,
-} from '@/services/types'
-
-interface LipsyncConfigurePanelProps {
-  service: Service
-}
+import { Switch } from '@/components/ui/switch'
+import { useDraftState } from '@/hooks/use-draft-state'
+import { getServiceMetadata } from '@/lib/instances/service-metadata'
+import { WorkerConfigurePanel } from '@/services/common/configure/worker-configure-panel'
+import { getWeightForModel } from '@/services/model-config'
+import type { ModelWeight, Service } from '@/services/types'
+import { frameGenerationAllowed } from '../hooks/use-frame-generation'
+import { FrameGenerationLabel } from './frame-generation-switch'
 
 const MODEL_WEIGHT_HINTS: Record<ModelWeight, string> = {
   lightweight: 'Lightweight — fast, runs in real time even on CPU',
   heavy: 'Heavy — clearer, more accurate lips; GPU recommended',
 }
 
-export function LipsyncConfigurePanel({ service }: LipsyncConfigurePanelProps) {
-  const { systemInfo } = useSystemInfo()
-  const isLinux = systemInfo?.os === 'linux'
+/** No fixed batch size: clears `metadata.batchSize` so the worker picks one for the device. */
+const AUTO_BATCH_SIZE = 'auto'
 
-  const availableModels = service.config?.availableModels ?? []
-  const availableSources = service.config?.availableModelSources ?? []
-  const supportsCustomModel = service.config?.supportsCustomModel !== false
+const BATCH_SIZES = ['4', '8', '16', '32']
 
-  const currentModel = service.currentModel ?? service.defaultModel?.name ?? ''
-  const currentDevice =
-    service.currentDevice ?? service.defaultModel?.device ?? ''
-  const currentClientIceServerUrl =
-    (service.metadata as { clientIceServerUrl?: string } | undefined)
-      ?.clientIceServerUrl ?? ''
-  const currentServerIceServerUrl =
-    (service.metadata as { serverIceServerUrl?: string } | undefined)
-      ?.serverIceServerUrl ?? ''
-  const currentCpuAffinity =
-    (service.metadata as { cpuAffinity?: string } | undefined)?.cpuAffinity ??
-    ''
-  const currentFrameGeneration =
-    (service.metadata as { frameGeneration?: boolean } | undefined)
-      ?.frameGeneration ?? true
+const SETTING_DESCRIPTIONS: SettingDescriptions = {
+  'metadata.batchSize': {
+    label: 'Batch size',
+    format: (size) => `${size} frames`,
+    unset: 'Auto',
+  },
+}
 
-  const [open, setOpen] = useState(false)
-  const [sourceType, setSourceType] = useState<'preset' | 'custom'>('preset')
-  const [draftModel, setDraftModel] = useState(currentModel)
-  const [customModel, setCustomModel] = useState('')
-  const [draftDevice, setDraftDevice] = useState(currentDevice)
-  const [draftSource, setDraftSource] = useState('huggingface')
-  const [draftClientIceServerUrl, setDraftClientIceServerUrl] = useState(
-    currentClientIceServerUrl,
+function BatchSizeSection({
+  value,
+  onChange,
+}: {
+  value: string
+  onChange: (value: string) => void
+}) {
+  // A size saved elsewhere (deployment.json) is listed too, so the trigger
+  // shows what is saved.
+  const sizes =
+    value === AUTO_BATCH_SIZE || BATCH_SIZES.includes(value)
+      ? BATCH_SIZES
+      : [...BATCH_SIZES, value]
+  const options = [
+    { value: AUTO_BATCH_SIZE, label: 'Auto (8 on NPU, 16 otherwise)' },
+    ...sizes.map((size) => ({ value: size, label: `${size} frames` })),
+  ]
+  return (
+    <ConfigSection title="Batch size" className="space-y-2">
+      <Label
+        htmlFor="ls-cfg-batch-size"
+        className="text-muted-foreground text-xs"
+      >
+        Frames per inference
+      </Label>
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger
+          data-testid="cfg-batch-size-select"
+          id="ls-cfg-batch-size"
+          className="w-full text-xs"
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((o) => (
+            <SelectItem key={o.value} value={o.value} className="text-xs">
+              {o.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <p className="text-muted-foreground text-xs">
+        A smaller batch starts talking sooner after each request; a larger one
+        can infer more frames per second on a fast accelerator.
+      </p>
+    </ConfigSection>
   )
-  const [draftServerIceServerUrl, setDraftServerIceServerUrl] = useState(
-    currentServerIceServerUrl,
-  )
-  const [draftCpuAffinity, setDraftCpuAffinity] = useState(currentCpuAffinity)
-  const [draftFrameGeneration, setDraftFrameGeneration] = useState(
-    currentFrameGeneration,
-  )
+}
 
-  const availableDevices = useMemo(
-    () => getDevicesForModel(service.config, draftModel),
-    [service.config, draftModel],
-  )
-
-  const resolvedBackend = useMemo(
-    () => getBackendForModel(service.config, draftModel),
-    [service.config, draftModel],
-  )
-  const { data: backendDevices, isError: isDeviceError } =
-    useDevicesQuery(resolvedBackend)
-
-  const { mutate: updateConfig, isPending: isSaving } = useUpdateServiceConfig()
-
-  const handleOpenChange = useCallback(
-    (newOpen: boolean) => {
-      if (newOpen) {
-        setDraftModel(currentModel)
-        setDraftDevice(currentDevice)
-        setDraftClientIceServerUrl(currentClientIceServerUrl)
-        setDraftServerIceServerUrl(currentServerIceServerUrl)
-        setDraftCpuAffinity(currentCpuAffinity)
-        setDraftFrameGeneration(currentFrameGeneration)
-      } else {
-        setDraftModel(currentModel)
-        setDraftDevice(currentDevice)
-        setDraftClientIceServerUrl(currentClientIceServerUrl)
-        setDraftServerIceServerUrl(currentServerIceServerUrl)
-        setDraftCpuAffinity(currentCpuAffinity)
-        setDraftFrameGeneration(currentFrameGeneration)
-        setCustomModel('')
-        setSourceType('preset')
-      }
-      setOpen(newOpen)
-    },
-    [
-      currentModel,
-      currentDevice,
-      currentClientIceServerUrl,
-      currentServerIceServerUrl,
-      currentCpuAffinity,
-      currentFrameGeneration,
-    ],
-  )
-
-  // Resolve device options: enrich static device values with labels from API
-  const deviceOptions = useMemo(
-    () =>
-      resolveDeviceOptions(availableDevices, backendDevices, resolvedBackend),
-    [availableDevices, backendDevices, resolvedBackend],
-  )
-
-  const selectedDeviceOption =
-    deviceOptions.find(
-      (d) => d.value.toLowerCase() === draftDevice.toLowerCase(),
-    ) ??
-    deviceOptions.find((d) =>
-      isDeviceMatch(draftDevice, d.value, resolvedBackend),
-    )
-  const selectedDeviceValue = selectedDeviceOption?.value ?? draftDevice
-
-  const resolvedModel =
-    sourceType === 'custom' ? customModel.trim() : draftModel
+/** The shared worker panel plus batch size, frame generation and ICE servers (instance metadata). */
+export function LipsyncConfigurePanel({ service }: { service: Service }) {
+  const metadata = getServiceMetadata(service)
+  const current = {
+    batchSize:
+      metadata.batchSize != null ? String(metadata.batchSize) : AUTO_BATCH_SIZE,
+    clientIceServerUrl: metadata.clientIceServerUrl ?? '',
+    serverIceServerUrl: metadata.serverIceServerUrl ?? '',
+    frameGeneration: frameGenerationAllowed(service),
+  }
+  const { draft, setDraft, reset } = useDraftState(current)
+  const changed =
+    draft.batchSize !== current.batchSize ||
+    draft.clientIceServerUrl !== current.clientIceServerUrl ||
+    draft.serverIceServerUrl !== current.serverIceServerUrl ||
+    draft.frameGeneration !== current.frameGeneration
 
   // Heavy models (e.g. MuseTalk's single-step diffusion UNet + VAE) are
   // realtime on a GPU, but only ~1-2 FPS on CPU/NPU.
-  const isHeavyModel =
-    getWeightForModel(service.config, resolvedModel) === 'heavy'
-  const isSlowHeavyModelDevice =
-    isHeavyModel && /^(cpu|npu)/i.test(selectedDeviceValue)
-
-  const normalizedDraftAffinity = normalizeCpuAffinity(draftCpuAffinity)
-  const cpuAffinityChanged =
-    normalizedDraftAffinity !== normalizeCpuAffinity(currentCpuAffinity)
-  const cpuAffinityValid = isCpuAffinityValid(draftCpuAffinity)
-
-  const isDirty =
-    open &&
-    (resolvedModel !== currentModel ||
-      draftDevice.toLowerCase() !== currentDevice.toLowerCase() ||
-      draftClientIceServerUrl !== currentClientIceServerUrl ||
-      draftServerIceServerUrl !== currentServerIceServerUrl ||
-      draftFrameGeneration !== currentFrameGeneration ||
-      cpuAffinityChanged)
-
-  const isValid = resolvedModel.length > 0 && cpuAffinityValid
-
-  const handleCancel = useCallback(() => {
-    setDraftModel(currentModel)
-    setDraftDevice(currentDevice)
-    setDraftClientIceServerUrl(currentClientIceServerUrl)
-    setDraftServerIceServerUrl(currentServerIceServerUrl)
-    setDraftCpuAffinity(currentCpuAffinity)
-    setDraftFrameGeneration(currentFrameGeneration)
-    setCustomModel('')
-    setSourceType('preset')
-  }, [
-    currentModel,
-    currentDevice,
-    currentClientIceServerUrl,
-    currentServerIceServerUrl,
-    currentCpuAffinity,
-    currentFrameGeneration,
-  ])
-
-  const handleSave = useCallback(() => {
-    if (!service.dbId || !isValid) return
-
-    updateConfig(
-      {
-        serviceId: service.dbId,
-        serviceType: service.id,
-        config: {
-          name: resolvedModel,
-          device: selectedDeviceValue,
-          ...(sourceType === 'custom' && draftSource !== 'huggingface'
-            ? { source: draftSource }
-            : {}),
-          metadata: {
-            clientIceServerUrl: draftClientIceServerUrl || null,
-            serverIceServerUrl: draftServerIceServerUrl || null,
-            frameGeneration: draftFrameGeneration,
-            ...(cpuAffinityChanged && { cpuAffinity: normalizedDraftAffinity }),
-          },
-        },
-      },
-      { onSuccess: () => setOpen(false) },
-    )
-  }, [
-    service.dbId,
-    service.id,
-    resolvedModel,
-    selectedDeviceValue,
-    draftSource,
-    sourceType,
-    draftClientIceServerUrl,
-    draftServerIceServerUrl,
-    draftFrameGeneration,
-    cpuAffinityChanged,
-    normalizedDraftAffinity,
-    isValid,
-    updateConfig,
-  ])
-
-  const statusItems: ConfigurePanelStatus[] = [
-    { label: 'Current model', value: currentModel || '—' },
-    { label: 'Current device', value: currentDevice || '—' },
-    {
-      label: 'Frame generation',
-      value: currentFrameGeneration ? 'Auto' : 'Off',
-    },
-    {
-      label: 'Client ICE server',
-      value: currentClientIceServerUrl || 'None',
-    },
-    {
-      label: 'Server ICE server',
-      value: currentServerIceServerUrl || 'None',
-    },
-    ...(isLinux
-      ? [
-          {
-            label: 'CPU affinity',
-            value: currentCpuAffinity || 'all cores',
-          },
-        ]
-      : []),
-  ]
+  const isHeavy = (model: string) =>
+    getWeightForModel(service.config, model) === 'heavy'
 
   return (
-    <ServiceConfigurePanel
-      serviceName={service.name}
-      statusItems={statusItems}
-      isDirty={isDirty}
-      isValid={isValid}
-      onSave={handleSave}
-      isSaving={isSaving}
-      onCancel={handleCancel}
-      open={open}
-      onOpenChange={handleOpenChange}
-    >
-      <div className="space-y-3 px-2">
-        <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
-          Model
-        </p>
+    <WorkerConfigurePanel
+      service={service}
+      listPresetsBy="label"
+      settingDescriptions={SETTING_DESCRIPTIONS}
+      modelSelectId="ls-cfg-model-select"
+      renderModelHint={(option) =>
+        option.weight && MODEL_WEIGHT_HINTS[option.weight]
+      }
+      renderModelNote={({ model }) =>
+        isHeavy(model) && (
+          <p className="text-muted-foreground text-xs">
+            {model} is a heavy model that produces higher-quality lipsync — a
+            GPU is recommended for real-time playback.
+          </p>
+        )
+      }
+      renderDeviceNote={({ model, device }) =>
+        isHeavy(model) &&
+        /^(cpu|npu)/i.test(device) && (
+          <p className="text-warning flex items-start gap-1 text-xs">
+            <AlertTriangle
+              aria-hidden="true"
+              className="mt-0.5 h-3 w-3 shrink-0"
+            />
+            <span>
+              {model} is a heavy model — it works on {device.toUpperCase()} but
+              far below real time. Expect very low FPS and choppy playback.
+              Select a GPU for smooth streaming.
+            </span>
+          </p>
+        )
+      }
+      advanced={
+        <>
+          <BatchSizeSection
+            value={draft.batchSize}
+            onChange={(batchSize) => setDraft({ batchSize })}
+          />
 
-        {supportsCustomModel ? (
-          <div className="grid grid-cols-2 gap-2">
-            <Button
-              type="button"
-              size="sm"
-              variant={sourceType === 'preset' ? 'secondary' : 'outline'}
-              onClick={() => setSourceType('preset')}
-            >
-              Preset
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant={sourceType === 'custom' ? 'secondary' : 'outline'}
-              onClick={() => setSourceType('custom')}
-            >
-              Custom
-            </Button>
-          </div>
-        ) : null}
+          <Separator />
 
-        {sourceType === 'preset' && availableModels.length > 0 && (
-          <div className="space-y-2">
-            <Label
-              htmlFor="ls-cfg-model-select"
-              className="text-muted-foreground text-xs"
-            >
-              Model
-            </Label>
-            <Select value={draftModel} onValueChange={setDraftModel}>
-              <SelectTrigger
-                id="ls-cfg-model-select"
-                className="w-full text-xs"
-              >
-                {/* Explicit children: keep the weight hint out of the closed trigger */}
-                <SelectValue>
-                  {availableModels.find((m) => m.value === draftModel)?.label ??
-                    draftModel}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {availableModels.map((m) => (
-                  <SelectItem
-                    key={m.value}
-                    value={m.value}
-                    textValue={m.label}
-                    className="text-xs"
-                  >
-                    <div className="flex flex-col items-start gap-0.5">
-                      <span>{m.label}</span>
-                      {m.weight && (
-                        <span className="text-muted-foreground text-[10px] font-normal">
-                          {MODEL_WEIGHT_HINTS[m.weight]}
-                        </span>
-                      )}
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {isHeavyModel && (
-              <p className="text-muted-foreground text-[10px]">
-                {resolvedModel} is a heavy model that produces higher-quality
-                lipsync — a GPU is recommended for real-time playback.
+          <ConfigSection title="Frame generation">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <FrameGenerationLabel
+                  htmlFor="ls-cfg-frame-gen"
+                  tooltip="Fills in-between frames with AI interpolation. It only activates when the selected accelerator cannot infer enough frames per second to match the avatar video on its own."
+                />
+                <Switch
+                  id="ls-cfg-frame-gen"
+                  checked={draft.frameGeneration}
+                  onCheckedChange={(v) => setDraft({ frameGeneration: v })}
+                />
+              </div>
+              <p className="text-muted-foreground text-xs">
+                Starts the demo&apos;s frame generation switch on when the Frame
+                Generation service is running. Only runs if the accelerator
+                cannot process as many frames per second as the avatar video
+                requires.
               </p>
-            )}
-          </div>
-        )}
+            </div>
+          </ConfigSection>
 
-        {sourceType === 'custom' && (
-          <div className="space-y-3">
+          <Separator />
+
+          <ConfigSection title="WebRTC">
             <div className="space-y-2">
               <Label
-                htmlFor="ls-cfg-custom-model"
+                htmlFor="ls-cfg-client-ice-server"
                 className="text-muted-foreground text-xs"
               >
-                <Upload className="mr-1 inline-block h-3 w-3" />
-                Model ID (e.g. org/model-name)
+                <Network aria-hidden="true" className="mr-1 h-3 w-3" />
+                Client ICE Server URL
               </Label>
               <Input
-                id="ls-cfg-custom-model"
-                value={customModel}
-                onChange={(e) => setCustomModel(e.target.value)}
-                placeholder="Wav2lip"
+                id="ls-cfg-client-ice-server"
+                value={draft.clientIceServerUrl}
+                onChange={(e) =>
+                  setDraft({ clientIceServerUrl: e.target.value })
+                }
+                placeholder="e.g. 192.168.1.100:19302"
                 className="text-xs"
               />
+              <p className="text-muted-foreground text-xs">
+                ICE server for the browser client. Auto-prefixed with stun: if
+                no scheme is provided. Leave empty to use no ICE server.
+              </p>
             </div>
-
-            {availableSources.length > 0 && (
-              <div className="space-y-2">
-                <Label
-                  htmlFor="ls-cfg-source-select"
-                  className="text-muted-foreground text-xs"
-                >
-                  Source
-                </Label>
-                <Select value={draftSource} onValueChange={setDraftSource}>
-                  <SelectTrigger
-                    id="ls-cfg-source-select"
-                    className="w-full text-xs"
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableSources.map((s) => (
-                      <SelectItem
-                        key={s.value}
-                        value={s.value}
-                        className="text-xs"
-                      >
-                        {s.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      <Separator />
-
-      <div className="space-y-3 px-2">
-        <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
-          Accelerator
-        </p>
-        <div className="space-y-2">
-          <Label
-            htmlFor="cfg-device-select"
-            className="text-muted-foreground text-xs"
-          >
-            <Cpu className="mr-1 inline-block h-3 w-3" />
-            Device
-          </Label>
-          <Select value={selectedDeviceValue} onValueChange={setDraftDevice}>
-            <SelectTrigger
-              data-testid="cfg-device-select"
-              id="cfg-device-select"
-              className="w-full text-xs"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {deviceOptions.map((d) => (
-                <SelectItem
-                  key={d.value}
-                  value={d.value}
-                  textValue={d.value}
-                  className="text-xs"
-                >
-                  <span>{d.value}</span>
-                  {d.value !== d.label && (
-                    <span className="text-muted-foreground font-normal">
-                      {d.label}
-                    </span>
-                  )}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {isDeviceError && (
-            <p className="text-destructive text-[10px]">
-              Failed to fetch GPU devices. Check that the helper service is
-              running.
-            </p>
-          )}
-          {isSlowHeavyModelDevice && (
-            <p className="text-warning flex items-start gap-1 text-[10px]">
-              <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
-              <span>
-                {resolvedModel} is a heavy model — it works on{' '}
-                {selectedDeviceValue.toUpperCase()} but far below real time.
-                Expect very low FPS and choppy playback. Select a GPU for smooth
-                streaming.
-              </span>
-            </p>
-          )}
-        </div>
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <Label
-              htmlFor="ls-cfg-frame-gen"
-              className="text-muted-foreground text-xs"
-            >
-              <Film className="mr-1 inline-block h-3 w-3" />
-              Frame generation
-              <TooltipProvider delayDuration={250}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Info className="text-muted-foreground ml-1 inline-block h-3 w-3" />
-                  </TooltipTrigger>
-                  <TooltipContent side="top" className="max-w-60 text-[11px]">
-                    Fills in-between frames with AI interpolation. It only
-                    activates when the selected accelerator cannot infer enough
-                    frames per second to match the avatar video on its own.
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </Label>
-            <Switch
-              id="ls-cfg-frame-gen"
-              checked={draftFrameGeneration}
-              onCheckedChange={setDraftFrameGeneration}
-            />
-          </div>
-          <p className="text-muted-foreground text-[10px]">
-            Only runs if the accelerator cannot process as many frames per
-            second as the avatar video requires.
-          </p>
-        </div>
-      </div>
-
-      <Separator />
-
-      <div className="space-y-3 px-2">
-        <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
-          WebRTC
-        </p>
-        <div className="space-y-2">
-          <Label
-            htmlFor="ls-cfg-client-ice-server"
-            className="text-muted-foreground text-xs"
-          >
-            <Network className="mr-1 inline-block h-3 w-3" />
-            Client ICE Server URL
-          </Label>
-          <Input
-            id="ls-cfg-client-ice-server"
-            value={draftClientIceServerUrl}
-            onChange={(e) => setDraftClientIceServerUrl(e.target.value)}
-            placeholder="e.g. 192.168.1.100:19302"
-            className="text-xs"
-          />
-          <p className="text-muted-foreground text-[10px]">
-            ICE server for the browser client. Auto-prefixed with stun: if no
-            scheme is provided. Leave empty to use no ICE server.
-          </p>
-        </div>
-        <div className="space-y-2">
-          <Label
-            htmlFor="ls-cfg-server-ice-server"
-            className="text-muted-foreground text-xs"
-          >
-            <Network className="mr-1 inline-block h-3 w-3" />
-            Server ICE Server URL
-          </Label>
-          <Input
-            id="ls-cfg-server-ice-server"
-            value={draftServerIceServerUrl}
-            onChange={(e) => setDraftServerIceServerUrl(e.target.value)}
-            placeholder="e.g. localhost:5901"
-            className="text-xs"
-          />
-          <p className="text-muted-foreground text-[10px]">
-            ICE server for the lipsync worker. Auto-prefixed with turn: if no
-            scheme is provided. Leave empty to use no ICE server.
-          </p>
-        </div>
-      </div>
-
-      {isLinux && (
-        <>
-          <Separator />
-          <CpuAffinitySection
-            value={draftCpuAffinity}
-            onChange={setDraftCpuAffinity}
-            currentServiceId={service.id}
-          />
+            <div className="space-y-2">
+              <Label
+                htmlFor="ls-cfg-server-ice-server"
+                className="text-muted-foreground text-xs"
+              >
+                <Network aria-hidden="true" className="mr-1 h-3 w-3" />
+                Server ICE Server URL
+              </Label>
+              <Input
+                id="ls-cfg-server-ice-server"
+                value={draft.serverIceServerUrl}
+                onChange={(e) =>
+                  setDraft({ serverIceServerUrl: e.target.value })
+                }
+                placeholder="e.g. 127.0.0.1:5901"
+                className="text-xs"
+              />
+              <p className="text-muted-foreground text-xs">
+                ICE server for the lipsync worker. Auto-prefixed with turn: if
+                no scheme is provided. Leave empty to use no ICE server.
+              </p>
+            </div>
+          </ConfigSection>
         </>
-      )}
-
-      <Separator />
-
-      <ClearModelCacheSection service={service} />
-    </ServiceConfigurePanel>
+      }
+      statusItems={[
+        {
+          label: 'Batch size',
+          value:
+            current.batchSize === AUTO_BATCH_SIZE
+              ? 'Auto'
+              : `${current.batchSize} frames`,
+        },
+        {
+          label: 'Frame generation',
+          value: current.frameGeneration ? 'Auto' : 'Off',
+        },
+        {
+          label: 'Client ICE server',
+          value: current.clientIceServerUrl || 'None',
+        },
+        {
+          label: 'Server ICE server',
+          value: current.serverIceServerUrl || 'None',
+        },
+      ]}
+      extension={{
+        changed,
+        reset,
+        config: {
+          metadata: {
+            batchSize:
+              draft.batchSize === AUTO_BATCH_SIZE
+                ? null
+                : Number(draft.batchSize),
+            clientIceServerUrl: draft.clientIceServerUrl || null,
+            serverIceServerUrl: draft.serverIceServerUrl || null,
+            frameGeneration: draft.frameGeneration,
+          },
+        },
+      }}
+    />
   )
 }

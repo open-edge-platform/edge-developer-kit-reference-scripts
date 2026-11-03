@@ -1,57 +1,41 @@
 // Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
+import type { LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { PHASE_CONFIG } from '../constants'
+import { PHASES, type Phase } from '../lib/wizard'
 
 interface PhaseBannerProps {
-  phase: 'connect' | 'seg' | 'cls'
+  phase: Phase
   title: string
   subtitle: string
-  icon: React.ElementType
+  /** The phase's own icon unless given. */
+  icon?: LucideIcon
 }
 
+/** The tinted banner opening each wizard step: where it is, what it does. */
 export function PhaseBanner({
   phase,
   title,
   subtitle,
-  icon: Icon,
+  icon,
 }: PhaseBannerProps) {
-  const config = PHASE_CONFIG[phase]
+  const style = PHASES[phase]
+  const Icon = icon ?? style.icon
 
   return (
-    <div
-      className={cn(
-        'relative overflow-hidden rounded-xl border p-4',
-        config.lightBg,
-        config.border,
-      )}
-    >
-      {/* Decorative circles */}
-      <div
-        className={cn(
-          'absolute -top-6 -right-6 h-20 w-20 rounded-full bg-gradient-to-br opacity-10',
-          config.gradient,
-        )}
-      />
-      <div
-        className={cn(
-          'absolute -right-2 -bottom-4 h-12 w-12 rounded-full bg-gradient-to-br opacity-5',
-          config.gradient,
-        )}
-      />
-
-      <div className="relative flex items-center gap-3">
+    <div className={cn('rounded-xl border p-4', style.surface)}>
+      <div className="flex items-center gap-3">
         <div
           className={cn(
-            'flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br text-white shadow-sm',
-            config.gradient,
+            'flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg shadow-sm',
+            style.solid,
           )}
         >
-          <Icon className="h-4 w-4" />
+          <Icon className="h-4 w-4" aria-hidden />
         </div>
         <div>
-          <p className={cn('text-sm font-semibold', config.text)}>{title}</p>
+          <p className={cn('text-sm font-semibold', style.text)}>{title}</p>
           <p className="text-muted-foreground text-xs">{subtitle}</p>
         </div>
       </div>

@@ -3,115 +3,98 @@
 
 'use client'
 
-import { useCallback, useState } from 'react'
-import { Upload, FileText, AlertCircle, Loader2 } from 'lucide-react'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
+import { FileText, Loader, Upload } from 'lucide-react'
 import { FileDropZone } from '@/components/common/file-drop-zone'
+import { Button } from '@/components/ui/button'
 
 interface TranslationUploadProps {
-  disabled?: boolean
+  file: File | null
+  onFileChange: (file: File | null) => void
+  /** Why starting is not possible right now, if it is not. */
+  blockedReason?: string
   isUploading?: boolean
-  uploadError?: string | null
   model: string
-  onUpload: (file: File) => void
+  onStart: () => void
 }
 
 const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024
 
+/** The actual rules the worker enforces, shown as the limits under the drop zone. */
+const ACCEPTED_EXTENSIONS = ['.pptx', '.ppt']
+const MAX_FILE_SIZE_LABEL = '50 MB'
+
 function validatePptFile(file: File): string | null {
   const name = file.name.toLowerCase()
-  if (!name.endsWith('.pptx') && !name.endsWith('.ppt')) {
-    return 'Please select a valid PowerPoint file (.pptx or .ppt)'
+  if (!ACCEPTED_EXTENSIONS.some((ext) => name.endsWith(ext))) {
+    return 'Please select a PowerPoint file (.pptx or .ppt)'
   }
   if (file.size > MAX_FILE_SIZE_BYTES) {
-    return 'File size must be less than 50MB'
+    return `File size must be less than ${MAX_FILE_SIZE_LABEL}`
   }
   return null
 }
 
+/** Drop zone plus the one button that starts the job; the caller keeps the file. */
 export function TranslationUpload({
-  disabled,
+  file,
+  onFileChange,
+  blockedReason,
   isUploading = false,
-  uploadError,
   model,
-  onUpload,
+  onStart,
 }: TranslationUploadProps) {
-  const [selectedFile, setSelectedFile] = useState<File | null>(null)
-
-  const validate = useCallback((f: File) => validatePptFile(f), [])
-
-  const handleSubmit = () => {
-    if (selectedFile) onUpload(selectedFile)
-  }
+  const disabled = Boolean(blockedReason) || isUploading
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Upload Presentation</CardTitle>
-        <CardDescription>
-          Upload a PowerPoint file (.pptx or .ppt) to translate
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <FileDropZone
-          file={selectedFile}
-          onFileChange={setSelectedFile}
-          accept=".pptx,.ppt"
-          validate={validate}
-          disabled={disabled || isUploading}
-          label="Drop your PowerPoint file here"
-          hint="or click to browse (.pptx, .ppt)"
-          maxSizeHint="Maximum file size: 50MB"
-          fileIcon={FileText}
-          testId="file-upload-area"
-          inputTestId="file-input"
-        />
+    <div className="space-y-4">
+      <FileDropZone
+        file={file}
+        onFileChange={onFileChange}
+        accept={ACCEPTED_EXTENSIONS.join(',')}
+        validate={validatePptFile}
+        disabled={disabled}
+        label="Drop your PowerPoint file here"
+        hint={`or click to browse (${ACCEPTED_EXTENSIONS.join(', ')})`}
+        maxSizeHint={`Maximum file size: ${MAX_FILE_SIZE_LABEL}`}
+        fileIcon={FileText}
+        testId="file-upload-area"
+        inputTestId="file-input"
+      />
 
-        {uploadError && (
-          <div className="border-destructive/50 bg-destructive/10 text-destructive rounded-lg border p-4">
-            <p className="flex items-center gap-2 text-sm font-medium">
-              <AlertCircle className="h-4 w-4 flex-shrink-0" />
-              {uploadError}
-            </p>
-          </div>
-        )}
-
+      <div className="flex flex-wrap items-center gap-3">
         <Button
           data-testid="start-translation-button"
-          onClick={handleSubmit}
-          disabled={!selectedFile || disabled || isUploading}
-          className="w-full"
+          onClick={onStart}
+          disabled={!file || disabled}
+          aria-busy={isUploading || undefined}
           size="lg"
+          className="gap-2"
         >
           {isUploading ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Uploading...
-            </>
+            <Loader className="h-4 w-4 animate-spin" aria-hidden />
           ) : (
-            <>
-              <Upload className="mr-2 h-4 w-4" />
-              Start Translation
-            </>
+            <Upload className="h-4 w-4" aria-hidden />
           )}
+          <span className="stable-label">
+            <span className={isUploading ? 'invisible' : undefined}>
+              Start translation
+            </span>
+            <span className={isUploading ? undefined : 'invisible'}>
+              Uploading…
+            </span>
+          </span>
         </Button>
+        {blockedReason && (
+          <p className="text-warning text-xs">{blockedReason}</p>
+        )}
+      </div>
 
-        <div className="bg-muted rounded-lg p-4">
-          <div className="text-muted-foreground space-y-1 text-xs">
-            <p>✓ Supported formats: .pptx, .ppt</p>
-            <p>✓ Maximum file size: 50MB</p>
-            <p>✓ All formatting will be preserved</p>
-            <p>✓ Translation uses {model}</p>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+      <ul className="text-muted-foreground flex flex-wrap gap-x-4 gap-y-1 text-xs">
+        <li>Formats: {ACCEPTED_EXTENSIONS.join(', ')}</li>
+        <li>Up to {MAX_FILE_SIZE_LABEL}</li>
+        <li>Slide formatting is preserved</li>
+        <li>Model: {model}</li>
+      </ul>
+    </div>
   )
 }

@@ -1,4 +1,4 @@
-# Exclude version control metadata and common unwanted folders from the build context
+# Version control and editor metadata
 .git
 .github
 .gitignore
@@ -8,11 +8,13 @@
 **/thirdparty
 **/.next
 **/.venv
+**/.venv-kokoro-export
+**/.export-venv
 **/__pycache__
 **/.env
 
-workers/engine/multiserve/engine
-workers/lipsync/models
+workers/engines/multiserve/engine
+workers/services/lipsync/models
 
 frontend/playwright-report
 frontend/test-results
@@ -21,6 +23,9 @@ frontend/db.sqlite
 out
 logs
 models
-tests
 thirdparty
 playwright-report
+
+# Test sources are not needed in the image, but the compose entrypoint is.
+tests
+!tests/docker

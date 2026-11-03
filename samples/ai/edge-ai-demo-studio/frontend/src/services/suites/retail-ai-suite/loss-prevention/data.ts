@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { ShieldAlert } from 'lucide-react'
+import { getServiceMetadata } from '@/lib/instances/service-metadata'
 import type { ServiceMeta, WorkerConfig } from '@/services/types'
 
 export const service: ServiceMeta = {
@@ -18,8 +19,7 @@ export const service: ServiceMeta = {
     name: 'loss-prevention',
     device: 'CPU',
   },
-  // Docker compose auto-names the pipeline container as src-lp-pipeline-runner-1
-  // (project = 'src', the working dir used by make run-lp, service = lp-pipeline-runner)
+  // Compose names it <project>-<service>-1; `make run-lp` runs from `src`, so the project is 'src'.
   healthCheck: {
     type: 'docker',
     container: 'src-lp-pipeline-runner-1',
@@ -36,12 +36,14 @@ export const service: ServiceMeta = {
 }
 
 export const worker: WorkerConfig = {
+  // The compose wrapper rejects flags it does not know.
+  acceptsInstanceArgs: false,
   buildArgs: (doc) => {
     const device = doc.models.default.device
     if (device === 'HETERO') {
-      const meta = doc.metadata as Record<string, unknown> | undefined
-      const detectDevice = String(meta?.detectDevice ?? 'CPU')
-      const classifyDevice = String(meta?.classifyDevice ?? 'CPU')
+      const meta = getServiceMetadata(doc)
+      const detectDevice = String(meta.detectDevice ?? 'CPU')
+      const classifyDevice = String(meta.classifyDevice ?? 'CPU')
       return [
         '--detect-device',
         detectDevice,
@@ -51,7 +53,7 @@ export const worker: WorkerConfig = {
     }
     return ['--device', device]
   },
-  workerSubDir: 'suite/retail-ai-suite/loss-prevention',
+  workerSubDir: 'suites/retail-ai-suite/loss-prevention',
   requiresDocker: true,
   stopScript: true,
 }

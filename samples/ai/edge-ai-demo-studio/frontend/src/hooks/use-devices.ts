@@ -2,11 +2,20 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useQuery } from '@tanstack/react-query'
-import type { DeviceOption } from '@/services/types'
-import { type DeviceBackend, isDeviceMatch } from '@/services/types'
+import type { LlamaBuild } from '@/engines/multiserve/types'
+import { fetchJson } from '@/lib/browser/fetch-json'
+import type { DeviceBackend, DeviceOption } from '@/services/types'
+import { isDeviceMatch } from '@/services/model-config'
 
 interface DeviceResponse {
   devices: { id: string; name: string }[]
+  /** llama.cpp only: the build that listed the devices. */
+  build?: LlamaBuild
+}
+
+export interface DeviceList {
+  options: DeviceOption[]
+  build?: LlamaBuild
 }
 
 const BACKEND_DEVICE_ROUTES: Record<string, string> = {
@@ -15,24 +24,28 @@ const BACKEND_DEVICE_ROUTES: Record<string, string> = {
   pytorch: '/api/devices/pytorch',
 }
 
-async function fetchDevices(backend: string): Promise<DeviceOption[]> {
+async function fetchDevices(backend: string): Promise<DeviceList> {
   const route = BACKEND_DEVICE_ROUTES[backend]
-  if (!route) return []
+  if (!route) return { options: [] }
 
-  const res = await fetch(route)
-  if (!res.ok) {
-    throw new Error(`Failed to fetch ${backend} devices: ${res.status}`)
+  const data = await fetchJson<DeviceResponse>(route, {
+    errorMessage: `Failed to fetch ${backend} devices`,
+  })
+  return {
+    options: data.devices.map((d) => ({
+      value: d.id,
+      label: d.name,
+    })),
+    build: data.build,
   }
-
-  const data: DeviceResponse = await res.json()
-  return data.devices.map((d) => ({
-    value: d.id,
-    label: d.name,
-  }))
 }
 
-export function useDevicesQuery(backend: string | undefined) {
-  return useQuery({
+function selectOptions(list: DeviceList): DeviceOption[] {
+  return list.options
+}
+
+function devicesQuery(backend: string | undefined) {
+  return {
     queryKey: ['devices', backend],
     queryFn: () => {
       if (!backend) throw new Error('No backend specified')
@@ -41,14 +54,30 @@ export function useDevicesQuery(backend: string | undefined) {
     enabled: !!backend && !!BACKEND_DEVICE_ROUTES[backend],
     staleTime: 5 * 60 * 1000,
     retry: 1,
-  })
+  }
 }
 
+export function useDevicesQuery(backend: string | undefined) {
+  return useQuery({ ...devicesQuery(backend), select: selectOptions })
+}
+
+/** `useDevicesQuery` with the llama.cpp build that listed the devices. */
+export function useDeviceListQuery(backend: string | undefined) {
+  return useQuery(devicesQuery(backend))
+}
+
+/**
+ * Backend-reported devices the service supports. A backend this app cannot query lists the declared
+ * devices as-is; a queryable one lists nothing until its answer arrives.
+ */
 export function resolveDeviceOptions(
   supportedDevices: string[],
   backendDevices: DeviceOption[] | undefined,
   backend: DeviceBackend | undefined,
 ): DeviceOption[] {
+  if (!backend || !BACKEND_DEVICE_ROUTES[backend]) {
+    return supportedDevices.map((d) => ({ value: d, label: d }))
+  }
   if (!backendDevices) {
     return []
   }

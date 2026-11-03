@@ -1,10 +1,16 @@
 #!/usr/bin/env node
-/* eslint-disable no-console */
 // Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
 import fs from 'node:fs'
 import path from 'node:path'
+
+const print = (line) => process.stdout.write(`${line}\n`)
+// Piped into a reader that stopped early (`| head`): nothing left to say.
+process.stdout.on('error', (error) => {
+  if (error.code === 'EPIPE') process.exit(0)
+  throw error
+})
 
 const header =
   '// Copyright (C) 2026 Intel Corporation\n// SPDX-License-Identifier: Apache-2.0\n\n'
@@ -32,7 +38,6 @@ const allFiles = [...srcFiles, ...scriptFiles, ...rootFiles]
 const skip = (f) => {
   const rel = f.replace(/\\/g, '/')
   if (rel.includes('_generated/')) return true
-  if (rel.includes('payload-types.ts')) return true
   if (rel.includes('/migrations/')) return true
   if (rel.includes('next-env.d.ts')) return true
   return false
@@ -67,11 +72,11 @@ for (const file of allFiles) {
   added.push(file)
 }
 
-console.log(`=== ADDED (${added.length}) ===`)
-for (const f of added) console.log(`  ${f}`)
-console.log(`=== FIXED (${fixed.length}) ===`)
-for (const f of fixed) console.log(`  ${f}`)
-console.log(`=== ALREADY HAD (${alreadyHas.length}) ===`)
-for (const f of alreadyHas) console.log(`  ${f}`)
-console.log(`=== SKIPPED (${skipped.length}) ===`)
-for (const f of skipped) console.log(`  ${f}`)
+print(`=== ADDED (${added.length}) ===`)
+for (const f of added) print(`  ${f}`)
+print(`=== FIXED (${fixed.length}) ===`)
+for (const f of fixed) print(`  ${f}`)
+print(`=== ALREADY HAD (${alreadyHas.length}) ===`)
+for (const f of alreadyHas) print(`  ${f}`)
+print(`=== SKIPPED (${skipped.length}) ===`)
+for (const f of skipped) print(`  ${f}`)

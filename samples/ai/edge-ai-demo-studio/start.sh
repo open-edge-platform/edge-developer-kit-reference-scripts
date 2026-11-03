@@ -15,7 +15,6 @@ setup_node_env() {
     fi
     export PATH="$NODE_PATH:$PATH"
     trap reset_env EXIT
-    # Check for node and npm
     if ! command -v node >/dev/null 2>&1; then
         echo "Error:node is not available in PATH."
         exit 1
@@ -69,7 +68,7 @@ wait_for_frontend() {
 setup_node_env
 cd "$FRONTEND_DIR" || exit
 
-FRONTEND_URL="http://localhost:$(get_frontend_port)"
+FRONTEND_URL="http://127.0.0.1:$(get_frontend_port)"
 HEALTHCHECK_URL="$FRONTEND_URL/api/services"
 
 npm run start &

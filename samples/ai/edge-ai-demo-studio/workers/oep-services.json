@@ -1,0 +1,110 @@
+{
+  "$schema": "./oep-services.schema.json",
+  "repository": "https://github.com/open-edge-platform/edge-ai-libraries.git",
+  "tag": "2026.2.1",
+  "services": [
+    {
+      "worker": "services/speech-to-text/oep",
+      "name": "audio-analyzer",
+      "subdir": "microservices/audio-analyzer",
+      "sentinel": "pipeline.py",
+      "install": {
+        "requirements": "requirements.txt",
+        "uninstall": ["torchcodec"]
+      }
+    },
+    {
+      "worker": "services/vectordb",
+      "name": "document-ingestion",
+      "subdir": "microservices/document-ingestion/pgvector",
+      "sentinel": "app/document.py",
+      "home_env": "OEP_DOCUMENT_INGESTION_HOME"
+    },
+    {
+      "worker": "common/downloader",
+      "name": "model-download",
+      "subdir": "microservices/model-download",
+      "sentinel": "src/core/plugin_registry.py",
+      "home_env": "OEP_MODEL_DOWNLOAD_HOME"
+    },
+    {
+      "worker": "services/text-to-speech/oep-tts",
+      "name": "text-to-speech",
+      "subdir": "microservices/text-to-speech",
+      "sentinel": "pipeline.py",
+      "install": {
+        "requirements": "requirements.txt"
+      }
+    },
+    {
+      "worker": "services/embeddings",
+      "name": "multimodal-embedding-serving",
+      "subdir": "microservices/multimodal-embedding-serving",
+      "sentinel": "src/app.py",
+      "install": {
+        "requirements": "pyproject.toml",
+        "constraints": "poetry.lock"
+      }
+    }
+  ],
+  "sources": [
+    {
+      "worker": "services/text-to-speech/kokoro",
+      "name": "kokoro",
+      "repository": "https://github.com/hexgrad/kokoro.git",
+      "ref": "dfb907a02bba8152ca444717ca5d78747ccb4bec",
+      "subdir": "kokoro",
+      "dir": "kokoro",
+      "sentinel": "__init__.py",
+      "patch": "kokoro.patch",
+      "patch_strip": 2
+    },
+    {
+      "worker": "services/text-to-speech/malaya",
+      "name": "malaya",
+      "repository": "https://github.com/mesolitica/malaya.git",
+      "ref": "d3e6858667cbc96fa79da76a8da2c0960d3ca19f",
+      "subdir": "malaya",
+      "dir": "malaya",
+      "sentinel": "__init__.py"
+    },
+    {
+      "worker": "services/text-to-speech/malaya",
+      "name": "malaya-speech",
+      "repository": "https://github.com/mesolitica/malaya-speech.git",
+      "ref": "d6150c3c008ab1cc76154ff2d666341c6d01628b",
+      "subdir": "malaya_speech",
+      "dir": "malaya_speech",
+      "sentinel": "__init__.py"
+    },
+    {
+      "worker": "services/text-to-speech/vieneu",
+      "name": "vieneu",
+      "repository": "https://github.com/pnnbao97/VieNeu-TTS.git",
+      "ref": "c1390abbdb2eedcdf58eafb546966c06ce27af71",
+      "subdir": "src/vieneu",
+      "dir": "vieneu",
+      "sentinel": "__init__.py"
+    },
+    {
+      "worker": "services/text-to-speech/vieneu",
+      "name": "vieneu-utils",
+      "repository": "https://github.com/pnnbao97/VieNeu-TTS.git",
+      "ref": "c1390abbdb2eedcdf58eafb546966c06ce27af71",
+      "subdir": "src/vieneu_utils",
+      "dir": "vieneu_utils",
+      "sentinel": "__init__.py"
+    },
+    {
+      "worker": "common/ovms-export-qwen3-asr",
+      "name": "optimum-intel",
+      "repository": "https://github.com/openvino-dev-samples/optimum-intel.git",
+      "ref": "4ca1144eafc3ef7d3d805a99c7b92953441437e5",
+      "subdir": "optimum",
+      "keep_root": true,
+      "sentinel": "optimum/exporters/openvino/model_configs.py",
+      "patch": "optimum-intel-version.patch",
+      "patch_strip": 1
+    }
+  ]
+}

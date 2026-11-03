@@ -22,13 +22,11 @@ function appendLog(text) {
     logTicker.classList.remove("is-fading");
   }, 200);
 
-  // Append to scrollable history
   const line = document.createElement("span");
   line.className = "log-line";
   line.textContent = trimmed;
   logPanelInner.appendChild(line);
 
-  // Cap history at 200 lines
   while (logPanelInner.children.length > 200) {
     logPanelInner.removeChild(logPanelInner.firstChild);
   }
@@ -57,7 +55,6 @@ window.electronAPI.onPipProgress((step) => {
   label.textContent = step.status;
   progressBar.style.width = step.progress + "%";
 
-  // Update numeric percent display (matches the visual progress bar)
   const percentEl = document.getElementById("progress-percent");
   if (percentEl) {
     const val = Number(step.progress);
@@ -65,8 +62,8 @@ window.electronAPI.onPipProgress((step) => {
   }
 });
 
+// Sent with a non-zero code when setup or startup failed; the error dialog has the details.
 window.electronAPI.onPipDone((code) => {
-  label.textContent =
-    code === 0 ? "Installation complete!" : "Installation failed!";
+  label.textContent = code === 0 ? "Done." : "Something went wrong. See the error message.";
   progressBar.style.width = "100%";
 });

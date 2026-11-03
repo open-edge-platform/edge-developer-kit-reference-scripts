@@ -3,157 +3,121 @@
 
 'use client'
 
-import { useCallback } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { Session } from '../types'
-import { formatTimestamp, parseResponse } from '../utils'
+import { useQuery } from '@tanstack/react-query'
+import { requireApiBase } from '@/lib/browser/api-base'
+import { fetchJson, postJson } from '@/lib/browser/fetch-json'
+import { timestampNow } from '../lib/timestamps'
+import type { Session, SessionUpdate } from '../lib/types'
+import { useOptimisticSessionMutation } from './use-optimistic-session-mutation'
 
-const QUERY_KEY = ['medical-scribe', 'sessions'] as const
-const API_BASE = '/api/medical-scribe-database/v1/sessions'
+const SERVICE_NAME = 'Medical Scribe Database'
 
-function sanitizeSessionUpdate(updates: Partial<Omit<Session, 'id'>>) {
-  const { audioBlob: _audioBlob, ...rest } = updates
-  return rest
-}
+const sessionsKey = (apiBase: string | undefined) =>
+  ['medical-scribe', 'sessions', apiBase] as const
 
-export function useSessions() {
-  const queryClient = useQueryClient()
+export function useSessions(apiBase: string | undefined) {
+  const queryKey = sessionsKey(apiBase)
 
   const sessionsQuery = useQuery({
-    queryKey: QUERY_KEY,
-    queryFn: async () => {
-      const res = await fetch(`${API_BASE}`)
-      return parseResponse<Session[]>(res, 'Failed to load sessions')
+    queryKey,
+    enabled: Boolean(apiBase),
+    queryFn: () => {
+      requireApiBase(apiBase, SERVICE_NAME)
+      return fetchJson<Session[]>(`${apiBase}/v1/sessions`, {
+        errorMessage: 'Failed to load sessions',
+      })
     },
   })
 
-  const { mutateAsync: createSessionMutate } = useMutation({
-    mutationFn: async (session: Session) => {
-      const res = await fetch(`${API_BASE}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+  const { mutate: createSessionMutate } = useOptimisticSessionMutation<
+    Session,
+    Session,
+    Session
+  >({
+    queryKey,
+    mutationFn: (session) => {
+      requireApiBase(apiBase, SERVICE_NAME)
+      return postJson<Session>(
+        `${apiBase}/v1/sessions`,
+        {
           id: session.id,
           name: session.name,
           doctorProfileId: session.doctorProfileId,
           language: session.language,
           sessionCreatedAt: session.sessionCreatedAt,
-        }),
-      })
-      return parseResponse<Session>(res, 'Failed to create session')
-    },
-  })
-
-  const { mutateAsync: updateSessionMutate } = useMutation({
-    mutationFn: async ({
-      id,
-      updates,
-    }: {
-      id: string
-      updates: Partial<Omit<Session, 'id'>>
-    }) => {
-      const res = await fetch(
-        new URL(`${API_BASE}/${id}`, window.location.origin),
-        {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(sanitizeSessionUpdate(updates)),
         },
+        { errorMessage: 'Failed to create session' },
       )
-      return parseResponse<Session>(res, 'Failed to update session')
     },
+    patch: (prev, session) => [session, ...prev],
+    onSuccess: (serverSession, _session, prev) =>
+      prev.map((s) =>
+        s.id === serverSession.id ? { ...s, ...serverSession } : s,
+      ),
   })
 
-  const { mutateAsync: deleteSessionMutate } = useMutation({
-    mutationFn: async (id: string) => {
-      const res = await fetch(
-        new URL(`${API_BASE}/${id}`, window.location.origin),
-        {
-          method: 'DELETE',
-        },
-      )
-      if (!res.ok) {
-        const text = await res.text()
-        throw new Error(text || 'Failed to delete session')
-      }
+  const { mutate: updateSessionMutate } = useOptimisticSessionMutation<
+    Session,
+    { id: string; updates: SessionUpdate },
+    Session
+  >({
+    queryKey,
+    mutationFn: ({ id, updates }) => {
+      requireApiBase(apiBase, SERVICE_NAME)
+      return postJson<Session>(`${apiBase}/v1/sessions/${id}`, updates, {
+        method: 'PATCH',
+        errorMessage: 'Failed to update session',
+      })
     },
+    patch: (prev, { id, updates }) =>
+      prev.map((s) => (s.id === id ? { ...s, ...updates } : s)),
   })
 
-  const sessions = sessionsQuery.data ?? []
-  const isLoading = sessionsQuery.isLoading
-  const isFetched = sessionsQuery.isFetched
-
-  const createSession = useCallback(
-    (name: string, doctorProfileId: string | null, language: string) => {
-      const session: Session = {
-        id: crypto.randomUUID(),
-        name,
-        doctorProfileId,
-        doctorProfileName: null,
-        language,
-        sessionCreatedAt: formatTimestamp(new Date()),
-        dialogueCreatedAt: null,
-        reportCreatedAt: null,
-        status: 'idle',
-        transcripts: [],
-        soapReport: null,
-        audioBlob: null,
-      }
-
-      queryClient.setQueryData<Session[]>(QUERY_KEY, (prev = []) => [
-        session,
-        ...prev,
-      ])
-
-      createSessionMutate(session)
-        .then((serverSession) => {
-          queryClient.setQueryData<Session[]>(QUERY_KEY, (prev = []) =>
-            prev.map((s) =>
-              s.id === serverSession.id ? { ...s, ...serverSession } : s,
-            ),
-          )
-        })
-        .catch(() => {
-          queryClient.invalidateQueries({ queryKey: QUERY_KEY })
-        })
-
-      return session
-    },
-    [createSessionMutate, queryClient],
-  )
-
-  const updateSession = useCallback(
-    (id: string, updates: Partial<Omit<Session, 'id'>>) => {
-      queryClient.setQueryData<Session[]>(QUERY_KEY, (prev = []) =>
-        prev.map((s) => (s.id === id ? { ...s, ...updates } : s)),
-      )
-
-      updateSessionMutate({ id, updates }).catch(() => {
-        queryClient.invalidateQueries({ queryKey: QUERY_KEY })
+  const { mutate: deleteSessionMutate } = useOptimisticSessionMutation<
+    Session,
+    string,
+    void
+  >({
+    queryKey,
+    mutationFn: (id) => {
+      requireApiBase(apiBase, SERVICE_NAME)
+      return fetchJson<void>(`${apiBase}/v1/sessions/${id}`, {
+        method: 'DELETE',
+        errorMessage: 'Failed to delete session',
       })
     },
-    [queryClient, updateSessionMutate],
-  )
+    patch: (prev, id) => prev.filter((s) => s.id !== id),
+  })
 
-  const deleteSession = useCallback(
-    (id: string) => {
-      queryClient.setQueryData<Session[]>(QUERY_KEY, (prev = []) =>
-        prev.filter((s) => s.id !== id),
-      )
-
-      deleteSessionMutate(id).catch(() => {
-        queryClient.invalidateQueries({ queryKey: QUERY_KEY })
-      })
-    },
-    [deleteSessionMutate, queryClient],
-  )
+  const createSession = (
+    name: string,
+    doctorProfileId: string | null,
+    language: string,
+  ): Session => {
+    const session: Session = {
+      id: crypto.randomUUID(),
+      name,
+      doctorProfileId,
+      doctorProfileName: null,
+      language,
+      sessionCreatedAt: timestampNow(),
+      dialogueCreatedAt: null,
+      reportCreatedAt: null,
+      status: 'idle',
+      transcripts: [],
+      soapReport: null,
+    }
+    createSessionMutate(session)
+    return session
+  }
 
   return {
-    sessions,
-    isLoading,
-    isFetched,
+    sessions: sessionsQuery.data ?? [],
+    isLoading: sessionsQuery.isLoading,
+    isFetched: sessionsQuery.isFetched,
     createSession,
-    updateSession,
-    deleteSession,
+    updateSession: (id: string, updates: SessionUpdate) =>
+      updateSessionMutate({ id, updates }),
+    deleteSession: (id: string) => deleteSessionMutate(id),
   }
 }

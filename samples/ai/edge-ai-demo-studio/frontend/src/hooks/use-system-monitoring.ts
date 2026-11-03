@@ -2,70 +2,42 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useQuery } from '@tanstack/react-query'
+import { fetchJson } from '@/lib/browser/fetch-json'
+import { MONITORING_POLL_INTERVAL_MS } from '@/lib/monitoring-interval'
+// Type-only: nothing server-side reaches the client bundle.
+import type { SystemMonitoringOverview } from '@/lib/system/system-monitoring'
 
-const POLL_INTERVAL_MS = 10000
+/** The shortest wait between polls, when a request took a whole interval. */
+const MIN_POLL_WAIT_MS = 1_000
 
-export interface SystemMonitoringNpu {
-  id: string
-  device: string
-  utilizationPercent: number | null
-  memoryUtilizationPercent: number | null
-  source: 'windows-device-detection' | 'linux-npu-top' | 'unavailable'
-}
+/** How long the latest request took: the server samples while it waits. */
+let lastRequestMs = 0
 
-export interface SystemMonitoringGpu {
-  id: string
-  device: string
-  vendor: string | null
-  busaddr: string | null
-  utilizationPercent: number | null
-  memoryUsedMiB: number | null
-  memoryTotalMiB: number | null
-  memoryUtilizationPercent: number | null
-  source: 'xpu-smi' | 'unavailable'
-}
-
-export interface SystemMonitoringOverview {
-  timestamp: string
-  cpu: {
-    usagePercent: number
-    cores: number
-    physicalCores: number
-    modelName: string | null
-  }
-  memory: {
-    totalBytes: number
-    usedBytes: number
-    freeBytes: number
-    usagePercent: number
-  }
-  gpus: SystemMonitoringGpu[]
-  npus: SystemMonitoringNpu[]
-  xpuSmiAvailable: boolean
-  npuAvailable: boolean
-  history: {
-    cpuUsagePercent: number[]
-    memoryUsagePercent: number[]
-    gpuUsagePercentByDevice: Record<string, number[]>
-    gpuMemoryUsagePercentByDevice: Record<string, number[]>
-    npuUsagePercentByDevice: Record<string, number[]>
-    npuMemoryUsagePercentByDevice: Record<string, number[]>
+const fetchOverview = async () => {
+  const startedAt = Date.now()
+  try {
+    return await fetchJson<SystemMonitoringOverview>(
+      '/api/system-monitoring?metric=overview',
+      { errorMessage: 'Failed to load system monitoring' },
+    )
+  } finally {
+    lastRequestMs = Date.now() - startedAt
   }
 }
 
+/**
+ * Starts the next request one interval after the last one started: React Query times
+ * `refetchInterval` from each response, and a request takes ~2 s (qmassa's sample).
+ */
+const untilNextPoll = () =>
+  Math.max(MONITORING_POLL_INTERVAL_MS - lastRequestMs, MIN_POLL_WAIT_MS)
+
+/** `GET /api/system-monitoring`, polled: CPU, system memory, GPUs, NPU, and why any reading is missing. */
 export const useSystemMonitoringOverview = () => {
   return useQuery({
     queryKey: ['systemMonitoring', 'overview'],
-    queryFn: async (): Promise<SystemMonitoringOverview> => {
-      const url = new URL('/api/system-monitoring', window.location.origin)
-      url.searchParams.set('metric', 'overview')
-      const response = await fetch(url)
-      if (!response.ok) {
-        throw new Error('Network response was not ok')
-      }
-      return response.json() as Promise<SystemMonitoringOverview>
-    },
-    refetchInterval: POLL_INTERVAL_MS,
+    queryFn: fetchOverview,
+    refetchInterval: untilNextPoll,
     retry: (failureCount: number): boolean => failureCount < 3,
   })
 }

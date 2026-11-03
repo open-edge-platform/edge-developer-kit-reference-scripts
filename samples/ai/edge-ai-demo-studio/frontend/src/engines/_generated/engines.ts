@@ -5,22 +5,15 @@
 // Source of truth: scripts/generate-registries.mjs
 // Run "npm run codegen" to regenerate.
 
-import type { BasePayload } from 'payload'
-import type { Service } from '@/payload-types'
+import type { EngineServer } from '../types'
 
-import { engines as enginesMeta } from './meta'
+import * as multiserve from '../multiserve/server'
 
-import { startMultiserveModel } from '../multiserve/process-handler'
-
-export const engines = enginesMeta
-
-/** Engine start handler signature. */
-export type EngineStartHandler = (
-  service: Service,
-  payload: BasePayload,
-) => Promise<void>
-
-/** Maps engine identifiers to their start handlers. */
-export const engineHandlers: Record<string, EngineStartHandler> = {
-  multiserve: startMultiserveModel,
+/**
+ * Auto-discovered engine server modules, by engine id. Imported as
+ * namespaces, so nothing is read from them while modules evaluate: a
+ * start handler sits in an import cycle with the Payload config.
+ */
+export const engineServers: Record<string, EngineServer> = {
+  multiserve: multiserve,
 }

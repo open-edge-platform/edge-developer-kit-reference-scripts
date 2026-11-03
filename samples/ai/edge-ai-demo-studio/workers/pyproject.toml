@@ -1,0 +1,97 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+#
+# Virtual uv workspace root (no [project]): one uv.lock and one .venv (workers/.venv) for the
+# members. It sits above them so `uv run` in any worker finds the shared environment; beside them,
+# uv would build a private .venv per worker.
+#
+# [tool.uv] resolver settings are read only from this root. A member's [tool.uv.sources] must live
+# in that member; the ones here apply only to root-level requirements (override-dependencies).
+
+[tool.uv.workspace]
+members = [
+    "common",
+    # Shared model fetching (Hugging Face, ModelScope, URLs, ovms --pull).
+    "common/downloader",
+    # Live-microphone VAD segmentation for workers that transcribe in-process.
+    "common/audio-input-stream",
+    "engines/*",
+    "services/*",
+    "services/ocr/*",
+    "services/speech-to-text/*",
+    "services/text-to-speech/*",
+]
+exclude = [
+    # Grouping directories, not projects: their backends are the members.
+    "services/ocr",
+    "services/speech-to-text",
+    "services/text-to-speech",
+    # geti-sdk (through 2.13.1) requires openvino<2026, so this worker keeps its own lock and .venv
+    # until geti-sdk supports openvino 2026.
+    "services/geti-classifier",
+    # FAISS bundles LLVM OpenMP on Windows; loading it next to PyTorch's Intel OpenMP crashes VectorDB.
+    "services/vectordb",
+    # openwakeword needs tflite-runtime, which has no wheels past cp311: pinned to Python 3.11.
+    "services/wake-word-detection",
+    # The OEP microservice wrappers: not projects. Each .venv is built from upstream's own
+    # dependency file at the pinned tag (scripts/oep_env.py), apart from this workspace.
+    "services/speech-to-text/oep",
+    "services/embeddings",
+    "services/text-to-speech/oep-tts",
+    # Not Python projects -- docker-compose reference apps driven by shell.
+    "suites/*",
+]
+
+[tool.uv]
+# Intel XPU torch wheels exist for Linux and Windows only (no macOS).
+environments = [
+    "sys_platform == 'linux'",
+    "sys_platform == 'win32'",
+]
+index-strategy = "unsafe-best-match"
+override-dependencies = [
+    # lerobot (robotics-ai) caps torchvision <0.27.0 and setuptools <81.
+    "torch==2.13.0",
+    "torchvision==0.28.0",
+    "torchaudio==2.11.0",
+    "setuptools>=83.0.0",
+    "cryptography>=48.0.1",
+    "pillow>=13.0.0",
+    # torch+xpu declares these but nothing needs them; a never-matching marker drops a requirement
+    # (uv's documented idiom). triton-xpu (1.6 GB) serves only torch.compile, which no worker uses;
+    # oneccl-devel is static libs and headers; impi-rt is MPI, which libccl.so.1 does not link.
+    # Eager xpu matmul/conv pass without them on Arc Pro B60. Re-add triton-xpu for torch.compile.
+    "triton-xpu ; sys_platform == 'never'",
+    "oneccl-devel ; sys_platform == 'never'",
+    "impi-rt ; sys_platform == 'never'",
+    # Both opencv builds unpack into the same cv2/ (last wins, 164 MB twice) and headless is a strict
+    # subset, so lerobot's headless request is dropped for the full build the others need.
+    "opencv-python-headless ; sys_platform == 'never'",
+]
+
+# Runtime of llama.cpp's Linux SYCL build, in place of the oneAPI Toolkit, installed only when SYCL
+# is selected. Resolved here so it shares torch+xpu's versions (only onednn is extra on disk). On a
+# LLAMACPP_VERSION or torch bump, setup's `ldd -r` check catches a runtime the build cannot use.
+# The Windows SYCL zip bundles its own DLLs.
+[dependency-groups]
+llamacpp-sycl = [
+    "intel-sycl-rt>=2026.0,<2027 ; sys_platform == 'linux'",
+    "intel-cmplr-lib-rt>=2026.0,<2027 ; sys_platform == 'linux'",
+    "mkl>=2026.0,<2027 ; sys_platform == 'linux'",
+    "onemkl-sycl-blas>=2026.0,<2027 ; sys_platform == 'linux'",
+    "onednn>=2026.0,<2027 ; sys_platform == 'linux'",
+    "tbb ; sys_platform == 'linux'",
+]
+
+# For the override-dependencies above, not the members. Without them the torch overrides resolve
+# from PyPI as the CUDA build (+cu130), outranking every member's XPU source.
+# Guard: `grep -A2 '^name = "torch"' uv.lock` must read 2.13.0+xpu.
+[tool.uv.sources]
+torch = { index = "pytorch" }
+torchaudio = { index = "pytorch" }
+torchvision = { index = "pytorch" }
+
+[[tool.uv.index]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/xpu"
+explicit = true

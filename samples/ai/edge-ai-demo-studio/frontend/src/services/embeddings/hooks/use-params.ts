@@ -3,8 +3,8 @@
 
 'use client'
 
-import { useState } from 'react'
 import type { DemoParam } from '@/types/demo-params'
+import { useDemoParams } from '@/services/common/demo/use-demo-params'
 
 const EMBEDDINGS_DEFAULTS = {
   encodingFormat: 'float',
@@ -15,28 +15,18 @@ const ENCODING_FORMAT_OPTIONS = [
   { value: 'base64', label: 'Base64' },
 ]
 
-export interface EmbeddingsParamValues {
-  encodingFormat: string
-}
-
-export function useEmbeddingsParams(initial?: Partial<EmbeddingsParamValues>): {
-  values: EmbeddingsParamValues
-  params: DemoParam[]
-} {
-  const [encodingFormat, setEncodingFormat] = useState(
-    initial?.encodingFormat ?? EMBEDDINGS_DEFAULTS.encodingFormat,
-  )
-
-  const values: EmbeddingsParamValues = { encodingFormat }
+/** Embeddings demo settings; with `sessionKey` they are kept per instance while the page is open. */
+export function useEmbeddingsParams({ sessionKey }: { sessionKey?: string }) {
+  const { values, setters } = useDemoParams(EMBEDDINGS_DEFAULTS, { sessionKey })
 
   const params: DemoParam[] = [
     {
       type: 'select',
       id: 'encoding_format',
       label: 'Encoding Format',
-      value: encodingFormat,
+      value: values.encodingFormat,
       options: ENCODING_FORMAT_OPTIONS,
-      onChange: setEncodingFormat,
+      onChange: setters.setEncodingFormat,
     },
   ]
 

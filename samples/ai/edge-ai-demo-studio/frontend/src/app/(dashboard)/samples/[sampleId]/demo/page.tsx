@@ -1,30 +1,35 @@
 // Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
+import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
-import { SampleOSGuard } from '@/components/dashboard/samples/samples-os-guard'
-import { samples } from '@/samples/registry'
-import { SampleDemoContent } from '@/components/dashboard/samples/samples-demo-content'
+import { SampleDemoContent } from '@/components/samples/sample-demo-content'
+import { getSampleById, samples } from '@/samples/registry'
+
+interface SampleDemoPageProps {
+  params: Promise<{ sampleId: string }>
+}
 
 export function generateStaticParams() {
   return samples.map((s) => ({ sampleId: s.id }))
 }
 
-export default async function SampleDemoPage({
+export async function generateMetadata({
   params,
-}: {
-  params: Promise<{ sampleId: string }>
-}) {
+}: SampleDemoPageProps): Promise<Metadata> {
+  const sample = getSampleById((await params).sampleId)
+  return sample
+    ? { title: `${sample.title} demo`, description: sample.description }
+    : {}
+}
+
+export default async function SampleDemoPage({ params }: SampleDemoPageProps) {
   const { sampleId } = await params
-  const sample = samples.find((s) => s.id === sampleId)
+  const sample = getSampleById(sampleId)
 
   if (!sample) {
     notFound()
   }
 
-  return (
-    <SampleOSGuard sample={sample}>
-      <SampleDemoContent sampleId={sampleId} />
-    </SampleOSGuard>
-  )
+  return <SampleDemoContent sampleId={sampleId} />
 }

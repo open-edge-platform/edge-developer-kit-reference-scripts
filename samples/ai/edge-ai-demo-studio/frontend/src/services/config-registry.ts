@@ -5,14 +5,6 @@ import type { Service } from '@/payload-types'
 import { engines } from '../engines/_generated/meta'
 import { metaMap } from './_generated/meta'
 
-export function getServicesPortMap(): Record<string, number> {
-  return Object.fromEntries(
-    Object.entries(metaMap)
-      .filter(([, service]) => service.port !== undefined)
-      .map(([key, service]) => [key, service.port as number]),
-  )
-}
-
 export function getServiceNamesMap(): {
   label: string
   value: Service['type']

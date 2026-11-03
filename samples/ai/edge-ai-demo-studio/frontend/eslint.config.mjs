@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { builtinModules } from "node:module";
+import { dirname, join, relative, resolve } from "node:path";
 import { FlatCompat } from "@eslint/eslintrc";
 import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
@@ -14,22 +15,15 @@ const compat = new FlatCompat({
   baseDirectory: import.meta.dirname,
 });
 
-// ─── Sample modularity: forbid static imports of optional services ──────────
-//
-// Optional service integrations are wired through the generated feature-provider
-// registry (`@/services/_generated/feature-providers`) so the export tool
-// (scripts/export-bundle.mjs) can prune their folders with `--no-optional`.
-// The export walks the *static* import graph and force-includes any service
-// folder it reaches — so a sample that statically imports a service it declares
-// `optional` drags that folder back in and silently defeats `--no-optional`.
-// This rule reads each sample's data.ts and flags those imports.
-// See docs/OPTIONAL-SERVICES.md.
+// Sample modularity: the export tool walks the static import graph, so a sample that statically
+// imports a service it declares optional defeats `--no-optional`. Optional services go through
+// @/services/_generated/feature-providers. See docs/OPTIONAL-SERVICES.md.
 
 const SAMPLES_DIR = join(import.meta.dirname, "src", "samples");
-// Mirrors the dependency parser in scripts/export-bundle.mjs (serviceId before
-// role, no nested braces — matches the shape of ServiceDependency literals).
+// Mirrors scripts/export-bundle.mjs's parser: serviceId before role, stopping at role so a nested
+// object after it (e.g. `recommended: { device }`) does not hide the dependency.
 const DEP_RE =
-  /\{\s*serviceId\s*:\s*['"]([\w-]+)['"][^{}]*?role\s*:\s*['"](required|optional)['"][^{}]*?\}/gs;
+  /\{\s*serviceId\s*:\s*['"]([\w-]+)['"][^{}]*?role\s*:\s*['"](required|optional)['"]/gs;
 const optionalDepsCache = new Map();
 
 function optionalServiceIds(sampleId) {
@@ -73,8 +67,7 @@ const sampleModularityPlugin = {
         const m = filename.match(/\/src\/samples\/([^/]+)\//);
         if (!m) return {};
         const sampleId = m[1];
-        // `common` (shared barrels) and `_generated` are not samples and have no
-        // per-sample role context to enforce.
+        // `common` and `_generated` are not samples.
         if (sampleId === "common" || sampleId === "_generated") return {};
         const optional = optionalServiceIds(sampleId);
         if (optional.size === 0) return {};
@@ -82,9 +75,7 @@ const sampleModularityPlugin = {
         const check = (node) => {
           const value = node?.value;
           if (typeof value !== "string") return;
-          // Only `@/services/<id>/...` specifiers carry a service folder; shared
-          // entrypoints (_generated, common, types, registry) never match an
-          // optional service id and are therefore allowed.
+          // Only `@/services/<id>/...` names a service folder; shared entrypoints never match an id.
           const svc = value.match(/^@\/services\/([^/]+)(?:\/|$)/);
           if (svc && optional.has(svc[1])) {
             context.report({
@@ -100,6 +91,152 @@ const sampleModularityPlugin = {
           ExportNamedDeclaration: (node) => check(node.source),
           ExportAllDeclaration: (node) => check(node.source),
           ImportExpression: (node) => check(node.source),
+        };
+      },
+    },
+  },
+};
+
+// Client/server boundary: client modules ship to the browser with everything they import, so Node
+// built-ins, Payload and server-only src/lib modules must stay out. Not `server-only`: Payload's
+// CLI loads these modules outside Next. Type-only imports are erased and always allowed.
+
+const SRC_DIR = join(import.meta.dirname, "src");
+const NODE_BUILTINS = new Set([
+  ...builtinModules,
+  ...builtinModules.map((m) => `node:${m}`),
+]);
+const SERVER_ONLY_IMPORTS = [
+  /^node:/,
+  /^@payload-config$/,
+  /^payload(\/|$)/,
+  /^@payloadcms\//,
+  /^@\/payload(\/|\.config$|$)/,
+  /^@\/lib\/(workers|system|deployment|api)(\/|$)/,
+  /^@\/lib\/(constants|app-boot)$/,
+  /^@\/lib\/settings\/(app-settings-store|sample-settings-store|field-encryption)$/,
+  /^@\/lib\/llm\/(mcp-tools|chat-stream|chat-prompts|ovms-provider|lipsync-forwarder)$/,
+  /^@\/engines\/_generated\/engines$/,
+  /^@\/engines\/[^/]+\/(server|paths|process-handler|draft-engine|diagnosis)$/,
+];
+// Folders whose modules only ever run in the browser, with or without a
+// 'use client' directive of their own.
+const CLIENT_FOLDERS = /\/src\/(hooks|components|context|lib\/browser)\//;
+
+/** `source` as an `@/` path when it is relative and inside src/, else as is. */
+function toAliasPath(source, filename) {
+  if (!source.startsWith(".")) return source;
+  const target = relative(SRC_DIR, resolve(dirname(filename), source));
+  return target.startsWith("..") ? source : `@/${target.replace(/\\/g, "/")}`;
+}
+
+function isServerOnly(source) {
+  return (
+    NODE_BUILTINS.has(source) ||
+    SERVER_ONLY_IMPORTS.some((pattern) => pattern.test(source))
+  );
+}
+
+const clientBoundaryPlugin = {
+  rules: {
+    "no-server-imports": {
+      meta: {
+        type: "problem",
+        docs: {
+          description:
+            "Disallow client modules ('use client' files and src/{hooks,components,context,lib/browser}) from importing Node built-ins, Payload or server-only lib/engine modules.",
+        },
+        schema: [],
+        messages: {
+          serverImport:
+            "Client module imports server-only '{{source}}'. It would ship to the browser with everything it imports. Move the code it needs into an isomorphic module, or call a route; type-only imports (`import type`) are fine.",
+        },
+      },
+      create(context) {
+        const filename = (context.filename ?? context.getFilename()).replace(
+          /\\/g,
+          "/",
+        );
+        const body = context.sourceCode?.ast?.body ?? [];
+        const usesClient = body.some(
+          (node) =>
+            node.type === "ExpressionStatement" &&
+            node.directive === "use client",
+        );
+        if (!usesClient && !CLIENT_FOLDERS.test(filename)) return {};
+
+        const check = (node, typeOnly) => {
+          const value = node?.source?.value;
+          if (typeOnly || typeof value !== "string") return;
+          const source = toAliasPath(value, filename);
+          if (isServerOnly(source)) {
+            context.report({
+              node: node.source,
+              messageId: "serverImport",
+              data: { source: value },
+            });
+          }
+        };
+        const onlyTypes = (node) =>
+          node.importKind === "type" ||
+          node.exportKind === "type" ||
+          (node.specifiers?.length > 0 &&
+            node.specifiers.every(
+              (s) => s.importKind === "type" || s.exportKind === "type",
+            ));
+
+        return {
+          ImportDeclaration: (node) => check(node, onlyTypes(node)),
+          ExportNamedDeclaration: (node) =>
+            node.source && check(node, onlyTypes(node)),
+          ExportAllDeclaration: (node) => check(node, node.exportKind === "type"),
+          ImportExpression: (node) => check(node, false),
+        };
+      },
+    },
+  },
+};
+
+const IPV4_RE = /^(\d{1,3}\.){3}\d{1,3}$/;
+// Loopback is the same on every machine, so it is not a personal address.
+const LOOPBACK_RE = /^127\./;
+
+const noHardcodedDevOriginPlugin = {
+  rules: {
+    "no-hardcoded-dev-origin": {
+      meta: {
+        type: "problem",
+        docs: {
+          description:
+            "Disallow hardcoded IPv4 addresses other than loopback in next.config.ts's allowedDevOrigins array; these are personal/LAN addresses and must not be committed.",
+        },
+        schema: [],
+        messages: {
+          hardcodedIp:
+            "Hardcoded IP '{{value}}' in allowedDevOrigins. This is a personal/LAN address for local testing — remove it before committing (read it from an env var instead if it needs to be configurable).",
+        },
+      },
+      create(context) {
+        return {
+          Property(node) {
+            const keyName = node.key?.name ?? node.key?.value;
+            if (keyName !== "allowedDevOrigins") return;
+            if (node.value.type !== "ArrayExpression") return;
+            for (const el of node.value.elements) {
+              if (
+                el?.type === "Literal" &&
+                typeof el.value === "string" &&
+                IPV4_RE.test(el.value) &&
+                !LOOPBACK_RE.test(el.value)
+              ) {
+                context.report({
+                  node: el,
+                  messageId: "hardcodedIp",
+                  data: { value: el.value },
+                });
+              }
+            }
+          },
         };
       },
     },
@@ -221,6 +358,20 @@ const eslintConfig = defineConfig([
     plugins: { "sample-modularity": sampleModularityPlugin },
     rules: {
       "sample-modularity/no-optional-service-imports": "error",
+    },
+  },
+  {
+    files: ["src/**/*.{ts,tsx}"],
+    plugins: { "client-boundary": clientBoundaryPlugin },
+    rules: {
+      "client-boundary/no-server-imports": "error",
+    },
+  },
+  {
+    files: ["next.config.ts"],
+    plugins: { "local-guards": noHardcodedDevOriginPlugin },
+    rules: {
+      "local-guards/no-hardcoded-dev-origin": "error",
     },
   },
   {

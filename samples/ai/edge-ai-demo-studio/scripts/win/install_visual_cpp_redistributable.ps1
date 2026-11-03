@@ -1,7 +1,6 @@
 # Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
-# Detect OS architecture and select the matching package
 $OsArch = if ([System.Environment]::Is64BitOperatingSystem) { "x64" } else { "x86" }
 Write-Host "Detected OS architecture: $OsArch" -ForegroundColor Cyan
 
@@ -17,7 +16,7 @@ $RegPaths = @(
     "HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
 )
 
-# 1. PRE-ELEVATION CHECK — runs without admin rights, avoids unnecessary UAC prompt
+# Checked without admin rights, so there is no UAC prompt when nothing is missing.
 Write-Host "Scanning system registry for Microsoft Visual C++..." -ForegroundColor Cyan
 
 $MissingPackages = @()
@@ -36,17 +35,15 @@ if ($MissingPackages.Count -eq 0) {
     Exit
 }
 
-# 2. AUTO-ELEVATION BLOCK (Triggers the UAC Prompt only when installation is needed)
+# Relaunch elevated (UAC prompt) only when something must be installed.
 $CurrentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $Principal = New-Object Security.Principal.WindowsPrincipal($CurrentIdentity)
 $IsAdmin = $Principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 
 if (-not $IsAdmin) {
-    # If not running as Admin, relaunch this exact script, asking for Admin rights
     Write-Host "Requesting Administrator privileges..." -ForegroundColor Yellow
 
     try {
-        # -Verb RunAs triggers the Windows UAC pop-up
         $elevated = Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs -Wait -PassThru
         exit $elevated.ExitCode
     } catch {
@@ -55,13 +52,14 @@ if (-not $IsAdmin) {
     }
 }
 
-# 3. MAIN INSTALLATION LOGIC (Runs only after user clicks "Yes" on the pop-up)
 # Force TLS 1.2 (and TLS 1.3 when available) for secure download connections
 $tls = [Net.SecurityProtocolType]::Tls12
 if ([enum]::GetNames([Net.SecurityProtocolType]) -contains "Tls13") {
     $tls = $tls -bor [Net.SecurityProtocolType]::Tls13
 }
 [Net.ServicePointManager]::SecurityProtocol = $tls
+# Windows PowerShell 5.1's progress bar slows Invoke-WebRequest many times over.
+$ProgressPreference = 'SilentlyContinue'
 
 $OverallSuccess = $true
 
@@ -73,11 +71,9 @@ foreach ($pkg in $MissingPackages) {
     Write-Host "Downloading from: $($pkg.Url)" -ForegroundColor Yellow
 
     try {
-        # Download the installer
         Invoke-WebRequest -Uri $pkg.Url -OutFile $InstallerPath -UseBasicParsing -ErrorAction Stop
         Write-Host "[DOWNLOAD COMPLETE] Installer saved to TEMP directory." -ForegroundColor Green
 
-        # Run the installer silently
         Write-Host "Installing... please wait..." -ForegroundColor Yellow
         $Process = Start-Process -FilePath $InstallerPath -ArgumentList "/install", "/quiet", "/norestart" -Wait -PassThru
 
@@ -95,7 +91,6 @@ foreach ($pkg in $MissingPackages) {
         Write-Host "[ERROR] Something went wrong during download or installation: $_" -ForegroundColor Red
         $OverallSuccess = $false
     } finally {
-        # Clean up the installation file from the temporary directory
         if (Test-Path $InstallerPath) {
             Remove-Item $InstallerPath -Force
         }

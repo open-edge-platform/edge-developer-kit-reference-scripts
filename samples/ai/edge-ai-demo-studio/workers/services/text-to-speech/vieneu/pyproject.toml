@@ -1,0 +1,24 @@
+# vieneu and vieneu_utils are vendored here (workers/oep-services.json "sources") since the
+# release requires gradio; these are the deps of the ONNX Runtime engine and text front end.
+[project]
+name = "vieneutts"
+version = "0.1.0"
+description = "VieNeu-TTS v3 Turbo (Vietnamese) worker on ONNX Runtime int8"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "worker-common[audio]",
+    "model-downloader",
+    "fastapi[standard]>=0.120.1",
+    "huggingface-hub>=0.35.1",
+    "numpy>=2.1",
+    "onnxruntime>=1.20.0",
+    # Vietnamese normalizer and phonemizer (Rust wheels, no espeak).
+    "sea-g2p==0.10.0",
+    "soundfile>=0.13.1",
+    "tokenizers>=0.20",
+]
+
+[tool.uv.sources]
+worker-common = { workspace = true }
+model-downloader = { workspace = true }

@@ -3,7 +3,10 @@
 
 'use client'
 
-import { AlertCircle, Loader2, ScanFace } from 'lucide-react'
+import { AlertCircle, Loader, ScanFace } from 'lucide-react'
+import { EmptyState } from '@/components/common/empty-state'
+import { InlineNotice } from '@/components/common/inline-notice'
+import { TruncatedText } from '@/components/common/truncated-text'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -14,6 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { plural } from '@/lib/browser/format'
 import type { RecognizeResult } from '../hooks'
 
 interface FaceResultsPanelProps {
@@ -29,48 +33,62 @@ export function FaceResultsPanel({
 }: FaceResultsPanelProps) {
   if (isRunning) {
     return (
-      <div className="text-muted-foreground flex min-h-[160px] items-center justify-center gap-2 rounded-xl border border-dashed text-sm">
-        <Loader2 className="h-4 w-4 animate-spin" />
-        Running recognition…
-      </div>
+      <EmptyState
+        icon={Loader}
+        iconClassName="animate-spin"
+        description="Running recognition…"
+        className="min-h-[160px] py-8"
+      />
     )
   }
   if (error) {
     return (
-      <div className="border-destructive/50 bg-destructive/10 text-destructive rounded-xl border p-4">
-        <p className="flex items-center gap-2 text-sm font-medium">
-          <AlertCircle className="h-4 w-4 shrink-0" />
-          {error.message}
-        </p>
-      </div>
+      <InlineNotice
+        tone="destructive"
+        size="sm"
+        icon={<AlertCircle aria-hidden="true" className="h-4 w-4 shrink-0" />}
+      >
+        {error.message}
+      </InlineNotice>
     )
   }
   if (!result) {
     return (
-      <div className="text-muted-foreground flex min-h-[160px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed p-6 text-center text-sm">
-        <ScanFace className="h-6 w-6" />
-        Recognition results will appear here.
-      </div>
+      <EmptyState
+        icon={ScanFace}
+        description="Recognition results will appear here."
+        className="min-h-[160px] py-8"
+      />
     )
   }
 
   return (
     <Card className="min-w-0">
       <CardHeader className="pb-3">
-        <CardTitle className="flex flex-wrap items-center gap-2 text-sm">
-          {result.label}
-          <Badge variant="outline" className="font-mono text-[10px]">
+        <CardTitle className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
+          <TruncatedText text={result.label} className="max-w-full" />
+          <Badge variant="outline" className="font-mono text-xs">
             {result.runtime}
           </Badge>
         </CardTitle>
         <p className="text-muted-foreground text-xs">
           detect {result.detect_ms.toFixed(1)} ms · embed{' '}
           {result.embed_ms.toFixed(1)} ms · threshold ≥ {result.threshold} ·{' '}
-          {result.gallery_size} enrolled person
-          {result.gallery_size === 1 ? '' : 's'}
+          {plural(result.gallery_size, 'enrolled person')}
         </p>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-3">
+        {result.gallery_size === 0 && result.faces.length > 0 && (
+          <p
+            className="text-muted-foreground text-xs"
+            data-testid="face-results-no-gallery"
+          >
+            {result.faces.length === 1
+              ? 'The face was detected but not identified: '
+              : `All ${result.faces.length} faces were detected but not identified: `}
+            nobody was enrolled in the gallery when this photo was checked.
+          </p>
+        )}
         {result.faces.length === 0 ? (
           <p className="text-muted-foreground text-sm">No faces detected.</p>
         ) : (
@@ -89,17 +107,19 @@ export function FaceResultsPanel({
                   <TableCell className="text-muted-foreground">
                     {i + 1}
                   </TableCell>
-                  <TableCell className="min-w-0">
-                    <p className="truncate font-medium">
-                      {face.match?.name ?? '—'}
-                    </p>
+                  <TableCell className="w-full max-w-0">
+                    <TruncatedText
+                      text={face.match?.name ?? '—'}
+                      className="font-medium"
+                    />
                     {face.similarities.length > 1 && (
-                      <p className="text-muted-foreground truncate text-[11px]">
-                        {face.similarities
+                      <TruncatedText
+                        text={face.similarities
                           .slice(1, 4)
                           .map((s) => `${s.name} ${s.similarity.toFixed(2)}`)
                           .join(' · ')}
-                      </p>
+                        className="text-muted-foreground text-xs"
+                      />
                     )}
                   </TableCell>
                   <TableCell className="text-right font-mono text-xs">
@@ -111,7 +131,9 @@ export function FaceResultsPanel({
                         {face.matched ? face.match.name : 'Unknown'}
                       </Badge>
                     ) : (
-                      <Badge variant="outline">No gallery</Badge>
+                      <Badge variant="outline" title="Nobody is enrolled">
+                        Unknown
+                      </Badge>
                     )}
                   </TableCell>
                 </TableRow>

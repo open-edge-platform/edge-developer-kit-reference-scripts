@@ -3,8 +3,10 @@
 
 'use client'
 
-import type React from 'react'
+import { Calendar, Download, FileText, Trash2 } from 'lucide-react'
 import { useState } from 'react'
+import { ConfirmDialog } from '@/components/common/confirm-dialog'
+import { Button } from '@/components/ui/button'
 import {
   Card,
   CardContent,
@@ -12,25 +14,28 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
+import { plural } from '@/lib/browser/format'
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from '@/components/ui/dialog'
-import {
-  FileText,
-  Calendar,
-  ImageIcon,
-  Trash2,
-  Download,
-  AlertCircle,
-} from 'lucide-react'
-import Image from 'next/image'
-import { jsPDF } from 'jspdf'
-import type { SavedRecord } from '@/lib/ai-exam-marking/types'
+  buildCombinedGradingPdf,
+  buildGradingPdf,
+  type GradingPdfInput,
+} from '@/samples/ai-exam-marking/lib/pdf-report'
+import type { SavedRecord } from '@/samples/ai-exam-marking/lib/types'
+import type { ExamRole } from '../hooks/use-exam-role'
+import { RecordDetailDialog } from './record-detail-dialog'
+
+const toPdfInput = (record: SavedRecord): GradingPdfInput => ({
+  studentName: record.studentName,
+  studentId: record.studentId,
+  timestamp: record.timestamp,
+  dataEntries: record.dataEntries,
+  ocrText: record.ocrResult.text,
+  llmResults: record.llmResult.response,
+  annotatedImage: record.ocrResult.imagePreview,
+})
+
+/** What a confirmed delete removes: one record, or every record. */
+type PendingDelete = { record: SavedRecord } | 'all'
 
 export function HistoryView({
   role,
@@ -39,158 +44,42 @@ export function HistoryView({
   deleteRecord,
   deleteAllRecords,
 }: {
-  role: 'teacher' | 'student' | null
+  role: ExamRole
   studentId?: string
   records: SavedRecord[]
-  deleteRecord: (id: string) => boolean
+  deleteRecord: (id: string) => void
   deleteAllRecords: () => void
 }) {
   const [selectedRecord, setSelectedRecord] = useState<SavedRecord | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
 
-  // Students only see their own records; teachers see all
   const visibleRecords =
     role === 'student' && studentId
       ? records.filter((r) => r.studentId === studentId)
       : records
 
-  const handleDelete = (id: string, e: React.MouseEvent<HTMLButtonElement>) => {
-    e.stopPropagation()
-
-    if (!confirm('Are you sure you want to delete this record?')) {
-      return
-    }
-
-    deleteRecord(id)
-    if (selectedRecord?.id === id) {
+  const confirmDelete = () => {
+    if (pendingDelete === 'all') {
+      deleteAllRecords()
       setSelectedRecord(null)
-    }
-  }
-
-  const handleDeleteAll = () => {
-    if (
-      !confirm(
-        `Are you sure you want to delete all ${records.length} records? This action cannot be undone.`,
-      )
-    ) {
-      return
-    }
-
-    // Double confirmation for safety
-    if (
-      !confirm(
-        'This will permanently delete all saved results. Are you absolutely sure?',
-      )
-    ) {
-      return
-    }
-
-    deleteAllRecords()
-    setSelectedRecord(null)
-  }
-
-  const buildPdf = (record: SavedRecord): jsPDF => {
-    const doc = new jsPDF()
-    const margin = 14
-    const pageWidth = doc.internal.pageSize.getWidth()
-    const maxWidth = pageWidth - margin * 2
-    let y = 20
-
-    const addText = (text: string, size = 10, bold = false) => {
-      doc.setFontSize(size)
-      doc.setFont('helvetica', bold ? 'bold' : 'normal')
-      const lines = doc.splitTextToSize(text, maxWidth)
-      for (const line of lines) {
-        if (y > 275) {
-          doc.addPage()
-          y = 20
-        }
-        doc.text(line, margin, y)
-        y += size * 0.5
-      }
-      y += 2
-    }
-
-    addText(`Grading Report`, 16, true)
-    if (record.studentName || record.studentId) {
-      addText(
-        `Student: ${[record.studentName, record.studentId].filter(Boolean).join(' — ')}`,
-        11,
-        true,
-      )
-    }
-    addText(`Saved: ${new Date(record.timestamp).toLocaleString()}`, 9)
-    y += 4
-
-    addText('Marking Scheme', 13, true)
-    for (const entry of record.dataEntries) {
-      addText(
-        `Q${entry.number}: ${entry.question} (${entry.marks} marks)`,
-        10,
-        true,
-      )
-      addText(`Scheme: ${entry.scheme}`, 9)
-      y += 2
-    }
-
-    addText('OCR Extracted Text', 13, true)
-    addText(record.ocrResult.text, 9)
-    y += 4
-
-    addText('LLM Grading Analysis', 13, true)
-    for (const entry of record.llmResult.response) {
-      addText(
-        `Question ${entry.questionNumber} — ${entry.marksAwardedOverMaxMarks}`,
-        11,
-        true,
-      )
-      addText(`Student Answer: ${entry.extractedAnswer}`, 9)
-      addText(`Feedback: ${entry.feedback}`, 9)
-      addText(
-        `Running Total: ${entry.marksAccumulatedOverMaxMarksAccumulated}${entry.humanReview ? ' ⚠ Human Review' : ''}`,
-        9,
-      )
-      y += 3
-    }
-
-    if (record.ocrResult.imagePreview?.startsWith('data:image/png')) {
-      try {
-        doc.addPage()
-        y = 20
-        addText('Annotated Image', 13, true)
-        const imgData = record.ocrResult.imagePreview
-        const imgProps = doc.getImageProperties(imgData)
-        const imgWidth = maxWidth
-        const imgHeight = (imgProps.height / imgProps.width) * imgWidth
-        doc.addImage(
-          imgData,
-          'PNG',
-          margin,
-          y,
-          imgWidth,
-          Math.min(imgHeight, 200),
-        )
-      } catch {
-        // skip image if it fails
+    } else if (pendingDelete) {
+      deleteRecord(pendingDelete.record.id)
+      if (selectedRecord?.id === pendingDelete.record.id) {
+        setSelectedRecord(null)
       }
     }
-
-    return doc
   }
 
-  const handleExport = (
-    record: SavedRecord,
-    e: React.MouseEvent<HTMLButtonElement>,
-  ) => {
-    e.stopPropagation()
-    const doc = buildPdf(record)
-    doc.save(`grading-result-${record.studentId || record.id}.pdf`)
+  const handleExport = (record: SavedRecord) => {
+    buildGradingPdf(toPdfInput(record)).save(
+      `grading-result-${record.studentId || record.id}.pdf`,
+    )
   }
 
   const handleExportAll = () => {
-    visibleRecords.forEach((record, idx) => {
-      const doc = buildPdf(record)
-      doc.save(`grading-result-${idx + 1}-${record.studentId || record.id}.pdf`)
-    })
+    buildCombinedGradingPdf(visibleRecords.map(toPdfInput)).save(
+      'grading-results.pdf',
+    )
   }
 
   if (visibleRecords.length === 0) {
@@ -231,17 +120,20 @@ export function HistoryView({
                 size="sm"
                 className="text-xs"
               >
-                <Download className="mr-2 h-4 w-4" />
+                <Download className="mr-2 h-4 w-4" aria-hidden />
                 Export All
               </Button>
               {role === 'teacher' && (
                 <Button
-                  onClick={handleDeleteAll}
+                  onClick={() => setPendingDelete('all')}
                   variant="outline"
                   size="sm"
                   className="text-xs"
                 >
-                  <Trash2 className="text-destructive mr-2 h-4 w-4" />
+                  <Trash2
+                    className="text-destructive mr-2 h-4 w-4"
+                    aria-hidden
+                  />
                   Delete All
                 </Button>
               )}
@@ -249,184 +141,94 @@ export function HistoryView({
           </div>
         </CardHeader>
         <CardContent>
-          <div className="space-y-3">
+          <ul className="space-y-3">
             {visibleRecords.map((record) => (
-              <div
+              <li
                 key={record.id}
-                className="bg-card hover:bg-muted/50 cursor-pointer rounded-lg border p-4 transition-colors"
-                onClick={() => setSelectedRecord(record)}
+                className="bg-card hover:bg-muted/50 flex items-start justify-between gap-2 rounded-lg border transition-colors"
               >
-                <div className="flex items-start justify-between">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <FileText className="text-muted-foreground h-4 w-4" />
-                      <p className="font-medium">
-                        {record.studentId ?? `Record ${record.id}`}
-                      </p>
-                      {record.studentName && (
-                        <span className="text-muted-foreground text-xs">
-                          — {record.studentName}
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-muted-foreground flex items-center gap-2 text-xs">
-                      <Calendar className="h-3 w-3" />
-                      {new Date(record.timestamp).toLocaleString()}
-                    </div>
-                    <p className="text-muted-foreground text-xs">
-                      {record.dataEntries.length} questions •{' '}
-                      {record.llmResult.response.length} results
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="focus-visible:ring-ring min-w-0 flex-1 space-y-1 rounded-lg p-4 text-left focus-visible:ring-2 focus-visible:outline-none"
+                  onClick={() => setSelectedRecord(record)}
+                >
+                  <span className="flex items-center gap-2">
+                    <FileText
+                      className="text-muted-foreground h-4 w-4"
+                      aria-hidden
+                    />
+                    <span className="font-medium">
+                      {record.studentId ?? `Record ${record.id}`}
+                    </span>
+                    {record.studentName && (
+                      <span className="text-muted-foreground text-xs">
+                        — {record.studentName}
+                      </span>
+                    )}
+                  </span>
+                  <span className="text-muted-foreground flex items-center gap-2 text-xs">
+                    <Calendar className="h-3 w-3" aria-hidden />
+                    {new Date(record.timestamp).toLocaleString()}
+                  </span>
+                  <span className="text-muted-foreground block text-xs">
+                    {plural(record.dataEntries.length, 'question')} •{' '}
+                    {plural(record.llmResult.response.length, 'result')}
+                  </span>
+                </button>
+                <div className="flex gap-2 p-4 pl-0">
+                  <Button
+                    aria-label="Export Record"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleExport(record)}
+                  >
+                    <Download className="h-4 w-4" aria-hidden />
+                  </Button>
+                  {role === 'teacher' && (
                     <Button
-                      aria-label="Export Record"
+                      aria-label="Delete Record"
                       variant="outline"
                       size="sm"
-                      onClick={(e) => handleExport(record, e)}
+                      onClick={() => setPendingDelete({ record })}
                     >
-                      <Download className="h-4 w-4" />
+                      <Trash2
+                        className="text-destructive h-4 w-4"
+                        aria-hidden
+                      />
                     </Button>
-                    {role === 'teacher' && (
-                      <Button
-                        aria-label="Delete Record"
-                        variant="outline"
-                        size="sm"
-                        onClick={(e) => handleDelete(record.id, e)}
-                      >
-                        <Trash2 className="text-destructive h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
+                  )}
                 </div>
-              </div>
+              </li>
             ))}
-          </div>
+          </ul>
         </CardContent>
       </Card>
 
-      {selectedRecord && (
-        <Dialog
-          open={!!selectedRecord}
-          onOpenChange={(open) => !open && setSelectedRecord(null)}
-        >
-          <DialogContent className="flex max-h-[85svh] max-w-2xl flex-col overflow-hidden">
-            <DialogHeader>
-              <DialogTitle>Record Details</DialogTitle>
-              <DialogDescription>
-                Saved on {new Date(selectedRecord.timestamp).toLocaleString()}
-              </DialogDescription>
-            </DialogHeader>
+      <RecordDetailDialog
+        record={selectedRecord}
+        onClose={() => setSelectedRecord(null)}
+      />
 
-            <div className="space-y-6 overflow-y-auto pr-1">
-              {selectedRecord.ocrResult.imagePreview && (
-                <div>
-                  <h3 className="mb-2 flex items-center gap-2 text-sm font-medium">
-                    <ImageIcon className="h-4 w-4" />
-                    Uploaded/Captured Image
-                  </h3>
-                  <Image
-                    src={selectedRecord.ocrResult.imagePreview}
-                    alt="Captured"
-                    width={0}
-                    height={0}
-                    sizes="100vw"
-                    className="max-h-64 w-full rounded-lg border object-contain"
-                    unoptimized
-                  />
-                </div>
-              )}
-
-              <div>
-                <h3 className="mb-2 text-sm font-medium">Marking Scheme</h3>
-                <div className="space-y-3">
-                  {selectedRecord.dataEntries.map((entry, idx) => (
-                    <div
-                      key={idx}
-                      className="bg-muted/30 rounded-lg border p-3"
-                    >
-                      <p className="mb-1 text-xs font-medium">
-                        Question {entry.number}
-                      </p>
-                      <p className="mb-1 text-xs">{entry.question}</p>
-                      <div className="text-muted-foreground flex gap-4 text-xs">
-                        <span>Marks: {entry.marks}</span>
-                        <span>Scheme: {entry.scheme}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <h3 className="mb-2 text-sm font-medium">OCR Extracted Text</h3>
-                <div className="bg-muted/30 rounded-lg border p-4">
-                  <p className="text-xs whitespace-pre-wrap">
-                    {selectedRecord.ocrResult.text}
-                  </p>
-                </div>
-              </div>
-
-              <div>
-                <h3 className="mb-2 text-sm font-medium">
-                  LLM Grading Analysis
-                </h3>
-                <div className="space-y-4">
-                  {selectedRecord.llmResult.response.map((entry, idx) => (
-                    <div key={idx} className="bg-card rounded-lg border p-4">
-                      <div className="mb-3 flex items-start justify-between">
-                        <h4 className="text-xs font-semibold">
-                          Question {entry.questionNumber}
-                        </h4>
-                        <div className="flex items-center gap-2">
-                          <span className="bg-primary/10 text-primary rounded-full px-3 py-1 text-xs font-medium">
-                            {entry.marksAwardedOverMaxMarks}
-                          </span>
-                          {entry.humanReview && (
-                            <span className="flex items-center gap-1 rounded-full bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-600">
-                              <AlertCircle className="h-3 w-3" />
-                              Review
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="space-y-3">
-                        <div>
-                          <p className="text-muted-foreground mb-1 text-xs font-medium uppercase">
-                            Student Answer
-                          </p>
-                          <p className="text-xs leading-relaxed">
-                            {entry.extractedAnswer}
-                          </p>
-                        </div>
-
-                        <div>
-                          <p className="text-muted-foreground mb-1 text-xs font-medium uppercase">
-                            Feedback
-                          </p>
-                          <p className="text-muted-foreground text-xs leading-relaxed">
-                            {entry.feedback}
-                          </p>
-                        </div>
-
-                        <div className="flex items-center justify-between border-t pt-3 text-xs">
-                          <span className="text-muted-foreground">
-                            Running Total:
-                          </span>
-                          <span className="font-semibold">
-                            {entry.marksAccumulatedOverMaxMarksAccumulated}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => !open && setPendingDelete(null)}
+        variant="destructive"
+        title={
+          pendingDelete === 'all'
+            ? `Delete all ${plural(records.length, 'record')}?`
+            : 'Delete this record?'
+        }
+        description={
+          pendingDelete === 'all'
+            ? 'This permanently deletes every saved result. It cannot be undone.'
+            : `The saved result for ${
+                (pendingDelete && pendingDelete.record.studentId) ||
+                'this sheet'
+              } is deleted. It cannot be undone.`
+        }
+        confirmLabel={pendingDelete === 'all' ? 'Delete all' : 'Delete'}
+        onConfirm={confirmDelete}
+      />
     </div>
   )
 }

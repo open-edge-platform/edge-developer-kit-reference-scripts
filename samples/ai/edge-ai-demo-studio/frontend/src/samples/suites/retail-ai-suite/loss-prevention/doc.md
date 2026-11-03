@@ -40,9 +40,9 @@ The application workflow has three stages: input, processing, and output.
    - **CPU / GPU / GPU.0 / GPU.1 / NPU** — both models run on the same device.
    - **HETERO (per-model)** — select a separate device for YOLO11n detection and EfficientNet-B0 classification.
 2. Click **Start** on the service. Demo Studio will:
-   - Sparse-clone the `edge-ai-suites` repo at ref `2026.0` to resolve the pinned `loss-prevention` submodule commit.
+   - Sparse-clone the `edge-ai-suites` repo at ref `2026.2.1` to resolve the pinned `loss-prevention` submodule commit.
    - Clone `intel-retail/loss-prevention` at that exact commit and initialise the `performance-tools` submodule.
-   - Generate `configs/workload_to_pipeline_asc_object_detection_classification_demostudio.json` with the exact selected device(s) and matching precision (YOLO11n: FP32 on CPU, INT8 on GPU/NPU; EfficientNet-B0: INT8 on all devices).
+   - Generate `configs/workload_to_pipeline_asc_object_detection_classification_demostudio.json` with the exact selected device(s) and matching precision (YOLO11n: FP32 on CPU, INT8 on GPU/NPU; EfficientNet-B0: FP32-INT8 on CPU, FP16-INT8 on GPU/NPU).
    - Download the YOLO11n and EfficientNet-B0 models via the upstream `model-downloader` container.
    - Download the sample retail video via the upstream `download-sample-videos` script.
    - Generate a compose override that suppresses host port exposure and enables device access.

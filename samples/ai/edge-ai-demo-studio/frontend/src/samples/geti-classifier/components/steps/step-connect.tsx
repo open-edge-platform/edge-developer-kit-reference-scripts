@@ -1,152 +1,150 @@
 // Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-import {
-  AlertCircle,
-  ArrowRight,
-  Globe,
-  Lock,
-  Plug,
-  RefreshCw,
-  Server,
-} from 'lucide-react'
+import { ArrowRight, Globe, Lock, Plug, RefreshCw, Server } from 'lucide-react'
+import type { FormEvent } from 'react'
+import { InlineNotice } from '@/components/common/inline-notice'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
+import type { GetiConnection } from '../../lib/api'
+import { PhaseBanner } from '../phase-banner'
+
+const FIELD_LABEL_CLASS =
+  'text-muted-foreground text-xs font-semibold tracking-wider uppercase'
 
 interface StepConnectProps {
-  localHost: string
-  localToken: string
-  hostError: string | null
-  isPending: boolean
-  isError: boolean
-  errorMessage: string | undefined
-  onHostChange: (value: string) => void
-  onTokenChange: (value: string) => void
+  value: GetiConnection
+  onChange: (value: GetiConnection) => void
+  /** Why connecting failed (or what is missing), if it did. */
+  error: string | null
+  isConnecting: boolean
   onConnect: () => void
 }
 
+/** Wizard step 1: the Geti server, its access token, and how to trust it. */
 export function StepConnect({
-  localHost,
-  localToken,
-  hostError,
-  isPending,
-  isError,
-  errorMessage,
-  onHostChange,
-  onTokenChange,
+  value,
+  onChange,
+  error,
+  isConnecting,
   onConnect,
 }: StepConnectProps) {
-  return (
-    <div className="mx-auto max-w-lg space-y-6">
-      {/* Hero banner */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-700 to-slate-900 p-6 text-white shadow-xl">
-        <div className="absolute -top-8 -right-8 h-32 w-32 rounded-full bg-white/5" />
-        <div className="absolute -bottom-4 -left-4 h-20 w-20 rounded-full bg-white/5" />
-        <div className="relative">
-          <div className="mb-3 flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/10">
-              <Globe className="h-4 w-4" />
-            </div>
-            <span className="text-sm font-semibold text-slate-300">
-              Intel Geti Platform
-            </span>
-          </div>
-          <h3 className="text-lg font-bold">Connect to GETI</h3>
-        </div>
-      </div>
+  const submit = (e: FormEvent) => {
+    e.preventDefault()
+    onConnect()
+  }
 
-      {/* Form */}
+  return (
+    <form onSubmit={submit} className="mx-auto max-w-lg space-y-6">
+      <PhaseBanner
+        phase="connect"
+        icon={Globe}
+        title="Intel Geti Platform"
+        subtitle="Connect to GETI"
+      />
+
       <div className="space-y-4">
-        {/* Server URL */}
         <div className="space-y-2">
-          <Label
-            htmlFor="geti-host"
-            className="text-muted-foreground text-xs font-semibold tracking-wider uppercase"
-          >
+          <Label htmlFor="geti-host" className={FIELD_LABEL_CLASS}>
             Geti Server URL
           </Label>
           <div className="relative">
-            <div className="bg-muted absolute top-1/2 left-3 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded">
-              <Server className="text-muted-foreground h-3 w-3" />
-            </div>
+            <Server
+              className="text-muted-foreground absolute top-1/2 left-3 h-3.5 w-3.5 -translate-y-1/2"
+              aria-hidden
+            />
             <Input
               id="geti-host"
-              value={localHost}
-              onChange={(e) => onHostChange(e.target.value)}
+              value={value.host}
+              onChange={(e) => onChange({ ...value, host: e.target.value })}
               placeholder="https://192.168.1.100"
-              className="bg-background border-2 pl-10 transition-colors focus:border-slate-400"
+              aria-describedby="geti-host-hint"
+              className="bg-background border-2 pl-9"
             />
           </div>
-          <p className="text-muted-foreground text-xs">
+          <p id="geti-host-hint" className="text-muted-foreground text-xs">
             Full URL including protocol (https://)
           </p>
         </div>
 
-        {/* API token */}
         <div className="space-y-2">
-          <Label
-            htmlFor="geti-token"
-            className="text-muted-foreground text-xs font-semibold tracking-wider uppercase"
-          >
+          <Label htmlFor="geti-token" className={FIELD_LABEL_CLASS}>
             Personal Access Token
           </Label>
           <div className="relative">
-            <div className="bg-muted absolute top-1/2 left-3 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded">
-              <Lock className="text-muted-foreground h-3 w-3" />
-            </div>
+            <Lock
+              className="text-muted-foreground absolute top-1/2 left-3 h-3.5 w-3.5 -translate-y-1/2"
+              aria-hidden
+            />
             <Input
               id="geti-token"
               type="password"
-              value={localToken}
-              onChange={(e) => onTokenChange(e.target.value)}
+              value={value.token}
+              onChange={(e) => onChange({ ...value, token: e.target.value })}
               placeholder="geti_pat_..."
-              className="bg-background border-2 pl-10 transition-colors focus:border-slate-400"
+              aria-describedby="geti-token-hint"
+              className="bg-background border-2 pl-9"
             />
           </div>
-          <p className="text-muted-foreground text-xs">
+          <p id="geti-token-hint" className="text-muted-foreground text-xs">
             Geti → Profile → Personal Access Tokens
           </p>
         </div>
+
+        <div className="flex items-start justify-between gap-4 rounded-lg border p-3">
+          <div className="space-y-1">
+            <Label htmlFor="geti-verify-tls" className="text-sm">
+              Verify TLS certificate
+            </Label>
+            <p
+              id="geti-verify-tls-hint"
+              className="text-muted-foreground text-xs"
+            >
+              Off by default: an on-premises Geti server usually has a
+              self-signed certificate, which verification would reject. Turn it
+              on when the server&apos;s certificate is issued by an authority
+              this machine trusts, so the token is only ever sent to that
+              server.
+            </p>
+          </div>
+          <Switch
+            id="geti-verify-tls"
+            checked={value.verifyTls}
+            onCheckedChange={(verifyTls) => onChange({ ...value, verifyTls })}
+            aria-describedby="geti-verify-tls-hint"
+            className="mt-0.5 shrink-0"
+          />
+        </div>
       </div>
 
-      {/* Error */}
-      {(hostError ?? isError) && (
-        <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-950/20">
-          <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/50">
-            <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
-          </div>
-          <div>
-            <p className="text-sm font-medium text-red-800 dark:text-red-300">
-              Connection Failed
-            </p>
-            <p className="mt-0.5 text-xs text-red-600 dark:text-red-400">
-              {hostError ?? errorMessage}
-            </p>
-          </div>
-        </div>
+      {error && (
+        <InlineNotice tone="destructive" size="sm">
+          <span className="font-medium">Connection Failed.</span> {error}
+        </InlineNotice>
       )}
 
-      {/* CTA */}
       <Button
-        className="w-full gap-2 bg-gradient-to-r from-slate-700 to-slate-900 text-white shadow-md hover:from-slate-800 hover:to-slate-950"
+        type="submit"
+        className="w-full gap-2"
         size="lg"
-        onClick={onConnect}
-        disabled={isPending}
+        disabled={isConnecting}
+        aria-busy={isConnecting || undefined}
       >
-        {isPending ? (
+        {isConnecting ? (
           <>
-            <RefreshCw className="h-4 w-4 animate-spin" />
+            <RefreshCw className="h-4 w-4 animate-spin" aria-hidden />
             Connecting to Geti...
           </>
         ) : (
           <>
-            <Plug className="h-4 w-4" />
+            <Plug className="h-4 w-4" aria-hidden />
             Connect &amp; Load Projects
-            <ArrowRight className="ml-auto h-4 w-4" />
+            <ArrowRight className="ml-auto h-4 w-4" aria-hidden />
           </>
         )}
       </Button>
-    </div>
+    </form>
   )
 }

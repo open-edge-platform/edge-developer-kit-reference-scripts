@@ -1,5 +1,0 @@
-{
-  "$schema": "./docs/deployment.schema.json",
-  "services": {
-  }
-}

@@ -20,7 +20,9 @@ export const sample: Sample = {
       role: 'required',
       recommended: {
         device: 'GPU.0',
-        model: 'Qwen/Qwen3-ASR-1.7B-hf',
+        // Whisper runs on both STT backends; Qwen3-ASR is OVMS-only and a recommended config
+        // cannot switch `metadata.sttBackend`, so it would fail on the default OEP backend.
+        model: 'openai/whisper-large-v3-turbo',
       },
     },
     {
@@ -42,7 +44,6 @@ export const sample: Sample = {
     },
   ],
   tags: ['Medical', 'Scribe', 'SOAP', 'Diarization', 'Transcription'],
-  pipeline: ['speech-to-text', 'diarization', 'text-generation'],
   image: sampleImage,
   demo: {
     type: 'component',

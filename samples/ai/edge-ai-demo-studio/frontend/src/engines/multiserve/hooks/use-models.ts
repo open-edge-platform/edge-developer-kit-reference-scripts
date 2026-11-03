@@ -4,8 +4,17 @@
 'use client'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
 import { toast } from 'sonner'
+import { fetchJson, postJson } from '@/lib/browser/fetch-json'
+import { toastError } from '@/lib/browser/toast-error'
 import type { BackendId, MultiserveModel } from '../types'
+import {
+  isAbortError,
+  type UploadModelParams,
+  type UploadProgress,
+  uploadModel,
+} from '../upload'
 
 type ModelsResponse = Record<string, MultiserveModel[]>
 
@@ -15,37 +24,22 @@ interface DeleteModelParams {
   repoId: string
 }
 
-interface UploadModelParams {
-  serviceId: string
-  backend: BackendId
-  repoId: string
-  task: string
-  files: File[]
-  forceOverride?: boolean
-}
-
-interface UploadModelResponse {
-  message: string
-  repo_id: string
-  internal_path: string
-  task: string
-}
-
+// Omit a missing `backend` rather than include `undefined`: partial-match invalidation treats a
+// shorter key as a prefix, but an explicit `undefined` element must match exactly.
 function modelsQueryKey(serviceId: string, backend?: BackendId) {
-  return ['multiserve-models', serviceId, backend] as const
+  return backend
+    ? (['multiserve-models', serviceId, backend] as const)
+    : (['multiserve-models', serviceId] as const)
 }
 
-async function fetchModels(
+function fetchModels(
   serviceId: string,
   backend?: BackendId,
 ): Promise<ModelsResponse> {
-  const url = new URL(`/api/${serviceId}/v1/models`, window.location.origin)
-  if (backend) url.searchParams.set('provider', backend)
-  const res = await fetch(url)
-  if (!res.ok) {
-    throw new Error(`Failed to fetch models: ${res.status}`)
-  }
-  return res.json()
+  const query = backend ? `?provider=${encodeURIComponent(backend)}` : ''
+  return fetchJson(`/api/${serviceId}/v1/models${query}`, {
+    errorMessage: 'Failed to fetch models',
+  })
 }
 
 async function deleteModel({
@@ -53,51 +47,11 @@ async function deleteModel({
   backend,
   repoId,
 }: DeleteModelParams): Promise<void> {
-  const url = new URL(
+  await postJson(
     `/api/${serviceId}/v1/model/delete`,
-    window.location.origin,
+    { repo_id: `${backend}:${repoId}` },
+    { method: 'DELETE', errorMessage: 'Delete failed' },
   )
-  const res = await fetch(url, {
-    method: 'DELETE',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ repo_id: `${backend}:${repoId}` }),
-  })
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(text || `Delete failed: ${res.status}`)
-  }
-}
-
-async function uploadModel({
-  serviceId,
-  backend,
-  repoId,
-  task,
-  files,
-  forceOverride,
-}: UploadModelParams): Promise<UploadModelResponse> {
-  const formData = new FormData()
-  formData.append('repo_id', `${backend}:${repoId}`)
-  formData.append('task', task)
-  if (forceOverride) {
-    formData.append('force_override', 'true')
-  }
-  for (const file of files) {
-    formData.append('files', file)
-  }
-  const url = new URL(
-    `/api/${serviceId}/v1/model/upload`,
-    window.location.origin,
-  )
-  const res = await fetch(url, {
-    method: 'POST',
-    body: formData,
-  })
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(text || `Upload failed: ${res.status}`)
-  }
-  return res.json()
 }
 
 export function useMultiserveModels(
@@ -123,35 +77,60 @@ export function useDeleteModel(serviceId: string) {
     onSuccess: (_data, variables) => {
       toast.success(`Model ${variables.repoId} deleted`)
       queryClient.invalidateQueries({
-        queryKey: ['multiserve-models', serviceId],
+        queryKey: modelsQueryKey(serviceId),
       })
     },
-    onError: (err, variables) => {
-      toast.error(`Failed to delete ${variables.repoId}`, {
-        description:
-          err instanceof Error ? err.message : 'An unexpected error occurred.',
-      })
-    },
+    onError: (err, variables) =>
+      toastError(`Failed to delete ${variables.repoId}`)(err),
   })
 }
 
+/**
+ * Chunked upload to the engine (`../upload.ts`); `cancel` stops between two chunks. A cancelled
+ * upload is not an error: `error` stays null for it.
+ */
 export function useUploadModel(serviceId: string) {
   const queryClient = useQueryClient()
+  const [progress, setProgress] = useState<UploadProgress | null>(null)
+  const [controller, setController] = useState<AbortController | null>(null)
 
-  return useMutation({
-    mutationFn: (params: Omit<UploadModelParams, 'serviceId'>) =>
-      uploadModel({ ...params, serviceId }),
-    onSuccess: (data) => {
-      toast.success(`Model uploaded: ${data.repo_id}`)
+  const { mutate, reset, isPending, isSuccess, isError, error } = useMutation({
+    mutationFn: (
+      params: Omit<UploadModelParams, 'serviceId' | 'signal' | 'onProgress'>,
+    ) => {
+      const next = new AbortController()
+      setController(next)
+      setProgress(null)
+      return uploadModel({
+        ...params,
+        serviceId,
+        signal: next.signal,
+        onProgress: setProgress,
+      })
+    },
+    onSuccess: (data, variables) => {
+      toast.success(`Model uploaded: ${data?.repo_id ?? variables.repoId}`)
       queryClient.invalidateQueries({
-        queryKey: ['multiserve-models', serviceId],
+        queryKey: modelsQueryKey(serviceId),
       })
     },
     onError: (err) => {
-      toast.error('Failed to upload model', {
-        description:
-          err instanceof Error ? err.message : 'An unexpected error occurred.',
-      })
+      if (isAbortError(err)) {
+        toast.info('Upload cancelled')
+        return
+      }
+      toastError('Failed to upload model')(err)
     },
+    onSettled: () => setController(null),
   })
+
+  return {
+    upload: mutate,
+    cancel: () => controller?.abort(),
+    reset,
+    progress: isPending ? progress : null,
+    isPending,
+    isSuccess,
+    error: isError && !isAbortError(error) ? error : null,
+  }
 }

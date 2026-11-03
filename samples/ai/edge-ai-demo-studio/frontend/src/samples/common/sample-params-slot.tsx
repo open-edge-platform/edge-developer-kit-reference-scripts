@@ -5,41 +5,38 @@
 
 import { createContext, useContext, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import type { ServiceParamGroup } from '@/types/demo-params'
 import {
   DemoConfigSheet,
-  type ServiceParamGroup,
+  type DemoConfigSheetChrome,
 } from './components/demo-config-sheet'
 
-/**
- * Context that holds a reference to the portal target element in the shared
- * sample demo top bar. Each demo renders a <SampleParamsSlot> which portals
- * the DemoConfigSheet button into that target, ensuring consistent placement
- * across all samples.
- *
- * The provider is created in SampleDemoContent, which renders a
- * `<div ref={setContainer} />` in its top bar and passes the element
- * through this context.
- */
+/** Toolbar portal target for the Parameters sheet; provided by SampleDemoContent. */
 export const SampleParamsSlotContext = createContext<HTMLDivElement | null>(
   null,
 )
 
-/**
- * Render inside a sample demo to portal the DemoConfigSheet into the shared
- * top bar. This replaces direct `<DemoConfigSheet>` usage in each demo.
- */
+/** Portals the sample's Parameters sheet into the shared demo toolbar. */
 export function SampleParamsSlot({
   groups,
   children,
+  footer,
+  chrome,
 }: {
   groups: ServiceParamGroup[]
   children?: ReactNode
+  /** Rendered in the sheet's footer (a Done button, say). */
+  footer?: ReactNode
+  /** Wording and test ids of the sheet, when a sample's own tests name them. */
+  chrome?: DemoConfigSheetChrome
 }) {
   const container = useContext(SampleParamsSlotContext)
 
   if (!container || groups.length === 0) return null
   return createPortal(
-    <DemoConfigSheet groups={groups}>{children}</DemoConfigSheet>,
+    <DemoConfigSheet groups={groups} footer={footer} chrome={chrome}>
+      {children}
+    </DemoConfigSheet>,
     container,
   )
 }

@@ -4,257 +4,243 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
-import { useCallback, useEffect, useRef, useState } from 'react'
-import type { LogLevel, LogSource } from '@/services/types'
-import type { ApiLogResponse } from '@/types/common'
+import {
+  type Dispatch,
+  type SetStateAction,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from 'react'
+import type { ServiceStatus } from '@/services/types'
+import type { LogSource } from '@/types/common'
+import {
+  type Accumulated,
+  applyRound,
+  emptyAccumulated,
+  type LogEntry,
+  type LogSnapshot,
+  type SourceState,
+} from '../log-accumulator'
+import {
+  logSourceKey,
+  logUrl,
+  type LogRun,
+  readSource,
+  type SourceNote,
+} from '../log-transport'
+import {
+  type LogFilterAddress,
+  type LogFilters,
+  useLogFilters,
+} from './use-log-filters'
 
-export interface LogEntry {
-  timestamp: string
-  level: LogLevel
+export type { LogEntry } from '../log-accumulator'
+export type { LogRun } from '../log-transport'
+export type {
+  LevelFilter,
+  LogFilterAddress,
+  LogFilters,
+} from './use-log-filters'
+
+export interface SourceProblem {
+  label: string
   message: string
-  source: string
-}
-
-function mapTypeToLevel(type: string): LogLevel {
-  if (type === 'error') return 'ERROR'
-  if (type === 'info') return 'INFO'
-  return 'INFO'
-}
-
-function mapApiLevel(level: string | undefined): LogLevel {
-  if (!level) return 'INFO'
-  const upper = level.toUpperCase()
-  if (upper === 'ERROR' || upper === 'ERR') return 'ERROR'
-  return 'INFO'
-}
-
-export type LogFilter = 'ALL' | 'INFO' | 'ERROR'
-
-interface PaginationState {
-  offset: number
-  timestamp: string | null
 }
 
 interface UseLogOptions {
   sources: LogSource[]
   serviceName: string
-  isOnline: boolean
-  serviceStatus?: string
+  serviceStatus?: ServiceStatus
   maxEntries?: number
+  maxBytes?: number
+  /** Polling pauses while false, e.g. a force-mounted but hidden tab panel. */
+  active?: boolean
+  /** Paths the app polls (health checks, log reads); their successful GETs are hidden by default. */
+  pollingPaths?: string[]
+  /** Keep the level and source filters in the page address. */
+  filterAddress?: LogFilterAddress
+}
+
+/** The lines a view has read and how its sources are doing. */
+export interface LogFeed {
+  /** Every retained line, oldest first, before any filter. */
+  retained: LogEntry[]
+  newestId: number
+  maxEntries: number
+  /** No read has settled yet for this run. */
+  isLoading: boolean
+  lastUpdatedAt: number | null
+  /** Every source read failed on the latest round. */
+  totalFailure: boolean
+  failedSources: SourceProblem[]
+  /** Sources not read now: no history for a previous run, not up yet, or stopped. */
+  unavailableSources: SourceProblem[]
+  refetch: () => Promise<unknown>
+}
+
+/** Why a worker API's log is not read now, after its label. */
+const NOTE_MESSAGES: Record<SourceNote, string> = {
+  'no-history': 'not available for previous runs',
+  'not-ready': 'not available yet',
+  stopped: 'not available while the service is stopped',
 }
 
 const POLL_INTERVAL = 3_000
+const DEFAULT_MAX_BYTES = 2 * 1024 * 1024
+const NO_ENTRIES: LogEntry[] = []
+const NO_SOURCES: SourceState[] = []
+const NO_PATHS: string[] = []
 
-export function useLog({
+/** Polls an instance's log sources, keeping the latest `maxEntries` lines and each source's health. */
+function useLogFeed({
   sources,
   serviceName,
   serviceStatus,
   maxEntries = 500,
-}: UseLogOptions) {
-  const [isPaused, setIsPaused] = useState(false)
-  const [filter, setFilter] = useState<LogFilter>('ALL')
-  const [logSession, setLogSession] = useState<'current' | 'previous'>(
-    'current',
-  )
-  const [clearCounter, setClearCounter] = useState(0)
-  const logSessionRef = useRef<'current' | 'previous'>('current')
-  useEffect(() => {
-    logSessionRef.current = logSession
-  }, [logSession])
+  maxBytes = DEFAULT_MAX_BYTES,
+  active = true,
+  run,
+  hiddenPaths,
+}: Omit<UseLogOptions, 'pollingPaths' | 'filterAddress'> & {
+  run: LogRun
+  hiddenPaths: string[]
+}): LogFeed {
+  const statusRef = useRef(serviceStatus)
+  const accumulatedRef = useRef<Accumulated>(emptyAccumulated(''))
 
-  const serviceStatusRef = useRef(serviceStatus)
-  useEffect(() => {
-    serviceStatusRef.current = serviceStatus
-  }, [serviceStatus])
+  // Each view owns its accumulator, so two panels on the same instance must
+  // not share one query and advance each other's cursors.
+  const viewId = useId()
+  const sourcesKey = sources.map(logSourceKey).join(',')
+  // Polling is filtered as lines arrive: toggling it reads the tail afresh.
+  const hiddenKey = hiddenPaths.join(',')
+  const viewKey = `${serviceName}|${run}|${sourcesKey}|${hiddenKey}`
 
-  const paginationRef = useRef<Map<string, PaginationState>>(new Map())
-  const accumulatedRef = useRef<LogEntry[]>([])
-  const accumulatedKeyRef = useRef('')
-
-  const sourceKey = useCallback(
-    (src: LogSource) => `${src.type}:${src.target}`,
-    [],
-  )
-
-  const fetchServiceSource = useCallback(
-    async (source: LogSource): Promise<LogEntry[]> => {
-      try {
-        const key = sourceKey(source)
-        const pagination = paginationRef.current.get(key)
-
-        const params = new URLSearchParams({ name: source.target })
-        if (logSessionRef.current === 'previous') {
-          params.set('source', 'old')
-        }
-        if (pagination?.offset && pagination.timestamp) {
-          params.set('offset', String(pagination.offset))
-          params.set('since', pagination.timestamp)
-        }
-
-        const url = new URL(
-          `/api/logs?${params.toString()}`,
-          window.location.origin,
+  const { data, refetch } = useQuery<LogSnapshot>({
+    queryKey: ['service-logs', viewId, serviceName, run, sourcesKey, hiddenKey],
+    queryFn: async ({ signal }) => {
+      if (accumulatedRef.current.viewKey !== viewKey) {
+        accumulatedRef.current = emptyAccumulated(
+          viewKey,
+          accumulatedRef.current.nextId,
         )
-        const res = await fetch(url)
-        if (!res.ok) return []
-
-        const data: ApiLogResponse = await res.json()
-
-        if (pagination?.offset && data.offset < pagination.offset) {
-          accumulatedRef.current = []
-          paginationRef.current.clear()
-        }
-
-        paginationRef.current.set(key, {
-          offset: data.offset,
-          timestamp: data.timestamp,
-        })
-
-        return data.logs.map((entry) => ({
-          timestamp: entry.timestamp,
-          level: mapTypeToLevel(entry.level ?? 'info'),
-          message: entry.message,
-          source: source.label,
-        }))
-      } catch {
-        return []
       }
+      const acc = accumulatedRef.current
+      const status = statusRef.current
+      const results = await Promise.all(
+        sources.map((src) =>
+          readSource(
+            src,
+            logUrl(
+              src,
+              serviceName,
+              run,
+              acc.cursors.get(logSourceKey(src)),
+              hiddenPaths,
+            ),
+            run,
+            status,
+            signal,
+          ),
+        ),
+      )
+      // A cancelled round (Refresh, a status change) must not move cursors.
+      signal.throwIfAborted()
+
+      return applyRound(
+        acc,
+        sources,
+        results,
+        maxEntries,
+        maxBytes,
+        hiddenPaths,
+      )
     },
-    [sourceKey],
-  )
-
-  const fetchApiSource = useCallback(
-    async (source: LogSource): Promise<LogEntry[]> => {
-      if (logSessionRef.current === 'previous') return []
-      if (serviceStatusRef.current !== 'active') return []
-      try {
-        const key = sourceKey(source)
-        const pagination = paginationRef.current.get(key)
-
-        const separator = source.target.includes('?') ? '&' : '?'
-        let url = `/api/${serviceName}${source.target}`
-        if (pagination?.offset && pagination.timestamp) {
-          url += `${separator}offset=${pagination.offset}&since=${encodeURIComponent(pagination.timestamp)}`
-        }
-
-        const res = await fetch(url)
-        if (!res.ok) return []
-
-        const data: ApiLogResponse = await res.json()
-
-        if (pagination?.offset && data.offset < pagination.offset) {
-          accumulatedRef.current = []
-          paginationRef.current.clear()
-        }
-
-        paginationRef.current.set(key, {
-          offset: data.offset,
-          timestamp: data.timestamp,
-        })
-
-        return data.logs.map((entry) => ({
-          timestamp: entry.timestamp,
-          level: mapApiLevel(entry.level),
-          message: entry.message ?? '',
-          source: source.label,
-        }))
-      } catch {
-        return []
-      }
-    },
-    [serviceName, sourceKey],
-  )
-
-  const fetchAllSources = useCallback(async (): Promise<LogEntry[]> => {
-    const results = await Promise.allSettled(
-      sources.map((src) =>
-        src.type === 'service' ? fetchServiceSource(src) : fetchApiSource(src),
-      ),
-    )
-
-    const combined: LogEntry[] = []
-    for (const result of results) {
-      if (result.status === 'fulfilled') {
-        combined.push(...result.value)
-      }
-    }
-
-    combined.sort(
-      (a, b) =>
-        new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
-    )
-    return combined
-  }, [sources, fetchServiceSource, fetchApiSource])
-
-  const currentKey = `${serviceName}:${logSession}:${clearCounter}`
-
-  const { data: logs = [], refetch } = useQuery<LogEntry[]>({
-    queryKey: [
-      'service-logs',
-      serviceName,
-      sources.map(sourceKey).join(','),
-      logSession,
-      clearCounter,
-    ],
-    queryFn: async () => {
-      if (accumulatedKeyRef.current !== currentKey) {
-        accumulatedKeyRef.current = currentKey
-        accumulatedRef.current = []
-        paginationRef.current.clear()
-      }
-      const newEntries = await fetchAllSources()
-      if (newEntries.length > 0) {
-        accumulatedRef.current = [...accumulatedRef.current, ...newEntries]
-          .sort(
-            (a, b) =>
-              new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
-          )
-          .slice(-maxEntries)
-      }
-      return accumulatedRef.current
-    },
-    refetchInterval: POLL_INTERVAL,
-    enabled: true,
+    enabled: active,
+    refetchInterval: active ? POLL_INTERVAL : false,
+    // Per-view queries: nothing to reuse once the view is gone.
+    gcTime: 0,
   })
 
   const prevStatusRef = useRef(serviceStatus)
   useEffect(() => {
-    if (serviceStatus !== prevStatusRef.current) {
-      prevStatusRef.current = serviceStatus
-
-      if (serviceStatus === 'starting') {
-        accumulatedRef.current = []
-        paginationRef.current.clear()
-      }
-
-      refetch()
+    statusRef.current = serviceStatus
+    if (serviceStatus === prevStatusRef.current) return
+    prevStatusRef.current = serviceStatus
+    if (serviceStatus === 'starting') {
+      // A start archives the previous log: read both runs afresh.
+      accumulatedRef.current = emptyAccumulated(
+        '',
+        accumulatedRef.current.nextId,
+      )
     }
-  }, [serviceStatus, refetch])
+    if (active) refetch()
+  }, [serviceStatus, refetch, active])
 
-  const filteredLogs =
-    filter === 'ALL' ? logs : logs.filter((l) => l.level === filter)
+  const prevActiveRef = useRef(active)
+  useEffect(() => {
+    // Visible again: catch up now instead of waiting for the next poll.
+    if (active && !prevActiveRef.current) refetch()
+    prevActiveRef.current = active
+  }, [active, refetch])
 
-  const counts: Record<LogFilter, number> = {
-    ALL: logs.length,
-    INFO: logs.filter((l) => l.level !== 'ERROR').length,
-    ERROR: logs.filter((l) => l.level === 'ERROR').length,
-  }
-
-  const clear = useCallback(() => {
-    setClearCounter((c) => c + 1)
-  }, [])
+  const sourceStates = data?.sources ?? NO_SOURCES
+  const read = sourceStates.filter((s) => !s.note)
+  const failedSources: SourceProblem[] = read
+    .filter((s) => s.error !== null)
+    .map((s) => ({ label: s.label, message: s.error ?? '' }))
+  const totalFailure = read.length > 0 && failedSources.length === read.length
+  const successTimes = sourceStates
+    .map((s) => s.lastSuccessAt)
+    .filter((t): t is number => t !== null)
+  const lastUpdatedAt =
+    successTimes.length > 0 ? Math.max(...successTimes) : null
 
   return {
-    logs: filteredLogs,
-    counts,
-    filter,
-    setFilter,
-    isPaused,
-    setIsPaused,
-    logSession,
-    setLogSession,
-    clear,
-    sources,
+    retained: data?.entries ?? NO_ENTRIES,
+    newestId: data?.newestId ?? 0,
+    maxEntries,
+    isLoading: data === undefined,
+    lastUpdatedAt,
+    totalFailure,
+    failedSources,
+    unavailableSources: sourceStates.flatMap((s) =>
+      s.note ? [{ label: s.label, message: NOTE_MESSAGES[s.note] }] : [],
+    ),
     refetch,
   }
+}
+
+export interface LogView {
+  feed: LogFeed
+  /** The retained lines the filters let through. */
+  entries: LogEntry[]
+  filters: LogFilters
+  run: LogRun
+  setRun: (run: LogRun) => void
+  /** Successful GETs of the polled paths are left out. */
+  hidePolling: boolean
+  setHidePolling: Dispatch<SetStateAction<boolean>>
+}
+
+/** A log view of an instance: the polled feed, the reader's filters, the run read and polling toggle. */
+export function useLog({
+  pollingPaths = NO_PATHS,
+  filterAddress,
+  ...options
+}: UseLogOptions): LogView {
+  const [run, setRun] = useState<LogRun>('current')
+  const [hidePolling, setHidePolling] = useState(true)
+  const feed = useLogFeed({
+    ...options,
+    run,
+    hiddenPaths: hidePolling ? pollingPaths : NO_PATHS,
+  })
+  const { entries, filters } = useLogFilters(
+    feed.retained,
+    options.sources,
+    filterAddress,
+  )
+  return { feed, entries, filters, run, setRun, hidePolling, setHidePolling }
 }

@@ -3,7 +3,7 @@
 
 'use client'
 
-import { useState } from 'react'
+import { useDemoParams } from '@/services/common/demo/use-demo-params'
 import type { DemoParam } from '@/types/demo-params'
 
 export const DIARIZATION_DEFAULTS = {
@@ -16,43 +16,42 @@ export interface DiarizationParamValues {
   speakerMatchThreshold: number
 }
 
-export function useDiarizationParams(
-  initial?: Partial<DiarizationParamValues>,
-): {
+/** The diarization demo's sidebar parameters, kept per instance for the page visit by `sessionKey`. */
+export function useDiarizationParams({
+  sessionKey,
+  initial,
+}: { sessionKey?: string; initial?: Partial<DiarizationParamValues> } = {}): {
   values: DiarizationParamValues
   params: DemoParam[]
 } {
-  const [unknownLabel, setUnknownLabel] = useState(
-    initial?.unknownLabel ?? DIARIZATION_DEFAULTS.unknownLabel,
-  )
-  const [speakerMatchThreshold, setSpeakerMatchThreshold] = useState(
-    initial?.speakerMatchThreshold ??
-      DIARIZATION_DEFAULTS.speakerMatchThreshold,
-  )
-
-  const values: DiarizationParamValues = { unknownLabel, speakerMatchThreshold }
+  const { values, setters } = useDemoParams(DIARIZATION_DEFAULTS, {
+    sessionKey,
+    initial,
+  })
 
   const params: DemoParam[] = [
     {
       type: 'textarea',
       id: 'unknown_label',
       label: 'Unknown Speaker Label',
-      value: unknownLabel,
+      tooltip:
+        'Only used with speaker profiles: the name given to voices that match none of them.',
+      value: values.unknownLabel,
       placeholder: 'e.g. Unknown, Other, Guest',
       rows: 1,
-      onChange: setUnknownLabel,
+      onChange: setters.setUnknownLabel,
     },
     {
       type: 'slider',
       id: 'speaker_match_threshold',
       label: 'Speaker Match Threshold',
       tooltip:
-        'Minimum cosine similarity to match a speaker to a profile. Lower values are more permissive.',
-      value: speakerMatchThreshold,
+        'Only used with speaker profiles: the minimum cosine similarity to match a speaker to a profile. Lower values are more permissive.',
+      value: values.speakerMatchThreshold,
       min: 0.1,
       max: 1.0,
       step: 0.05,
-      onChange: setSpeakerMatchThreshold,
+      onChange: setters.setSpeakerMatchThreshold,
     },
   ]
 

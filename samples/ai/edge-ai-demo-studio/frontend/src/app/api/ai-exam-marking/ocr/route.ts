@@ -1,46 +1,47 @@
 // Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { generateText, Output } from 'ai'
 import { z } from 'zod'
-import { logger } from '@/lib/logger'
-import { metaMap } from '@/services/_generated/meta'
-import { getWorkloadModel } from '@/app/api/common/get-workload-model'
+import { jsonErrorFrom, parseJsonBody } from '@/lib/api/json'
+import { createOvmsProvider } from '@/lib/llm/ovms-provider'
+import {
+  boundInstanceKey,
+  resolveWorkload,
+} from '@/lib/workers/instance-lookup'
 
+const ocrBodySchema = z.object({
+  /** The page as base64 (no data: prefix). */
+  image: z.string().min(1, 'No image provided'),
+  prompt: z.string().nullish(),
+  instances: z.record(z.string(), z.unknown()).nullish(),
+})
+
+const ocrOutputSchema = z
+  .object({
+    student_name: z.string().optional(),
+    student_id: z.string().optional(),
+  })
+  .catchall(z.object({ question: z.string(), answer: z.string() }))
+
+/** Reads a scanned answer sheet into questions and answers with the VLM. */
 export async function POST(request: Request) {
+  const parsed = await parseJsonBody(request, ocrBodySchema)
+  if (!parsed.ok) return parsed.response
+  const { image, prompt, instances } = parsed.data
+
   try {
-    const { image, prompt } = await request.json()
-
-    if (!image) {
-      return Response.json({ error: 'No image provided' }, { status: 400 })
-    }
-
-    const textGenerationMeta = metaMap['text-generation']
-    let model: string
-    try {
-      model = await getWorkloadModel(textGenerationMeta.id)
-    } catch (error) {
-      logger.error('Model service error:', error)
-      return new Response('No available model', { status: 500 })
-    }
-
-    const provider = createOpenAICompatible({
-      baseURL: `http://localhost:${textGenerationMeta.port}/v1`,
-      name: 'llama.cpp',
-    })
+    // The Text Generation instance the sample binds, else the running one.
+    const { model, baseUrl } = await resolveWorkload(
+      'text-generation',
+      boundInstanceKey(instances, 'text-generation'),
+    )
+    const provider = createOvmsProvider({ baseUrl })
 
     const { output } = await generateText({
       model: provider(model),
       temperature: 0,
-      output: Output.object({
-        schema: z
-          .object({
-            student_name: z.string().optional(),
-            student_id: z.string().optional(),
-          })
-          .catchall(z.object({ question: z.string(), answer: z.string() })),
-      }),
+      output: Output.object({ schema: ocrOutputSchema }),
       messages: [
         {
           role: 'user',
@@ -63,10 +64,6 @@ export async function POST(request: Request) {
 
     return Response.json(output)
   } catch (error) {
-    logger.error('OCR API error:', error)
-    return Response.json(
-      { error: 'Failed to process image with VLM' },
-      { status: 500 },
-    )
+    return jsonErrorFrom(error, 'Failed to process image with VLM', 'OCR API')
   }
 }

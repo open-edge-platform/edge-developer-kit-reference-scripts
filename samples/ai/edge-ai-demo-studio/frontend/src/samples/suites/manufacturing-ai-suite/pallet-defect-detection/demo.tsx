@@ -5,17 +5,16 @@
 
 import { useGetService } from '@/context/service-status-context'
 import { SuiteLaunchPanel } from '@/samples/common/components/suite-launch-panel'
+import { suiteHttpsUrl } from '@/services/suites/ports'
 import { palletDefectDetectionSuite } from './config'
 
 export function PalletDefectDetectionDemo() {
   const service = useGetService(palletDefectDetectionSuite.serviceId)
-  // The suite's nginx reverse proxy maps the service's HTTP port to 80 and
-  // HTTPS port (== port+1) to 443, so the user-facing launch URL is HTTPS on
-  // port+1. Default WebRTC stream lives at /mediamtx/pdd/.
-  const httpsPort = service?.port ? service.port + 1 : undefined
-  const launchUrl = httpsPort
-    ? `https://localhost:${httpsPort}/mediamtx/pdd/`
-    : palletDefectDetectionSuite.launchUrl
+  // The suite serves its own page over HTTPS; the default WebRTC stream
+  // lives at /mediamtx/pdd/.
+  const launchUrl =
+    suiteHttpsUrl(service, '/mediamtx/pdd/') ??
+    palletDefectDetectionSuite.launchUrl
 
   return (
     <SuiteLaunchPanel

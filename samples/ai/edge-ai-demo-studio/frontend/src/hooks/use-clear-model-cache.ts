@@ -3,34 +3,30 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-
-const SERVICES_QUERY_KEY = ['services'] as const
+import { fetchJson } from '@/lib/browser/fetch-json'
+import { toastError } from '@/lib/browser/toast-error'
+import { MODEL_CATALOG_QUERY_KEY } from '@/hooks/use-model-catalog'
+import { SERVICES_QUERY_KEY } from '@/hooks/use-services'
 
 interface ClearModelCacheVariables {
-  serviceId: number
+  /** The service type: its instances all share one cache. */
+  type: string
   serviceName: string
 }
 
 interface ClearModelCacheResponse {
-  cleared: string[]
-  errors: string[]
+  cleared?: string[]
+  errors?: string[]
 }
 
-async function clearModelCache({
-  serviceId,
-}: ClearModelCacheVariables): Promise<ClearModelCacheResponse> {
-  const url = new URL(
-    `/api/services/${serviceId}/models`,
-    window.location.origin,
-  )
-  const res = await fetch(url, {
+function clearModelCache({
+  type,
+}: ClearModelCacheVariables): Promise<ClearModelCacheResponse | undefined> {
+  const query = new URLSearchParams({ type })
+  return fetchJson(`/api/services/models/cache?${query.toString()}`, {
     method: 'DELETE',
+    errorMessage: 'Failed to clear model cache',
   })
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}))
-    throw new Error(body.error ?? `Failed to clear model cache (${res.status})`)
-  }
-  return res.json()
 }
 
 export function useClearModelCache() {
@@ -38,17 +34,27 @@ export function useClearModelCache() {
 
   return useMutation({
     mutationFn: clearModelCache,
-    onSuccess: (_data, variables) => {
-      toast.success(`Model cache cleared for ${variables.serviceName}`, {
-        description: 'Start the service to re-download models.',
-      })
+    onSuccess: (data, variables) => {
+      // The route answers 200 even when a folder could not be removed: it
+      // lists those in `errors`, which must not read as a clean success.
+      const cleared = data?.cleared ?? []
+      const errors = data?.errors ?? []
+      if (errors.length > 0) {
+        toast.error(
+          cleared.length > 0
+            ? `Model cache partly cleared for ${variables.serviceName}`
+            : `Failed to clear model cache for ${variables.serviceName}`,
+          { description: errors.join('\n') },
+        )
+      } else {
+        toast.success(`Model cache cleared for ${variables.serviceName}`, {
+          description: 'Start the service to re-download models.',
+        })
+      }
       queryClient.invalidateQueries({ queryKey: SERVICES_QUERY_KEY })
+      // Every type's: a cleared folder may hold another service's models.
+      queryClient.invalidateQueries({ queryKey: MODEL_CATALOG_QUERY_KEY })
     },
-    onError: (err) => {
-      toast.error('Failed to clear model cache', {
-        description:
-          err instanceof Error ? err.message : 'An unexpected error occurred.',
-      })
-    },
+    onError: toastError('Failed to clear model cache'),
   })
 }

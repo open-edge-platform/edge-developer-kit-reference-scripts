@@ -18,9 +18,10 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Plus, Trash2, ArrowRight, GripVertical, Sparkles } from 'lucide-react'
-import type { DataEntry } from '@/lib/ai-exam-marking/types'
-import demoQuestionsData from '@/lib/ai-exam-marking/demo-questions.json'
+import type { DataEntry } from '@/samples/ai-exam-marking/lib/types'
+import demoQuestionsData from '@/samples/ai-exam-marking/lib/demo-questions.json'
 import { v4 as uuidv4 } from 'uuid'
+import { QuestionHeading } from './question-heading'
 
 type DataDefinitionProps = {
   dataEntries: DataEntry[]
@@ -200,25 +201,26 @@ export function DataDefinition({
                 >
                   <div className="mb-3 flex items-start justify-between">
                     <div className="flex items-center gap-3">
-                      <GripVertical className="text-muted-foreground h-5 w-5 shrink-0" />
-                      <div className="bg-primary text-primary-foreground flex h-8 w-8 shrink-0 items-center justify-center rounded-full font-semibold">
-                        {entry.number}
-                      </div>
-                      <div>
-                        <p className="text-card-foreground font-medium">
-                          Question {entry.number}
-                        </p>
-                        <p className="text-muted-foreground text-xs">
-                          {entry.marks} marks
-                        </p>
-                      </div>
+                      <GripVertical
+                        className="text-muted-foreground h-5 w-5 shrink-0"
+                        aria-hidden
+                      />
+                      <QuestionHeading
+                        number={entry.number}
+                        marks={entry.marks}
+                      />
                     </div>
                     <Button
                       variant="ghost"
                       size="icon"
                       onClick={() => removeEntry(entry.id)}
+                      aria-label={`Remove question ${entry.number}`}
+                      title="Remove question"
                     >
-                      <Trash2 className="text-destructive h-4 w-4" />
+                      <Trash2
+                        className="text-destructive h-4 w-4"
+                        aria-hidden
+                      />
                     </Button>
                   </div>
                   <div className="space-y-2 text-xs">

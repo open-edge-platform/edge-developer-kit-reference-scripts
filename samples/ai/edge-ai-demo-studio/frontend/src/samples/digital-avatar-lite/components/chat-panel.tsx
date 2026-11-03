@@ -3,67 +3,48 @@
 
 'use client'
 
-import type {
-  ChatMsg,
-  ChatStatus,
-} from '@/services/text-generation/components/chat-helpers'
-import { VlmChatPanel } from '@/services/text-generation/components/vlm-chat-panel'
+import { ConversationPanel } from '@/services/text-generation/components/conversation-panel'
+import type { useTextGenChat } from '@/services/text-generation/hooks/use-chat'
 
 interface ChatPanelProps {
-  messages: ChatMsg[]
-  status: ChatStatus
-  input: string
-  onInputChange: (value: string) => void
-  onSend: () => void
-  onStop?: () => void
-  onReset: () => void
+  chat: ReturnType<typeof useTextGenChat>
+  /** Stops the reply and the avatar's speech. */
+  onStop: () => void
+  /** The avatar is still speaking the reply, or about to. */
+  isSpeaking: boolean
   sttOnline?: boolean
-  disabled?: boolean
   isVlm?: boolean
-  isSpeaking?: boolean
-  imagePreviews?: string[]
-  onImageSelect?: (e: React.ChangeEvent<HTMLInputElement>) => void
-  onImageRemove?: (index: number) => void
 }
 
 export function ChatPanel({
-  messages,
-  status,
-  input,
-  onInputChange,
-  onSend,
+  chat,
   onStop,
-  onReset,
-  sttOnline,
-  disabled,
-  isVlm,
   isSpeaking,
-  imagePreviews,
-  onImageSelect,
-  onImageRemove,
+  sttOnline,
+  isVlm,
 }: ChatPanelProps) {
-  // Show the stop button while the avatar is speaking, even after LLM finishes
-  const effectiveStatus =
-    isSpeaking && status === 'ready' ? 'streaming' : status
+  // Show the stop button until the avatar has spoken the reply, even after
+  // the LLM finishes
+  const status =
+    isSpeaking && chat.status === 'ready' ? 'streaming' : chat.status
 
   return (
-    <VlmChatPanel
-      messages={messages}
-      status={effectiveStatus}
-      input={input}
-      onInputChange={onInputChange}
-      onSend={onSend}
+    <ConversationPanel
+      messages={chat.messages}
+      status={status}
+      input={chat.input}
+      onInputChange={chat.setInput}
+      onSend={() => chat.handleSend()}
       onStop={onStop}
-      onReset={onReset}
-      disabled={disabled}
+      onReset={chat.handleReset}
+      error={chat.error}
+      onRetry={chat.handleRetry}
       sttOnline={sttOnline}
-      isVlm={isVlm}
-      imagePreviews={imagePreviews}
-      onImageSelect={onImageSelect}
-      onImageRemove={onImageRemove}
+      attachments={chat.attachments}
+      allowImageAttach={isVlm}
       emptyStateText="Start a conversation with the avatar"
-      avatarClassName="bg-violet-500/15"
-      avatarTextClassName="text-violet-600"
+      avatarClassName="bg-primary/15"
+      avatarTextClassName="text-primary"
       className="min-h-[320px]"
       messagesClassName="max-h-[400px] min-h-[240px]"
     />

@@ -38,8 +38,6 @@ export const MODEL_TYPES: SelectOption[] = [
   { value: 'multimodal', label: 'Multimodal (VLM)' },
 ]
 
-// ─── Helpers ──────────────────────────────────────────────────────
-
 function deriveModelLabel(
   model: Service['models']['default'],
   backendName: string,
@@ -57,8 +55,6 @@ function deriveModelLabel(
 
   return parts.join(' ')
 }
-
-// ─── Config Builders ──────────────────────────────────────────────
 
 // Aggregates models, devices, and options from all multiserve backends for a service
 export function getMultiserveServiceConfig(
@@ -122,5 +118,7 @@ export function getMultiserveDefaultModel(
         )
       : undefined
   const target = preferred ?? compatible[0]
-  return target.models[serviceType]?.[0]
+  const model = target.models[serviceType]?.[0]
+  // The backend a preset is listed under is the one it runs on.
+  return model && { ...model, backend: target.value }
 }

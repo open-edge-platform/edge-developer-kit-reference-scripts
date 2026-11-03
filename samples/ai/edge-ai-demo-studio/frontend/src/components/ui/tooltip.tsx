@@ -5,8 +5,43 @@
 
 import { Tooltip as TooltipPrimitive } from 'radix-ui'
 import type * as React from 'react'
+import { useRef, useState } from 'react'
 
 import { cn } from '@/lib/utils'
+
+/**
+ * Tooltip state a tap toggles too (Radix opens only on hover/focus, out of reach on touch screens).
+ * Spread `triggerProps` on the trigger; `canOpen` vetoes opening.
+ */
+function useTapTooltip(canOpen: () => boolean = () => true): {
+  open: boolean
+  setOpen: React.Dispatch<React.SetStateAction<boolean>>
+  onOpenChange: (open: boolean) => void
+  triggerProps: {
+    onPointerDown: () => void
+    onClick: () => void
+  }
+} {
+  const [open, setOpen] = useState(false)
+  // Whether the tooltip showed when this press began: Radix closes it on
+  // pointer down, and the click that follows must not open it again.
+  const wasOpen = useRef(false)
+  return {
+    open,
+    setOpen,
+    onOpenChange: (next) => setOpen(next && canOpen()),
+    triggerProps: {
+      onPointerDown: () => {
+        wasOpen.current = open
+      },
+      onClick: () => {
+        const was = wasOpen.current
+        wasOpen.current = false
+        setOpen(!was && canOpen())
+      },
+    },
+  }
+}
 
 function TooltipProvider({
   delayDuration = 0,
@@ -57,4 +92,10 @@ function TooltipContent({
   )
 }
 
-export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider }
+export {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  TooltipProvider,
+  useTapTooltip,
+}

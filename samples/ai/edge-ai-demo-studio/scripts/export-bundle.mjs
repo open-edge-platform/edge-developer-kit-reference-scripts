@@ -4,18 +4,8 @@
 /* eslint-disable no-console */
 
 /**
- * Export a slim subset of Demo Studio that contains only the requested
- * samples plus the services and workers they depend on. Services can also be
- * requested directly (with or without any samples) via --services.
- *
- * Usage:
- *   node scripts/export-bundle.mjs --samples=rag-chatbot,medical-scribe [--out=out/my-export] [--include-optional]
- *   node scripts/export-bundle.mjs --services=text-to-speech,ocr
- *   node scripts/export-bundle.mjs --list
- *
- * The output directory is self-contained: it has its own setup.sh /
- * setup_win.bat and start.sh / start_win.bat, with only the necessary
- * worker subdirectories and frontend service/sample folders.
+ * Export a self-contained subset of Demo Studio: the requested samples and/or services plus the
+ * services and workers they depend on, with its own setup and start scripts. See --help.
  */
 
 import { execFileSync } from 'node:child_process'
@@ -42,9 +32,7 @@ const WORKERS_DIR = join(REPO_ROOT, 'workers')
 // ─── CLI parsing ──────────────────────────────────────────────────
 
 function parseArgs(argv) {
-  // Optional service deps are included by default — most samples gracefully
-  // degrade without them but the demo experience is incomplete. Use
-  // --no-optional to exclude them.
+  // Optional deps are included by default: samples run without them, but the demo is incomplete.
   const out = {
     samples: [],
     services: [],
@@ -163,11 +151,7 @@ function listServiceFolders() {
   return [...serviceFolders.keys()].sort()
 }
 
-/**
- * Given a path relative to a base entity dir (e.g. `suites/foo/bar/data.ts`),
- * return the owning entity id, or null if it belongs to none (e.g. shared
- * `common/` files or top-level barrels).
- */
+/** Entity id owning a path relative to the base dir (e.g. `suites/foo/bar/data.ts`), or null. */
 function ownerOf(relFromBase, folderMap) {
   for (const [id, folder] of folderMap) {
     if (relFromBase === folder || relFromBase.startsWith(`${folder}/`)) return id
@@ -175,13 +159,7 @@ function ownerOf(relFromBase, folderMap) {
   return null
 }
 
-/**
- * Decide whether a tracked file under `frontend/src/<kind>/` should be kept.
- * Returns true/false for entity files, or null when `rel` isn't one (a
- * top-level barrel like registry.ts, or a path outside <kind>/) so the caller
- * can fall through. Handles both the flat `<id>/` and nested
- * `suites/<suite>/<id>/` layouts.
- */
+/** Whether to keep a file under `frontend/src/<kind>/`; null when it isn't an entity file. */
 function keepEntityFile(rel, kind, folderMap, keptIds) {
   const prefix = `frontend/src/${kind}/`
   if (!rel.startsWith(prefix)) return null
@@ -192,6 +170,8 @@ function keepEntityFile(rel, kind, folderMap, keptIds) {
   // Prune the shared `common` barrel to the files reachable from the kept
   // entities (see the import-graph walk in main).
   if (seg0 === 'common') return keptCommonFiles.has(rel)
+  // Shared files at a group's top level (suites/ports.ts) serve every entity in it.
+  if (GROUP_FOLDERS.has(seg0) && sub.split('/').length === 2) return true
   const id = ownerOf(sub, folderMap)
   return id !== null && keptIds.has(id)
 }
@@ -201,8 +181,10 @@ function parseSampleDeps(id) {
   const dataPath = join(SAMPLES_DIR, sampleFolders.get(id), 'data.ts')
   const src = readFileSync(dataPath, 'utf8')
   const deps = []
+  // Only serviceId and role are read, so the match stops at role: a nested
+  // object after it (e.g. `recommended: { device }`) must not hide the dep.
   const re =
-    /\{\s*serviceId\s*:\s*['"]([\w-]+)['"][^{}]*?role\s*:\s*['"](required|optional)['"][^{}]*?\}/gs
+    /\{\s*serviceId\s*:\s*['"]([\w-]+)['"][^{}]*?role\s*:\s*['"](required|optional)['"]/gs
   let m
   while ((m = re.exec(src)) !== null) {
     deps.push({ serviceId: m[1], role: m[2] })
@@ -224,13 +206,7 @@ function parseServiceInfo(id) {
   }
 }
 
-/**
- * Parse a top-level worker's pyproject.toml for `[tool.uv.sources]` local
- * path dependencies (e.g. `foo = { path = "../foo" }`), resolving each to a
- * `workers/`-relative subdir name. Returns [] if the worker has no
- * pyproject.toml, no `[tool.uv.sources]` table, or only non-path sources
- * (git/url/workspace deps aren't followed — they aren't local worker dirs).
- */
+/** `workers/`-relative dirs of a worker's `[tool.uv.sources]` path deps (other sources skipped). */
 function uvPathSourceDirs(workerSubDir) {
   const pyprojectPath = join(WORKERS_DIR, workerSubDir, 'pyproject.toml')
   if (!existsSync(pyprojectPath)) return []
@@ -244,23 +220,13 @@ function uvPathSourceDirs(workerSubDir) {
   while ((m = pathRe.exec(table)) !== null) {
     const abs = resolve(join(WORKERS_DIR, workerSubDir), m[1])
     const rel = relative(WORKERS_DIR, abs).split(sep).join('/')
-    // Only follow deps that resolve to another dir directly under workers/
-    // (skip anything that escapes workers/ or is nested deeper, which this
-    // simple resolver doesn't need to support today).
+    // Only deps that are a direct child of workers/ are followed.
     if (rel && !rel.startsWith('..') && !rel.includes('/')) dirs.push(rel)
   }
   return dirs
 }
 
 // ─── Module-graph reachability ────────────────────────────────────
-//
-// To decide which services a set of samples really needs, we walk the
-// TypeScript import graph starting from the kept sample folders (plus the
-// shared frontend infra that is always copied). A service is included only if
-// some reachable file lives in — or is imported by — its folder. This is far
-// more precise than scanning the shared `common/` barrels wholesale, which
-// dragged in every service referenced by *any* sample's helper (e.g. pulling
-// wake-word-detection into a RAG-only export).
 
 const FRONTEND_SRC = join(FRONTEND_DIR, 'src')
 const RESOLVE_EXTS = ['.ts', '.tsx', '.js', '.jsx', '.mjs']
@@ -354,12 +320,7 @@ function sourceFilesUnder(absDir) {
 
 // ─── Copy helpers ─────────────────────────────────────────────────
 
-/**
- * List git-tracked files under a path (relative to REPO_ROOT). Using
- * git ls-files automatically respects each subproject's .gitignore so
- * that build artefacts, virtualenvs, downloaded models, etc. are
- * excluded.
- */
+/** Git-tracked files under a repo-relative path, so ignored venvs, models and builds are skipped. */
 function gitTrackedFiles(relPath) {
   const out = execFileSync('git', ['ls-files', '-z', '--', relPath], {
     cwd: REPO_ROOT,
@@ -436,9 +397,7 @@ if (unknownServices.length > 0) {
   process.exit(1)
 }
 
-// Resolve services. Explicitly requested services are treated as required so
-// a services-only export (no samples) still resolves workers and transitive
-// service deps exactly like a sample-driven one.
+// Requested services count as required, so a services-only export resolves like a sample one.
 const requiredServiceIds = new Set(args.services)
 const optionalServiceIds = new Set()
 const sampleSummaries = []
@@ -458,27 +417,13 @@ if (args.includeOptional) {
   for (const id of optionalServiceIds) includedServiceIds.add(id)
 }
 
-// The shared `common` barrels (`src/samples/common`, `src/services/common`)
-// hold helpers for *many* samples. Copying them wholesale and scanning them for
-// `@/services/<id>` would over-include services that a kept sample doesn't use.
-//
-// Instead we walk the actual import graph from the kept samples (plus the
-// shared frontend infra that is always copied) and include a service only if
-// it is genuinely reachable. The same walk tells us exactly which `common`
-// files are needed, so the rest can be pruned. Because whole service folders
-// are copied, we iterate to a fixpoint: each newly-included service is seeded
-// back in so its own imports (e.g. lipsync → text-to-speech) are followed too.
-//
-// Optional-service integrations live in their own service folder and are wired
-// through the generated feature-provider registry (skipped by this walk), so an
-// unused optional service is never reachable and `--no-optional` can drop it.
-// See docs/OPTIONAL-SERVICES.md.
+// Include a service only if the import graph from the kept samples and shared infra reaches it:
+// the shared `common` barrels serve many samples, so scanning them would over-include. Iterate to a
+// fixpoint so each new service's own imports count. Optional services are wired through the
+// generated feature-provider registry, which the walk skips, so --no-optional can drop them.
 
-// Shared-infra roots: everything under src/ that isn't a specific sample or
-// service folder (those are handled separately) and isn't a per-sample API
-// route that will be pruned away. The shared infra resolves samples/services
-// dynamically via the regenerated `_generated` registries, so seeding it here
-// does not pull in unrelated entities.
+// Shared infra: all of src/ except sample/service folders and other samples' API routes. It reaches
+// entities only through the `_generated` registries, which the walk skips.
 const sharedInfraRoots = []
 for (const file of sourceFilesUnder(FRONTEND_SRC)) {
   const segs = toPosixRel(FRONTEND_SRC, file).split('/')
@@ -528,7 +473,6 @@ for (const file of reached) {
   }
 }
 
-// Validate that every included service exists as a folder
 const missingService = [...includedServiceIds].filter(
   (id) => !allServices.includes(id),
 )
@@ -537,35 +481,35 @@ if (missingService.length > 0) {
   process.exit(1)
 }
 
-// Resolve worker dirs. Most workers are a single top-level dir under workers/;
-// suite workers are nested (workers/suite/<suite>/<leaf>) and tracked precisely
-// so unrelated suites/apps aren't dragged in.
-const workerDirs = new Set(['helper'])
+// workerSubDir values carry their group prefix (`services/<name>`, `suites/<suite>/<leaf>`).
+// `services/helper` backs the device-detection API routes; every service depends on `common`.
+const workerDirs = new Set(['common', 'services/helper'])
 const suiteWorkerDirs = new Set()
 let needsMultiserve = false
 for (const id of includedServiceIds) {
   const info = parseServiceInfo(id)
   if (info.mode === 'worker') {
-    const sub = info.workerSubDir ?? id
+    // Without a literal workerSubDir (none set, or a function picking the
+    // backend) the worker lives at workers/services/<id>, as in
+    // resolveWorkerDir (frontend/src/lib/workers/worker-dir.ts).
+    const sub = info.workerSubDir ?? `services/${id}`
     const segs = sub.split('/')
-    if (segs[0] === 'suite') {
-      // workerSubDir is `suite/<suite>/<leaf>`; keep just that leaf app dir.
+    if (segs[0] === 'suites') {
+      // workerSubDir is `suites/<suite>/<leaf>`; keep just that leaf app dir.
       suiteWorkerDirs.add(segs.slice(0, 3).join('/'))
     } else {
-      // Some services use a function returning '<name>/<model>'; take the parent.
-      workerDirs.add(segs[0])
+      // `services/<name>[/<backend>]`: keep the group dir, so multi-backend workers ship whole.
+      workerDirs.add(segs.slice(0, 2).join('/'))
     }
   } else if (info.mode === 'multiserve') {
     needsMultiserve = true
   }
   // 'none' => no worker
 }
-if (needsMultiserve) workerDirs.add('engine/multiserve')
+if (needsMultiserve) workerDirs.add('engines/multiserve')
 
-// Follow local uv path dependencies (`[tool.uv.sources] foo = { path = "../foo" }`)
-// declared in each included worker's pyproject.toml, so a worker that imports
-// another as a local package (e.g. speech-to-text -> audio-input-stream) has
-// that package copied too. Iterate to a fixpoint in case of transitive deps.
+// Follow local uv path deps (`foo = { path = "../foo" }`) to a fixpoint. Workspace members use
+// `{ workspace = true }` instead, and excluded projects' path deps point into common/.
 for (;;) {
   const before = workerDirs.size
   for (const wd of [...workerDirs]) {
@@ -577,9 +521,7 @@ for (;;) {
 // Combined list for human-readable / manifest reporting.
 const reportedWorkerDirs = [...workerDirs, ...suiteWorkerDirs].sort()
 
-// The resolved plan — shared by the JSON dry-run (used by the UI export
-// preview) and the EXPORT_MANIFEST written at the end, so the preview always
-// matches what an actual export would produce.
+// Shared by the JSON dry-run (the UI's export preview) and EXPORT_MANIFEST, so the two always match.
 const exportPlan = {
   samples: sampleSummaries,
   requestedServices: [...args.services].sort(),
@@ -592,11 +534,7 @@ const exportPlan = {
   includeOptional: args.includeOptional,
 }
 
-/**
- * Human-readable plan. Only mentions what was actually requested: a
- * services-only export talks about services, a sample export lists each
- * sample with the services being exported for it.
- */
+/** Human-readable plan; mentions only what was requested. */
 function printPlan(header) {
   console.log(header)
   if (args.samples.length > 0) {
@@ -640,9 +578,7 @@ if (args.dryRun) {
   process.exit(0)
 }
 
-// Output directory — resolved relative to the user's cwd so that paths like
-// `--out=out/foo` work whether the script is invoked from the repo root or
-// from frontend/ via `npm run export-bundle`.
+// --out is relative to the cwd, so it works from the repo root and from frontend/ (npm script).
 const outDirRel = args.out ?? `out/${[...args.samples, ...args.services].join('_')}`
 const outDir = args.out
   ? resolve(process.cwd(), outDirRel)
@@ -652,7 +588,6 @@ console.log('')
 printPlan('Export plan')
 console.log(`  Output:   ${relative(REPO_ROOT, outDir)}\n`)
 
-// Wipe & recreate output
 rmSync(outDir, { recursive: true, force: true })
 mkdirSync(outDir, { recursive: true })
 
@@ -687,10 +622,6 @@ const frontendFiles = gitTrackedFiles('frontend').filter((rel) => {
     const folder = apiM[1]
     if (allSamples.includes(folder)) return args.samples.includes(folder)
     if (allServices.includes(folder)) return includedServiceIds.has(folder)
-    // Special-case: wake-word-events route is only useful with that service
-    if (folder === 'wake-word-events') {
-      return includedServiceIds.has('wake-word-detection')
-    }
     return true
   }
 
@@ -698,9 +629,22 @@ const frontendFiles = gitTrackedFiles('frontend').filter((rel) => {
 })
 copyTrackedFiles(frontendFiles, outDir)
 
-// 2) Workers — copy only the worker dirs we need (plus the top-level setup
-//    scripts), via git ls-files to skip .venv/, .cache/, models/, etc.
-const workerSetupFiles = ['workers/setup.sh', 'workers/setup.ps1']
+// 2) Workers: the needed worker dirs plus the workspace root, lock and shared helpers (without
+//    them the bundle has no workspace), and the upstream-code catalogue and fetch script setup uses.
+const workerSetupFiles = [
+  'workers/setup.sh',
+  'workers/setup.ps1',
+  'workers/pyproject.toml',
+  'workers/uv.lock',
+  'workers/.python-version',
+  'workers/scripts/worker-common.sh',
+  'workers/scripts/worker-common.ps1',
+  'workers/scripts/oep_env.py',
+  'workers/oep-setup.sh',
+  'workers/oep-setup.ps1',
+  'workers/oep-services.json',
+  'workers/oep-services.schema.json',
+]
 copyTrackedFiles(workerSetupFiles, outDir)
 
 for (const wd of workerDirs) {
@@ -708,30 +652,23 @@ for (const wd of workerDirs) {
   copyTrackedFiles(files, outDir)
 }
 
-// Suite workers are nested (workers/suite/<suite>/<leaf>). Each suite has its
-// own setup.sh/setup.ps1 that the suite's start script invokes on first launch
-// (guarded by a sentinel file). The top-level workers/suite orchestrator setup
-// has been removed; only the per-suite scripts are needed.
+// Suite workers also need their suite's setup.sh/setup.ps1, which the start script runs on first launch.
 for (const swd of suiteWorkerDirs) {
   copyTrackedFiles(gitTrackedFiles(`workers/${swd}`), outDir)
   const suiteName = swd.split('/')[1]
   copyTrackedFiles(
     [
-      `workers/suite/${suiteName}/setup.sh`,
-      `workers/suite/${suiteName}/setup.ps1`,
+      `workers/suites/${suiteName}/setup.sh`,
+      `workers/suites/${suiteName}/setup.ps1`,
     ],
     outDir,
   )
 }
 
-// The multiserve worker lives at workers/engine/multiserve, but workers/setup.sh
-// only discovers *direct* children of workers/ that contain a setup script. The
-// `engine` dir has its own orchestrator setup that runs its children — copy it
-// so the exported setup actually reaches multiserve (otherwise it's silently
-// skipped and the engine never gets installed).
+// The engine binaries are shared third-party assets installed during setup.
 if (needsMultiserve) {
   copyTrackedFiles(
-    ['workers/engine/setup.sh', 'workers/engine/setup.ps1'],
+    ['workers/engines/setup.sh', 'workers/engines/setup.ps1'],
     outDir,
   )
 }
@@ -752,6 +689,7 @@ for (const f of [
 copyTrackedFiles(
   [
     'scripts/bash/setup_thirdparty.sh',
+    'scripts/bash/llamacpp_backend.sh',
     'scripts/win/install_visual_cpp_redistributable.ps1',
     'scripts/win/setup_thirdparty.ps1',
     'scripts/win/setup.ps1',

@@ -1,170 +1,71 @@
 // Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-import type { LucideIcon } from 'lucide-react'
-import type { ComponentType } from 'react'
+import type { ServiceStatus } from '@/lib/instances/service-status'
 import type { Service as PayloadService } from '@/payload-types'
-import type {
-  DeviceBackend,
-  EngineId,
-  HttpMethod,
-  LogSource,
-  ModelSource,
-  ModelWeight,
-  OS,
-  ServiceConfig,
-} from '@/types/common'
+import type { HttpMethod } from '@/types/common'
 
-// Re-export shared types so existing imports from '@/services/types' continue to work
+export type {
+  DeviceOption,
+  ExecutionMode,
+  ExecutionModeOption,
+  Service,
+  ServiceExecution,
+  ServiceInstance,
+  ServiceMeta,
+} from '@/types/service'
 export type {
   DeviceBackend,
-  EngineId,
   HttpMethod,
-  LogLevel,
   LogSource,
   ModelOption,
   ModelSource,
   ModelWeight,
-  SelectOption,
   ServiceConfig,
 } from '@/types/common'
 
-export type ExecutionMode = 'worker' | 'none' | EngineId
-export type ServiceExecution = { mode: ExecutionMode | ExecutionMode[] }
-
-export function getExecutionModes(
-  execution: ServiceExecution,
-): ExecutionMode[] {
-  return Array.isArray(execution.mode) ? execution.mode : [execution.mode]
-}
-
-export function hasExecutionMode(
-  execution: ServiceExecution,
-  target: ExecutionMode,
-): boolean {
-  return getExecutionModes(execution).includes(target)
-}
+/** See `WorkerConfig.modelCatalog`. */
+export type WorkerModelCatalog =
+  'script' | { presetPaths: Record<string, string | string[]> }
 
 export interface WorkerConfig {
   buildArgs: (doc: PayloadService) => string[]
   workerSubDir?: string | ((doc: PayloadService) => string)
+  /** What "Clear model cache" removes, relative to the repository root. */
   modelDirectories?: string[]
+  /**
+   * How the on-disk model catalogue learns which presets are downloaded without starting the
+   * worker: `'script'` runs the worker's `list_models.py --models <id…>`; `presetPaths` are
+   * repo-relative paths/globs that must each match a non-empty file; omitted: no per-preset state.
+   */
+  modelCatalog?: WorkerModelCatalog
   requiresDocker?: boolean
   stopScript?: boolean
+  /**
+   * Whether the worker parses `--instance-id` / `--data-dir` (every worker gets the INSTANCE_* env).
+   * Docker suites opt out because their start scripts reject unknown flags.
+   */
+  acceptsInstanceArgs?: boolean
+  /**
+   * Row variants the model catalogue resolves a preset's worker directory against. By default the
+   * id is substituted as the row's model; a service that picks its worker otherwise (e.g. per
+   * backend) returns one variant per worker that can run the id.
+   */
+  catalogRows?: (doc: PayloadService, modelId: string) => PayloadService[]
 }
 
-export type ServiceStatus = 'online' | 'offline' | 'error' | 'starting'
+export type { ServiceStatus } from '@/lib/instances/service-status'
+export {
+  instancePreference,
+  isRunningStatus,
+} from '@/lib/instances/service-status'
 
-export interface ServiceMetrics {
-  latency: string
-  throughput: string
-  modelSize: string
-}
-
-export interface DeviceOption {
-  value: string
-  label: string
-}
-
-// Matches device option value against backend-reported value, handling backend-specific naming
-export function isDeviceMatch(
-  optionValue: string,
-  backendDeviceValue: string,
-  backend?: DeviceBackend,
-): boolean {
-  const strip = (v: string) => v.replace(/[.:]\d+$/i, '').toLowerCase()
-  const a = strip(optionValue)
-  const b = strip(backendDeviceValue)
-  if (a === b) return true
-  if (backend === 'pytorch') {
-    if ((a === 'gpu' && b === 'xpu') || (a === 'xpu' && b === 'gpu'))
-      return true
-  }
-  return false
-}
-
-// Resolves device options for a model, falling back to ServiceConfig.availableDevices
-export function getDevicesForModel(
-  config: ServiceConfig | undefined,
-  modelValue: string,
-): string[] {
-  const model = config?.availableModels?.find((m) => m.value === modelValue)
-  if (model?.availableDevices?.length) return model.availableDevices
-  return config?.availableDevices ?? []
-}
-
-// True when the service accepts model names beyond availableModels
-export function supportsCustomModels(
-  config: ServiceConfig | undefined,
-): boolean {
-  if (!config) return false
-  return (
-    Boolean(config.supportsCustomModel) ||
-    (config.availableModelSources ?? []).some((s) => s.value === 'custom')
-  )
-}
-
-export function getBackendForModel(
-  config: ServiceConfig | undefined,
-  modelValue: string,
-): DeviceBackend | undefined {
-  const model = config?.availableModels?.find((m) => m.value === modelValue)
-  return model?.backend
-}
-
-export function getWeightForModel(
-  config: ServiceConfig | undefined,
-  modelValue: string,
-): ModelWeight | undefined {
-  const model = config?.availableModels?.find(
-    (m) => m.value.toLowerCase() === modelValue.toLowerCase(),
-  )
-  return model?.weight
-}
-
-export interface ServiceMeta {
-  id: PayloadService['type']
-  name: string
-  description: string
-  longDescription: string
-  icon: LucideIcon
-  port?: number
-  reservedPorts?: number[]
-  model?: string
-  hardware?: string
-  framework?: string
-  metrics?: ServiceMetrics
-  supportedOS: OS[]
-  execution: ServiceExecution
-  defaultModel?: {
-    name: string
-    device: string
-    backend?: string
-    quant?: string
-  }
-  healthCheck?: PayloadService['healthCheck']
-  config?: ServiceConfig
-  logSources: LogSource[]
-  prerequisiteServices?: PayloadService['type'][]
-
-  metadata?: PayloadService['metadata']
-
-  hidden?: boolean
-}
-
-export interface Service extends ServiceMeta {
+/** A service type's overview status: the best across its instances, else its one instance's. */
+export function getServiceLiveStatus(service: {
   status: ServiceStatus
-  demo?: ComponentType<{ service: Service }>
-  /** Payload CMS record ID — set after DB record is found */
-  dbId?: number
-  engine?: PayloadService['engine']
-  currentModel?: string
-  currentDevice?: string
-  currentBackend?: DeviceBackend
-  currentModelType?: string
-  currentQuant?: string
-  currentSource?: ModelSource
-  metadata?: PayloadService['metadata']
+  aggregateStatus?: ServiceStatus
+}): ServiceStatus {
+  return service.aggregateStatus ?? service.status
 }
 
 export interface ApiParam {
@@ -172,6 +73,8 @@ export interface ApiParam {
   type: string
   required: boolean
   desc: string
+  /** Ids of the `ServiceDocsData.backends` that take it; absent: all. */
+  backends?: string[]
 }
 
 export interface ApiEndpoint {
@@ -179,6 +82,8 @@ export interface ApiEndpoint {
   path: string
   description: string
   params?: ApiParam[]
+  /** Ids of the `ServiceDocsData.backends` that serve it; absent: all. */
+  backends?: string[]
 }
 
 export interface CodeSnippet {
@@ -192,11 +97,58 @@ export interface CodeSample {
   codeSnippets: CodeSnippet[]
 }
 
+/** A backend a service can run on whose API differs from the others'. */
+export interface DocsBackend {
+  id: string
+  /** How the docs name it, e.g. "OEP backend". */
+  label: string
+}
+
+/**
+ * Shown before the API reference: a few steps and one request that works as written against the
+ * selected instance. The docs page adds the step that gets the instance running.
+ */
+export interface DocsQuickStart {
+  /** Two or three short steps, in Markdown. */
+  steps: string[]
+  /** One minimal working request against the instance's URL. */
+  request: CodeSnippet
+}
+
+/** What a failed request answers, and when. */
+export interface DocsErrors {
+  /** The error body's shape, in Markdown. */
+  intro: string
+  cases: { status: number; when: string }[]
+}
+
 export interface ServiceDocsData {
+  quickStart: DocsQuickStart
   serviceDescription?: string
   overview: string
-  endpoints: ApiEndpoint[]
+  /** Optional: a service whose API is not listed endpoint by endpoint. */
+  endpoints?: ApiEndpoint[]
+  /** The backends some endpoints or parameters are limited to; omitted when all share one API. */
+  backends?: DocsBackend[]
+  /** The selected instance's backend: one of `backends`, absent with none. */
+  activeBackend?: string
+  errors?: DocsErrors
   sampleCodeIntro?: string
-  sampleCode: CodeSample[]
-  responseExample: string
+  sampleCode?: CodeSample[]
+  responseExample?: string
+}
+
+/** What a service's docs factory (`<service>/docs.ts`) is told. */
+export interface DocsFactoryOptions {
+  /** The selected instance's API address, or a placeholder without one. */
+  host: string
+  /** The model to name in requests, qualified as the API expects it. */
+  model?: string
+  /** The worker's own port, only while it runs (WebSocket endpoints). */
+  port?: number
+  /**
+   * The selected instance's metadata (e.g. `sttBackend`) as its running process started with it,
+   * else as saved; absent before the service has an instance.
+   */
+  metadata?: Record<string, unknown>
 }

@@ -1,0 +1,16 @@
+[project]
+name = "ppt-translator"
+version = "0.1.0"
+description = "AI-powered PowerPoint translation service"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "worker-common",
+    "fastapi[all]>=0.128.0",
+    "python-pptx>=0.6.21",
+    "requests>=2.25.1",
+    "uvicorn>=0.32.1",
+]
+
+[tool.uv.sources]
+worker-common = { workspace = true }

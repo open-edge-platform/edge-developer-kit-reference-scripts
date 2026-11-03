@@ -3,11 +3,11 @@
 
 'use client'
 
-import { CircleAlert, CircleCheck, Loader2, X } from 'lucide-react'
+import { CircleAlert, CircleCheck, Loader, X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { AudioDropZone } from '@/services/common/components/audio-drop-zone'
-import { type EnrolledSpeaker, SPEAKER_COLORS } from './shared'
+import { type EnrolledSpeaker, SPEAKER_COLORS } from '../lib/speakers'
 
 export function SpeakerCard({
   speaker,
@@ -36,29 +36,39 @@ export function SpeakerCard({
         <Input
           value={speaker.label}
           onChange={(e) => onLabelChange(e.target.value)}
+          aria-label="Speaker name"
           placeholder="Speaker name"
           className="h-7 flex-1 text-xs"
           disabled={disabled}
         />
         <div className="flex w-5 shrink-0 items-center justify-center">
           {speaker.status === 'enrolling' && (
-            <Loader2 className="text-muted-foreground h-3.5 w-3.5 animate-spin" />
+            <Loader
+              aria-label="Enrolling"
+              className="text-muted-foreground h-3.5 w-3.5 animate-spin"
+            />
           )}
           {speaker.status === 'enrolled' && (
-            <CircleCheck className="h-3.5 w-3.5 text-green-500" />
+            <CircleCheck
+              aria-label="Enrolled"
+              className="text-success h-3.5 w-3.5"
+            />
           )}
           {speaker.status === 'error' && (
-            <CircleAlert className="text-destructive h-3.5 w-3.5" />
+            <CircleAlert
+              aria-label="Enrollment failed"
+              className="text-destructive h-3.5 w-3.5"
+            />
           )}
         </div>
         <button
           type="button"
           onClick={onRemove}
           disabled={disabled}
-          className="text-muted-foreground hover:text-foreground shrink-0 p-0.5 transition-colors disabled:opacity-50"
+          className="text-muted-foreground hover:text-foreground hover:bg-muted/50 flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors disabled:opacity-50"
           aria-label={`Remove ${speaker.label}`}
         >
-          <X className="h-3.5 w-3.5" />
+          <X aria-hidden="true" className="h-3.5 w-3.5" />
         </button>
       </div>
       <AudioDropZone
@@ -70,7 +80,9 @@ export function SpeakerCard({
         disabled={disabled}
       />
       {speaker.status === 'error' && speaker.error && (
-        <p className="text-destructive text-[11px]">{speaker.error}</p>
+        <p role="alert" className="text-destructive text-xs">
+          {speaker.error}
+        </p>
       )}
     </div>
   )

@@ -1,0 +1,25 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+[project]
+name = "model-downloader"
+version = "0.1.0"
+description = "Model fetching shared by every Edge AI Studio worker: Hugging Face through the OEP model-download microservice, ModelScope, plain URLs, and ovms --pull"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    # >=0.26 for HfApi.auth_check, which the upstream HuggingFace plugin uses
+    # to turn a gated/private repo into a readable error before downloading.
+    "huggingface-hub>=0.26",
+]
+
+[project.optional-dependencies]
+# Only needed by workers that offer `--source modelscope`.
+modelscope = ["modelscope>=1.26"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["model_downloader"]

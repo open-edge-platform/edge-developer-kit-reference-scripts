@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Demo Studio upstream source catalogue (workers/oep-services.json)",
+  "description": "Which Open Edge Platform microservices Demo Studio takes from open-edge-platform/edge-ai-libraries (\"services\": one shared release tag, one sparse clone cached at workers/thirdparty/edge-ai-libraries) and which plain git repositories a worker vendors at a pinned commit or tag (\"sources\": their own repository and ref, one sparse clone each under workers/thirdparty/git/<name>). Read by workers/oep-setup.sh, workers/oep-setup.ps1 and the Python adapters. Every entry is copied out of its cache into a flat directory next to its worker, patched and overlaid if the entry says so. A worker that is in neither list is custom code.",
+  "type": "object",
+  "required": [
+    "tag",
+    "services"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "repository": {
+      "type": "string",
+      "description": "Git URL of edge-ai-libraries. Default: https://github.com/open-edge-platform/edge-ai-libraries.git",
+      "default": "https://github.com/open-edge-platform/edge-ai-libraries.git"
+    },
+    "tag": {
+      "type": "string",
+      "description": "Release tag of edge-ai-libraries every service is fetched at, e.g. 2026.2.1. EDGE_AI_LIBRARIES_REF overrides it for one run; `oep-setup.sh pin <tag>` rewrites it.",
+      "minLength": 1
+    },
+    "services": {
+      "type": "array",
+      "description": "One entry per worker that wraps an upstream microservice and runs it natively (no container).",
+      "items": {
+        "type": "object",
+        "required": [
+          "worker",
+          "subdir"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "worker": {
+            "type": "string",
+            "description": "Directory under workers/ that wraps the service, e.g. services/speech-to-text/oep or services/text-to-speech/oep-tts. Its start.sh/setup.sh run `oep-setup.sh fetch <worker>`; optional replacement files live in <worker>/overlay/ (or <worker>/overlay/<name>/ when the worker has several entries)."
+          },
+          "subdir": {
+            "type": "string",
+            "description": "Path of the microservice inside edge-ai-libraries, e.g. microservices/audio-analyzer. Only this directory is copied to the worker."
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name, also the default directory name of the copy. Default: last segment of subdir."
+          },
+          "sentinel": {
+            "type": "string",
+            "description": "File relative to subdir that proves the copy is complete, e.g. pipeline.py. Default: the directory itself."
+          },
+          "dir": {
+            "type": "string",
+            "description": "Where the microservice is copied to, relative to the worker directory. Default: thirdparty/<name> (add /thirdparty to the worker's .gitignore). The copy carries a .demo-studio-edge-ai-libraries-ref file with the tag it was made from."
+          },
+          "home_env": {
+            "type": "string",
+            "description": "Environment variable that, when set, names a directory already holding the microservice (e.g. microservices/<name> of a local edge-ai-libraries checkout) to use instead of the copy. It is used as is: nothing is fetched into or removed from it; overlay/ is still applied."
+          },
+          "tag": {
+            "type": "string",
+            "description": "Per-service tag override. Default: the top-level tag."
+          },
+          "install": {
+            "type": "object",
+            "description": "How upstream installs the service's Python dependencies (its Dockerfile), for a worker whose .venv is built from upstream's own files rather than a pyproject/uv.lock of ours (workers/scripts/oep_env.py). Paths are relative to the fetched copy, so a tag bump needs no change here unless upstream renames them. <worker>/overrides.txt, when present, is passed as uv overrides: only for what would not install or run on our platforms.",
+            "required": [
+              "requirements"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "requirements": {
+                "type": "string",
+                "description": "The file upstream installs from: a requirements.txt, or a Poetry pyproject.toml (its [[tool.poetry.source]] URLs become extra indexes)."
+              },
+              "constraints": {
+                "type": "string",
+                "description": "Upstream's lock, applied as constraints: a poetry.lock (its git packages are held at the locked commit) or a pip constraints file."
+              },
+              "uninstall": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Packages upstream's Dockerfile uninstalls after installing."
+              },
+              "python": {
+                "type": "string",
+                "description": "Python version of the environment. Default: 3.12."
+              }
+            }
+          }
+        }
+      }
+    },
+    "sources": {
+      "type": "array",
+      "description": "One entry per upstream git repository a worker vendors; a worker may have several (malaya needs malaya and malaya-speech). `oep-setup.sh fetch <worker>` fetches all of them.",
+      "items": {
+        "type": "object",
+        "required": [
+          "worker",
+          "repository",
+          "ref",
+          "subdir"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "worker": {
+            "type": "string",
+            "description": "Directory under workers/ that uses the code, e.g. services/text-to-speech/kokoro. Its start.sh/start.ps1 fetch the selected worker's sources before syncing its dependencies, so path sources exist when uv uses them."
+          },
+          "repository": {
+            "type": "string",
+            "description": "Git URL of the upstream repository, e.g. https://github.com/hexgrad/kokoro.git."
+          },
+          "ref": {
+            "type": "string",
+            "description": "The commit (40 hex characters) or tag to vendor. Changed only here: EDGE_AI_LIBRARIES_REF does not apply to sources.",
+            "minLength": 1
+          },
+          "subdir": {
+            "type": "string",
+            "description": "Path inside the repository to copy, usually the Python package directory, e.g. kokoro or malaya_speech. Only this directory is materialised in the sparse clone."
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name, the cache directory under workers/thirdparty/git/ and the default directory name of the copy. Default: last segment of subdir."
+          },
+          "sentinel": {
+            "type": "string",
+            "description": "File relative to the copy that proves it is complete, e.g. __init__.py (or optimum/exporters/openvino/model_configs.py with keep_root). Default: the directory itself."
+          },
+          "dir": {
+            "type": "string",
+            "description": "Where the copy lands, relative to the worker directory. Default: thirdparty/<name> (add it to the worker's .gitignore). The copy carries a .demo-studio-source-ref file with the ref it was made from."
+          },
+          "keep_root": {
+            "type": "boolean",
+            "description": "Copy the repository's top-level files (setup.py, requirements.txt, README) too and keep subdir at its path, so the copy is a buildable project a pyproject.toml can take by path (optimum-intel). Default: false, the subdir's contents are copied flat (an importable package directory, as kokoro is used)."
+          },
+          "patch": {
+            "type": "string",
+            "description": "A diff kept in the worker directory to apply to the copy after it is made (git apply, outside any repository), e.g. kokoro.patch."
+          },
+          "patch_strip": {
+            "type": "integer",
+            "description": "Leading path components to strip when applying the patch (git apply -p<n>). A patch made against the repository root for a copy of subdir needs 1 + the depth of subdir; kokoro's is 2. Default: 1.",
+            "minimum": 0,
+            "default": 1
+          },
+          "home_env": {
+            "type": "string",
+            "description": "Environment variable that, when set, names a directory already holding the code (a local checkout) to use instead of the copy. Used as is; overlay/ is still applied."
+          }
+        }
+      }
+    }
+  }
+}

@@ -26,4 +26,4 @@ docker compose up -d
 Notes
 - If you don't have GPU/NPU hardware, you can leave the device lines commented; the app will still run but without hardware acceleration.
 - If `getent group render` returns nothing, you may need to find the appropriate group ID for your system (often `render` or `video`) or run without setting `RENDER_GROUP_ID` and adjust permissions manually.
-- The app is exposed on port `8080` by default; open http://localhost:8080 after the container is running.
+- The app is exposed on port `8080` by default; open http://127.0.0.1:8080 after the container is running.

@@ -3,38 +3,16 @@
 
 import withBundleAnalyzer from '@next/bundle-analyzer'
 import { withPayload } from '@payloadcms/next/withPayload'
-import { logger } from './src/lib/logger'
 import type { NextConfig } from 'next'
-import Database from 'libsql'
-import path from 'node:path'
-import { getServicesPortMap } from './src/services/config-registry'
-
-const proxyTimeoutSetting = () => {
-  const dbPath = path.resolve(process.cwd(), 'db.sqlite')
-  const db = new Database(dbPath)
-
-  try {
-    const row = db
-      .prepare('SELECT proxy_timeout FROM app_settings LIMIT 1')
-      .get() as { proxy_timeout?: number } | undefined
-    return row?.proxy_timeout ?? 300
-  } catch (error) {
-    logger.warn(
-      '[next.config.ts] proxyTimeout read skipped: ',
-      error instanceof Error ? error.message : String(error),
-    )
-    return 300
-  } finally {
-    db.close()
-  }
-}
+// Plain generated data: next.config.ts is transpiled without the `@/` alias,
+// so it must not load the service registry itself.
+import { proxiedServiceTypes } from './src/services/_generated/proxied-services'
 
 const bundleAnalyzer = withBundleAnalyzer({
   enabled: process.env.ANALYZE === 'true',
 })
 
 const nextConfig: NextConfig = {
-  /* config options here */
   output: 'standalone',
   outputFileTracingExcludes: {
     '/*': [
@@ -56,17 +34,30 @@ const nextConfig: NextConfig = {
     ],
   },
   reactCompiler: true,
-  allowedDevOrigins: [],
+  // `next dev` trusts only `localhost` for HMR and dev assets; the app is
+  // opened at 127.0.0.1.
+  allowedDevOrigins: [
+    '127.0.0.1',
+    ...(process.env.NEXT_DEV_ORIGIN ? [process.env.NEXT_DEV_ORIGIN] : []),
+  ],
   async rewrites() {
     return [
-      ...Object.entries(getServicesPortMap()).map(([name, port]) => ({
+      // Service ports are allocated at start, so worker traffic goes through the instance proxy
+      // route, which looks the port up: /api/<type>@<id>/*. A bare /api/<type>/* gets a 404 listing
+      // the real addresses. `_draft` is a type's row-less draft engine (DRAFT_ENGINE_INSTANCE_ID).
+      {
+        source: '/api/:type([a-z0-9-]+)@:instance(_draft|[a-z0-9-]+)/:path*',
+        destination: '/api/instance-proxy/:type@:instance/:path*',
+      },
+      ...proxiedServiceTypes.map((name) => ({
         source: `/api/${name}/:path*`,
-        destination: `http://127.0.0.1:${port}/:path*`,
+        destination: `/api/instance-proxy/${name}/:path*`,
       })),
     ]
   },
+  // No `proxyTimeout`: it only bounds rewrites to external URLs; the instance proxy route applies
+  // the saved proxy timeout itself.
   experimental: {
-    proxyTimeout: 1000 * proxyTimeoutSetting(),
     proxyClientMaxBodySize: 500 * 1024 * 1024,
   },
 }

@@ -3,10 +3,11 @@
 
 'use client'
 
-import { Loader2, Play } from 'lucide-react'
+import { Loader, Play } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
 import { AudioDropZone } from '@/services/common/components/audio-drop-zone'
 import {
   Select,
@@ -16,6 +17,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { toastError } from '@/lib/browser/toast-error'
 import { useAudioLipsync } from '../hooks'
 import { FrameGenerationSwitch } from './frame-generation-switch'
 
@@ -35,18 +37,20 @@ export interface AudioLipsyncTabProps {
   sessionId: string | null
   frameGeneration: boolean
   onFrameGenerationChange: (checked: boolean) => void
+  apiBase: string | undefined
 }
 
 export function AudioLipsyncTab({
   sessionId,
   frameGeneration,
   onFrameGenerationChange,
+  apiBase,
 }: AudioLipsyncTabProps) {
   const [selectedAudioFile, setSelectedAudioFile] = useState<File | null>(null)
   const [textOverlay, setTextOverlay] = useState('')
   const [languageCode, setLanguageCode] = useState('en-US')
 
-  const audioLipsync = useAudioLipsync()
+  const audioLipsync = useAudioLipsync(apiBase)
   const isConnected = sessionId !== null
 
   const clearAudioFile = () => setSelectedAudioFile(null)
@@ -68,8 +72,7 @@ export function AudioLipsyncTab({
           )
           clearAudioFile()
         },
-        onError: () =>
-          toast.error('Failed to process audio file. Please try again.'),
+        onError: toastError('Failed to process audio file'),
       },
     )
   }
@@ -94,12 +97,12 @@ export function AudioLipsyncTab({
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
-          <label
+          <Label
             htmlFor="language-select"
             className="text-muted-foreground text-xs font-medium"
           >
             Language (Optional, needed only if you have text overlay)
-          </label>
+          </Label>
           <Select
             value={languageCode}
             onValueChange={setLanguageCode}
@@ -124,13 +127,13 @@ export function AudioLipsyncTab({
 
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
-            <label
+            <Label
               htmlFor="text-overlay"
               className="text-muted-foreground text-xs font-medium"
             >
               Text Overlay{' '}
               <span className="text-muted-foreground/70">(Optional)</span>
-            </label>
+            </Label>
             <span className="text-muted-foreground text-xs">
               {textOverlay.length}/200
             </span>
@@ -157,10 +160,10 @@ export function AudioLipsyncTab({
         data-testid="lipsync-process-button"
         onClick={handleProcessAudio}
         disabled={!selectedAudioFile || !isConnected || audioLipsync.isPending}
-        className="bg-primary hover:bg-primary-light gap-2 text-white"
+        className="gap-2"
       >
         {audioLipsync.isPending ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
+          <Loader className="h-4 w-4 animate-spin" />
         ) : (
           <Play className="h-4 w-4" />
         )}

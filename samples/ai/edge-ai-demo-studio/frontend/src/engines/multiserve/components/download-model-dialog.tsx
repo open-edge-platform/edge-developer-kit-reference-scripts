@@ -4,7 +4,8 @@
 'use client'
 
 import { AlertCircle, Plus, TriangleAlert } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
+import { useId, useState } from 'react'
+import { InlineNotice } from '@/components/common/inline-notice'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -25,6 +26,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { KNOWN_QUANTIZATIONS } from '@/engines/multiserve/config'
+import { tasksFor, defaultTaskFor } from '@/engines/multiserve/constants'
 import type { BackendId } from '@/engines/multiserve/types'
 import {
   isKnownWeightFormat,
@@ -32,18 +34,14 @@ import {
   validateModelName,
 } from '@/engines/multiserve/validation'
 
-const SERVICE_TASK_MAP: Record<string, string[]> = {
-  'text-generation': ['text_generation', 'multimodal'],
-  embeddings: ['embeddings'],
-  rerank: ['rerank'],
-}
-
 interface DownloadModelDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  serviceId: string
+  /** The instance the model is added to; its type decides the tasks. */
+  instanceKey: string
   backend: BackendId
   existingModelIds: string[]
+  /** Called with the model to add; the dialog is cleared for the next one. */
   onDownload: (params: {
     backend: BackendId
     repoId: string
@@ -51,43 +49,45 @@ interface DownloadModelDialogProps {
     weightFormat?: string
     additionalParams?: string
   }) => void
-  isDownloading: boolean
 }
 
+function nameProblem(
+  modelId: string,
+  backend: BackendId,
+  existingModelIds: string[],
+): string {
+  if (!modelId.trim()) return ''
+  if (!validateModelName(modelId, backend)) {
+    return backend === 'llamacpp'
+      ? 'Must follow org/model-GGUF:quant format (e.g. Qwen/Qwen3-4B-GGUF:Q5_0). Quantization is required.'
+      : 'Must follow org/model format (e.g. OpenVINO/phi-3-mini-ov).'
+  }
+  if (existingModelIds.includes(modelId)) {
+    return 'This model is already downloaded.'
+  }
+  return ''
+}
+
+/**
+ * Adds a model by name; it is selected and downloaded when the instance next starts. A non-IR
+ * OpenVINO model takes a weight format (and optional parameters) to convert with.
+ */
 export function DownloadModelDialog({
   open,
   onOpenChange,
-  serviceId,
+  instanceKey,
   backend,
   existingModelIds,
   onDownload,
-  isDownloading,
 }: DownloadModelDialogProps) {
   const [modelId, setModelId] = useState('')
-  const [taskType, setTaskType] = useState(() => {
-    const tasks = SERVICE_TASK_MAP[serviceId]
-    return tasks?.[0] ?? 'text_generation'
-  })
+  const hintId = useId()
+  const [taskType, setTaskType] = useState(() => defaultTaskFor(instanceKey))
   const [weightFormat, setWeightFormat] = useState('')
   const [additionalParams, setAdditionalParams] = useState('')
 
-  const availableTasks = useMemo(
-    () => SERVICE_TASK_MAP[serviceId] ?? ['text_generation'],
-    [serviceId],
-  )
-
-  const validationError = useMemo(() => {
-    if (!modelId.trim()) return ''
-    if (!validateModelName(modelId, backend)) {
-      return backend === 'llamacpp'
-        ? 'Must follow org/model-GGUF:quant format (e.g. Qwen/Qwen3-4B-GGUF:Q5_0). Quantization is required.'
-        : 'Must follow org/model format (e.g. OpenVINO/phi-3-mini-ov).'
-    }
-    if (existingModelIds.includes(modelId)) {
-      return 'This model is already downloaded.'
-    }
-    return ''
-  }, [modelId, backend, existingModelIds])
+  const availableTasks = tasksFor(instanceKey) ?? ['text_generation']
+  const validationError = nameProblem(modelId, backend, existingModelIds)
 
   const isValid = modelId.trim().length > 0 && !validationError
 
@@ -99,7 +99,13 @@ export function DownloadModelDialog({
 
   const showOpenVINOFields = backend === 'openvino' && modelId.trim().length > 0
 
-  const handleDownload = useCallback(() => {
+  const clear = () => {
+    setModelId('')
+    setWeightFormat('')
+    setAdditionalParams('')
+  }
+
+  const handleDownload = () => {
     if (!isValid) return
     onDownload({
       backend,
@@ -108,27 +114,14 @@ export function DownloadModelDialog({
       ...(backend === 'openvino' && weightFormat && { weightFormat }),
       ...(backend === 'openvino' && additionalParams && { additionalParams }),
     })
-  }, [
-    isValid,
-    onDownload,
-    backend,
-    modelId,
-    taskType,
-    weightFormat,
-    additionalParams,
-  ])
+    // The parent closes the dialog itself; the next Add starts blank.
+    clear()
+  }
 
-  const handleOpenChange = useCallback(
-    (nextOpen: boolean) => {
-      if (!nextOpen && !isDownloading) {
-        setModelId('')
-        setWeightFormat('')
-        setAdditionalParams('')
-      }
-      onOpenChange(nextOpen)
-    },
-    [isDownloading, onOpenChange],
-  )
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) clear()
+    onOpenChange(nextOpen)
+  }
 
   const placeholder =
     backend === 'llamacpp'
@@ -147,7 +140,6 @@ export function DownloadModelDialog({
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Model ID */}
           <div className="space-y-1.5">
             <Label
               htmlFor="download-model-id"
@@ -161,16 +153,20 @@ export function DownloadModelDialog({
               placeholder={placeholder}
               value={modelId}
               onChange={(e) => setModelId(e.target.value)}
-              className={`h-9 text-xs ${validationError ? 'border-red-500' : ''}`}
-              disabled={isDownloading}
+              className="h-9 text-xs"
+              aria-invalid={validationError ? true : undefined}
+              aria-describedby={hintId}
             />
             {validationError ? (
-              <p className="flex items-center gap-1 text-[11px] text-red-500">
-                <AlertCircle className="h-3 w-3 shrink-0" />
+              <p
+                id={hintId}
+                className="text-destructive flex items-center gap-1 text-[11px]"
+              >
+                <AlertCircle aria-hidden="true" className="h-3 w-3 shrink-0" />
                 {validationError}
               </p>
             ) : (
-              <p className="text-muted-foreground text-[11px]">
+              <p id={hintId} className="text-muted-foreground text-[11px]">
                 e.g. {placeholder}
               </p>
             )}
@@ -191,11 +187,7 @@ export function DownloadModelDialog({
                 className="h-9 text-xs"
               />
             ) : (
-              <Select
-                value={taskType}
-                onValueChange={setTaskType}
-                disabled={isDownloading}
-              >
+              <Select value={taskType} onValueChange={setTaskType}>
                 <SelectTrigger id="download-task-type" className="h-9 text-xs">
                   <SelectValue />
                 </SelectTrigger>
@@ -211,14 +203,20 @@ export function DownloadModelDialog({
           </div>
 
           {isNonNativeOpenVINO && (
-            <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-2.5 dark:border-amber-900 dark:bg-amber-950">
-              <TriangleAlert className="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
-              <p className="text-[11px] text-amber-800 dark:text-amber-200">
-                This model does not appear to be in OpenVINO IR format. Please
-                provide a weight format below so it can be converted
-                automatically.
-              </p>
-            </div>
+            <InlineNotice
+              tone="warning"
+              className="items-start"
+              icon={
+                <TriangleAlert
+                  aria-hidden="true"
+                  className="h-3.5 w-3.5 shrink-0"
+                />
+              }
+            >
+              This model does not appear to be in OpenVINO IR format. Please
+              provide a weight format below so it can be converted
+              automatically.
+            </InlineNotice>
           )}
 
           {showOpenVINOFields && (
@@ -239,10 +237,9 @@ export function DownloadModelDialog({
                 value={weightFormat}
                 onChange={(e) => setWeightFormat(e.target.value)}
                 className="h-9 text-xs"
-                disabled={isDownloading}
               />
               {weightFormat && !isKnownWeightFormat(weightFormat) ? (
-                <p className="text-[11px] text-red-500">
+                <p className="text-destructive text-[11px]">
                   Unknown format. Known:{' '}
                   {(KNOWN_QUANTIZATIONS as readonly string[]).join(', ')}
                 </p>
@@ -260,7 +257,7 @@ export function DownloadModelDialog({
                 htmlFor="download-extra-params"
                 className="text-foreground text-xs font-medium"
               >
-                Extra Parameters{' '}
+                Conversion Parameters{' '}
                 <span className="text-muted-foreground font-normal">
                   (optional)
                 </span>
@@ -268,14 +265,17 @@ export function DownloadModelDialog({
               <Input
                 id="download-extra-params"
                 data-testid="download-extra-params"
-                placeholder="e.g., --ratio 0.8 --group-size 128"
+                placeholder={
+                  'e.g., --extra_quantization_params "--ratio 0.8 --group-size 128"'
+                }
                 value={additionalParams}
                 onChange={(e) => setAdditionalParams(e.target.value)}
-                className="h-9 text-xs"
-                disabled={isDownloading}
+                spellCheck={false}
+                className="h-9 font-mono text-xs"
               />
               <p className="text-muted-foreground text-[11px]">
-                Additional CLI parameters for model conversion.
+                Extra ovms --pull options for the conversion. Quote values that
+                contain spaces.
               </p>
             </div>
           )}
@@ -283,7 +283,7 @@ export function DownloadModelDialog({
 
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="outline" size="sm" disabled={isDownloading}>
+            <Button variant="outline" size="sm">
               Cancel
             </Button>
           </DialogClose>
@@ -291,7 +291,7 @@ export function DownloadModelDialog({
             data-testid="download-model-submit"
             size="sm"
             onClick={handleDownload}
-            disabled={!isValid || isDownloading}
+            disabled={!isValid}
           >
             <Plus className="h-3.5 w-3.5" />
             Add

@@ -3,6 +3,7 @@
 
 import { Search } from 'lucide-react'
 import type { ServiceMeta, WorkerConfig } from '@/services/types'
+import { suiteHttpsPort } from '@/services/suites/ports'
 
 export const service: ServiceMeta = {
   id: 'image-based-video-search',
@@ -10,10 +11,10 @@ export const service: ServiceMeta = {
   description:
     'Edge AI suite that searches video streams for objects matching a user-supplied reference image.',
   longDescription:
-    'Metro AI Suite reference application that ingests RTSP video, runs object detection (YOLOv11s) and feature extraction (ResNet-50) via DL Streamer, indexes detections in Milvus, and exposes a web UI for image-based similarity search. Brought up via docker compose; the suite hosts its own UI at https://localhost/.',
+    'Metro AI Suite reference application that ingests RTSP video, runs object detection (YOLOv11s) and feature extraction (ResNet-50) via DL Streamer, indexes detections in Milvus, and exposes a web UI for image-based similarity search. Brought up via docker compose; the suite hosts its own UI at https://127.0.0.1/.',
   icon: Search,
-  port: 7001,
-  reservedPorts: [7002, 7003],
+  // http, https and rtsp ports are consecutive from the allocated base port
+  portBlock: 3,
   supportedOS: ['linux'],
   execution: { mode: 'worker' },
   healthCheck: {
@@ -34,6 +35,8 @@ export const service: ServiceMeta = {
 }
 
 export const worker: WorkerConfig = {
+  // The compose wrapper rejects flags it does not know.
+  acceptsInstanceArgs: false,
   buildArgs: (doc) => {
     const port = doc.port
     if (port == null) throw new Error('Service port is not configured')
@@ -41,14 +44,14 @@ export const worker: WorkerConfig = {
       '--http-port',
       String(port),
       '--https-port',
-      String(port + 1),
+      String(suiteHttpsPort(port)),
       '--rtsp-port',
       String(port + 2),
       '--device',
       doc.models.default.device,
     ]
   },
-  workerSubDir: 'suite/metro-ai-suite/image-based-video-search',
+  workerSubDir: 'suites/metro-ai-suite/image-based-video-search',
   requiresDocker: true,
   stopScript: true,
 }

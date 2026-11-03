@@ -4,137 +4,182 @@
 'use client'
 
 import { useChat } from '@ai-sdk/react'
-import { DefaultChatTransport } from 'ai'
-import { useCallback, useEffect, useRef, useState } from 'react'
-import type { TextGenParamValues } from './use-params'
+import { useSampleInstancesBody } from '@/context/sample-instances-context'
+import { demoStateKey } from '@/services/common/demo/demo-session'
+import {
+  useSessionResource,
+  useSessionState,
+  useSetSessionBusy,
+} from '@/services/common/demo/session-store'
+import type { ChatAttachments } from '../lib/chat-helpers'
+import { chatRequestBody } from '../lib/chat-request'
+import { createChat, PreviewUrls } from '../lib/chat-session'
+import type { RequestParams, TextGenParamValues } from './use-params'
 
 interface AttachedImage {
   file: File
   previewUrl: string
 }
 
-interface UseTextGenChatOptions {
-  textGenValues: TextGenParamValues
-  /** Numeric sampling params the user has changed; untouched ones are omitted. */
-  requestParams: Partial<
-    Pick<
-      TextGenParamValues,
-      'maxTokens' | 'temperature' | 'topP' | 'topK' | 'repetitionPenalty'
-    >
-  >
-  /** Extra body fields merged into every sendMessage call */
-  extraBody?: Record<string, unknown>
+export interface ChatSendOptions {
+  /** Extra files for this message only (e.g. a camera frame); they don't join the draft. */
+  files?: File[]
 }
 
+interface UseTextGenChatOptions {
+  textGenValues: TextGenParamValues
+  requestParams: RequestParams
+  /** Merged into every request body. */
+  extraBody?: Record<string, unknown>
+  /**
+   * Instance key: under a `DemoSessionProvider` the conversation, draft and an in-flight response
+   * survive remounts per key, and the instance is marked busy while generating.
+   */
+  sessionKey?: string
+}
+
+/**
+ * A conversation with the chat route: draft with images, Send, Retry with the failed request's
+ * settings, Stop and Clear. Stopped when released with the demo session (or on unmount).
+ */
 export function useTextGenChat({
   textGenValues,
   requestParams,
   extraBody,
+  sessionKey,
 }: UseTextGenChatOptions) {
-  const { messages, sendMessage, status, setMessages, stop } = useChat({
-    transport: new DefaultChatTransport({
-      api: '/api/services/text-generation/chat',
-    }),
-  })
+  const stateKey = (name: string) =>
+    sessionKey
+      ? demoStateKey({ id: 'text-generation', instanceKey: sessionKey }, name)
+      : undefined
+  const setSessionBusy = useSetSessionBusy()
+  const setBusy = (busy: boolean) => {
+    if (sessionKey) setSessionBusy(sessionKey, busy)
+  }
+
+  const chat = useSessionResource(
+    stateKey('chat'),
+    () =>
+      createChat(sessionKey, () => {
+        if (sessionKey) setSessionBusy(sessionKey, false)
+      }),
+    (released) => void released.stop(),
+  )
+  const {
+    messages,
+    sendMessage,
+    regenerate,
+    status,
+    error,
+    setMessages,
+    clearError,
+    stop,
+  } = useChat({ chat })
   const isRunning = status === 'submitted' || status === 'streaming'
+  // On a sample page, the route must reach the same instances the sample binds.
+  const sampleInstances = useSampleInstancesBody()
 
-  const [input, setInput] = useState('')
-  const [images, setImages] = useState<AttachedImage[]>([])
-
-  const handleImageSelect = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const files = Array.from(e.target.files ?? [])
-      if (files.length === 0) return
-      setImages((prev) => [
-        ...prev,
-        ...files.map((file) => ({
-          file,
-          previewUrl: URL.createObjectURL(file),
-        })),
-      ])
-    },
+  const [input, setInput] = useSessionState(stateKey('input'), '')
+  const [images, setImages] = useSessionState<AttachedImage[]>(
+    stateKey('images'),
     [],
   )
+  // So Retry uses the same instance and settings even if they changed since.
+  const [lastBody, setLastBody] = useSessionState<object | undefined>(
+    stateKey('request'),
+    undefined,
+  )
 
-  const handleRemoveImage = useCallback((index: number) => {
-    setImages((prev) => {
-      const removed = prev[index]
-      if (removed) URL.revokeObjectURL(removed.previewUrl)
-      return prev.filter((_, i) => i !== index)
-    })
-  }, [])
+  // Owned by the session, not the component, so a kept draft still shows its previews on remount.
+  const previewUrls = useSessionResource(
+    stateKey('previews'),
+    () => new PreviewUrls(),
+    (urls) => urls.revokeAll(),
+  )
 
-  const handleClearImages = useCallback(() => {
-    setImages((prev) => {
-      prev.forEach((img) => URL.revokeObjectURL(img.previewUrl))
-      return []
-    })
-  }, [])
+  const attach = (files: File[]) => {
+    if (files.length === 0) return
+    const added = files.map((file) => ({
+      file,
+      previewUrl: previewUrls.create(file),
+    }))
+    setImages((prev) => [...prev, ...added])
+  }
 
-  const imagesRef = useRef(images)
-  useEffect(() => {
-    imagesRef.current = images
-  }, [images])
-  useEffect(() => {
-    return () => {
-      imagesRef.current.forEach((img) => URL.revokeObjectURL(img.previewUrl))
-    }
-  }, [])
+  const remove = (index: number) => {
+    const removed = images[index]
+    if (removed) previewUrls.revoke(removed.previewUrl)
+    setImages(images.filter((_, i) => i !== index))
+  }
 
-  const handleSend = useCallback(() => {
-    if (!input.trim() || isRunning) return
-    let files: FileList | undefined
-    if (images.length > 0) {
+  const clearImages = () => {
+    images.forEach((img) => previewUrls.revoke(img.previewUrl))
+    setImages([])
+  }
+
+  const requestBody = () => ({
+    ...chatRequestBody(textGenValues, requestParams),
+    ...sampleInstances,
+    ...extraBody,
+  })
+
+  /** Returns false without text or while a response is still generating. */
+  const handleSend = (options?: ChatSendOptions): boolean => {
+    if (!input.trim() || isRunning) return false
+    const files = [...images.map((img) => img.file), ...(options?.files ?? [])]
+    let fileList: FileList | undefined
+    if (files.length > 0) {
       const dt = new DataTransfer()
-      images.forEach((img) => dt.items.add(img.file))
-      files = dt.files
+      files.forEach((file) => dt.items.add(file))
+      fileList = dt.files
     }
+    const body = requestBody()
+    setLastBody(body)
+    setBusy(true)
+    // `finally` also covers a send stopped while its images were still read (no request starts).
     sendMessage(
       {
         text: input,
-        ...(files ? { files } : {}),
+        ...(fileList ? { files: fileList } : {}),
       },
-      {
-        body: {
-          ...requestParams,
-          ...(textGenValues.systemPrompt.trim()
-            ? { systemPrompt: textGenValues.systemPrompt.trim() }
-            : {}),
-          disableReasoning: textGenValues.disableReasoning,
-          reasoningParser: textGenValues.reasoningParser,
-          ...extraBody,
-        },
-      },
-    )
+      { body },
+    ).finally(() => setBusy(false))
     setInput('')
-    handleClearImages()
-  }, [
-    input,
-    isRunning,
-    images,
-    sendMessage,
-    handleClearImages,
-    textGenValues,
-    requestParams,
-    extraBody,
-  ])
+    // The message holds its own copy of the files, so the previews can go.
+    clearImages()
+    return true
+  }
 
-  const handleReset = useCallback(() => {
+  const handleRetry = () => {
+    if (isRunning || messages.length === 0) return
+    setBusy(true)
+    regenerate({ body: lastBody ?? requestBody() }).finally(() =>
+      setBusy(false),
+    )
+  }
+
+  const handleReset = () => {
     setMessages([])
-    handleClearImages()
-  }, [setMessages, handleClearImages])
+    clearError()
+    clearImages()
+  }
+
+  const attachments: ChatAttachments = {
+    previews: images.map((img) => img.previewUrl),
+    attach,
+    remove,
+  }
 
   return {
     messages,
     status,
+    error,
     isRunning,
     input,
     setInput,
-    imagePreviews: images.map((img) => img.previewUrl),
-    handleImageSelect,
-    handleRemoveImage,
-    handleClearImages,
+    attachments,
     handleSend,
+    handleRetry,
     handleReset,
     handleStop: stop,
   }

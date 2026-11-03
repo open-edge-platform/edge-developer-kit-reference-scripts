@@ -9,17 +9,17 @@ import { serviceConfig } from './config'
 export const service: ServiceMeta = {
   id: 'frame-generation',
   name: 'Frame Generation',
+  multiInstance: true,
   description:
     'RIFE video frame interpolation: fill in-between frames or upscale video FPS.',
   longDescription:
-    'AI-powered frame generation service using the RIFE interpolation model on OpenVINO. Generates intermediate frames between keyframe pairs — used by the Lipsync service to reach the avatar frame rate on slower accelerators — and upscales the frame rate of uploaded videos (2x-4x). The interpolation device (CPU/GPU) is configured on this service.',
+    'AI-powered frame generation service using the RIFE interpolation model on OpenVINO. Generates intermediate frames between keyframe pairs — used by the Lipsync service to reach the avatar frame rate on slower accelerators — and upscales the frame rate of uploaded videos (2x-4x). The interpolation device (AUTO/CPU/GPU) is configured on this service.',
   icon: Film,
-  port: 8031,
   supportedOS: ['linux', 'windows'],
   execution: { mode: 'worker' },
   defaultModel: {
     name: 'RIFE',
-    device: 'CPU',
+    device: 'AUTO',
   },
   config: serviceConfig,
   logSources: [
@@ -31,14 +31,15 @@ export const service: ServiceMeta = {
 }
 
 export const worker: WorkerConfig = {
+  modelCatalog: 'script',
   buildArgs: (doc: PayloadService) => [
     '--port',
     String(doc.port),
     '--device',
-    doc.models?.default?.device ?? 'CPU',
+    doc.models?.default?.device || 'AUTO',
     '--source',
     doc.models?.default?.source || 'huggingface',
   ],
-  workerSubDir: 'frame-generation',
+  workerSubDir: 'services/frame-generation',
   modelDirectories: ['models/rife'],
 }

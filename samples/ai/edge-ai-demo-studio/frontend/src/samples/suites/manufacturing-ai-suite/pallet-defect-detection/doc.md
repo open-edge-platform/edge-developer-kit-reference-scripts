@@ -19,11 +19,11 @@ The application workflow has three stages: inputs, processing, and outputs.
 
 ### Processing
 
-- **NGINX reverse proxy**: All external traffic terminates at NGINX with HTTPS (self-signed cert) and is routed to the appropriate microservice (`/api/` → DL Streamer, `/mediamtx/` → MediaMTX, `/minio/` → MinIO, `/prometheus/` → Prometheus).
+- **NGINX reverse proxy**: All external traffic terminates at NGINX with HTTPS (self-signed cert) and is routed to the appropriate microservice (`/api/` → DL Streamer, `/mediamtx/` → MediaMTX, `/storage/` → SeaweedFS, `/prometheus/` → Prometheus).
 - **DL Streamer Pipeline Server**: Runs the GStreamer pipeline declared in `apps/pallet-defect-detection/configs/pipeline-server-config.json` and applies the OpenVINO INT8 detection model. The selected device (CPU / GPU / NPU) maps to a different pipeline name (`pallet_defect_detection`, `..._gpu`, `..._npu`) declared in `apps/pallet-defect-detection/payload.json`.
 - **MediaMTX**: Receives the annotated frames from DL Streamer and exposes them as a WebRTC stream at `/mediamtx/pdd/`.
 - **MQTT broker (eclipse-mosquitto)**: Carries detection metadata between microservices.
-- **MinIO**: Stores frames or other artifacts pushed by the pipeline (S3-compatible).
+- **SeaweedFS**: Stores frames or other artifacts pushed by the pipeline (S3-compatible).
 - **OpenTelemetry Collector + Prometheus**: Capture metrics from the pipeline server.
 - **Coturn**: TURN server used by WebRTC for NAT traversal.
 
@@ -32,13 +32,13 @@ The application workflow has three stages: inputs, processing, and outputs.
 - WebRTC video stream with overlaid pallet detections (visit `/mediamtx/pdd/`).
 - DL Streamer pipeline status REST API (`/api/pipelines/status`).
 - Prometheus scraping endpoint (`/prometheus/`).
-- MinIO object browser (`/minio/`).
+- SeaweedFS object browser (`/storage/`, signed in with the S3 storage credentials).
 
 ## Getting Started
 
 1. Click **Start** on the Pallet Defect Detection service. Demo Studio will:
    - Sparse-clone the upstream `manufacturing-ai-suite/industrial-edge-insights-vision` template.
-   - Generate `.env` from `.env_pallet-defect-detection`, filling in `HOST_IP`, MinIO credentials, WebRTC credentials, and the configured ports.
+   - Generate `.env` from `.env_pallet-defect-detection`, filling in `HOST_IP`, S3 storage credentials, WebRTC credentials, and the configured ports.
    - Run upstream `setup.sh` to download the OpenVINO INT8 detection model and warehouse video.
    - Patch the bundled NGINX config to expose `/nginx_healthz` over HTTP for the Demo Studio health check.
    - `docker compose up -d` and wait for all containers to become healthy.

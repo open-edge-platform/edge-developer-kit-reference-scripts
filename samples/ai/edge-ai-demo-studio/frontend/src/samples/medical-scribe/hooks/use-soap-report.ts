@@ -5,108 +5,86 @@
 
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
-import { useCallback, useEffect, useRef } from 'react'
-import { stripMarkdownFence } from '../utils'
-
-export const SOAP_SYSTEM_PROMPT = `You are a medical scribe AI assistant. Given a doctor-patient dialogue transcript, generate a comprehensive SOAP note.
-
-Format the note in Markdown with the following sections:
-
-## Subjective
-Patient's reported symptoms, concerns, and medical history as described in the dialogue.
-
-## Objective
-Observable findings, vital signs, and examination results mentioned by the doctor.
-
-## Assessment
-Doctor's clinical assessment, diagnoses, and differential diagnoses discussed.
-
-## Plan
-Treatment plan, medications, follow-up appointments, and any referrals mentioned.
-
-Be thorough but concise. Only include information explicitly mentioned in the dialogue. If a section has no relevant information, note "No information provided in this encounter."`
+import { useSampleInstancesBody } from '@/context/sample-instances-context'
+import {
+  describeChatError,
+  extractTextContent,
+} from '@/services/text-generation/lib/chat-helpers'
+import type {
+  RequestParams,
+  TextGenParamValues,
+} from '@/services/text-generation/hooks/use-params'
+import {
+  CHAT_API,
+  chatRequestBody,
+} from '@/services/text-generation/lib/chat-request'
+import { SOAP_SYSTEM_PROMPT, stripMarkdownFence } from '../lib/soap'
 
 interface SoapReportOptions {
-  temperature?: number
-  maxTokens?: number
-  systemPrompt?: string
-  disableReasoning?: boolean
+  /** The Parameters sheet's Text Generation settings. */
+  textGenValues: TextGenParamValues
+  requestParams: RequestParams
+  /** Called with the finished note — never with one that failed part-way. */
   onFinish?: (text: string) => void
 }
 
-export function useSoapReport(options: SoapReportOptions = {}) {
-  const { temperature = 0.3, maxTokens = 2048 } = options
+/** The shared chat body plus bound instances; the SOAP prompt when the system prompt is empty. */
+function soapRequestBody(
+  values: TextGenParamValues,
+  requestParams: RequestParams,
+  sampleInstances: object | undefined,
+) {
+  return {
+    ...chatRequestBody(values, requestParams),
+    systemPrompt: values.systemPrompt.trim() || SOAP_SYSTEM_PROMPT,
+    ...sampleInstances,
+  }
+}
 
-  const onFinishRef = useRef(options.onFinish)
-  useEffect(() => {
-    onFinishRef.current = options.onFinish
-  })
+const soapTransport = new DefaultChatTransport({ api: CHAT_API })
 
-  const { messages, sendMessage, status, setMessages } = useChat({
-    transport: new DefaultChatTransport({
-      api: '/api/services/text-generation/chat',
-    }),
-  })
+/** A SOAP note written from a consultation's dialogue, streamed. */
+export function useSoapReport({
+  textGenValues,
+  requestParams,
+  onFinish,
+}: SoapReportOptions) {
+  const { messages, sendMessage, status, setMessages, error, clearError } =
+    useChat({
+      transport: soapTransport,
+      // Called once per request however it ended; a broken or stopped stream is not saved.
+      onFinish: ({ message, isAbort, isError }) => {
+        if (isAbort || isError) return
+        const text = extractTextContent(message)
+        if (text) onFinish?.(stripMarkdownFence(text))
+      },
+    })
+  // The Text Generation instance this sample binds, for the chat route.
+  const sampleInstances = useSampleInstancesBody()
 
-  const isGenerating = status === 'submitted' || status === 'streaming'
-
-  const lastAssistantMessage = messages.findLast((m) => m.role === 'assistant')
-  const lastAssistantMessageRef = useRef(lastAssistantMessage)
-  useEffect(() => {
-    lastAssistantMessageRef.current = lastAssistantMessage
-  })
-
-  const wasGeneratingRef = useRef(false)
-  useEffect(() => {
-    if (wasGeneratingRef.current && !isGenerating) {
-      const msg = lastAssistantMessageRef.current
-      if (msg) {
-        const text = msg.parts
-          .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
-          .map((p) => p.text)
-          .join('')
-        if (text) {
-          onFinishRef.current?.(stripMarkdownFence(text))
-        }
-      }
-    }
-    wasGeneratingRef.current = isGenerating
-  }, [isGenerating])
-
-  const generate = useCallback(
-    (dialogue: string) => {
-      setMessages([])
-      sendMessage(
-        { text: dialogue },
-        {
-          body: {
-            systemPrompt: options.systemPrompt || SOAP_SYSTEM_PROMPT,
-            temperature,
-            maxTokens,
-            disableReasoning: options.disableReasoning,
-          },
-        },
-      )
-    },
-    [
-      sendMessage,
-      setMessages,
-      temperature,
-      maxTokens,
-      options.systemPrompt,
-      options.disableReasoning,
-    ],
-  )
-
-  const reset = useCallback(() => {
+  const generate = (dialogue: string) => {
     setMessages([])
-  }, [setMessages])
+    clearError()
+    sendMessage(
+      { text: dialogue },
+      {
+        body: soapRequestBody(textGenValues, requestParams, sampleInstances),
+      },
+    )
+  }
+
+  const reset = () => {
+    setMessages([])
+    clearError()
+  }
 
   return {
     generate,
     reset,
-    isGenerating,
+    isGenerating: status === 'submitted' || status === 'streaming',
     status,
-    message: lastAssistantMessage,
+    message: messages.findLast((m) => m.role === 'assistant'),
+    /** Why the last report failed, until the next one is asked for. */
+    error: error ? describeChatError(error) : null,
   }
 }

@@ -3,187 +3,118 @@
 
 'use client'
 
-import { useChat } from '@ai-sdk/react'
-import { DefaultChatTransport } from 'ai'
-import { AlertTriangle } from 'lucide-react'
-import { useCallback, useState } from 'react'
-import { useGetServices } from '@/context/service-status-context'
-import { useFeatureCollector } from '@/context/feature-collector'
-import {
-  FeatureContexts,
-  sttOnlineFromExports,
-  ttsOnlineFromExports,
-} from '@/samples/common/feature-providers/feature-contexts'
-import { useFeatureProviders } from '@/samples/common/feature-providers/use-feature-providers'
-import { useTextGenerationParams } from '@/samples/common/hooks/use-text-generation-params'
-import type { Sample } from '../types'
-import { ChatPanel } from './components/chat-panel'
+import { useState } from 'react'
 import { WebcamStream } from '@/components/common/webcam-stream'
 import { useWebcamStream } from '@/hooks/use-webcam-stream'
-import { SampleParamsSlot } from '../common/sample-params-slot'
+import { dataUrlToFile } from '@/lib/browser/image-utils'
+import { VlmRequiredNotice } from '@/samples/common/components/vlm-required-notice'
+import { FeatureContexts } from '@/samples/common/feature-providers/feature-contexts'
+import { useSampleChatFeatures } from '@/samples/common/feature-providers/use-sample-chat-features'
+import { useTextGenerationParams } from '@/samples/common/hooks'
+import { useSampleWorkspace } from '@/samples/common/sample-workspace'
+import { SampleParamsSlot } from '@/samples/common/sample-params-slot'
+import { useTextGenChat } from '@/services/text-generation/hooks/use-chat'
+import type { Sample } from '../types'
+import { ChatPanel } from './components/chat-panel'
 
-// Optional-service feature integrations this sample wires (explicit opt-in).
-// Order = Configure-sheet group order. See docs/OPTIONAL-SERVICES.md.
-const FEATURE_SERVICES = ['text-to-speech', 'speech-to-text', 'mcp']
-
-function dataUrlToFile(dataUrl: string, filename: string): File {
-  const [header, base64] = dataUrl.split(',')
-  const mime = header.match(/:(.*?);/)?.[1] ?? 'image/png'
-  const binary = atob(base64)
-  const bytes = new Uint8Array(binary.length)
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i)
-  }
-  return new File([bytes], filename, { type: mime })
-}
+/** Fill the composer; the user still sends explicitly. */
+const EXAMPLE_QUESTIONS = [
+  'What do you see in this frame?',
+  'Describe the objects in view and where they are.',
+  'Read any text that is visible in the picture.',
+]
 
 export function WebcamVlmDemo({ sample }: { sample: Sample }) {
   const textGen = useTextGenerationParams()
+  const workspace = useSampleWorkspace()
+  const suspended = workspace.suspended
+  const features = useSampleChatFeatures(sample)
 
-  const featureProviders = useFeatureProviders(FEATURE_SERVICES)
-  const collector = useFeatureCollector(FEATURE_SERVICES)
-  const sttOnline = sttOnlineFromExports(collector.exports)
-  const ttsOnline = ttsOnlineFromExports(collector.exports)
+  const webcam = useWebcamStream()
+  const webcamReady = webcam.isReady
 
-  const { 'text-generation': textGenService } = useGetServices([
-    'text-generation',
-  ])
-  const isMultimodal = textGenService?.currentModelType === 'multimodal'
-
-  const {
-    devices,
-    selectedDeviceId,
-    videoRef,
-    listDevices,
-    startCamera,
-    stopCamera,
-    captureImage,
-    isReady: webcamReady,
-    error: webcamError,
-  } = useWebcamStream()
-
-  const { messages, sendMessage, status, setMessages } = useChat({
-    transport: new DefaultChatTransport({
-      api: '/api/services/text-generation/chat',
-    }),
+  const chat = useTextGenChat({
+    textGenValues: textGen.values,
+    requestParams: textGen.requestParams,
+    extraBody: features.extraBody,
   })
-  const isRunning = status === 'submitted' || status === 'streaming'
-
-  const [input, setInput] = useState('')
+  // A frame captured ahead, shown in the composer until it is sent.
   const [capturedPreview, setCapturedPreview] = useState<string | null>(null)
 
-  const handleSend = useCallback(() => {
-    if (!input.trim() || isRunning) return
+  // The composer's frame goes with the question, else one is captured now. Retry reuses the frame
+  // (it is part of the message).
+  const handleSend = () => {
+    if (suspended) return
+    const frame =
+      capturedPreview ?? (webcamReady ? webcam.captureImage() : null)
+    const sent = chat.handleSend({
+      files: frame ? [dataUrlToFile(frame, 'webcam-capture.png')] : undefined,
+    })
+    if (sent) setCapturedPreview(null)
+  }
 
-    let files: FileList | undefined
-    if (capturedPreview) {
-      const file = dataUrlToFile(capturedPreview, 'webcam-capture.png')
-      const dt = new DataTransfer()
-      dt.items.add(file)
-      files = dt.files
-    } else if (webcamReady) {
-      // Auto-capture from webcam when no preview is set
-      const dataUrl = captureImage()
-      if (dataUrl) {
-        const file = dataUrlToFile(dataUrl, 'webcam-capture.png')
-        const dt = new DataTransfer()
-        dt.items.add(file)
-        files = dt.files
-      }
-    }
-
-    sendMessage(
-      {
-        text: input,
-        ...(files ? { files } : {}),
-      },
-      {
-        body: {
-          maxTokens: textGen.values.maxTokens,
-          temperature: textGen.values.temperature,
-          topK: textGen.values.topK,
-          ...(textGen.values.systemPrompt.trim()
-            ? { systemPrompt: textGen.values.systemPrompt.trim() }
-            : {}),
-          disableReasoning: textGen.values.disableReasoning,
-        },
-      },
-    )
-    setInput('')
+  const handleReset = () => {
+    chat.handleReset()
     setCapturedPreview(null)
-  }, [
-    input,
-    isRunning,
-    capturedPreview,
-    webcamReady,
-    captureImage,
-    sendMessage,
-    textGen.values,
-  ])
+  }
 
-  const handleReset = useCallback(() => {
-    setMessages([])
-    setCapturedPreview(null)
-  }, [setMessages])
+  const placeholder = suspended
+    ? `Waiting for ${workspace.offlineRequired.join(', ')}…`
+    : webcamReady
+      ? 'Ask about what you see…'
+      : 'Start the camera to ask about a frame…'
+  const emptyStateText = suspended
+    ? 'Your conversation is kept. Sending resumes once Text Generation is back.'
+    : webcamReady
+      ? 'Capture a frame and ask a question about it.'
+      : 'Start the camera, capture a frame, then ask about it.'
 
   return (
     <div className="space-y-4">
-      {textGenService?.status === 'online' && !isMultimodal && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="text-warning mt-0.5 h-5 w-5 shrink-0" />
-            <div>
-              <h4 className="font-semibold text-amber-800 dark:text-amber-200">
-                VLM Required
-              </h4>
-              <p className="text-sm text-amber-700 dark:text-amber-300">
-                The text generation service may not support image processing.
-                Please ensure a Visual Language Model (VLM) is configured.
-              </p>
-            </div>
+      <VlmRequiredNotice>
+        The selected Text Generation model may not accept images. Choose a
+        vision language model (VLM) under Services to ask about frames.
+      </VlmRequiredNotice>
+
+      {features.renderProviders(chat.setInput)}
+
+      <SampleParamsSlot groups={[textGen.group, ...features.groups]} />
+
+      <FeatureContexts exports={features.exports}>
+        {/* A container query, not a viewport breakpoint, so a short wide window goes side by side too. */}
+        <div className="@container">
+          <div className="grid grid-cols-1 items-stretch gap-4 @2xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] @2xl:gap-6">
+            <WebcamStream
+              videoRef={webcam.videoRef}
+              isReady={webcamReady}
+              error={webcam.error}
+              startCamera={webcam.startCamera}
+              stopCamera={webcam.stopCamera}
+              devices={webcam.devices}
+              selectedDeviceId={webcam.selectedDeviceId}
+              listDevices={webcam.listDevices}
+              title="Camera"
+              description="Frames from this preview go with your questions."
+              previewClassName="min-h-[160px] max-h-[min(55vh,420px)]"
+            />
+            <ChatPanel
+              chat={chat}
+              onSend={handleSend}
+              onReset={handleReset}
+              disabled={!webcamReady || suspended}
+              captureImage={webcam.captureImage}
+              webcamReady={webcamReady}
+              capturedPreview={capturedPreview}
+              onCapturedPreviewChange={setCapturedPreview}
+              placeholder={placeholder}
+              emptyStateText={emptyStateText}
+              examplePrompts={
+                webcamReady && !suspended ? EXAMPLE_QUESTIONS : undefined
+              }
+              sttOnline={features.sttOnline}
+              ttsOnline={features.ttsOnline}
+            />
           </div>
-        </div>
-      )}
-
-      <collector.Provider>
-        {featureProviders.map(({ serviceId, Provider }) => (
-          <Provider
-            key={serviceId}
-            onTranscription={setInput}
-            sampleId={sample.id}
-          />
-        ))}
-      </collector.Provider>
-
-      <SampleParamsSlot groups={[textGen.group, ...collector.groups]} />
-
-      <FeatureContexts exports={collector.exports}>
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[2fr_1fr]">
-          <WebcamStream
-            videoRef={videoRef}
-            isReady={webcamReady}
-            error={webcamError}
-            startCamera={startCamera}
-            stopCamera={stopCamera}
-            devices={devices}
-            selectedDeviceId={selectedDeviceId}
-            listDevices={listDevices}
-          />
-          <ChatPanel
-            messages={messages}
-            status={status}
-            input={input}
-            onInputChange={setInput}
-            onSend={handleSend}
-            onReset={handleReset}
-            disabled={!webcamReady}
-            captureImage={captureImage}
-            webcamReady={webcamReady}
-            capturedPreview={capturedPreview}
-            onCapturedPreviewChange={setCapturedPreview}
-            sttOnline={sttOnline}
-            ttsOnline={ttsOnline}
-          />
         </div>
       </FeatureContexts>
     </div>

@@ -1,0 +1,20 @@
+[project]
+name = "helper"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "worker-common",
+    "openvino==2026.2.1",
+    "torch==2.13.0",
+]
+
+[tool.uv.sources]
+worker-common = { workspace = true }
+torch = { index = "pytorch" }
+
+[[tool.uv.index]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/xpu"
+explicit = true

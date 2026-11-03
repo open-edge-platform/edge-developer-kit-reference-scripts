@@ -1,301 +1,163 @@
 // Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
+import type { UIMessage } from 'ai'
+import { z } from 'zod'
+import { jsonErrorFrom, parseJsonBody } from '@/lib/api/json'
+import { chatUsageMetadata } from '@/lib/llm/chat-usage'
 import {
-  convertToModelMessages,
-  createUIMessageStream,
-  createUIMessageStreamResponse,
-  extractReasoningMiddleware,
-  isStepCount,
-  streamText,
-  type UIMessage,
-  wrapLanguageModel,
-} from 'ai'
-import { logger } from '@/lib/logger'
-import { buildMcpTools } from '@/lib/mcp-tools'
-import { SentenceProcessor } from '@/lib/sentence-processor'
-import { metaMap } from '@/services/_generated/meta'
-import { hermesToolMiddleware } from '@ai-sdk-tool/parser'
-import { getWorkloadModel } from '@/app/api/common/get-workload-model'
+  buildChatSystemPrompt,
+  vectordbConfigSchema,
+} from '@/lib/llm/chat-prompts'
+import { streamChatResponse } from '@/lib/llm/chat-stream'
 import {
-  type ConcreteReasoningParserId,
-  resolveReasoningParser,
-} from '@/lib/reasoning-parsers'
+  createLipsyncForwarder,
+  resolveLipsyncUrls,
+} from '@/lib/llm/lipsync-forwarder'
+import { buildMcpTools } from '@/lib/llm/mcp-tools'
+import { resolveReasoningParser } from '@/lib/llm/reasoning-parsers'
+import { resolveToolCallParser } from '@/lib/llm/tool-call-parsers'
+import { SentenceProcessor } from '@/lib/llm/sentence-processor'
+import {
+  boundInstanceKey,
+  resolveWorkload,
+} from '@/lib/workers/instance-lookup'
 
-function createReasoningMiddleware(parser: ConcreteReasoningParserId) {
-  switch (parser) {
-    case 'none':
-      return null
-    case 'qwen3.5':
-      return extractReasoningMiddleware({
-        tagName: 'think',
-        startWithReasoning: true,
-      })
-    case 'default':
-      return extractReasoningMiddleware({ tagName: 'think' })
-  }
-}
+/** An optional field a client may also send as `null`. */
+const optional = <T extends z.ZodType>(schema: T) =>
+  schema.nullish().transform((value) => value ?? undefined)
 
-const createDefaultSystemPrompt = () => {
-  return `You are a human-like conversational AI. 
-Your goal is to communicate in a way that is natural, empathetic, and engaging. 
-Prioritize clarity and warmth in your responses.
-You only reply in plain natural language, Do not produce any HIGHLIGHT, Markdown format, programming codes, formatted structured output`
-}
-
-function createRAGSystemPrompt(context: string) {
-  return `You are a helpful assistant that answers questions based on provided context.
-Use the following pieces of retrieved context to answer the question.
-If you don't know the answer from the context, say so honestly instead of making things up.
-Always ground your responses in the provided context.
-
-Context:
-${context}
-
-Answer the user's question based on the context above.`
-}
-
-const RAG_CONTEXT_PLACEHOLDER = /\{\s*context\s*\}/gi
-
-function injectRAGContext(customPrompt: string, context: string): string {
-  const replaced = customPrompt.replace(RAG_CONTEXT_PLACEHOLDER, context)
-  if (replaced !== customPrompt) return replaced
-  return `${customPrompt}\n\nContext:\n${context}`
-}
-
-async function fetchRAGContext(
-  knowledgeBaseId: number,
-  query: string,
-  topK: number = 4,
-): Promise<string | null> {
-  const vectordbMeta = metaMap['vectordb']
-  if (!vectordbMeta) return null
-
-  try {
-    const url = new URL(
-      `http://localhost:${vectordbMeta.port}/v1/kb/${knowledgeBaseId}/search`,
-    )
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        query,
-        search_type: 'similarity',
-        top_k: topK,
-        top_n: 3,
-      }),
-    })
-
-    if (!response.ok) {
-      logger.error(`RAG search failed: ${response.status}`)
-      return null
-    }
-
-    const results = await response.json()
-    if (!Array.isArray(results) || results.length === 0) return null
-
-    return results
-      .map((r: { content: string }) => r.content)
-      .join('\n\n---\n\n')
-  } catch (error) {
-    logger.error('RAG context fetch error:', error)
-    return null
-  }
-}
-
-function getLastUserText(messages: UIMessage[]): string {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].role === 'user') {
-      return messages[i].parts
-        .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
-        .map((p) => p.text)
-        .join('')
-    }
-  }
-  return ''
-}
-
-interface LipsyncConfig {
-  sessionId: string
-  voice: string
-  speed: string
-  frameGeneration?: boolean
-}
-
-function dispatchSentenceToLipsync(
-  sentence: string,
-  lipsync: LipsyncConfig,
-): void {
-  const lipsyncMeta = metaMap['lipsync']
-  if (!lipsyncMeta) return
-
-  // Derive the TTS URL server-side from trusted config to prevent SSRF.
-  const ttsMeta = metaMap['text-to-speech']
-  const ttsUrl = ttsMeta ? `http://localhost:${ttsMeta.port}/v1` : undefined
-
-  fetch(`http://localhost:${lipsyncMeta.port}/v1/lipsync/chat`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      text: sentence,
-      session_id: lipsync.sessionId,
-      chat_type: 'echo',
-      voice: lipsync.voice,
-      speed: lipsync.speed,
-      frame_generation: lipsync.frameGeneration ?? false,
-      ...(ttsUrl ? { tts_url: ttsUrl } : {}),
+const chatBodySchema = z.object({
+  messages: z.array(z.custom<UIMessage>((m) => !!m && typeof m === 'object')),
+  systemPrompt: optional(z.string()),
+  maxTokens: optional(z.number()),
+  temperature: optional(z.number()),
+  topP: optional(z.number()),
+  topK: optional(z.number()),
+  repetitionPenalty: optional(z.number()),
+  // Part of the vector database URL path: a row id, nothing else.
+  knowledgeBaseId: optional(z.number().int().nonnegative()),
+  vectordbConfig: optional(vectordbConfigSchema),
+  disableReasoning: optional(z.boolean()),
+  reasoningParser: optional(z.string()),
+  mcpServerIds: optional(z.array(z.number().int())),
+  /** How tool calls are read: `hermes` (default), `qwen3coder` or `native`. */
+  toolCallParser: optional(z.string()),
+  /** Hand MCP results made only of text to the model as that text (off by default). */
+  mcpTextResults: optional(z.boolean()),
+  lipsync: optional(
+    z.object({
+      sessionId: z.string().min(1),
+      voice: z.string(),
+      speed: z.coerce.string(),
+      frameGeneration: optional(z.boolean()),
     }),
-  }).catch((err) => {
-    logger.error('Failed to dispatch sentence to lipsync:', err)
-  })
-}
+  ),
+  /** Text Generation instance to use (`text-generation@<id>`); the running one when omitted. */
+  instanceKey: optional(z.string()),
+  /**
+   * Instances a sample binds, by type (Text Generation wins over `instanceKey`); each falls back to
+   * its running instance.
+   */
+  instances: optional(z.record(z.string(), z.unknown())),
+})
 
 export async function POST(req: Request) {
-  let body: {
-    messages: UIMessage[]
-    systemPrompt?: string
-    maxTokens?: number
-    temperature?: number
-    topP?: number
-    topK?: number
-    repetitionPenalty?: number
-    knowledgeBaseId?: number
-    disableReasoning?: boolean
-    reasoningParser?: string
-    mcpServerIds?: number[]
-    lipsync?: LipsyncConfig
-  }
+  const parsed = await parseJsonBody(req, chatBodySchema)
+  if (!parsed.ok) return parsed.response
+  const body = parsed.data
+  const { instances, lipsync, repetitionPenalty, disableReasoning } = body
 
+  let target: { model: string; baseUrl: string }
   try {
-    body = await req.json()
-  } catch {
-    return new Response('Invalid JSON in request body', { status: 400 })
-  }
-
-  const {
-    messages,
-    systemPrompt: customSystemPrompt,
-    maxTokens,
-    temperature,
-    topP,
-    topK,
-    repetitionPenalty,
-    knowledgeBaseId,
-    disableReasoning,
-    reasoningParser,
-    mcpServerIds,
-    lipsync,
-  } = body
-
-  // Get available model
-  let model: string
-  const textGenerationMeta = metaMap['text-generation']
-  try {
-    model = await getWorkloadModel(textGenerationMeta.id)
+    target = await resolveWorkload(
+      'text-generation',
+      boundInstanceKey(instances, 'text-generation') ?? body.instanceKey,
+    )
   } catch (error) {
-    logger.error('Model service error:', error)
-    return new Response('No available model', { status: 500 })
+    return jsonErrorFrom(error, 'No available model', 'Model service error')
   }
 
-  const trimmedCustomPrompt = customSystemPrompt?.trim()
-  let systemPrompt = trimmedCustomPrompt || createDefaultSystemPrompt()
-  if (knowledgeBaseId != null) {
-    const query = getLastUserText(messages)
-    if (query) {
-      const context = await fetchRAGContext(knowledgeBaseId, query, topK)
-      if (context) {
-        systemPrompt = trimmedCustomPrompt
-          ? injectRAGContext(trimmedCustomPrompt, context)
-          : createRAGSystemPrompt(context)
-      }
-    }
-  }
-
-  const provider = createOpenAICompatible({
-    baseURL: `http://localhost:${textGenerationMeta.port}/v1`,
-    name: 'ovms',
-    fetch: async (url, options) => {
-      if (options?.body && (repetitionPenalty != null || disableReasoning)) {
-        const body = JSON.parse(options.body.toString())
-        if (repetitionPenalty != null) {
-          body.repetition_penalty = repetitionPenalty
-        }
-
-        if (disableReasoning) {
-          body.chat_template_kwargs = {
-            ...body.chat_template_kwargs,
-            enable_thinking: false,
-          }
-        }
-        options = { ...options, body: JSON.stringify(body) }
-      }
-      const newURL = new URL(url.toString())
-      return fetch(newURL, options)
-    },
+  const instructions = await buildChatSystemPrompt({
+    customPrompt: body.systemPrompt,
+    messages: body.messages,
+    knowledgeBaseId: body.knowledgeBaseId,
+    topK: body.topK,
+    vectordbInstanceKey: boundInstanceKey(instances, 'vectordb'),
+    vectordbConfig: body.vectordbConfig,
   })
 
-  let mcpTools: Awaited<ReturnType<typeof buildMcpTools>> | undefined
-  logger.info('MCP Server IDs:', mcpServerIds)
-  if (mcpServerIds && mcpServerIds.length > 0) {
-    mcpTools = await buildMcpTools(mcpServerIds)
-  }
+  // Resolved once per request — not per sentence — so dispatch stays
+  // synchronous and ordered as the answer streams.
+  const lipsyncUrls = lipsync
+    ? await resolveLipsyncUrls(
+        boundInstanceKey(instances, 'lipsync'),
+        boundInstanceKey(instances, 'text-to-speech'),
+      )
+    : null
+  const forwarder =
+    lipsync && lipsyncUrls ? createLipsyncForwarder(lipsync, lipsyncUrls) : null
+  const sentences = forwarder ? new SentenceProcessor() : null
 
-  const hasTools = mcpTools != null && Object.keys(mcpTools.tools).length > 0
-
-  const baseModel = provider(model)
-  // Resolve the reasoning parser (user choice, or model-aware default) and
-  // build the middleware stack. Reasoning parsing is skipped entirely when the
-  // user has disabled reasoning.
-  const reasoningMiddleware = disableReasoning
-    ? null
-    : createReasoningMiddleware(resolveReasoningParser(reasoningParser, model))
-  const wrappedModel = wrapLanguageModel({
-    model: baseModel,
-    middleware: [
-      ...(hasTools ? [hermesToolMiddleware] : []),
-      ...(reasoningMiddleware ? [reasoningMiddleware] : []),
-    ],
-  })
-  const stream = createUIMessageStream({
-    execute: async ({ writer }) => {
-      const modelMessages = await convertToModelMessages(messages)
-
-      // Initialize sentence processor for lipsync sentence-by-sentence streaming
-      const sentenceProcessor = lipsync ? new SentenceProcessor() : null
-
-      const result = streamText({
-        model: wrappedModel,
-        instructions: systemPrompt,
-        messages: modelMessages,
-        maxOutputTokens: maxTokens,
-        temperature,
-        topP,
-        topK,
-        ...(mcpTools && Object.keys(mcpTools.tools).length > 0
-          ? { tools: mcpTools.tools, stopWhen: isStepCount(5) }
-          : {}),
-        onChunk({ chunk }) {
-          if (chunk.type === 'text-delta' && sentenceProcessor && lipsync) {
-            const sentences = sentenceProcessor.addTextChunk(chunk.text)
-            for (const sentence of sentences) {
-              dispatchSentenceToLipsync(sentence, lipsync)
-            }
-          }
-        },
-        onEnd: async () => {
-          if (sentenceProcessor && lipsync) {
-            const finalSentences = sentenceProcessor.flush()
-            for (const sentence of finalSentences) {
-              dispatchSentenceToLipsync(sentence, lipsync)
-            }
-          }
-          await mcpTools?.cleanup()
-        },
+  // Last before the stream, which owns (and closes) the MCP clients.
+  const tools = body.mcpServerIds?.length
+    ? await buildMcpTools(body.mcpServerIds, {
+        textResults: body.mcpTextResults ?? false,
       })
-      writer.merge(result.toUIMessageStream())
+    : undefined
+
+  return streamChatResponse({
+    ...target,
+    messages: body.messages,
+    instructions,
+    abortSignal: req.signal,
+    tools,
+    toolCallParser: resolveToolCallParser(body.toolCallParser),
+    parseReasoning:
+      !disableReasoning &&
+      resolveReasoningParser(body.reasoningParser) !== 'none',
+    patchBody:
+      repetitionPenalty != null || disableReasoning
+        ? (request) => {
+            if (repetitionPenalty != null) {
+              request.repetition_penalty = repetitionPenalty
+            }
+            if (disableReasoning) {
+              request.chat_template_kwargs = {
+                ...(request.chat_template_kwargs as
+                  Record<string, unknown> | undefined),
+                enable_thinking: false,
+              }
+              // With thinking off a `</think>` is an artifact: Qwen3.5 int4 emits one after its
+              // answer and can repeat it up to the token limit.
+              const stop = request.stop
+              request.stop = [
+                ...(Array.isArray(stop) ? stop : stop ? [stop] : []),
+                '</think>',
+              ]
+            }
+          }
+        : undefined,
+    maxOutputTokens: body.maxTokens,
+    temperature: body.temperature,
+    topP: body.topP,
+    topK: body.topK,
+    // With its token counts, for the demo's Live metrics.
+    messageMetadata: chatUsageMetadata,
+    onTextDelta: (text) => {
+      for (const sentence of sentences?.addTextChunk(text) ?? []) {
+        forwarder?.send(sentence)
+      }
+    },
+    onFinish: () => {
+      for (const sentence of sentences?.flush() ?? []) {
+        forwarder?.send(sentence)
+      }
+    },
+    // Drops the unspoken tail and stops the avatar; not awaited, since the stop waits for a
+    // sentence still on its way to lipsync.
+    onAbort: () => {
+      forwarder?.stop()
     },
   })
-
-  return createUIMessageStreamResponse({ stream })
 }

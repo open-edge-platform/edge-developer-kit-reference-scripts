@@ -3,20 +3,51 @@
 
 'use client'
 
-import { Film, Info, Loader2 } from 'lucide-react'
+import { Film, Loader } from 'lucide-react'
+import { ServiceLink } from '@/components/common/service-link'
+import { InfoTip } from '@/components/common/info-tip'
+import { TruncatedText } from '@/components/common/truncated-text'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import {
   Tooltip,
   TooltipContent,
-  TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import {
   useGetService,
+  useServiceActivity,
   useServiceStatus,
 } from '@/context/service-status-context'
+import { STATE_LABEL } from '@/lib/instances/service-presentation'
+
+export interface FrameGenerationLabelProps {
+  htmlFor: string
+  tooltip: string
+}
+
+/** The info tip sits beside the label, not in it, so clicking it does not flip the switch. */
+export function FrameGenerationLabel({
+  htmlFor,
+  tooltip,
+}: FrameGenerationLabelProps) {
+  return (
+    <div className="flex items-center gap-1">
+      <Label htmlFor={htmlFor} className="text-muted-foreground text-xs">
+        <Film aria-hidden="true" className="mr-1 h-3 w-3" />
+        Frame generation
+      </Label>
+      <InfoTip
+        tooltip={tooltip}
+        ariaLabel="About frame generation"
+        size="sm"
+        side="top"
+        contentClassName="max-w-60 text-xs"
+      />
+    </div>
+  )
+}
 
 export interface FrameGenerationSwitchProps {
   checked: boolean
@@ -25,20 +56,18 @@ export interface FrameGenerationSwitchProps {
 }
 
 /**
- * Per-request frame generation toggle: its value is sent with each chat /
- * audio lipsync request as `frame_generation` (no service restart). The
- * lipsync worker measures its inference FPS at startup, so it knows how many
- * frames to fill and only interpolates when inference alone cannot reach the
- * avatar frame rate. Interpolation runs in the Frame Generation service, so
- * turning the switch on requires that service to be running.
+ * Sent with each request as `frame_generation` (no restart). The worker only interpolates when its
+ * inference FPS can't reach the avatar frame rate, via the Frame Generation service, which must run.
  */
 export function FrameGenerationSwitch({
   checked,
   onCheckedChange,
   disabled,
 }: FrameGenerationSwitchProps) {
-  const { startService, isActionPending } = useServiceStatus()
+  const { startService } = useServiceStatus()
+  const { isActionPending } = useServiceActivity()
   const frameGenService = useGetService('frame-generation')
+  const added = Boolean(frameGenService?.added)
   const frameGenStatus = frameGenService?.status ?? 'offline'
   const isOnline = frameGenStatus === 'online'
   const isStarting =
@@ -47,51 +76,58 @@ export function FrameGenerationSwitch({
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <Label
+        <FrameGenerationLabel
           htmlFor="lipsync-frame-gen"
-          className="text-muted-foreground text-xs"
-        >
-          <Film className="mr-1 inline-block h-3 w-3" />
-          Frame generation
-          <TooltipProvider delayDuration={250}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Info className="text-muted-foreground ml-1 inline-block h-3 w-3" />
-              </TooltipTrigger>
-              <TooltipContent side="top" className="max-w-60 text-[11px]">
-                Fills in-between frames with AI interpolation, served by the
-                Frame Generation service (which is also where its device is
-                configured). It only activates when the lipsync accelerator
-                cannot infer enough frames per second to match the avatar video
-                on its own.
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </Label>
-        <TooltipProvider delayDuration={250}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              {/* span wrapper: disabled elements swallow hover events */}
-              <span>
-                <Switch
-                  id="lipsync-frame-gen"
-                  checked={checked}
-                  onCheckedChange={onCheckedChange}
-                  // Turning ON needs the service; turning OFF is always allowed.
-                  disabled={disabled || (!isOnline && !checked)}
-                />
-              </span>
-            </TooltipTrigger>
-            {!isOnline && !checked && (
-              <TooltipContent side="top" className="max-w-60 text-[11px]">
-                Requires the Frame Generation service. Start it to enable this
-                option.
-              </TooltipContent>
-            )}
-          </Tooltip>
-        </TooltipProvider>
+          tooltip="Fills in-between frames with AI interpolation, served by the Frame Generation service (which is also where its device is configured). It only activates when the lipsync accelerator cannot infer enough frames per second to match the avatar video on its own."
+        />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            {/* span wrapper: disabled elements swallow hover events */}
+            <span>
+              <Switch
+                id="lipsync-frame-gen"
+                checked={checked}
+                onCheckedChange={onCheckedChange}
+                // Turning ON needs the service; turning OFF is always allowed.
+                disabled={disabled || (!isOnline && !checked)}
+              />
+            </span>
+          </TooltipTrigger>
+          {!isOnline && !checked && (
+            <TooltipContent side="top" className="max-w-60 text-xs">
+              Requires the Frame Generation service. Start it to enable this
+              option.
+            </TooltipContent>
+          )}
+        </Tooltip>
       </div>
-      {!isOnline && (
+      <p
+        className="text-muted-foreground flex min-w-0 items-baseline gap-1 text-xs"
+        data-testid="lipsync-frame-generation-instance"
+      >
+        {added && frameGenService ? (
+          <>
+            <span className="shrink-0">Uses</span>
+            <TruncatedText
+              text={frameGenService.label ?? 'Frame Generation'}
+              className="text-foreground max-w-40"
+            />
+            <span className="shrink-0">· {STATE_LABEL[frameGenStatus]}</span>
+          </>
+        ) : (
+          <span>
+            No Frame Generation instance.{' '}
+            <ServiceLink
+              serviceType="frame-generation"
+              className="text-primary underline-offset-2 hover:underline"
+            >
+              Add one
+            </ServiceLink>{' '}
+            to turn this on.
+          </span>
+        )}
+      </p>
+      {added && !isOnline && (
         <Button
           type="button"
           size="sm"
@@ -101,13 +137,13 @@ export function FrameGenerationSwitch({
           onClick={() => startService('frame-generation')}
         >
           {isStarting ? (
-            <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+            <Loader aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
           ) : (
-            <Film className="mr-1.5 h-3.5 w-3.5" />
+            <Film aria-hidden="true" className="h-3.5 w-3.5" />
           )}
           {isStarting
-            ? 'Starting Frame Generation...'
-            : 'Start Frame Generation service'}
+            ? 'Starting Frame Generation…'
+            : `Start ${frameGenService?.label ?? 'Frame Generation'}`}
         </Button>
       )}
     </div>

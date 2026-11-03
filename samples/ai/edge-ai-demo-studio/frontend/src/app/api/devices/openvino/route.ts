@@ -1,16 +1,15 @@
 // Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-import path from 'node:path'
-import { UV_PATH, WORKER_DIR } from '@/lib/constants'
-import { createJsonDeviceQueryHandler } from '../query-devices'
+import { NextResponse } from 'next/server'
+import { jsonErrorFrom } from '@/lib/api/json'
+import { queryScriptDevices } from '@/lib/system/devices'
 
-const scriptPath = path.join(WORKER_DIR, 'helper', 'openvino_device.py')
-const cwd = path.join(WORKER_DIR, 'helper')
-
-export const GET = createJsonDeviceQueryHandler(
-  scriptPath,
-  cwd,
-  UV_PATH,
-  'OpenVINO',
-)
+/** `{ devices }` OpenVINO can run on. */
+export async function GET() {
+  try {
+    return NextResponse.json({ devices: await queryScriptDevices('openvino') })
+  } catch (error) {
+    return jsonErrorFrom(error, 'Failed to query OpenVINO devices')
+  }
+}

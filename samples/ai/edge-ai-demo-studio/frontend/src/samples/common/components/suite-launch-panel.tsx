@@ -4,11 +4,11 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import Link from 'next/link'
 import {
   ExternalLink,
-  Loader2,
-  Settings,
+  Loader,
+  Play,
+  RotateCcw,
   Square,
   TriangleAlert,
 } from 'lucide-react'
@@ -17,8 +17,10 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   useGetService,
+  useServiceActivity,
   useServiceStatus,
 } from '@/context/service-status-context'
+import type { ServiceStatus } from '@/services/types'
 
 interface SuiteLaunchPanelProps {
   serviceId: string
@@ -56,37 +58,37 @@ export function SuiteLaunchPanel({
             extraActions={extraActions}
           />
         ) : (
-          <InactiveBody serviceId={serviceId} status={status} />
+          <InactiveBody
+            serviceId={serviceId}
+            suiteName={suiteName}
+            status={status}
+          />
         )}
       </CardContent>
     </Card>
   )
 }
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status }: { status: ServiceStatus }) {
   switch (status) {
     case 'online':
-      return (
-        <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
-          Active
-        </Badge>
-      )
+      return <Badge tone="success">Active</Badge>
     case 'starting':
       return (
-        <Badge variant="secondary">
-          <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+        <Badge tone="warning">
+          <Loader className="animate-spin" aria-hidden />
           Starting…
         </Badge>
       )
     case 'error':
       return (
-        <Badge variant="destructive">
-          <TriangleAlert className="mr-1 h-3 w-3" />
+        <Badge tone="destructive">
+          <TriangleAlert aria-hidden />
           Error
         </Badge>
       )
-    default:
-      return <Badge variant="outline">Offline</Badge>
+    case 'offline':
+      return <Badge tone="muted">Offline</Badge>
   }
 }
 
@@ -103,7 +105,8 @@ function ActiveBody({
   popupHint?: string
   extraActions?: ReactNode
 }) {
-  const { stopService, isActionPending } = useServiceStatus()
+  const { stopService } = useServiceStatus()
+  const { isActionPending } = useServiceActivity()
   const pending = isActionPending(serviceId)
 
   const stopButton = (
@@ -115,9 +118,9 @@ function ActiveBody({
       onClick={() => stopService(serviceId)}
     >
       {pending ? (
-        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+        <Loader className="mr-2 h-4 w-4 animate-spin" aria-hidden />
       ) : (
-        <Square className="mr-2 h-4 w-4" />
+        <Square className="mr-2 h-4 w-4" aria-hidden />
       )}
       Stop {suiteName}
     </Button>
@@ -134,7 +137,7 @@ function ActiveBody({
           <Button asChild>
             <a href={launchUrl} target="_blank" rel="noopener noreferrer">
               Open {suiteName}
-              <ExternalLink className="ml-2 h-4 w-4" />
+              <ExternalLink className="ml-2 h-4 w-4" aria-hidden />
             </a>
           </Button>
           <code className="bg-muted rounded px-2 py-1 text-xs">
@@ -143,6 +146,9 @@ function ActiveBody({
           {extraActions}
           {stopButton}
         </div>
+        {popupHint && (
+          <p className="text-muted-foreground text-xs">{popupHint}</p>
+        )}
       </div>
     )
   }
@@ -161,29 +167,50 @@ function ActiveBody({
   )
 }
 
+/** The suite is a hidden, sample-owned service with no page of its own, so it is (re)started here. */
 function InactiveBody({
   serviceId,
+  suiteName,
   status,
 }: {
   serviceId: string
-  status: string
+  suiteName: string
+  status: Exclude<ServiceStatus, 'online'>
 }) {
+  const { startService, restartService } = useServiceStatus()
+  const { isActionPending } = useServiceActivity()
+  const pending = isActionPending(serviceId)
+  const failed = status === 'error'
   const message =
     status === 'starting'
       ? `Starting up — this can take a while on first launch while Docker images are pulled.`
-      : status === 'error'
+      : failed
         ? `The suite failed to start. Check the service logs for details.`
-        : `Start the suite from the Services page to launch it.`
+        : `${suiteName} is stopped. Start it to launch the suite.`
 
   return (
     <div className="space-y-3">
       <p className="text-muted-foreground text-sm">{message}</p>
-      <Button asChild variant="outline" size="sm">
-        <Link href={`/services/${serviceId}`}>
-          <Settings className="mr-2 h-4 w-4" />
-          Open service page
-        </Link>
-      </Button>
+      {status !== 'starting' && (
+        <Button
+          type="button"
+          size="sm"
+          disabled={pending}
+          aria-busy={pending || undefined}
+          onClick={() =>
+            void (failed ? restartService(serviceId) : startService(serviceId))
+          }
+        >
+          {pending ? (
+            <Loader className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+          ) : failed ? (
+            <RotateCcw className="mr-2 h-4 w-4" aria-hidden />
+          ) : (
+            <Play className="mr-2 h-4 w-4" aria-hidden />
+          )}
+          {failed ? 'Retry' : 'Start'} {suiteName}
+        </Button>
+      )}
     </div>
   )
 }

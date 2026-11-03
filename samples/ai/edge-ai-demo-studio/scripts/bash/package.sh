@@ -1,10 +1,8 @@
 #!/bin/bash
 # Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
-# Exit immediately if a command exits with a non-zero status
 set -euo pipefail
 
-# Define variables
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/../../" && pwd)"
 TEMP_DIR="$PROJECT_DIR/build"
@@ -15,7 +13,6 @@ ELECTRON_DIR="$PROJECT_DIR/electron"
 NODE_PATH="$PROJECT_DIR/thirdparty/node/bin"
 PROJECT_NAME="EdgeAIDemoStudio"
 
-# Ensure environment is cleaned up on exit or interruption
 cleanup_on_exit() {
     if [ -n "${OLD_PATH:-}" ]; then
         export PATH="$OLD_PATH"
@@ -23,22 +20,18 @@ cleanup_on_exit() {
 }
 trap cleanup_on_exit EXIT INT TERM
 
-# Validate required system tools
 validate_system_requirements() {
     echo "Validating system requirements..."
     local MISSING_TOOLS=()
     
-    # Check for rsync
     if ! command -v rsync >/dev/null 2>&1; then
         MISSING_TOOLS+=("rsync")
     fi
     
-    # Check for zip
     if ! command -v zip >/dev/null 2>&1; then
         MISSING_TOOLS+=("zip")
     fi
     
-    # Check for stat (should be available on all systems)
     if ! command -v stat >/dev/null 2>&1; then
         echo "Warning: stat command not available. File size reporting may be limited."
     fi
@@ -72,7 +65,6 @@ setup_node_env() {
     export PATH="$NODE_PATH:$PATH" || { echo "Error: Failed to set PATH environment variable."; exit 1; }
     trap reset_env EXIT
     
-    # Check for node and npm
     if ! command -v node >/dev/null 2>&1; then
         echo "Error: node is not available in PATH after setup."
         echo "PATH: $PATH"
@@ -97,7 +89,6 @@ reset_env() {
     export PATH="$OLD_PATH"
 }
 
-# Generate an rsync exclude file from .gitignore patterns.
 # Args: <src_dir> <output_exclude_file>
 generate_rsync_exclude_from_gitignore() {
     local SRC_DIR="$1"
@@ -144,40 +135,33 @@ generate_rsync_exclude_from_gitignore() {
 copy_workers() {
   echo "Copying worker files to temporary directory..."
   
-  # Verify source directory exists
   if [ ! -d "$WORKER_DIR" ]; then
       echo "Error: Worker directory not found at $WORKER_DIR"
       exit 1
   fi
   
-  # Check if rsync is available
   if ! command -v rsync >/dev/null 2>&1; then
       echo "Error: rsync is not installed. Please install rsync to continue."
       exit 1
   fi
   
-  # Create workers folder in temp directory
   mkdir -p "$TEMP_DIR/workers" || { 
       echo "Error: Failed to create workers folder at $TEMP_DIR/workers"
       echo "Check permissions and available disk space."
       exit 1
   }
 
-  # Build an rsync exclude file from .gitignore for the workers tree
   TMP_EXCLUDE="$TEMP_DIR/rsync_exclude_workers.txt"
   generate_rsync_exclude_from_gitignore "$WORKER_DIR" "$TMP_EXCLUDE" || { echo "Error: Failed to generate rsync exclude list for workers"; exit 1; }
 
-  # Perform the copy using the generated exclude list
   rsync -av --exclude-from="$TMP_EXCLUDE" "$WORKER_DIR/" "$TEMP_DIR/workers" || { 
       echo "Error: Failed to copy worker files from $WORKER_DIR to $TEMP_DIR/workers"
       echo "Check source directory permissions and available disk space."
       exit 1
   }
 
-  # Cleanup temporary exclude file
   rm -f "$TMP_EXCLUDE" || true
   
-  # Verify the copy was successful
   if [ ! -d "$TEMP_DIR/workers" ] || [ -z "$(ls -A "$TEMP_DIR/workers")" ]; then
       echo "Error: Worker files were not copied successfully. Destination directory is empty."
       exit 1
@@ -191,14 +175,12 @@ copy_scripts() {
   SCRIPTS_PATH="$PROJECT_DIR/scripts/bash"
   DESTINATION_PATH="$TEMP_DIR/scripts"
   
-  # Create scripts folder in temp directory
   mkdir -p "$DESTINATION_PATH" || { 
       echo "Error: Failed to create scripts folder at $DESTINATION_PATH"
       echo "Check permissions and available disk space."
       exit 1
   }
   
-  # Preserve the original scripts/bash directory structure when copying.
   if [ -d "$SCRIPTS_PATH" ]; then
       echo "Copying scripts from $SCRIPTS_PATH..."
       
@@ -216,7 +198,6 @@ copy_scripts() {
             exit 1
         }
       
-      # Verify at least some files were copied
       if [ ! -d "$DESTINATION_PATH" ] || [ -z "$(find "$DESTINATION_PATH" -name "*.sh" 2>/dev/null)" ]; then
           echo "Warning: No .sh files found in copied scripts directory."
       fi
@@ -244,7 +225,6 @@ copy_scripts() {
       fi
   fi
   
-  # Copy root setup.sh to the build directory
   SCRIPTS_TO_COPY=(
     "$PROJECT_DIR/setup.sh"
     "$PROJECT_DIR/install_dependencies.sh"
@@ -267,10 +247,8 @@ copy_scripts() {
   echo "✓ Scripts copied successfully."
 }
 
-# Copy deployment.json (and its editor schema) into the build directory so
-# electron-builder bundles them into resources/ (see extraResources in
-# electron/package.json). The packaged frontend then picks the presets up from
-# resources/deployment.json on startup.
+# Copy deployment.json (if any), its example and docs into the build dir; electron-builder bundles
+# them into resources/ (extraResources in electron/package.json) for the packaged frontend.
 copy_deployment_config() {
   echo "Copying deployment.json to temporary directory..."
 
@@ -282,14 +260,19 @@ copy_deployment_config() {
     }
     echo "✓ deployment.json copied successfully."
   else
-    echo "Warning: deployment.json not found at $PROJECT_DIR/deployment.json - the package will use built-in service defaults."
+    echo "No deployment.json at $PROJECT_DIR/deployment.json - the package applies no presets; services are added in the UI."
   fi
 
-  # Ship the deployment docs alongside it: the schema keeps the
-  # "$schema": "./docs/deployment.schema.json" reference working for editor
-  # validation, and shipping deployment-config.md means the startup doc
-  # regeneration (frontend/src/lib/deployment-docs.ts) finds identical content
-  # in resources/docs and skips rewriting it.
+  if [ -f "$PROJECT_DIR/deployment.example.json" ]; then
+    cp "$PROJECT_DIR/deployment.example.json" "$TEMP_DIR/" || {
+        echo "Error: Failed to copy deployment.example.json to $TEMP_DIR"
+        exit 1
+    }
+    echo "✓ deployment.example.json copied successfully."
+  fi
+
+  # The schema keeps the "$schema" reference working in editors; with deployment-config.md
+  # shipped, the startup doc regeneration finds it unchanged and skips rewriting it.
   local DOC_FILE
   for DOC_FILE in deployment.schema.json deployment-config.md; do
     if [ -f "$PROJECT_DIR/docs/$DOC_FILE" ]; then
@@ -308,14 +291,12 @@ copy_deployment_config() {
 finalize_package() {
   echo "Finalizing package..."
   
-  # Verify output directory exists
   if [ ! -d "$PROJECT_DIR/out" ]; then
       echo "Error: Output directory not found at $PROJECT_DIR/out"
       echo "The Electron build may have failed. Check previous build steps."
       exit 1
   fi
   
-  # Determine the output folder name (assuming Linux build for now)
   OUT_FOLDER="$PROJECT_DIR/out/linux-unpacked"
   
   if [ ! -d "$OUT_FOLDER" ]; then
@@ -326,7 +307,6 @@ finalize_package() {
     exit 1
   fi
   
-    # Create the new project package structure
     echo "Creating $PROJECT_NAME package structure..."
   
   cd "$PROJECT_DIR/out" || {
@@ -334,7 +314,6 @@ finalize_package() {
       exit 1
   }
   
-    # Remove existing project directory if it exists
     if [ -d "$PROJECT_NAME" ]; then
         rm -rf "$PROJECT_NAME" || {
                 echo "Error: Failed to remove existing $PROJECT_NAME directory"
@@ -344,14 +323,12 @@ finalize_package() {
         echo "Removed existing $PROJECT_NAME directory"
     fi
   
-    # Create project directory
     mkdir -p "$PROJECT_NAME" || {
             echo "Error: Failed to create $PROJECT_NAME directory"
             echo "Check permissions and available disk space."
             exit 1
     }
   
-    # Copy README.md to the root of the project package
     if [ -f "$PROJECT_DIR/out/README.md" ]; then
         cp "$PROJECT_DIR/out/README.md" "$PROJECT_NAME/" || { 
                 echo "Error: Failed to copy README.md to $PROJECT_NAME folder."
@@ -363,7 +340,6 @@ finalize_package() {
     echo "Warning: README.md not found at $PROJECT_DIR/out/README.md - skipping."
   fi
   
-  # Copy the entire linux-unpacked directory into EdgeAIDemoStudio
   if [ ! -d "linux-unpacked" ]; then
       echo "Error: linux-unpacked directory not found in current directory"
       echo "Current directory: $(pwd)"
@@ -377,7 +353,6 @@ finalize_package() {
   }
   echo "✓ linux-unpacked directory copied successfully."
   
-    # Create a shell script launcher that launches the application correctly
     cd "$PROJECT_NAME" || {
             echo "Error: Failed to change directory to $PROJECT_NAME"
             exit 1
@@ -424,10 +399,8 @@ EOF
       exit 1
   }
   
-    # Create zip file with the new structure
     echo "Creating $PROJECT_NAME.zip..."
   
-  # Check if zip is available
   if ! command -v zip >/dev/null 2>&1; then
       echo "Error: zip is not installed. Please install zip to continue."
       echo "On Ubuntu/Debian: sudo apt-get install zip"
@@ -443,7 +416,6 @@ EOF
         echo "Removed existing $PROJECT_NAME.zip"
     fi
   
-    # Verify project directory exists before zipping
     if [ ! -d "$PROJECT_NAME" ]; then
             echo "Error: $PROJECT_NAME directory not found. Cannot create zip file."
             exit 1
@@ -455,7 +427,6 @@ EOF
             exit 1
     }
   
-    # Verify the zip file was created and has reasonable size
     if [ ! -f "$PROJECT_NAME.zip" ]; then
             echo "Error: $PROJECT_NAME.zip was not created successfully."
             exit 1
@@ -479,38 +450,32 @@ EOF
 setup_frontend_package() {
   echo "Building frontend application..."
   
-  # Check if frontend directory exists
   if [ ! -d "$FRONTEND_DIR" ]; then
     echo "Error: Frontend directory not found at $FRONTEND_DIR"
     exit 1
   fi
   
-  # Change to frontend directory
   cd "$FRONTEND_DIR" || {
       echo "Error: Failed to change directory to $FRONTEND_DIR"
       exit 1
   }
   
-  # Check if setup script exists
   if [ ! -f "./setup.sh" ]; then
       echo "Error: Frontend setup.sh script not found at $FRONTEND_DIR/setup.sh"
       exit 1
   fi
   
-  # Make setup script executable
   chmod +x ./setup.sh || {
       echo "Error: Failed to make setup.sh executable"
       exit 1
   }
   
-  # Run frontend setup
   ./setup.sh || { 
       echo "Error: Frontend setup failed."
       echo "Check the frontend setup.sh script for errors."
       exit 1
   }
   
-  # Verify build output exists
   if [ ! -d ".next/standalone" ]; then
       echo "Error: Frontend build failed. .next/standalone directory not found."
       echo "The Next.js build may have failed. Check the build output above."
@@ -523,13 +488,11 @@ setup_frontend_package() {
       exit 1
   fi
   
-  # Create frontend directory in temp
   mkdir -p "$TEMP_DIR/frontend" || {
       echo "Error: Failed to create frontend directory at $TEMP_DIR/frontend"
       exit 1
   }
   
-  # Copy standalone build files
   rsync -av .next/standalone/ "$TEMP_DIR/frontend/" || { 
       echo "Error: Failed to copy standalone frontend build files to temp directory."
       echo "Source: $FRONTEND_DIR/.next/standalone/"
@@ -537,20 +500,26 @@ setup_frontend_package() {
       exit 1
   }
   
-  # Create .next/static directory in temp
   mkdir -p "$TEMP_DIR/frontend/.next/static" || {
       echo "Error: Failed to create .next/static directory at $TEMP_DIR/frontend/.next/static"
       exit 1
   }
   
-  # Copy static files
   rsync -av .next/static/ "$TEMP_DIR/frontend/.next/static/" || { 
       echo "Error: Failed to copy static frontend build files to temp directory."
       echo "Source: $FRONTEND_DIR/.next/static/"
       echo "Destination: $TEMP_DIR/frontend/.next/static/"
       exit 1
   }
-  
+
+  # server.js serves public/ from beside itself; the standalone output holds only the traced part.
+  rsync -av public/ "$TEMP_DIR/frontend/public/" || {
+      echo "Error: Failed to copy public frontend files to temp directory."
+      echo "Source: $FRONTEND_DIR/public/"
+      echo "Destination: $TEMP_DIR/frontend/public/"
+      exit 1
+  }
+
   echo "✓ Frontend built and copied successfully."
   
   cd - >/dev/null || {
@@ -562,7 +531,6 @@ setup_frontend_package() {
 create_temp_dir() {
   echo "Setting up temporary build directory..."
   
-  # Remove existing temp directory if it exists
   if [ -d "$TEMP_DIR" ]; then
     echo "Temporary directory already exists at $TEMP_DIR. Cleaning up..."
     rm -rf "$TEMP_DIR" || {
@@ -573,14 +541,12 @@ create_temp_dir() {
     echo "Cleaned up existing temporary directory."
   fi
   
-  # Create new temp directory
   mkdir -p "$TEMP_DIR" || {
       echo "Error: Failed to create temporary directory at $TEMP_DIR"
       echo "Check parent directory permissions and available disk space."
       exit 1
   }
   
-  # Verify directory was created
   if [ ! -d "$TEMP_DIR" ]; then
       echo "Error: Temporary directory was not created successfully at $TEMP_DIR"
       exit 1
@@ -592,25 +558,21 @@ create_temp_dir() {
 run_electron_package() {
   echo "Packaging Electron application..."
   
-  # Check if Electron directory exists
   if [ ! -d "$ELECTRON_DIR" ]; then
     echo "Error: Electron directory not found at $ELECTRON_DIR"
     exit 1
   fi
   
-  # Change to Electron directory
   cd "$ELECTRON_DIR" || {
       echo "Error: Failed to change directory to $ELECTRON_DIR"
       exit 1
   }
   
-  # Verify package.json exists
   if [ ! -f "package.json" ]; then
       echo "Error: package.json not found in Electron directory"
       exit 1
   fi
 
-  # Install Electron packages
   echo "Running npm install..."
   npm install || { 
       echo "Error: Electron installation failed."
@@ -618,21 +580,18 @@ run_electron_package() {
       exit 1
   }
   
-  # Verify node_modules exists
   if [ ! -d "node_modules" ]; then
       echo "Error: node_modules not found in Electron directory"
       echo "Please run npm install in the Electron directory first."
       exit 1
   fi
   
-  # Check if build script exists in package.json
   if ! grep -q '"build"' package.json; then
       echo "Error: build script not found in package.json"
       echo "Please ensure the Electron package.json has a build script defined."
       exit 1
   fi
   
-  # Run Electron packaging
   echo "Running npm run build..."
   npm run build || { 
       echo "Error: Electron packaging failed."
@@ -640,7 +599,6 @@ run_electron_package() {
       exit 1
   }
   
-  # Verify the build output was created
   if [ ! -d "$PROJECT_DIR/out" ]; then
       echo "Error: Electron build did not create the expected output directory at $PROJECT_DIR/out"
       exit 1
@@ -654,26 +612,22 @@ run_electron_package() {
   }
 }
 
-# Remove platform-specific native binaries that are included by Next.js standalone
-# tracing but are not needed on the target platform (standard glibc Linux).
-# This avoids packaging Alpine/musl and Windows binaries in Linux builds.
+# Drop the musl and Windows native binaries Next.js standalone tracing pulls into glibc Linux builds.
+# Runs on the staged build/ so every electron-builder target (zip, AppImage) leaves them out.
 prune_native_binaries() {
-  local RESOURCES_DIR="$PROJECT_DIR/out/linux-unpacked/resources/frontend/node_modules"
+  local RESOURCES_DIR="$TEMP_DIR/frontend/node_modules"
 
   if [ ! -d "$RESOURCES_DIR" ]; then
-    echo "Warning: Resources directory not found at $RESOURCES_DIR — skipping binary pruning."
+    echo "Warning: Frontend node_modules not found at $RESOURCES_DIR — skipping binary pruning."
     return 0
   fi
 
   echo "Pruning unused platform-specific native binaries..."
 
   local DIRS_TO_REMOVE=(
-    # musl/Alpine Linux variants of sharp — not needed on glibc Linux
     "$RESOURCES_DIR/@img/sharp-libvips-linuxmusl-x64"
     "$RESOURCES_DIR/@img/sharp-linuxmusl-x64"
-    # musl/Alpine Linux variant of libsql — not needed on glibc Linux
     "$RESOURCES_DIR/@libsql/linux-x64-musl"
-    # Windows variants of sharp — not needed on Linux
     "$RESOURCES_DIR/@img/sharp-win32-x64"
     "$RESOURCES_DIR/@img/sharp-libvips-win32-x64"
   )
@@ -698,13 +652,11 @@ main() {
     echo "============================================"
   echo ""
   
-  # Change to script directory
   cd "$SCRIPT_DIR" || {
       echo "Error: Failed to change to script directory: $SCRIPT_DIR"
       exit 1
   }
   
-  # Verify project directory exists
   if [ ! -d "$PROJECT_DIR" ]; then
       echo "Error: Project directory not found at $PROJECT_DIR"
       exit 1
@@ -714,36 +666,24 @@ main() {
   echo "Build directory: $TEMP_DIR"
   echo ""
   
-  # Validate system requirements first
   validate_system_requirements || exit 1
   echo ""
 
-  # Download and set up Node.js environment
   echo "Setting up thirdparty dependencies..."
   if ! bash "$SCRIPT_DIR/setup_thirdparty.sh"; then
     echo "Error: Failed to set up thirdparty dependencies."
     exit 1
   fi
   
-  # Execute packaging steps
   create_temp_dir || exit 1
   setup_node_env || exit 1
   copy_workers || exit 1
   copy_scripts || exit 1
   copy_deployment_config || exit 1
   setup_frontend_package || exit 1
-  run_electron_package || exit 1
   prune_native_binaries || exit 1
+  run_electron_package || exit 1
   finalize_package || exit 1
-
-#   # Clean up temporary build directory created during packaging
-#   if [ -d "$TEMP_DIR" ]; then
-#         echo "Cleaning up temporary build directory: $TEMP_DIR"
-#         rm -rf "$TEMP_DIR" || {
-#             echo "Warning: Failed to remove temporary directory $TEMP_DIR"
-#         }
-#     echo "✓ Temporary build directory removed."
-#   fi
   
   echo ""
   echo "============================================"
@@ -754,7 +694,6 @@ main() {
     echo "Zip file: $PROJECT_DIR/out/$PROJECT_NAME.zip"
   echo ""
   
-  # Display zip file size if possible
   if [ -f "$PROJECT_DIR/out/$PROJECT_NAME.zip" ]; then
       ZIP_SIZE=$(stat -f%z "$PROJECT_DIR/out/$PROJECT_NAME.zip" 2>/dev/null || stat -c%s "$PROJECT_DIR/out/$PROJECT_NAME.zip" 2>/dev/null)
       if [ -n "$ZIP_SIZE" ]; then

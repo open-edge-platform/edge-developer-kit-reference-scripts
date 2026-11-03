@@ -5,11 +5,9 @@
 
 import {
   createContext,
-  useCallback,
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from 'react'
@@ -18,41 +16,22 @@ import type { TtsPlaybackControls } from '@/context/tts-playback-context'
 import type { VoiceInputControls } from '@/context/voice-input-context'
 
 /**
- * Optional-service integrations are headless "feature provider" components that
- * live inside their own service folder (so the folder can be pruned at export
- * time — see docs/OPTIONAL-SERVICES.md). Because a provider is a *component* it
- * can be conditionally mounted (unlike a hook, which can't be conditionally
- * called), and when its service folder is absent it simply isn't in the
- * generated registry and never mounts.
- *
- * A mounted provider reports two things up to its host sample:
- *  - `groups`: the Configure-sheet param groups it owns
- *  - `extraBody`: fields merged into the sample's chat/completion request body
- *
- * Reporting flows through this collector context. The host sample renders the
- * providers inside `collector.Provider` and reads the merged `groups` /
- * `extraBody` back from the `useFeatureCollector` hook.
- *
- * This module lives under `@/context` (neutral infrastructure) rather than
- * under `@/samples` so that the `services` tree can import the publish hooks
- * without depending on `samples` — keeping the two trees independently prunable
- * (see docs/OPTIONAL-SERVICES.md).
+ * Optional-service integrations are headless "feature provider" components in their own service
+ * folder, so a pruned folder simply never mounts (docs/OPTIONAL-SERVICES.md). Each reports its
+ * Configure-sheet `groups` and request `extraBody` to its host sample through this collector.
+ * Lives under `@/context` so `services` can publish without depending on `samples`.
  */
 
 /**
- * Strongly-typed named values a feature provider publishes for its host to read
- * back. Keyed explicitly (rather than an open record) so a typo or shape change
- * is a compile error instead of a silently-hidden control. Add a key here when
- * a new provider needs to export one.
+ * Named values a provider publishes for its host to read back. Keyed explicitly, not an open
+ * record, so a typo or shape change is a compile error rather than a silently hidden control.
  */
 export interface FeatureExports {
   /** STT mic controls, consumed via VoiceInputContext. */
   voiceInput?: VoiceInputControls | null
   /** TTS per-message playback controls, consumed via TtsPlaybackContext. */
   ttsPlayback?: TtsPlaybackControls | null
-  /** Whether the speech-to-text service is online. */
   sttOnline?: boolean
-  /** Whether the text-to-speech service is online. */
   ttsOnline?: boolean
 }
 
@@ -60,28 +39,40 @@ export interface FeatureExports {
 export interface FeatureContribution {
   groups?: ServiceParamGroup[]
   extraBody?: Record<string, unknown>
-  /** Strongly-typed named values a host reads back (e.g. STT `voiceInput`). */
   exports?: FeatureExports
 }
 
-/** An imperative handle one provider exposes for another to call (e.g. STT's
- * `startRecording`, invoked by the wake-word provider). Stored in a ref so
- * cross-provider wiring never triggers re-renders. */
+/** A handle one provider exposes for another to call (e.g. STT's `startRecording` for wake word). */
 type FeatureHandle = (...args: unknown[]) => unknown
 
-interface CollectorContextValue {
+/** Where mounted feature providers report to; one per host sample. */
+export interface FeatureRegistry {
   register: (key: string, contribution: FeatureContribution) => void
   unregister: (key: string) => void
   setHandle: (key: string, fn: FeatureHandle | null) => void
   getHandle: (key: string) => FeatureHandle | undefined
 }
 
-const CollectorContext = createContext<CollectorContextValue | null>(null)
+const CollectorContext = createContext<FeatureRegistry | null>(null)
+
+/** Wraps the rendered feature providers so they can publish to `value`. */
+export function FeatureCollectorProvider({
+  value,
+  children,
+}: {
+  value: FeatureRegistry
+  children: ReactNode
+}) {
+  return (
+    <CollectorContext.Provider value={value}>
+      {children}
+    </CollectorContext.Provider>
+  )
+}
 
 /**
- * Called inside a feature provider to publish its contribution. `groups` and
- * `extraBody` MUST be memoized by the provider so this re-registers only when
- * their content actually changes.
+ * Publishes a provider's contribution. `groups` and `extraBody` MUST be memoized so this
+ * re-registers only when their content changes.
  */
 export function useFeaturePublish(
   serviceId: string,
@@ -96,11 +87,7 @@ export function useFeaturePublish(
   }, [ctx, serviceId, groups, extraBody, exports])
 }
 
-/**
- * Memoize a single param group into the stable one-element array
- * `useFeaturePublish` expects. Factored out because nearly every provider
- * publishes exactly one group.
- */
+/** Memoizes one param group into the stable array `useFeaturePublish` expects. */
 export function useSingletonGroup(
   group: ServiceParamGroup,
 ): ServiceParamGroup[] {
@@ -119,8 +106,8 @@ export function useFeatureHandles() {
 function noop() {}
 
 export interface FeatureCollectorApi {
-  /** Wraps the rendered feature providers so they can publish their contributions. */
-  Provider: (props: { children: ReactNode }) => ReactNode
+  /** For `FeatureCollectorProvider` around the rendered feature providers. */
+  registry: FeatureRegistry
   /** All published param groups, ordered by `orderHint` (group.serviceId). */
   groups: ServiceParamGroup[]
   /** Merged request-body contributions across all mounted providers. */
@@ -130,62 +117,37 @@ export interface FeatureCollectorApi {
 }
 
 /**
- * Collects contributions from the feature providers rendered inside
- * `collector.Provider`. `orderHint` is the desired Configure-sheet order keyed
- * by `ServiceParamGroup.serviceId` (e.g. `['speech-to-text','wake-word-detection',
- * 'vectordb','rerank','mcp']`) — pass a stable (module-level) array.
+ * Collects contributions from the providers inside `<FeatureCollectorProvider>`. `orderHint` is the
+ * Configure-sheet order, by `ServiceParamGroup.serviceId`.
  */
 export function useFeatureCollector(orderHint: string[]): FeatureCollectorApi {
   const [contributions, setContributions] = useState<
     Map<string, FeatureContribution>
   >(() => new Map())
-  const handlesRef = useRef<Map<string, FeatureHandle>>(new Map())
+  // Providers publish from effects keyed on it, so it must never change identity. Handles are a
+  // plain Map: they are called, never rendered.
+  const [registry] = useState<FeatureRegistry>(() => {
+    const handles = new Map<string, FeatureHandle>()
+    return {
+      register: (key, contribution) =>
+        setContributions((prev) => new Map(prev).set(key, contribution)),
+      unregister: (key) =>
+        setContributions((prev) => {
+          if (!prev.has(key)) return prev
+          const next = new Map(prev)
+          next.delete(key)
+          return next
+        }),
+      setHandle: (key, fn) => {
+        if (fn) handles.set(key, fn)
+        else handles.delete(key)
+      },
+      getHandle: (key) => handles.get(key),
+    }
+  })
 
-  const register = useCallback(
-    (key: string, contribution: FeatureContribution) => {
-      setContributions((prev) => {
-        const next = new Map(prev)
-        next.set(key, contribution)
-        return next
-      })
-    },
-    [],
-  )
-
-  const unregister = useCallback((key: string) => {
-    setContributions((prev) => {
-      if (!prev.has(key)) return prev
-      const next = new Map(prev)
-      next.delete(key)
-      return next
-    })
-  }, [])
-
-  const setHandle = useCallback((key: string, fn: FeatureHandle | null) => {
-    if (fn) handlesRef.current.set(key, fn)
-    else handlesRef.current.delete(key)
-  }, [])
-
-  const getHandle = useCallback(
-    (key: string) => handlesRef.current.get(key),
-    [],
-  )
-
-  const ctxValue = useMemo<CollectorContextValue>(
-    () => ({ register, unregister, setHandle, getHandle }),
-    [register, unregister, setHandle, getHandle],
-  )
-
-  const Provider = useCallback(
-    ({ children }: { children: ReactNode }) => (
-      <CollectorContext.Provider value={ctxValue}>
-        {children}
-      </CollectorContext.Provider>
-    ),
-    [ctxValue],
-  )
-
-  // Stable string key so the memos below don't recompute on a fresh array literal.
+  // The merged results feed request bodies and publish effects, so memoize on a string key rather
+  // than a caller's (possibly fresh) array.
   const orderKey = orderHint.join('|')
 
   const groups = useMemo(() => {
@@ -224,5 +186,5 @@ export function useFeatureCollector(orderHint: string[]): FeatureCollectorApi {
     return merged
   }, [contributions])
 
-  return { Provider, groups, extraBody, exports }
+  return { registry, groups, extraBody, exports }
 }

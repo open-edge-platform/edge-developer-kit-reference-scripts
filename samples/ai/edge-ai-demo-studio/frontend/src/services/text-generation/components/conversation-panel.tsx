@@ -3,36 +3,28 @@
 
 'use client'
 
-import {
-  ArrowUp,
-  Loader2,
-  MessageSquare,
-  Mic,
-  MicOff,
-  RotateCcw,
-  Square,
-} from 'lucide-react'
-import { type ReactNode, useEffect, useRef } from 'react'
+import { ArrowDown, MessageSquare, Trash2 } from 'lucide-react'
+import { type ReactNode, useRef } from 'react'
+import { EmptyState } from '@/components/common/empty-state'
 import { Button } from '@/components/ui/button'
-import { Textarea } from '@/components/ui/textarea'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
-import { cn } from '@/lib/utils'
-import { useVoiceInput } from '@/context/voice-input-context'
 import { useTtsPlaybackControls } from '@/context/tts-playback-context'
+import { useVoiceInput } from '@/context/voice-input-context'
+import { cn } from '@/lib/utils'
+import { useFollowScroll } from '../hooks/use-follow-scroll'
 import {
+  type ChatAttachments,
   type ChatMsg,
   type ChatStatus,
-  handleChatKeyDown,
   isLastMessageLoading,
-} from './chat-helpers'
+} from '../lib/chat-helpers'
+import type { AssistantAvatarStyle } from './assistant-avatar'
+import { ChatErrorNotice } from './chat-error-notice'
 import { ChatMessage, ThinkingIndicator } from './chat-message'
+import { Composer } from './composer'
+import { ImageAttachButton, ImageAttachPreviewList } from './image-attach'
+import { VoiceInputButton } from './voice-input-button'
 
-interface ConversationPanelProps {
+interface ConversationPanelProps extends AssistantAvatarStyle {
   messages: ChatMsg[]
   status: ChatStatus
   input: string
@@ -42,20 +34,30 @@ interface ConversationPanelProps {
   onReset: () => void
 
   disabled?: boolean
+  /** Disables Send and Retry (e.g. the instance is stopped) but not typing. */
+  sendDisabled?: boolean
   placeholder?: string
   textareaRows?: number
 
   emptyState?: ReactNode
   emptyStateText?: string
+  /** Prompts offered in the default empty state; one fills the composer. */
+  examplePrompts?: string[]
+
+  /** Shown inline with Retry while `status` is 'error'. */
+  error?: Error
+  onRetry?: () => void
+
+  /** Images attached to the draft, shown above the input. */
+  attachments?: ChatAttachments
+  /** Offers the Image button, for a model that accepts images. */
+  allowImageAttach?: boolean
 
   sttOnline?: boolean
   ttsOnline?: boolean
-  ttsVoice?: string
-  ttsSpeed?: number
 
-  avatarClassName?: string
-  avatarTextClassName?: string
-
+  /** Controls at the end of the conversation toolbar, e.g. Parameters. */
+  headerActions?: ReactNode
   toolbarExtra?: ReactNode
   inputExtra?: ReactNode
 
@@ -63,6 +65,34 @@ interface ConversationPanelProps {
   messagesClassName?: string
 }
 
+function ExamplePrompts({
+  prompts,
+  disabled,
+  onPick,
+}: {
+  prompts: string[]
+  disabled?: boolean
+  onPick: (prompt: string) => void
+}) {
+  return (
+    <div className="mt-4 flex max-w-xl flex-wrap justify-center gap-2">
+      {prompts.map((prompt) => (
+        <Button
+          key={prompt}
+          variant="outline"
+          size="sm"
+          className="h-auto min-h-9 text-xs font-normal whitespace-normal"
+          disabled={disabled}
+          onClick={() => onPick(prompt)}
+        >
+          {prompt}
+        </Button>
+      ))}
+    </div>
+  )
+}
+
+/** Chat conversation, toolbar and composer, with optional voice input, images and read-aloud. */
 export function ConversationPanel({
   messages,
   status,
@@ -72,206 +102,199 @@ export function ConversationPanel({
   onStop,
   onReset,
   disabled,
+  sendDisabled,
   placeholder = 'Type a message…',
   textareaRows = 1,
   emptyState,
   emptyStateText = 'Start a conversation',
+  examplePrompts,
+  error,
+  onRetry,
+  attachments,
+  allowImageAttach,
   sttOnline,
   ttsOnline,
   avatarClassName,
   avatarTextClassName,
+  headerActions,
   toolbarExtra,
   inputExtra,
   className,
   messagesClassName,
 }: ConversationPanelProps) {
-  const bottomRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const isRunning = status === 'submitted' || status === 'streaming'
   const voiceInput = useVoiceInput()
   const ttsPlayback = useTtsPlaybackControls()
-
-  useEffect(() => {
-    if (messages.length > 0 || status !== 'ready') {
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-    }
-  }, [messages.length, status])
-
-  // Keep scrolling to bottom while streaming
-  useEffect(() => {
-    if (status !== 'streaming' && status !== 'submitted') return
-    const id = setInterval(() => {
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-    }, 300)
-    return () => clearInterval(id)
-  }, [status])
+  const follow = useFollowScroll(scrollRef, contentRef, {
+    messages,
+    status,
+    error,
+  })
 
   const showMic = !!sttOnline && voiceInput != null
-  const showToolbar =
-    messages.length > 0 || showMic || toolbarExtra !== undefined
+  const showImageAttach = Boolean(allowImageAttach && attachments)
+  const toolbar = (showMic ||
+    showImageAttach ||
+    toolbarExtra !== undefined) && (
+    <>
+      {showMic && voiceInput && (
+        <VoiceInputButton
+          voiceInput={voiceInput}
+          disabled={disabled || isRunning}
+        />
+      )}
+      {showImageAttach && attachments && (
+        <ImageAttachButton
+          onFiles={attachments.attach}
+          disabled={disabled || isRunning}
+        />
+      )}
+      {toolbarExtra}
+    </>
+  )
+  const attachedImages = attachments && attachments.previews.length > 0 && (
+    <ImageAttachPreviewList attachments={attachments} />
+  )
+  const showHeader = messages.length > 0 || headerActions !== undefined
+  const avatarStyle = { avatarClassName, avatarTextClassName }
 
   return (
     <div
       className={cn(
-        'border-border bg-muted/10 flex min-h-[420px] flex-col rounded-xl border',
+        'border-border bg-muted/10 flex min-h-[320px] flex-col rounded-xl border',
         className,
       )}
     >
-      <div
-        className={cn(
-          'min-h-0 flex-1 space-y-4 overflow-x-hidden p-4',
-          messages.length > 0 || status !== 'ready'
-            ? 'overflow-y-auto'
-            : 'overflow-hidden',
-          messagesClassName,
-        )}
-      >
-        {messages.length === 0
-          ? (emptyState ?? (
-              <div className="flex h-full flex-col items-center justify-center py-16 text-center">
-                <MessageSquare className="text-muted-foreground/40 mb-3 h-10 w-10" />
-                <p className="text-muted-foreground text-sm">
-                  {emptyStateText}
-                </p>
-              </div>
-            ))
-          : messages.map((msg, i) => (
-              <ChatMessage
-                key={msg.id}
-                msg={msg}
-                isLastAssistant={
-                  msg.role !== 'user' && i === messages.length - 1
-                }
-                isRunning={isRunning}
-                onSpeak={
-                  ttsOnline && ttsPlayback
-                    ? (text) => ttsPlayback.handleSpeak(text, msg.id)
-                    : undefined
-                }
-                isSpeaking={ttsPlayback?.speakingMsgId === msg.id}
-                avatarClassName={avatarClassName}
-                avatarTextClassName={avatarTextClassName}
-              />
-            ))}
-
-        {(status === 'submitted' ||
-          (status === 'streaming' && isLastMessageLoading(messages))) && (
-          <ThinkingIndicator
-            avatarClassName={avatarClassName}
-            avatarTextClassName={avatarTextClassName}
-          />
-        )}
-
-        <div ref={bottomRef} />
-      </div>
-
-      <div className="border-border border-t p-3">
-        {showToolbar && (
-          <div className="mb-2 flex items-center gap-1.5">
-            {messages.length > 0 && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-muted-foreground hover:text-foreground h-7 gap-1.5 px-2 text-xs"
-                onClick={onReset}
-                disabled={isRunning}
-              >
-                <RotateCcw className="h-3.5 w-3.5" />
-                Reset
-              </Button>
-            )}
-            {showMic && voiceInput && (
-              <TooltipProvider>
-                <Tooltip open={voiceInput.micError ? undefined : false}>
-                  <TooltipTrigger asChild>
-                    <Button
-                      onClick={
-                        voiceInput.isRecording
-                          ? voiceInput.stopRecording
-                          : voiceInput.startRecording
-                      }
-                      variant={
-                        voiceInput.isRecording
-                          ? 'destructive'
-                          : voiceInput.micError
-                            ? 'outline'
-                            : 'ghost'
-                      }
-                      size="sm"
-                      className={cn(
-                        'h-7 gap-1.5 px-2 text-xs',
-                        !voiceInput.isRecording &&
-                          !voiceInput.micError &&
-                          'text-muted-foreground hover:text-foreground',
-                        voiceInput.micError &&
-                          'text-destructive border-destructive/50',
-                      )}
-                      disabled={disabled || isRunning || voiceInput.isPending}
-                    >
-                      {voiceInput.isPending ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : voiceInput.isRecording ? (
-                        <>
-                          <Square className="h-3 w-3" />
-                          Stop
-                        </>
-                      ) : voiceInput.micError ? (
-                        <>
-                          <MicOff className="h-3.5 w-3.5" />
-                          Voice
-                        </>
-                      ) : (
-                        <>
-                          <Mic className="h-3.5 w-3.5" />
-                          Voice
-                        </>
-                      )}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" className="max-w-56 text-center">
-                    {voiceInput.micError}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
-            {toolbarExtra}
-          </div>
-        )}
-
-        <div className="bg-muted/30 border-input focus-within:border-ring focus-within:ring-ring/50 relative rounded-md border shadow-xs focus-within:ring-[3px]">
-          {inputExtra && <div className="px-3 pt-2">{inputExtra}</div>}
-          <Textarea
-            data-testid="chat-input"
-            value={input}
-            onChange={(e) => onInputChange(e.target.value)}
-            onKeyDown={(e) => handleChatKeyDown(e, onSend)}
-            placeholder={placeholder}
-            disabled={disabled || isRunning}
-            rows={textareaRows}
-            className="field-sizing-fixed !min-h-9 resize-none border-none pr-12 text-sm shadow-none focus-visible:ring-0"
-          />
-          {isRunning && onStop ? (
+      {showHeader && (
+        <div className="border-border flex min-h-11 flex-wrap items-center gap-1.5 border-b px-3 py-1.5">
+          {messages.length > 0 && (
             <Button
-              onClick={onStop}
-              size="icon"
-              variant="destructive"
-              className="absolute top-1 right-1.5 bottom-1.5 h-7 w-7"
-              data-testid="stop-chat-button"
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground hover:text-foreground h-8 gap-1.5 px-2 text-xs"
+              onClick={onReset}
+              disabled={isRunning}
             >
-              <Square className="h-3 w-3" />
-            </Button>
-          ) : (
-            <Button
-              onClick={onSend}
-              size="icon"
-              disabled={disabled || !input.trim() || isRunning}
-              data-testid="send-chat-button"
-              className="bg-primary hover:bg-primary-light absolute top-1 right-1.5 bottom-1.5 h-7 w-7 text-white"
-            >
-              <ArrowUp className="h-3.5 w-3.5" />
+              <Trash2 aria-hidden className="h-3.5 w-3.5" />
+              Clear conversation
             </Button>
           )}
+          {headerActions !== undefined && (
+            <div className="ml-auto flex items-center gap-1.5">
+              {headerActions}
+            </div>
+          )}
         </div>
+      )}
+
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <div
+          ref={scrollRef}
+          onScroll={follow.onScroll}
+          onWheel={follow.onWheel}
+          aria-busy={isRunning}
+          className={cn(
+            'min-h-0 flex-1 overflow-x-hidden p-4',
+            messages.length > 0 || status !== 'ready'
+              ? 'overflow-y-auto'
+              : 'overflow-hidden',
+            messagesClassName,
+          )}
+        >
+          <div
+            ref={contentRef}
+            className={cn('space-y-4', messages.length === 0 && 'h-full')}
+          >
+            {messages.length === 0
+              ? (emptyState ?? (
+                  <EmptyState
+                    icon={MessageSquare}
+                    size="sm"
+                    description={emptyStateText}
+                    className="h-full py-10"
+                  >
+                    {examplePrompts && examplePrompts.length > 0 && (
+                      <ExamplePrompts
+                        prompts={examplePrompts}
+                        disabled={disabled}
+                        onPick={(prompt) => {
+                          onInputChange(prompt)
+                          textareaRef.current?.focus()
+                        }}
+                      />
+                    )}
+                  </EmptyState>
+                ))
+              : messages.map((msg, i) => (
+                  <ChatMessage
+                    key={msg.id}
+                    msg={msg}
+                    isLastAssistant={
+                      msg.role !== 'user' && i === messages.length - 1
+                    }
+                    isRunning={isRunning}
+                    onSpeak={
+                      ttsOnline && ttsPlayback
+                        ? (text) => ttsPlayback.handleSpeak(text, msg.id)
+                        : undefined
+                    }
+                    isSpeaking={ttsPlayback?.speakingMsgId === msg.id}
+                    {...avatarStyle}
+                  />
+                ))}
+
+            {(status === 'submitted' ||
+              (status === 'streaming' && isLastMessageLoading(messages))) && (
+              <ThinkingIndicator {...avatarStyle} />
+            )}
+
+            {status === 'error' && error && (
+              <ChatErrorNotice
+                error={error}
+                onRetry={onRetry}
+                retryDisabled={sendDisabled}
+              />
+            )}
+          </div>
+        </div>
+
+        {!follow.following && messages.length > 0 && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={follow.jumpToLatest}
+            className="bg-background absolute bottom-3 left-1/2 h-8 -translate-x-1/2 gap-1.5 rounded-full text-xs shadow-sm"
+          >
+            <ArrowDown aria-hidden className="h-3.5 w-3.5" />
+            Jump to latest
+          </Button>
+        )}
       </div>
+
+      <Composer
+        textareaRef={textareaRef}
+        input={input}
+        onInputChange={onInputChange}
+        onSend={onSend}
+        onStop={onStop}
+        isRunning={isRunning}
+        disabled={disabled}
+        sendDisabled={sendDisabled}
+        placeholder={placeholder}
+        rows={textareaRows}
+        toolbar={toolbar}
+        inputExtra={
+          (attachedImages || inputExtra) && (
+            <>
+              {attachedImages}
+              {inputExtra}
+            </>
+          )
+        }
+      />
     </div>
   )
 }

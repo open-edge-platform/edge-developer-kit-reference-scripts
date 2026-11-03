@@ -5,34 +5,36 @@
 
 import { useMemo, useState } from 'react'
 import { useServiceLiveStatus } from '@/context/service-status-context'
-import type { ServiceParamGroup } from '@/types/demo-params'
+import type { DemoParam, ServiceParamGroup } from '@/types/demo-params'
 
 interface OptionalServiceGroupOptions {
   serviceId: string
   serviceLabel: string
   offlineMessage?: string
+  /** Where the offline notice sends the user to set the service up. */
+  configHref?: string
   initialEnabled?: boolean
   optional?: boolean
+  params?: DemoParam[]
 }
 
 /**
- * Builds a memoized {@link ServiceParamGroup} bound to a service's live status,
- * with an optional enable toggle. Lives under `@/hooks` (neutral) so a service's
- * feature provider can use it without importing `@/samples`
- * (see docs/OPTIONAL-SERVICES.md).
+ * A memoized {@link ServiceParamGroup} bound to a service's live status, with an optional enable
+ * toggle. In `@/hooks` so service feature providers need not import `@/samples`.
  */
 export function useOptionalServiceGroup({
   serviceId,
   serviceLabel,
   offlineMessage,
+  configHref,
   initialEnabled = true,
   optional = true,
+  params,
 }: OptionalServiceGroupOptions) {
   const [enabled, setEnabled] = useState(initialEnabled)
   const online = useServiceLiveStatus(serviceId) === 'online'
 
-  // Memoized so feature providers can publish this group through the collector
-  // without re-render churn (see docs/OPTIONAL-SERVICES.md).
+  // Memoized so feature providers can publish it through the collector without re-render churn.
   const group: ServiceParamGroup = useMemo(
     () => ({
       serviceLabel,
@@ -42,7 +44,8 @@ export function useOptionalServiceGroup({
       offlineMessage:
         offlineMessage ??
         `Start ${serviceLabel} from the services page to enable this feature.`,
-      params: [],
+      ...(configHref ? { configHref } : {}),
+      params: params ?? [],
       ...(optional
         ? {
             enabled,
@@ -50,7 +53,16 @@ export function useOptionalServiceGroup({
           }
         : {}),
     }),
-    [serviceLabel, serviceId, online, optional, offlineMessage, enabled],
+    [
+      serviceLabel,
+      serviceId,
+      online,
+      optional,
+      offlineMessage,
+      configHref,
+      enabled,
+      params,
+    ],
   )
 
   return { enabled: optional ? online && enabled : online, online, group }

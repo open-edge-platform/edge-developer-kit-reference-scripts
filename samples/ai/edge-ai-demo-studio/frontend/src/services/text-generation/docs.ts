@@ -16,6 +16,24 @@ export const getDocsData = ({
     : inferModel
 
   return {
+    quickStart: {
+      steps: [
+        `Send a chat request to \`POST /v1/chat/completions\` with the model \`${inferModel}\` and a list of messages.`,
+        'Read the reply from `choices[0].message.content`. Add `"stream": true` to receive it token by token as Server-Sent Events.',
+        `To call it from code, point an OpenAI client at \`${host}/v1\` with any API key.`,
+      ],
+      request: {
+        language: 'cURL',
+        languageCode: 'bash',
+        code: `curl ${host}/v1/chat/completions \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "${inferModel}",
+    "messages": [{"role": "user", "content": "Say hello in one sentence."}],
+    "max_tokens": 64
+  }'`,
+      },
+    },
     serviceDescription:
       'The Text Generation service leverages the OpenVINO Model Server to provide efficient and scalable deployment of large language models for real-time text generation. It exposes OpenAI-compatible endpoints, enabling seamless use with existing OpenAI client libraries such as the Python openai package or the Node.js openai library — without requiring an internet connection.',
     overview:

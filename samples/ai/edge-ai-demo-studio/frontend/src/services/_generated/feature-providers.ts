@@ -24,7 +24,7 @@ export interface FeatureProviderProps {
 export type FeatureProviderComponent = ComponentType<FeatureProviderProps>
 
 /** Optional-service feature provider keyed by service ID. Looked up by
- *  `useFeatureProviders`; a pruned service folder drops out automatically. */
+ *  `useSampleChatFeatures`; a pruned service folder drops out automatically. */
 export const featureProviderRegistry: Partial<
   Record<string, FeatureProviderComponent>
 > = {

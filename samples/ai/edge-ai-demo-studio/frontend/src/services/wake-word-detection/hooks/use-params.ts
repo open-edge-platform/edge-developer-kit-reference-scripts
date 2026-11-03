@@ -3,43 +3,33 @@
 
 'use client'
 
-import { useState } from 'react'
 import type { DemoParam } from '@/types/demo-params'
-import type { AudioDevice } from '.'
+import { useDemoParams } from '@/services/common/demo/use-demo-params'
+import type { AudioDevice } from '../lib/api'
+
+/** `deviceId` of the worker's default microphone. */
+export const DEFAULT_DEVICE = 'default'
 
 const WAKE_WORD_DEFAULTS = {
   detectionThreshold: 0.5,
-  deviceId: 'default',
+  deviceId: DEFAULT_DEVICE,
 }
 
-export interface WakeWordParamValues {
-  detectionThreshold: number
-  deviceId: string
+interface UseWakeWordParamsOptions {
+  /** Keeps the settings per instance across remounts, under a `DemoSessionProvider`. */
+  sessionKey?: string
 }
 
+/** The detection threshold (the only sidebar param) and the microphone, chosen beside Start. */
 export function useWakeWordParams(
-  devices: AudioDevice[] = [],
-  options?: {
-    initial?: Partial<WakeWordParamValues>
-    onRefreshDevices?: () => void
-    isRefreshingDevices?: boolean
-  },
-): {
-  values: WakeWordParamValues
-  params: DemoParam[]
-} {
-  const initial = options?.initial
-  const [detectionThreshold, setDetectionThreshold] = useState(
-    initial?.detectionThreshold ?? WAKE_WORD_DEFAULTS.detectionThreshold,
-  )
-  const [deviceId, setDeviceId] = useState(
-    initial?.deviceId ?? WAKE_WORD_DEFAULTS.deviceId,
-  )
-
-  const values: WakeWordParamValues = { detectionThreshold, deviceId }
+  devices: AudioDevice[],
+  { sessionKey }: UseWakeWordParamsOptions,
+) {
+  const { values, setters } = useDemoParams(WAKE_WORD_DEFAULTS, { sessionKey })
 
   const deviceOptions = [
-    { value: 'default', label: 'Default Microphone' },
+    { value: DEFAULT_DEVICE, label: 'Default microphone' },
+    // The worker lists its own default as device -1.
     ...devices
       .filter((d) => d.id !== -1)
       .map((d) => ({ value: String(d.id), label: d.name })),
@@ -51,23 +41,18 @@ export function useWakeWordParams(
       id: 'detection_threshold',
       label: 'Detection Threshold',
       tooltip: 'Minimum confidence score to trigger a detection event.',
-      value: detectionThreshold,
+      value: values.detectionThreshold,
       min: 0,
       max: 1,
       step: 0.05,
-      onChange: setDetectionThreshold,
-    },
-    {
-      type: 'select',
-      id: 'audio_device',
-      label: 'Audio Device',
-      value: deviceId,
-      options: deviceOptions,
-      onChange: setDeviceId,
-      onRefresh: options?.onRefreshDevices,
-      isRefreshing: options?.isRefreshingDevices,
+      onChange: setters.setDetectionThreshold,
     },
   ]
 
-  return { values, params }
+  return {
+    values,
+    params,
+    deviceOptions,
+    setDeviceId: setters.setDeviceId,
+  }
 }

@@ -1,0 +1,10 @@
+diff --git a/optimum/intel/version.py b/optimum/intel/version.py
+index e9b2b74..8e1413b 100644
+--- a/optimum/intel/version.py
++++ b/optimum/intel/version.py
+@@ -12,4 +12,4 @@
+ #  See the License for the specific language governing permissions and
+ #  limitations under the License.
+ 
+-__version__ = "2.1.0.dev0"
++__version__ = "2.1.0.dev0+4ca1144e"

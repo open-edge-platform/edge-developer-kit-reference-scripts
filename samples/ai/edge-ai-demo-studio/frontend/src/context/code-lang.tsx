@@ -2,23 +2,30 @@
 // SPDX-License-Identifier: Apache-2.0
 
 'use client'
-import { createContext, useContext, useMemo, useState } from 'react'
-import type { BundledLanguage } from 'shiki/bundle/web'
+import { createContext, useContext, useState } from 'react'
+import type { CodeSnippet } from '@/services/types'
+
+/**
+ * The snippet last picked in any code block. Matched by label (`language`) too, since two snippets
+ * can share a `languageCode` (Python and the OpenAI SDK for Python).
+ */
+type CodeLang = Pick<CodeSnippet, 'language' | 'languageCode'>
+
+const DEFAULT_LANG: CodeLang = { language: 'Python', languageCode: 'python' }
 
 const CodeLangContext = createContext<{
-  language: BundledLanguage
-  setLanguage: (lang: BundledLanguage) => void
-}>({ language: 'python', setLanguage: () => {} })
+  language: CodeLang
+  setLanguage: (lang: CodeLang) => void
+}>({ language: DEFAULT_LANG, setLanguage: () => {} })
 
 export const CodeLangProvider = ({
   children,
 }: {
   children: React.ReactNode
 }) => {
-  const [language, setLanguage] = useState<BundledLanguage>('python')
-  const value = useMemo(() => ({ language, setLanguage }), [language])
+  const [language, setLanguage] = useState<CodeLang>(DEFAULT_LANG)
   return (
-    <CodeLangContext.Provider value={value}>
+    <CodeLangContext.Provider value={{ language, setLanguage }}>
       {children}
     </CodeLangContext.Provider>
   )

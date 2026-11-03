@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useMutation } from '@tanstack/react-query'
-
-export type { RerankParamValues } from './use-params'
+import { requireApiBase } from '@/lib/browser/api-base'
+import { fetchWork } from '@/services/common/metrics/work'
 
 interface RerankResult {
   index: number
@@ -15,9 +15,9 @@ export interface RerankResponse {
   results: RerankResult[]
 }
 
-export function useRerank(serviceId: string, model: string) {
+export function useRerank(apiBase: string | undefined, model: string) {
   return useMutation({
-    mutationFn: async ({
+    mutationFn: ({
       query,
       documents,
       topN,
@@ -26,22 +26,24 @@ export function useRerank(serviceId: string, model: string) {
       documents: string[]
       topN: number
     }): Promise<RerankResponse> => {
-      const res = await fetch(`/api/${serviceId}/v1/rerank`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model,
-          query,
-          documents,
-          top_n: topN,
-          return_documents: true,
-        }),
-      })
-      if (!res.ok) {
-        const text = await res.text()
-        throw new Error(text || res.statusText)
-      }
-      return res.json()
+      requireApiBase(apiBase, 'Reranker')
+      // Every document is scored, however few `top_n` returns.
+      return fetchWork(
+        apiBase,
+        '/v1/rerank',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model,
+            query,
+            documents,
+            top_n: topN,
+            return_documents: true,
+          }),
+        },
+        () => ({ items: documents.length }),
+      )
     },
   })
 }

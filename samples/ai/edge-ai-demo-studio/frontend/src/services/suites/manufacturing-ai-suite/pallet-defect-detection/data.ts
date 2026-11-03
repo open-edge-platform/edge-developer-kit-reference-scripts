@@ -3,6 +3,7 @@
 
 import { Boxes } from 'lucide-react'
 import type { ServiceMeta, WorkerConfig } from '@/services/types'
+import { suiteHttpsPort } from '@/services/suites/ports'
 
 export const service: ServiceMeta = {
   id: 'pallet-defect-detection',
@@ -10,10 +11,10 @@ export const service: ServiceMeta = {
   description:
     'Industrial AI suite that detects pallet defects in real time using DL Streamer Pipeline Server with WebRTC streaming.',
   longDescription:
-    'Manufacturing AI Suite reference application built on the Industrial Edge Insights for Vision template. DL Streamer Pipeline Server runs a YOLO-based detection pipeline against a warehouse video, publishes frames over WebRTC via MediaMTX, stores frames/metadata in MinIO + MQTT, and exposes telemetry through OpenTelemetry/Prometheus. Brought up via docker compose; the suite hosts its own UI at https://localhost/.',
+    'Manufacturing AI Suite reference application built on the Industrial Edge Insights for Vision template. DL Streamer Pipeline Server runs a YOLO-based detection pipeline against a warehouse video, publishes frames over WebRTC via MediaMTX, stores frames/metadata in SeaweedFS + MQTT, and exposes telemetry through OpenTelemetry/Prometheus. Brought up via docker compose; the suite hosts its own UI at https://127.0.0.1/.',
   icon: Boxes,
-  port: 7004,
-  reservedPorts: [7005, 7006, 7007],
+  // http, https, coturn and S3 storage ports are consecutive from the allocated base port
+  portBlock: 4,
   supportedOS: ['linux'],
   execution: { mode: 'worker' },
   healthCheck: {
@@ -34,6 +35,8 @@ export const service: ServiceMeta = {
 }
 
 export const worker: WorkerConfig = {
+  // The compose wrapper rejects flags it does not know.
+  acceptsInstanceArgs: false,
   buildArgs: (doc) => {
     const port = doc.port
     if (port == null) throw new Error('Service port is not configured')
@@ -41,16 +44,16 @@ export const worker: WorkerConfig = {
       '--http-port',
       String(port),
       '--https-port',
-      String(port + 1),
+      String(suiteHttpsPort(port)),
       '--coturn-port',
       String(port + 2),
-      '--minio-port',
+      '--s3-port',
       String(port + 3),
       '--device',
       doc.models.default.device,
     ]
   },
-  workerSubDir: 'suite/manufacturing-ai-suite/pallet-defect-detection',
+  workerSubDir: 'suites/manufacturing-ai-suite/pallet-defect-detection',
   requiresDocker: true,
   stopScript: true,
 }

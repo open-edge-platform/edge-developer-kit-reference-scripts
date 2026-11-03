@@ -7,17 +7,17 @@ import type { ServiceMeta, WorkerConfig } from '@/services/types'
 import { serviceConfig } from './config'
 
 const DEFAULT_MODEL = 'omz-retail'
-const DEFAULT_DEVICE = 'CPU'
+const DEFAULT_DEVICE = 'AUTO'
 
 export const service: ServiceMeta = {
   id: 'face-recognition',
   name: 'Face Recognition',
+  multiInstance: true,
   description:
     'Detect and identify faces against a reference gallery using Open Model Zoo or OpenCV Zoo pipelines.',
   longDescription:
     'Face recognition service with selectable pipelines on OpenVINO. The Open Model Zoo presets follow the face_recognition_demo chain — an SSD face detector (retail-0004 or adas-0001), landmarks-regression-retail-0009 for five-point alignment and face-reidentification-retail-0095 for 256-d descriptors; the OpenCV Zoo preset pairs YuNet detection with SFace 128-d embeddings. Enroll people with one or more reference images, then identify faces in uploads or webcam captures; the gallery is re-embedded automatically when the model is switched.',
   icon: ScanFace,
-  port: 8032,
   supportedOS: ['linux', 'windows'],
   execution: { mode: 'worker' },
   defaultModel: {
@@ -34,8 +34,9 @@ export const service: ServiceMeta = {
 }
 
 export const worker: WorkerConfig = {
+  modelCatalog: 'script',
   modelDirectories: ['models/face-recognition'],
-  workerSubDir: 'face-recognition',
+  workerSubDir: 'services/face-recognition',
   buildArgs: (doc: PayloadService) => {
     const model = doc.models?.default?.name ?? DEFAULT_MODEL
     const device = doc.models?.default?.device ?? DEFAULT_DEVICE

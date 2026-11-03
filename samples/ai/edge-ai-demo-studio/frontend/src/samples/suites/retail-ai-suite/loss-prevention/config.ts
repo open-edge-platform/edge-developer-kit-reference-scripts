@@ -4,6 +4,6 @@
 export const lossPreventionSuite = {
   serviceId: 'loss-prevention',
   suiteName: 'Loss Prevention',
-  edgeAiSuitesVersion: '2026.0',
-  edgeAiSuitesVersionTag: 'Edge AI Suites 2026.0',
+  edgeAiSuitesVersion: '2026.2.1',
+  edgeAiSuitesVersionTag: 'Edge AI Suites 2026.2.1',
 } as const

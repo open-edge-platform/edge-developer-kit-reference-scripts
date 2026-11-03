@@ -1,36 +1,42 @@
 // Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-export type { Engine, EngineBackend } from './types'
+export type { EngineBackend } from './types'
 
 import type { Service } from '@/payload-types'
-import type { OS } from '@/types/common'
+import type { HostOS } from '@/types/common'
 import { engines } from './_generated/meta'
 import type { EngineBackend } from './types'
 
 export { engines } from './_generated/meta'
 
-export function getBackendsForService(
+function getBackendsForService(
   serviceType: Service['type'],
+  engineId?: string,
 ): EngineBackend[] {
-  return Object.values(engines).flatMap((engine) =>
-    engine.supportedBackends.filter((b) =>
-      b.supportedServices.includes(serviceType),
-    ),
-  )
+  return Object.entries(engines)
+    .filter(([id]) => engineId === undefined || id === engineId)
+    .flatMap(([, engine]) =>
+      engine.supportedBackends.filter((b) =>
+        b.supportedServices.includes(serviceType),
+      ),
+    )
 }
 
-// Gets recommended backend for a service type based on OS
+/**
+ * Default backend for a service type on `os` (of one engine when `engineId` is given): the one
+ * recommended for that OS, else the first that supports it, else the first.
+ */
 export function getRecommendedBackendForService(
   serviceType: Service['type'],
-  os: OS,
+  os: HostOS,
+  engineId?: string,
 ): EngineBackend | undefined {
-  const backends = getBackendsForService(serviceType)
+  const backends = getBackendsForService(serviceType, engineId)
+  const supports = (b: EngineBackend) => b.supportedOS.some((o) => o === os)
   return (
-    backends.find(
-      (b) => b.recommendedOS === os && b.supportedOS.includes(os),
-    ) ??
-    backends.find((b) => b.supportedOS.includes(os)) ??
+    backends.find((b) => b.recommendedOS === os && supports(b)) ??
+    backends.find(supports) ??
     backends[0]
   )
 }

@@ -1,0 +1,33 @@
+[project]
+name = "robotics-ai"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "worker-common",
+    "cmeel-urdfdom>=4,<5",
+    # Kept below 0.137 to share the workspace env with engines/multiserve, which caps fastapi <0.137.0.
+    "fastapi[all]>=0.135.3",
+    "fastmcp>=3.4.10",
+    "feetech-servo-sdk>=1.0.0",
+    "lerobot[kinematics]>=0.5.1",
+    "openai>=2.41.1",
+    "openvino==2026.2.1",
+    "placo<0.9.16",
+    "pyrealsense2>=2.58.2.10647",
+    "torch==2.13.0",
+    "torchvision==0.28.0",
+    "supervision>=0.28.0",
+    "ultralytics>=8.4.67",
+]
+
+[tool.uv.sources]
+worker-common = { workspace = true }
+torch = { index = "pytorch" }
+torchvision = { index = "pytorch" }
+
+[[tool.uv.index]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/xpu"
+explicit = true

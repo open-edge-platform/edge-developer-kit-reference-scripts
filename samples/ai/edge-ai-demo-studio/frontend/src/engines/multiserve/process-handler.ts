@@ -1,29 +1,112 @@
 // Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-import net from 'node:net'
 import type { BasePayload } from 'payload'
-import { UV_PATH } from '@/lib/constants'
+import { sleep } from '@/lib/async'
+import { globalSingleton } from '@/lib/global-singleton'
+import { getInstanceProcessName } from '@/lib/instances/instances'
+import { getServiceMetadata } from '@/lib/instances/service-metadata'
 import { logger } from '@/lib/logger'
+import { canBind } from '@/lib/system/can-bind'
+import { ensureInstanceDataDir } from '@/lib/workers/instance-runtime'
+import { fetchLoopback } from '@/lib/workers/loopback'
 import {
+  appendProcessLog,
   getStatus,
   listProcesses,
   removeDeadProcess,
   spawnProcess,
   stopProcess,
-} from '@/lib/process-handler'
+} from '@/lib/workers/process-handler'
+import {
+  currentStartupAttempt,
+  recordStartupEvent,
+  type StartupEvent,
+} from '@/lib/workers/startup-telemetry'
+import {
+  untimedDispatcher,
+  type WorkerRequestInit,
+} from '@/lib/workers/untimed-dispatcher'
 import type { Service } from '@/payload-types'
-import { MULTISERVE_REPO_PATH, engine as multiserve_engine } from './data'
+import { engine as multiserveEngine } from './data'
+import { isEngineHealthy } from './diagnosis'
+import { followDownload } from './download-progress'
+import { readDownloadStream } from './download-stream'
+import { getInstanceLogsDir, getModelsDir, MULTISERVE_REPO_PATH } from './paths'
+import { splitModelName } from './quant-selection'
+import { parseServerArgs } from './server-args'
 import type { MultiserveModel } from './types'
 
-const activeStartControllers = new Map<string, AbortController>()
+type ModelEntry = Service['models']['default']
 
-const activeHealthCheckControllers = new Map<string, AbortController>()
+/** Reports a step of the instance's start to its startup panel; a no-op outside a row's start. */
+type StartupReport = (event: StartupEvent) => void
 
-// Coalesces concurrent ensureMultiserveEngine calls per process name
-const activeEnsurePromises = new Map<string, Promise<boolean>>()
+const noReport: StartupReport = () => undefined
 
-// Waits for a port to be free using bind test, polling every interval ms
+// On `globalThis`: routes and hooks are separate bundles in dev, and a start registered by one
+// must be cancellable from another.
+const activeStartControllers = globalSingleton(
+  'multiserveStartControllers',
+  () => new Map<string, AbortController>(),
+)
+const activeHealthCheckControllers = globalSingleton(
+  'multiserveHealthCheckControllers',
+  () => new Map<string, AbortController>(),
+)
+/** Coalesces concurrent `ensureMultiserveEngine` calls per process name. */
+const activeEnsurePromises = globalSingleton(
+  'multiserveEnsurePromises',
+  () => new Map<string, Promise<boolean>>(),
+)
+
+// A download may run for hours, but never this long without a line: the
+// engine reports progress, or a status line while it hashes or converts.
+const DOWNLOAD_IDLE_TIMEOUT_MS = 10 * 60_000
+
+// One probe of /v1/health; the loops around it decide how long to keep trying.
+const HEALTH_PROBE_TIMEOUT_MS = 5_000
+const HEALTH_PROBE_INTERVAL_MS = 2_000
+const HEALTH_PROBE_ATTEMPTS = 60
+
+// Listing scans the models directory on disk.
+const MODELS_LIST_TIMEOUT_MS = 60_000
+
+// Engine calls use `untimedDispatcher`: Node's default one gives up after 300 s without a response
+// or between two chunks (a model start, a silent conversion), whatever the call's signal says.
+// Every call is bounded by a signal instead.
+const engineInit = (
+  signal: AbortSignal,
+  init: RequestInit = {},
+): WorkerRequestInit => ({ ...init, signal, dispatcher: untimedDispatcher })
+
+const withTimeout = (ms: number, signal?: AbortSignal): AbortSignal =>
+  signal
+    ? AbortSignal.any([signal, AbortSignal.timeout(ms)])
+    : AbortSignal.timeout(ms)
+
+const toEngineTask = (taskType: string) => taskType.replace(/-/g, '_')
+
+/**
+ * GET `path` on the engine, resent once if the connection fails before any answer: the pooled
+ * keep-alive socket may be one uvicorn closed after its 5 s idle limit, unnoticed while a slow
+ * database write held the event loop.
+ */
+const getFromEngine = async (
+  port: number,
+  path: string,
+  signal: AbortSignal,
+): Promise<Response> => {
+  try {
+    return await fetchLoopback(port, path, engineInit(signal))
+  } catch (error) {
+    if (signal.aborted) throw error
+    logger.warn(`GET ${path} on port ${port} failed, sending it again:`, error)
+    return fetchLoopback(port, path, engineInit(signal))
+  }
+}
+
+/** Waits up to `maxWait` ms for `port` to be free, probing with a bind. */
 const waitForPortFree = async (
   port: number,
   maxWait = 15_000,
@@ -31,46 +114,50 @@ const waitForPortFree = async (
 ): Promise<boolean> => {
   const deadline = Date.now() + maxWait
   while (Date.now() < deadline) {
-    const canBind = await new Promise<boolean>((resolve) => {
-      const srv = net.createServer()
-      srv.once('error', () => resolve(false))
-      srv.listen(port, '0.0.0.0', () => {
-        srv.close(() => resolve(true))
-      })
-    })
-    if (canBind) return true
-    await new Promise((r) => setTimeout(() => r(0), interval))
+    if (await canBind(port)) return true
+    await sleep(interval)
   }
   return false
 }
 
-export function cancelMultiserveStart(serviceType: string): void {
-  const startController = activeStartControllers.get(serviceType)
-  if (startController) {
-    startController.abort()
-    activeStartControllers.delete(serviceType)
-  }
-  const hcController = activeHealthCheckControllers.get(serviceType)
-  if (hcController) {
-    hcController.abort()
-    activeHealthCheckControllers.delete(serviceType)
-  }
-  activeEnsurePromises.delete(serviceType)
+/** Cancels a start (and its health wait) for a process name (`type@instanceId`). */
+export function cancelMultiserveStart(processName: string): void {
+  activeStartControllers.get(processName)?.abort()
+  activeStartControllers.delete(processName)
+  activeHealthCheckControllers.get(processName)?.abort()
+  activeHealthCheckControllers.delete(processName)
+  activeEnsurePromises.delete(processName)
 }
 
-const getMultiserveProcessName = (service: Service) => `${service.type}`
+/**
+ * Whether `startMultiserveModel` is still running for a process name: the
+ * engine's `/v1/start` returns only once the model is loaded, while
+ * `/v1/status` lists a llama.cpp server as soon as it is spawned.
+ */
+export function isMultiserveStarting(processName: string): boolean {
+  return activeStartControllers.has(processName)
+}
+
+/**
+ * What starting a bare engine (no model) reads from a `services` row. A
+ * draft engine (`./draft-engine.ts`) has no row and passes just these.
+ */
+export type MultiserveEngineTarget = Pick<
+  Service,
+  'type' | 'instanceId' | 'name' | 'port' | 'metadata'
+> & { models: { default: Pick<ModelEntry, 'device'> } }
 
 const deriveTaskType = (
   modelKey: string,
-  serviceModel: Service['models']['default'],
+  serviceModel: ModelEntry,
   serviceType: Service['type'],
 ): string => {
   if (serviceModel.type === 'multimodal') return 'multimodal'
   return modelKey === 'default' ? serviceType : modelKey
 }
 
-const isMultiserveRunning = (service: Service): boolean => {
-  const processName = getMultiserveProcessName(service)
+const isMultiserveRunning = (service: MultiserveEngineTarget): boolean => {
+  const processName = getInstanceProcessName(service)
   return listProcesses().some(
     (p) => p.name === processName && p.status !== 'stopped',
   )
@@ -79,18 +166,14 @@ const isMultiserveRunning = (service: Service): boolean => {
 const waitForHealthCheck = async (
   port: number,
   processName: string,
-  signal?: AbortSignal,
-  maxRetries: number = 60,
+  signal: AbortSignal,
 ): Promise<boolean> => {
-  const healthUrl = `http://localhost:${port}/v1/health`
-
-  for (let i = 0; i < maxRetries; i++) {
-    if (signal?.aborted) {
+  for (let i = 0; i < HEALTH_PROBE_ATTEMPTS; i++) {
+    if (signal.aborted) {
       logger.log(`Health check for ${processName} aborted`)
       return false
     }
 
-    // Check if the process is still alive
     const status = getStatus(processName)
     if (!status || status.status === 'stopped') {
       logger.error(
@@ -100,56 +183,72 @@ const waitForHealthCheck = async (
       return false
     }
 
-    try {
-      const response = await fetch(new URL(healthUrl))
-      if (response.ok) {
-        const data = await response.json()
-        if (data.health?.['llama.cpp'] === 'OK' && data.health?.ovms === 'OK') {
-          logger.log('Multiserve health check passed')
-          return true
-        } else {
-          logger.log(
-            `Health check attempt ${i + 1}/${maxRetries} returned unhealthy status, retrying...`,
-          )
-        }
-      }
-    } catch {
-      logger.log(
-        `Health check attempt ${i + 1}/${maxRetries} failed, retrying...`,
-      )
+    if (
+      await isEngineHealthy(port, withTimeout(HEALTH_PROBE_TIMEOUT_MS, signal))
+    ) {
+      logger.log(`${processName}: multiserve health check passed`)
+      return true
     }
-
-    await new Promise((resolve) => setTimeout(() => resolve(0), 2000))
+    logger.debug(
+      `${processName}: health check attempt ${i + 1}/${HEALTH_PROBE_ATTEMPTS} not healthy yet, retrying…`,
+    )
+    await sleep(HEALTH_PROBE_INTERVAL_MS)
   }
 
-  logger.error('Health check failed after maximum retries')
+  logger.error(`${processName}: health check failed after maximum retries`)
   return false
 }
 
 const downloadModel = async (
-  modelConfig: Service['models']['default'],
+  service: MultiserveEngineTarget,
+  modelConfig: ModelEntry,
   taskType: string,
   port: number,
+  signal: AbortSignal,
+  report: StartupReport = noReport,
 ): Promise<boolean> => {
-  try {
-    const downloadModelURL = `http://localhost:${port}/v1/model/download/unverified`
-    const downloadResponse = await fetch(new URL(downloadModelURL), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        repo_id: multiserve_engine.getModelName(modelConfig, true),
-        task: taskType.replace('-', '_'),
-        extra_params: modelConfig.params,
-        device: modelConfig.device,
-        source: modelConfig.source,
-      }),
+  const failed = (reason: string) =>
+    report({
+      type: 'failure',
+      summary: `Could not download "${modelConfig.name}": ${reason}`,
     })
+  // Aborted by the start being cancelled, or by the engine going silent.
+  const idle = new AbortController()
+  let idleTimer: ReturnType<typeof setTimeout> | undefined
+  const stillAlive = () => {
+    clearTimeout(idleTimer)
+    idleTimer = setTimeout(
+      () =>
+        idle.abort(
+          new Error(
+            `Download sent nothing for ${DOWNLOAD_IDLE_TIMEOUT_MS / 60_000} minutes`,
+          ),
+        ),
+      DOWNLOAD_IDLE_TIMEOUT_MS,
+    )
+  }
+  stillAlive()
+
+  try {
+    const downloadResponse = await fetchLoopback(
+      port,
+      '/v1/model/download/unverified',
+      engineInit(AbortSignal.any([signal, idle.signal]), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          repo_id: multiserveEngine.getModelName(modelConfig, true),
+          task: toEngineTask(taskType),
+          extra_params: modelConfig.params,
+          target_device: modelConfig.device,
+          source: modelConfig.source,
+        }),
+      }),
+    )
 
     if (!downloadResponse.ok) {
-      const errorText = await downloadResponse.text()
-      logger.error('Failed to download model:', errorText)
+      logger.error('Failed to download model:', await downloadResponse.text())
+      failed(`the engine answered HTTP ${downloadResponse.status}`)
       return false
     }
 
@@ -157,90 +256,142 @@ const downloadModel = async (
       return false
     }
 
-    const reader = downloadResponse.body.getReader()
-    const decoder = new TextDecoder()
-    let hasError = false
-    const logFileName = `${taskType}.log`
+    // Into the instance's own log, which its Logs tab shows.
+    const processName = getInstanceProcessName(service)
+    const follow = followDownload(modelConfig.name, {
+      report,
+      // Only the log level; success is the result line's alone.
+      log: (line) =>
+        appendProcessLog(
+          processName,
+          /^error\b/i.test(line) ? 'error' : 'info',
+          line,
+        ),
+    })
+    const result = await readDownloadStream(
+      downloadResponse.body,
+      (line, lineResult) => {
+        stillAlive()
+        // A failed result is reported below, as the start's failure.
+        if (!lineResult) follow(line)
+      },
+    )
 
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-
-      const chunk = decoder.decode(value, { stream: true })
-      let type = 'INFO'
-      if (
-        chunk.toLowerCase().includes('error') ||
-        chunk.toLowerCase().includes('failed')
-      ) {
-        type = 'ERROR'
-        hasError = true
-      }
-      logger.file(chunk, type, logFileName)
-    }
-
-    if (hasError) {
+    if (!result.ok) {
+      logger.error(
+        `Failed to download model ${modelConfig.name}: ${result.error ?? 'unknown error'}`,
+      )
+      failed(result.error ?? 'the engine gave no reason')
       return false
     }
 
     logger.log(`Model ${modelConfig.name} downloaded successfully`)
     return true
   } catch (error) {
-    logger.error('Error downloading model:', error)
+    if (signal.aborted) {
+      logger.log(`Download of ${modelConfig.name} cancelled`)
+      return false
+    }
+    logger.error('Error downloading model:', idle.signal.reason ?? error)
+    if (idle.signal.aborted) {
+      failed(
+        `the download sent nothing for ${DOWNLOAD_IDLE_TIMEOUT_MS / 60_000} minutes`,
+      )
+    }
     return false
+  } finally {
+    clearTimeout(idleTimer)
   }
 }
 
+/** What a failed engine call says: FastAPI's `detail`, else the body itself. */
+const engineErrorDetail = (body: string): string => {
+  try {
+    const { detail } = JSON.parse(body) as { detail?: unknown }
+    if (typeof detail === 'string') return detail
+  } catch {
+    // Not JSON: the text is the reason.
+  }
+  return body.trim()
+}
+
 const startModel = async (
-  modelConfig: Service['models']['default'],
+  modelConfig: ModelEntry,
   backend: string,
   taskType: string,
   port: number,
+  signal: AbortSignal,
+  report: StartupReport = noReport,
+  serverArgs: string[] = [],
 ): Promise<boolean> => {
   try {
-    const startModelURL = `http://localhost:${port}/v1/start`
-    const body: Record<string, string | number> = {
-      repo_id: multiserve_engine.getModelName(modelConfig, true),
-      task: taskType.replace('-', '_'),
+    const body: Record<string, string | number | string[]> = {
+      repo_id: multiserveEngine.getModelName(modelConfig, true),
+      task: toEngineTask(taskType),
       device: modelConfig.device,
     }
     if (backend !== 'llamacpp') {
       body.model_path = ''
     }
+    if (serverArgs.length > 0) {
+      body[
+        backend === 'llamacpp' ? 'llamacpp_extra_args' : 'openvino_extra_params'
+      ] = serverArgs
+    }
 
-    const startResponse = await fetch(new URL(startModelURL), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        ...body,
+    // Loading a model can take minutes; only cancelling the start bounds it.
+    const startResponse = await fetchLoopback(
+      port,
+      '/v1/start',
+      engineInit(signal, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
       }),
-    })
+    )
 
     if (!startResponse.ok) {
-      logger.error('Failed to start model:', await startResponse.text())
+      const detail = engineErrorDetail(await startResponse.text())
+      logger.error('Failed to start model:', detail)
+      report({
+        type: 'failure',
+        summary: detail
+          ? `The engine could not load "${modelConfig.name}": ${detail}`
+          : `The engine could not load "${modelConfig.name}" (HTTP ${startResponse.status})`,
+      })
       return false
     }
 
     logger.log(`Model ${modelConfig.name} started successfully`)
     return true
   } catch (error) {
+    if (signal.aborted) {
+      logger.log(`Start of ${modelConfig.name} cancelled`)
+      return false
+    }
     logger.error('Error starting model:', error)
     return false
   }
 }
 
-const initializeModel = async (service: Service): Promise<boolean> => {
+const initializeModel = async (
+  service: Service,
+  signal: AbortSignal,
+  report: StartupReport,
+): Promise<boolean> => {
   const port = service.port
   if (port == null) {
     logger.error(`Service ${service.name} has no port configured`)
     return false
   }
   try {
-    const modelStatusURL = `http://localhost:${port}/v1/models`
-    const modelStatusResponse = await fetch(new URL(modelStatusURL))
+    const modelStatusResponse = await getFromEngine(
+      port,
+      '/v1/models',
+      withTimeout(MODELS_LIST_TIMEOUT_MS, signal),
+    )
     if (!modelStatusResponse.ok) {
-      logger.log(
+      logger.error(
         'Failed to fetch model status:',
         await modelStatusResponse.text(),
       )
@@ -250,33 +401,89 @@ const initializeModel = async (service: Service): Promise<boolean> => {
     const modelsResponse: Record<string, MultiserveModel[]> =
       await modelStatusResponse.json()
 
-    for (const [modelKey, serviceModel] of Object.entries(service.models)) {
-      const typedModel = serviceModel as Service['models']['default']
-      const backend = typedModel.backend ?? 'openvino'
+    for (const [modelKey, entry] of Object.entries(service.models)) {
+      const serviceModel: ModelEntry = entry
+      const backend = serviceModel.backend ?? 'openvino'
+      // The instance's server arguments are its main model's.
+      const serverArgs = parseServerArgs(
+        modelKey === 'default'
+          ? (getServiceMetadata(service).serverArgs ?? '')
+          : '',
+        backend === 'llamacpp' ? 'llamacpp' : 'openvino',
+      )
+      if (!serverArgs.ok) {
+        report({
+          type: 'failure',
+          summary: `The server arguments cannot be used: ${serverArgs.error}`,
+        })
+        return false
+      }
       const backendKey = backend === 'openvino' ? 'openvino' : 'llamacpp'
       const backendModels = modelsResponse[backendKey] ?? []
-      const taskType = deriveTaskType(modelKey, typedModel, service.type)
+      const taskType = deriveTaskType(modelKey, serviceModel, service.type)
+      // The engine lists a llama.cpp repo once, with its quants; the saved
+      // name carries the quant to run (`<repo>:<QUANT>`).
+      const wanted =
+        backend === 'llamacpp'
+          ? splitModelName(serviceModel.name, serviceModel.quant)
+          : { repoId: serviceModel.name, quant: serviceModel.quant }
       const modelInfo = backendModels.find(
         (model) =>
-          model.repo_id === serviceModel.name &&
-          (serviceModel.quant
-            ? model.downloaded.includes(serviceModel.quant)
-            : true),
+          model.repo_id === wanted.repoId &&
+          (wanted.quant ? model.downloaded.includes(wanted.quant) : true),
       )
 
       if (!modelInfo || modelInfo.downloaded.length === 0) {
         logger.log(`Downloading model ${serviceModel.name}...`)
-        const downloaded = await downloadModel(typedModel, taskType, port)
+        // Each file the engine fetches is then a step of its own, with the
+        // progress it prints (`./download-progress.ts`).
+        report({
+          type: 'stage',
+          stage: 'downloading',
+          detail: serviceModel.name,
+        })
+        const downloaded = await downloadModel(
+          service,
+          serviceModel,
+          taskType,
+          port,
+          signal,
+          report,
+        )
         if (!downloaded) {
-          logger.error(`Failed to download model ${serviceModel.name}`)
+          if (!signal.aborted) {
+            logger.error(`Failed to download model ${serviceModel.name}`)
+          }
           return false
         }
       }
 
       logger.log(`Starting model ${serviceModel.name}...`)
-      const started = await startModel(typedModel, backend, taskType, port)
+      report({
+        type: 'stage',
+        stage: 'loading-model',
+        detail: serviceModel.name,
+      })
+      if (serverArgs.args.length > 0) {
+        appendProcessLog(
+          getInstanceProcessName(service),
+          'info',
+          `Server arguments: ${serverArgs.args.join(' ')}`,
+        )
+      }
+      const started = await startModel(
+        serviceModel,
+        backend,
+        taskType,
+        port,
+        signal,
+        report,
+        serverArgs.args,
+      )
       if (!started) {
-        logger.error(`Failed to start model ${serviceModel.name}`)
+        if (!signal.aborted) {
+          logger.error(`Failed to start model ${serviceModel.name}`)
+        }
         return false
       }
     }
@@ -284,145 +491,187 @@ const initializeModel = async (service: Service): Promise<boolean> => {
     return true
   } catch (error) {
     logger.error('Error initializing model:', error)
+    // Said where the user looks: the instance log and its startup panel
+    // otherwise end at "Starting the inference engine".
+    if (!signal.aborted) {
+      // `fetch failed` says little; its cause names the socket error.
+      const reason = error instanceof Error ? (error.cause ?? error) : error
+      report({
+        type: 'failure',
+        summary: `The inference engine did not answer: ${reason instanceof Error ? reason.message : String(reason)}`,
+      })
+    }
     return false
   }
 }
 
-const startMultiserveServer = async (service: Service) => {
-  const serviceModel = service.models.default
-  const device = serviceModel.device
+/**
+ * Starts the engine process for an instance and waits for its health check. True when the engine
+ * is up (started now or already running), false when it could not start.
+ */
+const startMultiserveServer = async (
+  service: MultiserveEngineTarget,
+): Promise<boolean> => {
+  const device = service.models.default.device
   const port = service.port
   if (port == null) {
     logger.error(`Service ${service.name} has no port configured`)
-    return
+    return false
   }
-  const processName = getMultiserveProcessName(service)
-  const processes = listProcesses()
-  logger.info(`Existing processes: ${processes.map((p) => p.name).join(', ')}`)
-  if (processes.some((p) => p.name === processName)) {
-    logger.log(`${service.name} with already running on this port: ${port}`)
-    return
+  const processName = getInstanceProcessName(service)
+  if (listProcesses().some((p) => p.name === processName)) {
+    logger.log(`${processName} is already running on port ${port}`)
+    return true
   }
 
-  const existingProcess = processes.find((p) => p.name.includes(service.type))
-
+  // Each instance owns its own process; sibling instances of the same type
+  // are never stopped here.
   const isGPU = device.toLowerCase().startsWith('gpu')
-  const gpuIndex = isGPU ? device.split('.')[1] : null
-  const existingNameParts = existingProcess
-    ? existingProcess.name.split('_')
-    : null
-  const existingServiceName = existingNameParts ? existingNameParts[0] : null
-
-  if (existingProcess && existingServiceName === service.type && isGPU) {
-    logger.log(`Restarting ${service.name} with for GPU ${gpuIndex}`)
-    await stopProcess(existingProcess.name)
-  }
-
-  const env = { ...process.env }
-  if (isGPU && gpuIndex !== null) {
-    env.GGML_VK_VISIBLE_DEVICES = gpuIndex
-  }
+  const gpuIndex = isGPU ? device.split('.')[1] : undefined
 
   logger.log(
-    `Starting multiserve with for ${service.name} on port ${port}${isGPU ? ` with GPU ${gpuIndex}` : ''}`,
+    `Starting multiserve for ${processName} on port ${port}${gpuIndex !== undefined ? ` with GPU ${gpuIndex}` : ''}`,
   )
-  const command: string[] = []
-  const cwd = MULTISERVE_REPO_PATH
 
-  command.push('run', 'app-hybrid.py', '--debug', '--port', `${port}`)
-
-  const logDir = multiserve_engine.getLogsDir(service.type)
-  const modelsDir = multiserve_engine.getModelsDir(service.type)
-  command.push('--logs-dir', logDir, '--model-dir', modelsDir)
+  // Each instance logs into its own sub-folder; the models directory stays shared so instances
+  // never download a model twice.
+  const logsDir = getInstanceLogsDir(service)
+  const command = [
+    '--debug',
+    '--port',
+    `${port}`,
+    '--logs-dir',
+    logsDir,
+    '--model-dir',
+    getModelsDir(service.type),
+    // Weights stay shared in the model dir; the live OVMS config.json and
+    // the llama.cpp config.yaml live here, one per instance.
+    '--instance-dir',
+    ensureInstanceDataDir(service),
+  ]
 
   // Cancel any lingering health check from a previous start attempt
-  const prevHcController = activeHealthCheckControllers.get(processName)
-  if (prevHcController) {
-    prevHcController.abort()
-    activeHealthCheckControllers.delete(processName)
-  }
+  activeHealthCheckControllers.get(processName)?.abort()
+  activeHealthCheckControllers.delete(processName)
 
-  // Wait for port release before starting
-  const portFree = await waitForPortFree(port)
-  if (!portFree) {
+  if (!(await waitForPortFree(port))) {
     logger.error(
       `Port ${port} still in use after waiting — cannot start ${processName}`,
     )
     return false
   }
 
-  const cpuAffinity = (service.metadata as { cpuAffinity?: string } | undefined)
-    ?.cpuAffinity
-
-  await spawnProcess(processName, command, {
-    cwd: cwd,
-    env: env,
-    command: UV_PATH,
-    cpuAffinity,
+  const spawned = await spawnProcess(processName, command, {
+    cwd: MULTISERVE_REPO_PATH,
+    // spawnProcess builds the rest of the environment. INSTANCE_KEY names the engine in every
+    // response (`answeredByOtherInstance`); start.sh maps GGML_VK_VISIBLE_DEVICES to oneAPI's
+    // device selector on the SYCL backend.
+    env: {
+      INSTANCE_KEY: processName,
+      ...(gpuIndex !== undefined ? { GGML_VK_VISIBLE_DEVICES: gpuIndex } : {}),
+    },
+    cpuAffinity: getServiceMetadata(service).cpuAffinity,
+    // The model servers' logs: a failed run's stay readable as the
+    // previous run once the engine starts again.
+    logDir: logsDir,
   })
+  if (spawned.kind === 'failed') {
+    logger.error(`${processName}: ${spawned.error}`)
+    return false
+  }
 
   const hcController = new AbortController()
   activeHealthCheckControllers.set(processName, hcController)
-
   const healthCheckPassed = await waitForHealthCheck(
     port,
     processName,
     hcController.signal,
   )
-
   if (activeHealthCheckControllers.get(processName) === hcController) {
     activeHealthCheckControllers.delete(processName)
   }
+  if (healthCheckPassed) return true
+  // Cancelled by a stop or a newer start, which own the process now: the
+  // newer start may already be reusing it.
+  if (hcController.signal.aborted) return false
 
-  if (!healthCheckPassed) {
-    const status = getStatus(processName)
-    if (status && status.status !== 'stopped') {
-      logger.error('Health check failed, killing the process...')
-      await stopProcess(processName)
-    } else {
-      logger.error('Health check failed and process already dead, cleaning up')
-      removeDeadProcess(processName)
-    }
-    return false
+  const status = getStatus(processName)
+  if (status && status.status !== 'stopped') {
+    logger.error(`${processName}: health check failed, stopping the process`)
+    await stopProcess(processName)
+  } else {
+    logger.error(
+      `${processName}: health check failed and the process already exited`,
+    )
+    removeDeadProcess(processName)
   }
+  return false
 }
 
-const updateServiceStatus = async (
+const markFailed = async (
   service: Service,
-  status: Service['status'],
   payload: BasePayload,
+  statusMessage: string,
 ) => {
-  await payload.update({
-    collection: 'services',
-    id: service.id,
-    data: {
-      status: status,
-    },
-  })
-}
-
-// Quick non-retrying health probe
-const isEngineHealthy = async (port: number): Promise<boolean> => {
   try {
-    const url = new URL(`http://localhost:${port}/v1/health`)
-    const res = await fetch(url, {
-      signal: AbortSignal.timeout(3_000),
+    await payload.update({
+      collection: 'services',
+      id: service.id,
+      data: { status: 'error', statusMessage },
     })
-    if (!res.ok) return false
-    const data = await res.json()
-    return data?.health?.['llama.cpp'] === 'OK' && data?.health?.ovms === 'OK'
-  } catch {
-    return false
+  } catch (error) {
+    logger.error(`Failed to update status for ${service.name}:`, error)
   }
 }
 
-// Ensures the multiserve engine process is running (without loading a model)
-export const ensureMultiserveEngine = async (
-  service: Service,
-): Promise<boolean> => {
-  const processName = getMultiserveProcessName(service)
+/** An engine start's state, for callers that don't wait for it (`POST /api/services/[id]/engine`). */
+export const getMultiserveEngineState = async (
+  service: MultiserveEngineTarget,
+): Promise<{ starting: boolean; healthy: boolean }> => {
+  if (activeEnsurePromises.has(getInstanceProcessName(service))) {
+    return { starting: true, healthy: false }
+  }
+  const { port } = service
+  const healthy =
+    port != null &&
+    isMultiserveRunning(service) &&
+    (await isEngineHealthy(port))
+  return { starting: false, healthy }
+}
 
-  // Coalesce concurrent calls
+const ensureMultiserveEngineImpl = async (
+  service: MultiserveEngineTarget,
+): Promise<boolean> => {
+  const processName = getInstanceProcessName(service)
+
+  const { port } = service
+  if (port == null) {
+    logger.error(`Service ${service.name} has no port configured`)
+    return false
+  }
+
+  if (isMultiserveRunning(service)) {
+    if (await isEngineHealthy(port)) {
+      return true
+    }
+
+    logger.log(
+      `Engine process ${processName} listed but unhealthy, cleaning up…`,
+    )
+    await stopProcess(processName)
+  } else {
+    removeDeadProcess(processName)
+  }
+
+  return startMultiserveServer(service)
+}
+
+/** Ensures the engine process is running, without loading a model. */
+export const ensureMultiserveEngine = async (
+  service: MultiserveEngineTarget,
+): Promise<boolean> => {
+  const processName = getInstanceProcessName(service)
+
   const existing = activeEnsurePromises.get(processName)
   if (existing) {
     logger.log(
@@ -443,66 +692,75 @@ export const ensureMultiserveEngine = async (
   }
 }
 
-const ensureMultiserveEngineImpl = async (
-  service: Service,
-): Promise<boolean> => {
-  const processName = getMultiserveProcessName(service)
-
-  const { port } = service
-  if (port == null) {
-    logger.error(`Service ${service.name} has no port configured`)
-    return false
-  }
-
-  if (isMultiserveRunning(service)) {
-    if (await isEngineHealthy(port)) {
-      return true
-    }
-
-    // Process listed but unhealthy — clean up and respawn
-    logger.log(
-      `Engine process ${processName} listed but unhealthy, cleaning up…`,
-    )
-    await stopProcess(processName)
-  } else {
-    removeDeadProcess(processName)
-  }
-
-  await startMultiserveServer(service)
-  return isMultiserveRunning(service)
-}
-
-// Full service start: engine + model download + model start
+/**
+ * Full service start: engine, then the model's download and start. Steps report under the attempt
+ * that began them, so a cancelled start's late steps count for nothing.
+ */
 export const startMultiserveModel = async (
   service: Service,
   payload: BasePayload,
-) => {
-  cancelMultiserveStart(service.type)
+): Promise<void> => {
+  const processName = getInstanceProcessName(service)
+  cancelMultiserveStart(processName)
+  const attemptId = currentStartupAttempt(processName)
+  const report: StartupReport = (event) => {
+    if (attemptId) recordStartupEvent(processName, attemptId, event)
+  }
 
   const controller = new AbortController()
-  activeStartControllers.set(service.type, controller)
-  const processName = getMultiserveProcessName(service)
+  activeStartControllers.set(processName, controller)
 
   try {
-    await startMultiserveServer(service)
+    report({
+      type: 'stage',
+      stage: 'preparing',
+      detail: 'Starting the inference engine',
+    })
+    const engineUp = await startMultiserveServer(service)
     if (controller.signal.aborted) return
+    if (!engineUp) {
+      report({
+        type: 'failure',
+        summary: 'The multiserve engine did not start',
+      })
+      await markFailed(
+        service,
+        payload,
+        'The multiserve engine did not start — see its log',
+      )
+      return
+    }
 
-    const result = await initializeModel(service)
+    const result = await initializeModel(service, controller.signal, report)
     if (controller.signal.aborted) return
+    // Loaded: the health poller's backend check decides when it is running.
+    if (result) report({ type: 'stage', stage: 'checking-readiness' })
 
     if (!result) {
-      updateServiceStatus(service, 'error', payload)
       logger.log(`Failed to initialize ${service.name}, stopping process`)
+      await markFailed(
+        service,
+        payload,
+        `Could not download or start "${service.models.default.name}" — see the multiserve log`,
+      )
       await stopProcess(processName)
     }
   } catch (error) {
     if (controller.signal.aborted) return
-    updateServiceStatus(service, 'error', payload)
     logger.error(`Error starting model for service ${service.name}:`, error)
+    report({
+      type: 'failure',
+      summary: 'The multiserve engine failed while starting',
+    })
+    await markFailed(
+      service,
+      payload,
+      'The multiserve engine failed while starting',
+    )
     await stopProcess(processName)
   } finally {
-    if (activeStartControllers.get(service.type) === controller) {
-      activeStartControllers.delete(service.type)
+    if (activeStartControllers.get(processName) === controller) {
+      activeStartControllers.delete(processName)
     }
   }
 }

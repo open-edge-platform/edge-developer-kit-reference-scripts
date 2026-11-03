@@ -30,7 +30,15 @@ export const sample: Sample = {
       serviceId: 'text-generation',
       role: 'required',
       recommended: {
-        device: 'GPU.1',
+        // A vision model that also calls tools (MCP) and answers from the
+        // passages RAG finds; OpenVINO's verified InternVL2-2B does neither.
+        model: 'ggml-org/Qwen3-VL-2B-Instruct-GGUF',
+        backend: 'llamacpp',
+        quant: 'Q8_0',
+        modelType: 'multimodal',
+        // llama.cpp numbers GPUs in its own (SYCL) order, not OpenVINO's: on
+        // an Arc system GPU.0 is the discrete card (GPU.1 the integrated one).
+        device: 'GPU.0',
       },
     },
     {
@@ -63,14 +71,6 @@ export const sample: Sample = {
       capabilityKey: 'mcp_tools',
       impactText: 'MCP tool integrations will not be available.',
     },
-  ],
-  pipeline: [
-    'wake-word-detection',
-    'speech-to-text',
-    ['embeddings', 'vectordb', 'rerank'],
-    'text-generation',
-    'text-to-speech',
-    'mcp',
   ],
   tags: ['Webcam', 'VLM', 'Multimodal', 'Vision'],
   image: sampleImage,

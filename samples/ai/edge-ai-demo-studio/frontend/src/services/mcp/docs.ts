@@ -4,9 +4,22 @@
 import type { ServiceDocsData } from '@/services/types'
 
 export const getDocsData = ({ host }: { host: string }): ServiceDocsData => {
+  // Not a proxied service: `host` is just the app's origin.
   const origin = host.split('/api/')[0]
 
   return {
+    quickStart: {
+      steps: [
+        'List the configured servers with `GET /api/mcp-servers`.',
+        'Add one with `POST /api/mcp-servers`: a `name` and a `url` on this machine or your private network.',
+        "Enabled servers' tools can then be used by other services, such as Text Generation, for tool calling.",
+      ],
+      request: {
+        language: 'cURL',
+        languageCode: 'bash',
+        code: `curl ${origin}/api/mcp-servers`,
+      },
+    },
     serviceDescription:
       'The MCP Manager provides a centralized interface for managing Model Context Protocol (MCP) server configurations. MCP servers expose tools that LLMs can invoke during text generation for dynamic tool calling.',
     overview:
@@ -33,13 +46,13 @@ export const getDocsData = ({ host }: { host: string }): ServiceDocsData => {
             name: 'url',
             type: 'string',
             required: true,
-            desc: 'MCP server endpoint URL (e.g., https://mcp.example.com/mcp)',
+            desc: 'MCP server endpoint URL: http(s) on this machine (localhost, 127.0.0.1, [::1]) or a private network (10.x, 172.16-31.x, 192.168.x), e.g. http://192.168.1.20:8000/mcp. Other addresses are rejected with 400.',
           },
           {
             name: 'apiKey',
             type: 'string',
             required: false,
-            desc: 'Optional API key for authentication',
+            desc: 'Optional API key, sent as a Bearer token. Stored encrypted and never returned: records carry hasApiKey instead.',
           },
           {
             name: 'disabled',
@@ -65,19 +78,45 @@ export const getDocsData = ({ host }: { host: string }): ServiceDocsData => {
             name: 'url',
             type: 'string',
             required: false,
-            desc: 'Updated endpoint URL',
+            desc: 'Updated endpoint URL (same address rules as on create)',
           },
           {
             name: 'apiKey',
-            type: 'string',
+            type: 'string | null',
             required: false,
-            desc: 'Updated API key',
+            desc: 'A new API key; null removes the stored one, and leaving it out keeps it.',
           },
           {
             name: 'disabled',
             type: 'boolean',
             required: false,
             desc: 'Enable or disable the server',
+          },
+        ],
+      },
+      {
+        method: 'POST',
+        path: '/api/mcp-servers/probe',
+        description:
+          'Connect to an MCP server and list its tools: { online, tools, serverInfo?, error? }. Probe a saved server by its id (the stored URL and key are used), or an address being entered by url (with its apiKey, if any). An address outside the rules above or a malformed key is a 400, an unknown id a 404.',
+        params: [
+          {
+            name: 'id',
+            type: 'number',
+            required: false,
+            desc: 'A saved server to probe',
+          },
+          {
+            name: 'url',
+            type: 'string',
+            required: false,
+            desc: 'An address to probe instead of a saved server',
+          },
+          {
+            name: 'apiKey',
+            type: 'string',
+            required: false,
+            desc: 'The key to probe url with',
           },
         ],
       },
@@ -117,16 +156,16 @@ export const getDocsData = ({ host }: { host: string }): ServiceDocsData => {
           {
             language: 'Python',
             languageCode: 'python',
-            code: `import requests\n\nresponse = requests.post(\n    "${origin}/api/mcp-servers",\n    json={\n        "name": "Weather Tools",\n        "url": "https://weather.example.com/mcp",\n        "disabled": False,\n    },\n)\nprint(response.json())`,
+            code: `import requests\n\nresponse = requests.post(\n    "${origin}/api/mcp-servers",\n    json={\n        "name": "Weather Tools",\n        "url": "http://192.168.1.20:8000/mcp",\n        "disabled": False,\n    },\n)\nprint(response.json())`,
           },
           {
             language: 'cURL',
             languageCode: 'bash',
-            code: `curl -X POST ${origin}/api/mcp-servers \\\n  -H "Content-Type: application/json" \\\n  -d '{"name": "Weather Tools", "url": "https://weather.example.com/mcp"}'`,
+            code: `curl -X POST ${origin}/api/mcp-servers \\\n  -H "Content-Type: application/json" \\\n  -d '{"name": "Weather Tools", "url": "http://192.168.1.20:8000/mcp"}'`,
           },
         ],
       },
     ],
-    responseExample: `{\n  "docs": [\n    {\n      "id": 1,\n      "name": "Weather Tools",\n      "url": "https://weather.example.com/mcp",\n      "apiKey": null,\n      "disabled": false,\n      "updatedAt": "2026-01-15T10:30:00.000Z",\n      "createdAt": "2026-01-15T10:30:00.000Z"\n    }\n  ],\n  "totalDocs": 1,\n  "limit": 10,\n  "totalPages": 1,\n  "page": 1,\n  "pagingCounter": 1,\n  "hasPrevPage": false,\n  "hasNextPage": false\n}`,
+    responseExample: `{\n  "docs": [\n    {\n      "id": 1,\n      "name": "Weather Tools",\n      "url": "http://192.168.1.20:8000/mcp",\n      "hasApiKey": false,\n      "disabled": false,\n      "updatedAt": "2026-01-15T10:30:00.000Z",\n      "createdAt": "2026-01-15T10:30:00.000Z"\n    }\n  ],\n  "totalDocs": 1,\n  "limit": 10,\n  "totalPages": 1,\n  "page": 1,\n  "pagingCounter": 1,\n  "hasPrevPage": false,\n  "hasNextPage": false\n}`,
   }
 }

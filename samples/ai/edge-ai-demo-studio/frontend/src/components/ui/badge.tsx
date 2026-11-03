@@ -5,6 +5,7 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { Slot } from 'radix-ui'
 import type * as React from 'react'
 
+import { TONES } from '@/components/common/tones'
 import { cn } from '@/lib/utils'
 
 const badgeVariants = cva(
@@ -22,6 +23,15 @@ const badgeVariants = cva(
         ghost: '[a&]:hover:bg-accent [a&]:hover:text-accent-foreground',
         link: 'text-primary underline-offset-4 [a&]:hover:underline',
       },
+      /** A tinted pill in an app tone (`common/tones.ts`); overrides the variant's colours. */
+      tone: {
+        success: TONES.success.pill,
+        warning: TONES.warning.pill,
+        info: TONES.info.pill,
+        destructive: TONES.destructive.pill,
+        muted: TONES.muted.pill,
+        primary: TONES.primary.pill,
+      },
     },
     defaultVariants: {
       variant: 'default',
@@ -32,6 +42,7 @@ const badgeVariants = cva(
 function Badge({
   className,
   variant = 'default',
+  tone,
   asChild = false,
   ...props
 }: React.ComponentProps<'span'> &
@@ -42,7 +53,8 @@ function Badge({
     <Comp
       data-slot="badge"
       data-variant={variant}
-      className={cn(badgeVariants({ variant }), className)}
+      data-tone={tone ?? undefined}
+      className={cn(badgeVariants({ variant, tone }), className)}
       {...props}
     />
   )

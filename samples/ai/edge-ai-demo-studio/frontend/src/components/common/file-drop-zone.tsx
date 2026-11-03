@@ -5,28 +5,28 @@
 
 import { AlertCircle, File as FileIcon, Trash2, Upload } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
+import { TONES } from '@/components/common/tones'
 import { Button } from '@/components/ui/button'
+import { formatBytes } from '@/lib/browser/format'
 import { cn } from '@/lib/utils'
+import { FileDropTarget } from './file-drop-target'
 
 interface FileDropZoneProps {
-  /** Currently selected file */
   file: File | null
   /** Called when a valid file is selected or dropped */
   onFileChange: (file: File | null) => void
   /** Comma-separated extensions for the file input accept attribute (e.g. ".wav,.mp3") */
   accept: string
-  /** Custom validation function. Return an error string, or null if valid. */
+  /** Returns an error string, or null if valid. */
   validate?: (file: File) => string | null
-  /** Whether to disable interactions */
   disabled?: boolean
   /** Use compact layout (for secondary/optional upload areas) */
   compact?: boolean
-  /** Custom label for the drop zone */
   label?: string
-  /** Custom hint text below the label (defaults to "or click to browse (<accept>)") */
+  /** Hint text below the label (defaults to "or click to browse (<accept>)") */
   hint?: string
-  /** Whether to show the max-size hint line in default (non-compact) mode */
+  /** Max-size hint line, shown only in the non-compact layout */
   maxSizeHint?: string
   /** Icon shown next to the selected filename (defaults to generic File icon) */
   fileIcon?: LucideIcon
@@ -77,99 +77,35 @@ export function FileDropZone({
   testId,
   inputTestId,
 }: FileDropZoneProps) {
-  const [isDragging, setIsDragging] = useState(false)
   const [validationError, setValidationError] = useState<string | null>(null)
-  const dragCounter = useRef(0)
+  const errorId = useId()
 
-  const validateAndSet = useCallback(
-    (f: File) => {
-      if (validate) {
-        const error = validate(f)
-        if (error) {
-          setValidationError(error)
-          return
-        }
-      }
-      setValidationError(null)
-      onFileChange(f)
-    },
-    [onFileChange, validate],
-  )
+  const handleFiles = ([f]: File[]) => {
+    const error = validate?.(f) ?? null
+    setValidationError(error)
+    if (!error) onFileChange(f)
+  }
 
-  const handleDragEnter = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    dragCounter.current++
-    setIsDragging(true)
-  }, [])
-
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    dragCounter.current--
-    if (dragCounter.current === 0) setIsDragging(false)
-  }, [])
-
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-  }, [])
-
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault()
-      e.stopPropagation()
-      dragCounter.current = 0
-      setIsDragging(false)
-      setValidationError(null)
-      const f = e.dataTransfer.files[0]
-      if (f) validateAndSet(f)
-    },
-    [validateAndSet],
-  )
-
-  const handleFileInput = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      setValidationError(null)
-      const f = e.target.files?.[0]
-      if (f) validateAndSet(f)
-      e.target.value = ''
-    },
-    [validateAndSet],
-  )
-
-  const handleRemove = useCallback(() => {
+  const handleRemove = () => {
     setValidationError(null)
     onFileChange(null)
-  }, [onFileChange])
+  }
 
   return (
     <div className="space-y-2">
       {!file ? (
-        <div
-          data-testid={testId}
-          onDragEnter={handleDragEnter}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-          className={cn(
-            'relative cursor-pointer border-2 border-dashed text-center transition-all duration-200',
-            compact ? 'rounded-lg p-6' : 'rounded-xl p-12',
-            isDragging && 'border-primary bg-primary/5',
-            !isDragging &&
-              'border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/50',
-            disabled && 'pointer-events-none opacity-50',
-          )}
+        <FileDropTarget
+          onFiles={handleFiles}
+          accept={accept}
+          disabled={disabled}
+          testId={testId}
+          inputTestId={inputTestId}
+          aria-label={label}
+          aria-describedby={validationError ? errorId : undefined}
+          className={compact ? 'rounded-lg p-6' : 'rounded-xl p-12'}
         >
-          <input
-            data-testid={inputTestId}
-            type="file"
-            accept={accept}
-            onChange={handleFileInput}
-            className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-            disabled={disabled}
-          />
           <Upload
+            aria-hidden="true"
             className={cn(
               'text-muted-foreground mx-auto mb-3',
               compact ? 'h-6 w-6' : 'h-10 w-10',
@@ -180,33 +116,29 @@ export function FileDropZone({
           >
             {label}
           </p>
-          <p
-            className={cn(
-              'text-muted-foreground',
-              compact ? 'text-[10px]' : 'text-xs',
-            )}
-          >
+          <p className="text-muted-foreground text-xs">
             {hint ?? `or click to browse (${accept.replaceAll(',', ', ')})`}
           </p>
           {!compact && maxSizeHint && (
-            <p className="text-muted-foreground mt-1 text-[10px]">
-              {maxSizeHint}
-            </p>
+            <p className="text-muted-foreground mt-1 text-xs">{maxSizeHint}</p>
           )}
-        </div>
+        </FileDropTarget>
       ) : (
         <>
           {showImagePreview && <ImagePreview file={file} />}
           <div
             className={cn(
-              'flex items-center justify-between border-2 border-green-500 bg-green-50 dark:bg-green-950/20',
+              'flex items-center justify-between border-2',
+              TONES.success.surface,
+              'border-success/60',
               compact ? 'rounded-lg p-3' : 'rounded-xl p-4',
             )}
           >
             <div className="flex min-w-0 flex-1 items-center gap-3">
               <SelectedIcon
+                aria-hidden="true"
                 className={cn(
-                  'flex-shrink-0 text-green-600 dark:text-green-400',
+                  'text-success flex-shrink-0',
                   compact ? 'h-5 w-5' : 'h-8 w-8',
                 )}
               />
@@ -219,27 +151,25 @@ export function FileDropZone({
                 >
                   {file.name}
                 </p>
-                <p
-                  className={cn(
-                    'text-muted-foreground',
-                    compact ? 'text-[10px]' : 'text-xs',
-                  )}
-                >
-                  {(file.size / 1024 / 1024).toFixed(2)} MB
+                <p className="text-muted-foreground text-xs">
+                  {formatBytes(file.size)}
                 </p>
               </div>
             </div>
             {!disabled && (
               <Button
+                type="button"
                 variant="ghost"
                 size="icon"
                 onClick={handleRemove}
-                className="flex-shrink-0 hover:bg-red-100 dark:hover:bg-red-950"
+                className="hover:bg-destructive/10 flex-shrink-0"
+                aria-label={`Remove ${file.name}`}
                 title="Remove file"
               >
                 <Trash2
+                  aria-hidden="true"
                   className={cn(
-                    'text-red-600 dark:text-red-400',
+                    'text-destructive',
                     compact ? 'h-4 w-4' : 'h-5 w-5',
                   )}
                 />
@@ -250,9 +180,18 @@ export function FileDropZone({
       )}
 
       {validationError && (
-        <div className="border-destructive/50 bg-destructive/10 text-destructive rounded-lg border p-3">
-          <p className="flex items-center gap-2 text-xs font-medium">
-            <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
+        <div
+          id={errorId}
+          role="alert"
+          className={cn('rounded-lg border p-3', TONES.destructive.surface)}
+        >
+          <p
+            className={cn(
+              'flex items-center gap-2 text-xs font-medium',
+              TONES.destructive.strongText,
+            )}
+          >
+            <AlertCircle aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
             {validationError}
           </p>
         </div>

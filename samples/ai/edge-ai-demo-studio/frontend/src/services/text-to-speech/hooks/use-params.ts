@@ -3,21 +3,20 @@
 
 'use client'
 
-import { useMemo, useState } from 'react'
 import type { DemoParam } from '@/types/demo-params'
-import { getLanguagesForModel, getVoicesForModel } from '../config'
+import { useDemoParams } from '@/services/common/demo/use-demo-params'
+import {
+  getLanguagesForModel,
+  getTtsCapabilities,
+  getVoicesForModel,
+  ttsFormatLabel,
+} from '../lib/tts-models'
 
 const TTS_DEFAULTS = {
   speed: 1.0,
   format: 'wav',
   volume: 1.0,
 }
-
-const TTS_FORMAT_OPTIONS = [
-  { value: 'wav', label: 'WAV' },
-  { value: 'mp3', label: 'MP3' },
-  { value: 'ogg', label: 'OGG' },
-]
 
 export interface TtsParamValues {
   language: string
@@ -27,58 +26,86 @@ export interface TtsParamValues {
   volume: number
 }
 
-export function useTtsParams(
+interface UseTtsDemoParamsOptions {
+  /** Keeps the settings per instance across demo remounts under a `DemoSessionProvider`. */
+  sessionKey?: string
+}
+
+/** Records which model the language and voice were chosen for. */
+interface ParamState extends TtsParamValues {
+  model: string
+}
+
+function modelStart(model: string): Pick<ParamState, 'language' | 'voice'> {
+  return {
+    language: getLanguagesForModel(model)[0]?.value ?? '',
+    voice: getVoicesForModel(model)[0]?.id ?? '',
+  }
+}
+
+/** The TTS settings `model` supports and their controls; `voiceDownloadMap` marks uncached voices. */
+export function useTtsDemoParams(
   model: string,
   voiceDownloadMap?: Record<string, boolean> | null,
+  options?: UseTtsDemoParamsOptions,
 ): {
   values: TtsParamValues
   params: DemoParam[]
 } {
-  const languages = useMemo(() => getLanguagesForModel(model), [model])
-  const allVoices = useMemo(() => getVoicesForModel(model), [model])
+  const languages = getLanguagesForModel(model)
+  const allVoices = getVoicesForModel(model)
+  const capabilities = getTtsCapabilities(model)
 
-  const [language, setLanguage] = useState(() => languages[0]?.value ?? '')
-  const [voice, setVoice] = useState(() => allVoices[0]?.id ?? '')
-  const [speed, setSpeed] = useState(TTS_DEFAULTS.speed)
-  const [format, setFormat] = useState(TTS_DEFAULTS.format)
-  const [volume, setVolume] = useState(TTS_DEFAULTS.volume)
+  const { values: state, set } = useDemoParams<ParamState>(
+    {
+      model,
+      ...modelStart(model),
+      speed: TTS_DEFAULTS.speed,
+      format: TTS_DEFAULTS.format,
+      volume: TTS_DEFAULTS.volume,
+    },
+    { sessionKey: options?.sessionKey },
+  )
+  const { language, voice, speed, format, volume } = state
 
-  // Reset language & voice when model changes
-  const [prevModel, setPrevModel] = useState(model)
-  if (prevModel !== model) {
-    setPrevModel(model)
-    setLanguage(languages[0]?.value ?? '')
-    setVoice(allVoices[0]?.id ?? '')
+  // A different model (also after a restart with kept settings) starts from its first voice.
+  if (state.model !== model) {
+    const start = modelStart(model)
+    set('model', model)
+    set('language', start.language)
+    set('voice', start.voice)
   }
 
-  // Filtered voices based on selected language
-  const voiceOptions = useMemo(() => {
-    const filtered = language
-      ? allVoices.filter((v) => v.language === language)
-      : allVoices
-    return filtered.map((v) => ({
-      value: v.id,
-      label: v.label,
-      ...(voiceDownloadMap
-        ? { downloaded: voiceDownloadMap[v.id] === true }
-        : {}),
-    }))
-  }, [allVoices, language, voiceDownloadMap])
+  const voiceOptions = (
+    language ? allVoices.filter((v) => v.language === language) : allVoices
+  ).map((v) => ({
+    value: v.id,
+    label: v.label,
+    ...(voiceDownloadMap
+      ? { downloaded: voiceDownloadMap[v.id] === true }
+      : {}),
+  }))
 
-  // Derive effective voice — auto-select first if current is invalid
-  const effectiveVoice = useMemo(() => {
-    if (voiceOptions.some((v) => v.value === voice)) return voice
-    return voiceOptions[0]?.value ?? ''
-  }, [voiceOptions, voice])
+  // A voice the language does not have falls back to its first.
+  const effectiveVoice = voiceOptions.some((v) => v.value === voice)
+    ? voice
+    : (voiceOptions[0]?.value ?? '')
 
-  const isKokoro = model === 'kokoro'
+  // A format the model lacks (e.g. kept from an older session) falls back to its first.
+  const formatOptions = capabilities.formats.map((value) => ({
+    value,
+    label: ttsFormatLabel(value),
+  }))
+  const effectiveFormat = capabilities.formats.includes(format)
+    ? format
+    : capabilities.formats[0]
 
   const values: TtsParamValues = {
     language,
     voice: effectiveVoice,
-    speed,
-    format,
-    volume: isKokoro ? volume : TTS_DEFAULTS.volume,
+    speed: capabilities.speed ? speed : TTS_DEFAULTS.speed,
+    format: effectiveFormat,
+    volume: capabilities.volume ? volume : TTS_DEFAULTS.volume,
   }
 
   const selectedVoiceNotCached =
@@ -95,32 +122,40 @@ export function useTtsParams(
             label: 'Language',
             value: language,
             options: languages,
-            onChange: setLanguage,
+            onChange: (v: string) => set('language', v),
           },
         ]
       : []),
-    {
-      type: 'select',
-      id: 'voice',
-      label: 'Voice',
-      value: effectiveVoice,
-      options: voiceOptions,
-      onChange: setVoice,
-      hint: selectedVoiceNotCached
-        ? 'Voice not cached — first synthesis may be slow while the model downloads.'
-        : undefined,
-    },
-    {
-      type: 'slider',
-      id: 'speed',
-      label: 'Speed',
-      value: speed,
-      min: 0.25,
-      max: 4.0,
-      step: 0.25,
-      onChange: setSpeed,
-    },
-    ...(isKokoro
+    ...(voiceOptions.length > 0
+      ? [
+          {
+            type: 'select' as const,
+            id: 'voice',
+            label: 'Voice',
+            value: effectiveVoice,
+            options: voiceOptions,
+            onChange: (v: string) => set('voice', v),
+            hint: selectedVoiceNotCached
+              ? 'Voice not cached — first synthesis may be slow while the model downloads.'
+              : undefined,
+          },
+        ]
+      : []),
+    ...(capabilities.speed
+      ? [
+          {
+            type: 'slider' as const,
+            id: 'speed',
+            label: 'Speed',
+            value: speed,
+            min: 0.25,
+            max: 4.0,
+            step: 0.25,
+            onChange: (v: number) => set('speed', v),
+          },
+        ]
+      : []),
+    ...(capabilities.volume
       ? [
           {
             type: 'slider' as const,
@@ -130,18 +165,22 @@ export function useTtsParams(
             min: 0.0,
             max: 5.0,
             step: 0.1,
-            onChange: setVolume,
+            onChange: (v: number) => set('volume', v),
           },
         ]
       : []),
-    {
-      type: 'select',
-      id: 'format',
-      label: 'Output Format',
-      value: format,
-      options: TTS_FORMAT_OPTIONS,
-      onChange: setFormat,
-    },
+    ...(formatOptions.length > 1
+      ? [
+          {
+            type: 'select' as const,
+            id: 'format',
+            label: 'Output Format',
+            value: effectiveFormat,
+            options: formatOptions,
+            onChange: (v: string) => set('format', v),
+          },
+        ]
+      : []),
   ]
 
   return { values, params }

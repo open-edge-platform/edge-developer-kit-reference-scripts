@@ -5,15 +5,13 @@
 // Source of truth: scripts/generate-registries.mjs
 // Run "npm run codegen" to regenerate.
 
-import type { ServiceDocsData } from '../types'
+import type { DocsFactoryOptions, ServiceDocsData } from '../types'
 
-export type DocsFactory = (opts: {
-  host: string
-  model?: string
-}) => ServiceDocsData
+export type DocsFactory = (opts: DocsFactoryOptions) => ServiceDocsData
 
 import { getDocsData as diarizationDocs } from '../diarization/docs'
 import { getDocsData as embeddingsDocs } from '../embeddings/docs'
+import { getDocsData as faceRecognitionDocs } from '../face-recognition/docs'
 import { getDocsData as frameGenerationDocs } from '../frame-generation/docs'
 import { getDocsData as imageGenerationDocs } from '../image-generation/docs'
 import { getDocsData as lipsyncDocs } from '../lipsync/docs'
@@ -30,6 +28,7 @@ import { getDocsData as wakeWordDetectionDocs } from '../wake-word-detection/doc
 export const docsRegistry: Record<string, DocsFactory> = {
   diarization: diarizationDocs,
   embeddings: embeddingsDocs,
+  'face-recognition': faceRecognitionDocs,
   'frame-generation': frameGenerationDocs,
   'image-generation': imageGenerationDocs,
   lipsync: lipsyncDocs,

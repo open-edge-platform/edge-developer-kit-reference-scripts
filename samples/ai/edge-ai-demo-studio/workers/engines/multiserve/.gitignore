@@ -1,0 +1,21 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Sources
+logs
+models
+engine/*
+config.yaml
+*.csv
+.cache
+
+# llama.cpp backend selection written by setup.sh / the desktop app
+.llamacpp-backend

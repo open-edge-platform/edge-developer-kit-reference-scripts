@@ -3,215 +3,279 @@
 
 'use client'
 
-import { useEffect } from 'react'
 import {
+  Ban,
   CheckCircle,
-  XCircle,
-  Loader2,
   Clock,
-  Download,
-  RotateCcw,
+  FileText,
+  Loader,
+  XCircle,
+  type LucideIcon,
 } from 'lucide-react'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
+import { InlineNotice } from '@/components/common/inline-notice'
+import { TONES, type Tone } from '@/components/common/tones'
+import { TruncatedText } from '@/components/common/truncated-text'
 import { Badge } from '@/components/ui/badge'
+import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useTranslationStatus } from '../hooks'
-import { useDownload } from '../hooks'
-import type { TranslationJob } from '../hooks'
+import { cn } from '@/lib/utils'
+import type {
+  TranslationJob,
+  TranslationJobRun,
+} from '../hooks/use-translation-job'
+import { TranslationActions } from './translation-actions'
 
 interface TranslationProgressProps {
-  jobId: string
+  job: TranslationJobRun
+  /** Start a new job with the same file (after a failure or a cancel). */
+  onRetry: () => void
+  /** Back to the upload, for another file. */
   onReset: () => void
-  onComplete?: () => void
 }
 
-function StatusIcon({ status }: { status: TranslationJob['status'] }) {
-  switch (status) {
-    case 'pending':
-      return <Clock className="h-12 w-12 text-yellow-500" />
-    case 'processing':
-      return <Loader2 className="h-12 w-12 animate-spin text-blue-500" />
-    case 'completed':
-      return <CheckCircle className="h-12 w-12 text-green-500" />
+const STATUS_META: Record<
+  TranslationJob['status'],
+  { icon: LucideIcon; tone: Tone; badgeLabel: string; title: string }
+> = {
+  pending: {
+    icon: Clock,
+    tone: 'warning',
+    badgeLabel: 'Queued',
+    title: 'Waiting for the translation worker',
+  },
+  processing: {
+    icon: Loader,
+    tone: 'primary',
+    badgeLabel: 'Translating…',
+    title: 'Translating your slides',
+  },
+  completed: {
+    icon: CheckCircle,
+    tone: 'success',
+    badgeLabel: 'Completed',
+    title: 'Translation finished',
+  },
+  failed: {
+    icon: XCircle,
+    tone: 'destructive',
+    badgeLabel: 'Failed',
+    title: 'Translation failed',
+  },
+  cancelled: {
+    icon: Ban,
+    tone: 'muted',
+    badgeLabel: 'Cancelled',
+    title: 'Translation cancelled',
+  },
+}
+
+/** A job the worker no longer has (it restarted): neither failed nor done. */
+const GONE_META: (typeof STATUS_META)[TranslationJob['status']] = {
+  icon: XCircle,
+  tone: 'muted',
+  badgeLabel: 'Unavailable',
+  title: 'This translation is no longer available',
+}
+
+/** The job's status word, once the worker has reported where it is. */
+function displayStatus(
+  job: TranslationJobRun,
+): TranslationJob['status'] | null {
+  switch (job.phase) {
+    case 'queued':
+      return 'pending'
+    case 'running':
+      return job.status ? 'processing' : null
+    case 'done':
+      return 'completed'
     case 'failed':
-      return <XCircle className="h-12 w-12 text-red-500" />
+      return 'failed'
+    case 'cancelled':
+      return 'cancelled'
+    default:
+      return null
   }
 }
 
-function StatusBadge({ status }: { status: TranslationJob['status'] }) {
-  switch (status) {
-    case 'pending':
-      return (
-        <Badge
-          variant="secondary"
-          className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-200"
-        >
-          Queued
-        </Badge>
-      )
-    case 'processing':
-      return (
-        <Badge
-          variant="secondary"
-          className="bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-200"
-        >
-          <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-          Translating...
-        </Badge>
-      )
-    case 'completed':
-      return (
-        <Badge
-          variant="secondary"
-          className="bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-200"
-        >
-          Completed
-        </Badge>
-      )
-    case 'failed':
-      return <Badge variant="destructive">Failed</Badge>
-  }
-}
-
+/**
+ * The job from acceptance to download, with cancel while it runs and retry after it fails. A job
+ * resumed after a reload has lost its file, so retrying means choosing the file again.
+ */
 export function TranslationProgress({
-  jobId,
+  job,
+  onRetry,
   onReset,
-  onComplete,
 }: TranslationProgressProps) {
-  const { data: job, isLoading } = useTranslationStatus(jobId)
-  const download = useDownload()
-
-  useEffect(() => {
-    if (job?.status === 'completed') {
-      onComplete?.()
-    }
-  }, [job?.status, onComplete])
-
-  if (isLoading || !job) {
-    return (
-      <Card>
-        <CardContent className="space-y-4 py-12">
-          <Skeleton className="mx-auto h-12 w-12 rounded-full" />
-          <Skeleton className="mx-auto h-4 w-48" />
-          <Skeleton className="h-3 w-full" />
-        </CardContent>
-      </Card>
-    )
-  }
+  const status = displayStatus(job)
+  const meta = status ? (job.gone ? GONE_META : STATUS_META[status]) : null
+  const report = job.status
+  const fileKept = job.input !== null
+  const retryHint = fileKept
+    ? 'Your file and settings are kept: Translate again starts a new job with the same file.'
+    : 'To translate it again, choose the file again with Translate another file.'
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle>Translation Status</CardTitle>
-          <div data-testid="translation-status-badge">
-            <StatusBadge status={job.status} />
-          </div>
+    <section
+      aria-labelledby="ppt-status-heading"
+      className="surface-panel rounded-xl p-5"
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-1">
+          <h2
+            id="ppt-status-heading"
+            className="text-foreground text-lg font-semibold"
+          >
+            Translation Status
+          </h2>
+          <SubmittedSummary job={job} />
         </div>
-        <CardDescription data-testid="job-id">
-          Job ID: {job.job_id}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        <div className="flex flex-col items-center space-y-4 py-6">
-          <StatusIcon status={job.status} />
-          <p className="text-muted-foreground max-w-md text-center">
-            {job.message}
-          </p>
-        </div>
-
-        {(job.status === 'processing' || job.status === 'pending') && (
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Progress</span>
-              <span className="font-medium">
-                {Math.round(job.progress * 100)}%
-              </span>
-            </div>
-            <div
-              data-testid="translation-progress-bar"
-              className="bg-muted h-3 w-full overflow-hidden rounded-full"
-            >
-              <div
-                className="bg-primary h-full rounded-full transition-all duration-500"
-                style={{ width: `${Math.round(job.progress * 100)}%` }}
-              />
-            </div>
-          </div>
-        )}
-
-        {job.status === 'failed' && job.error && (
-          <div className="border-destructive/50 bg-destructive/10 text-destructive rounded-lg border p-4">
-            <p className="flex items-center gap-2 font-medium">
-              <XCircle className="h-4 w-4 flex-shrink-0" />
-              Error Details
-            </p>
-            <p className="mt-1 text-sm">{job.error}</p>
-          </div>
-        )}
-
-        {download.isError && (
-          <div className="border-destructive/50 bg-destructive/10 text-destructive rounded-lg border p-4">
-            <p className="flex items-center gap-2 text-sm font-medium">
-              <XCircle className="h-4 w-4 flex-shrink-0" />
-              Download failed. Please try again.
-            </p>
-          </div>
-        )}
-
-        <div className="bg-muted rounded-lg p-4">
-          <div className="text-muted-foreground space-y-1 text-xs">
-            <p>Created: {new Date(job.created_at).toLocaleString()}</p>
-            {job.completed_at && (
-              <p>Completed: {new Date(job.completed_at).toLocaleString()}</p>
-            )}
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-3 sm:flex-row">
-          {job.status === 'completed' && (
-            <Button
-              data-testid="download-button"
-              onClick={() => download.mutate(jobId)}
-              disabled={download.isPending}
-              className="flex-1"
-              size="lg"
-            >
-              {download.isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Downloading...
-                </>
-              ) : (
-                <>
-                  <Download className="mr-2 h-4 w-4" />
-                  Download Translated File
-                </>
+        <div data-testid="translation-status-badge" className="shrink-0">
+          {meta ? (
+            <Badge variant="outline" tone={meta.tone}>
+              {status === 'processing' && (
+                <Loader className="animate-spin" aria-hidden />
               )}
-            </Button>
-          )}
-
-          {(job.status === 'completed' || job.status === 'failed') && (
-            <Button
-              data-testid="translate-another-button"
-              onClick={onReset}
-              variant="outline"
-              className="flex-1"
-              size="lg"
-            >
-              <RotateCcw className="mr-2 h-4 w-4" />
-              Translate Another
-            </Button>
+              {meta.badgeLabel}
+            </Badge>
+          ) : (
+            <Skeleton className="h-5 w-20 rounded-full" />
           )}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+
+      {job.resumed && !job.gone && (
+        <InlineNotice
+          tone="info"
+          size="sm"
+          role="status"
+          className="mt-4"
+          data-testid="translation-resumed-notice"
+        >
+          This is the translation you started before leaving the page. It kept
+          running on the worker while you were away.
+        </InlineNotice>
+      )}
+
+      {!meta ? (
+        <div className="mt-6 space-y-3" aria-busy="true">
+          <Skeleton className="h-4 w-48" />
+          <Skeleton className="h-2 w-full rounded-full" />
+        </div>
+      ) : (
+        <>
+          <div className="mt-6 flex items-start gap-3">
+            <meta.icon
+              className={cn(
+                'mt-0.5 h-6 w-6 shrink-0',
+                TONES[meta.tone].text,
+                status === 'processing' && 'animate-spin',
+              )}
+              aria-hidden
+            />
+            <div className="min-w-0 flex-1 space-y-1">
+              <p className="text-foreground text-sm font-medium">
+                {meta.title}
+              </p>
+              {status !== 'failed' && report?.message && (
+                <p className="text-muted-foreground text-sm">
+                  {report.message}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {(status === 'pending' || status === 'processing') && (
+            <ProgressReadout
+              queued={status === 'pending'}
+              progress={report?.progress ?? 0}
+            />
+          )}
+
+          {status === 'failed' && (
+            <InlineNotice
+              tone="destructive"
+              size="sm"
+              className="mt-5"
+              data-testid="translation-failed-notice"
+            >
+              {job.error?.message ?? 'The translation did not finish.'}{' '}
+              {retryHint}
+            </InlineNotice>
+          )}
+
+          {status === 'cancelled' && (
+            <p className="text-muted-foreground mt-5 text-xs">{retryHint}</p>
+          )}
+
+          {report?.created_at && (
+            <p className="text-muted-foreground mt-5 text-xs">
+              Started {new Date(report.created_at).toLocaleString()}
+              {report.completed_at &&
+                ` · Finished ${new Date(report.completed_at).toLocaleString()}`}
+            </p>
+          )}
+        </>
+      )}
+
+      <TranslationActions job={job} onRetry={onRetry} onReset={onReset} />
+    </section>
+  )
+}
+
+/** What was submitted, kept on screen while the job runs. */
+function SubmittedSummary({ job }: { job: TranslationJobRun }) {
+  const fileName = job.input?.file.name ?? job.saved?.fileName
+  const params = job.input?.params ?? job.saved?.params
+  return (
+    <p className="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+      {fileName && (
+        <span className="inline-flex min-w-0 items-center gap-1.5">
+          <FileText className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          <TruncatedText
+            text={fileName}
+            className="text-foreground max-w-[240px] font-medium"
+          />
+        </span>
+      )}
+      {params && (
+        <span>
+          {params.sourceLanguage} → {params.targetLanguage}
+        </span>
+      )}
+      {job.jobId && (
+        <span data-testid="job-id" className="font-mono">
+          Job ID: {job.jobId}
+        </span>
+      )}
+    </p>
+  )
+}
+
+function ProgressReadout({
+  queued,
+  progress,
+}: {
+  queued: boolean
+  progress: number
+}) {
+  const percent = Math.round(Math.min(1, Math.max(0, progress)) * 100)
+  return (
+    <div className="mt-5 space-y-2" role="status" aria-live="polite">
+      <div className="flex justify-between text-xs">
+        <span className="text-muted-foreground">
+          {queued
+            ? 'Queued · progress appears once translation starts'
+            : 'Progress reported by the translation job'}
+        </span>
+        <span className="text-foreground font-medium tabular-nums">
+          {percent}%
+        </span>
+      </div>
+      <Progress
+        data-testid="translation-progress-bar"
+        value={percent}
+        aria-label="Translation progress"
+      />
+    </div>
   )
 }

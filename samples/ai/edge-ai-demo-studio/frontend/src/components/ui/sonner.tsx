@@ -11,8 +11,10 @@ function Toaster(props: ToasterProps) {
       className="toaster group"
       toastOptions={{
         classNames: {
+          // A modal sheet or dialog turns pointer events off on the body, which
+          // the toaster inherits; keep a toast's buttons clickable.
           toast:
-            'group toast group-[.toaster]:bg-background group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg',
+            'group toast pointer-events-auto group-[.toaster]:bg-background group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg',
           description: 'group-[.toast]:text-muted-foreground',
           actionButton:
             'group-[.toast]:bg-primary group-[.toast]:text-primary-foreground',

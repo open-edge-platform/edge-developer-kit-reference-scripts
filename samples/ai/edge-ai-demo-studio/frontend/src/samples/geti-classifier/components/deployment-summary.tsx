@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Cpu, Database, FolderOpen, Server } from 'lucide-react'
-import type { GetiModel, GetiProject } from '../hooks'
+import { cn } from '@/lib/utils'
+import type { DeployPhase, GetiModel, GetiProject } from '../lib/api'
+import { formatModelChoice, hostLabel } from '../lib/format'
+import { PHASES } from '../lib/wizard'
 
 interface DeploymentSummaryProps {
-  phase: 'seg' | 'cls'
+  phase: DeployPhase
   host: string
   project: GetiProject | undefined
   selectedModelId: string
@@ -13,23 +16,7 @@ interface DeploymentSummaryProps {
   selectedDevice: string
 }
 
-const PHASE_STYLES = {
-  seg: {
-    headerGradient: 'bg-gradient-to-r from-blue-600 to-indigo-600',
-    headerText: 'text-blue-100',
-    border: 'border-blue-200 dark:border-blue-800',
-    divider: 'divide-blue-100 dark:divide-blue-900',
-    bg: 'bg-blue-50/30 dark:bg-blue-950/10',
-  },
-  cls: {
-    headerGradient: 'bg-gradient-to-r from-violet-600 to-purple-600',
-    headerText: 'text-violet-100',
-    border: 'border-violet-200 dark:border-violet-800',
-    divider: 'divide-violet-100 dark:divide-violet-900',
-    bg: 'bg-violet-50/30 dark:bg-violet-950/10',
-  },
-} as const
-
+/** What a deploy is about to set up: server, project, model and device. */
 export function DeploymentSummary({
   phase,
   host,
@@ -38,49 +25,42 @@ export function DeploymentSummary({
   model,
   selectedDevice,
 }: DeploymentSummaryProps) {
-  const styles = PHASE_STYLES[phase]
-
-  const modelLabel =
-    selectedModelId === 'latest'
-      ? 'Latest Active'
-      : model
-        ? `${model.name} v${model.version ?? '?'}`
-        : '—'
-
+  const style = PHASES[phase]
   const rows = [
-    {
-      label: 'Server',
-      value: host.replace('https://', '').replace('http://', ''),
-      icon: Server,
-    },
+    { label: 'Server', value: hostLabel(host), icon: Server },
     { label: 'Project', value: project?.name ?? '—', icon: FolderOpen },
-    { label: 'Model', value: modelLabel, icon: Database },
+    {
+      label: 'Model',
+      value: formatModelChoice(selectedModelId, model),
+      icon: Database,
+    },
     { label: 'Device', value: selectedDevice, icon: Cpu },
   ]
 
   return (
-    <div className={`overflow-hidden rounded-xl border ${styles.border}`}>
-      <div className={`${styles.headerGradient} px-4 py-2.5`}>
-        <p
-          className={`text-xs font-semibold tracking-wider uppercase ${styles.headerText}`}
-        >
-          Deployment Configuration
-        </p>
-      </div>
-      <div className={`divide-y ${styles.divider} ${styles.bg}`}>
+    <div className={cn('overflow-hidden rounded-xl border', style.surface)}>
+      <p
+        className={cn(
+          'px-4 py-2.5 text-xs font-semibold tracking-wider uppercase',
+          style.solid,
+        )}
+      >
+        Deployment Configuration
+      </p>
+      <dl className={cn('divide-y', style.divide)}>
         {rows.map(({ label, value, icon: Icon }) => (
           <div
             key={label}
             className="flex items-center justify-between px-4 py-2.5"
           >
-            <div className="text-muted-foreground flex items-center gap-2 text-sm">
-              <Icon className="h-3.5 w-3.5" />
+            <dt className="text-muted-foreground flex items-center gap-2 text-sm">
+              <Icon className="h-3.5 w-3.5" aria-hidden />
               {label}
-            </div>
-            <span className="text-sm font-medium">{value}</span>
+            </dt>
+            <dd className="text-sm font-medium">{value}</dd>
           </div>
         ))}
-      </div>
+      </dl>
     </div>
   )
 }

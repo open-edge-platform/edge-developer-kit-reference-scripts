@@ -1,5 +1,3 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
 # dependencies
 /node_modules
 /.pnp
@@ -30,7 +28,7 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files
 .env
 
 # vercel
@@ -47,3 +45,9 @@ node_modules/
 /blob-report/
 /playwright/.cache/
 /playwright/.auth/
+
+# Throwaway Playwright databases (e.g. e2e-merge-db.sqlite)
+/e2e-*.sqlite*
+
+# Model fixtures for the [Upload] cases, downloaded on first use (tests/services/utils/model-fixtures.ts)
+/tests/assets/.model-fixtures/

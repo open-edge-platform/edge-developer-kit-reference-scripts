@@ -3,13 +3,13 @@
 
 'use client'
 
-import { useCallback, useRef, useState } from 'react'
-import type { DemoParam } from '@/types/demo-params'
+import type { DemoParam, ParamSlider } from '@/types/demo-params'
 import {
   DEFAULT_REASONING_PARSER,
   REASONING_PARSER_OPTIONS,
   type ReasoningParserId,
-} from '@/lib/reasoning-parsers'
+} from '@/lib/llm/reasoning-parsers'
+import { useDemoParams } from '@/services/common/demo/use-demo-params'
 
 const TEXT_GEN_DEFAULTS = {
   maxTokens: 16384,
@@ -22,6 +22,13 @@ const TEXT_GEN_DEFAULTS = {
 type RequestParamKey =
   'maxTokens' | 'temperature' | 'topP' | 'topK' | 'repetitionPenalty'
 
+/**
+ * Sampling params are always sent: the model's own defaults can mean no repetition penalty and
+ * looping replies (Qwen3.5-4B int4). `maxTokens` is sent only once set, since OVMS rejects
+ * prompt + max tokens beyond the model's length (4096 for Phi-3-mini-4k).
+ */
+export type RequestParams = Partial<Pick<TextGenParamValues, RequestParamKey>>
+
 export interface TextGenParamValues {
   maxTokens: number
   temperature: number
@@ -33,25 +40,18 @@ export interface TextGenParamValues {
   reasoningParser: ReasoningParserId
 }
 
-function useTouchedState<T>(
-  initial: T,
-): [T, (value: T) => void, boolean, () => void] {
-  const initialRef = useRef(initial)
-  const [value, setValue] = useState(initial)
-  const [touched, setTouched] = useState(false)
-  const set = useCallback((next: T) => {
-    setValue(next)
-    setTouched(true)
-  }, [])
-  const reset = useCallback(() => {
-    setValue(initialRef.current)
-    setTouched(false)
-  }, [])
-  return [value, set, touched, reset]
-}
-
 interface UseTextGenParamsOptions {
   systemPromptTooltip?: string
+  /** Keeps the settings per instance across demo remounts under a `DemoSessionProvider`. */
+  sessionKey?: string
+}
+
+interface ParamState {
+  /** Numeric params the user set; the others show (and send) their defaults. */
+  custom: RequestParams
+  systemPrompt: string
+  disableReasoning: boolean
+  reasoningParser: ReasoningParserId
 }
 
 export function useTextGenParams(
@@ -59,160 +59,167 @@ export function useTextGenParams(
   options?: UseTextGenParamsOptions,
 ): {
   values: TextGenParamValues
-  requestParams: Partial<Pick<TextGenParamValues, RequestParamKey>>
+  requestParams: RequestParams
   params: DemoParam[]
+  /** Settings that differ from their defaults. */
+  customCount: number
+  resetParams: () => void
 } {
-  const [maxTokens, setMaxTokens, maxTokensTouched, resetMaxTokens] =
-    useTouchedState(initial?.maxTokens ?? TEXT_GEN_DEFAULTS.maxTokens)
-  const [temperature, setTemperature, temperatureTouched, resetTemperature] =
-    useTouchedState(initial?.temperature ?? TEXT_GEN_DEFAULTS.temperature)
-  const [topP, setTopP, topPTouched, resetTopP] = useTouchedState(
-    initial?.topP ?? TEXT_GEN_DEFAULTS.topP,
-  )
-  const [topK, setTopK, topKTouched, resetTopK] = useTouchedState(
-    initial?.topK ?? TEXT_GEN_DEFAULTS.topK,
-  )
-  const [
-    repetitionPenalty,
-    setRepetitionPenalty,
-    repetitionPenaltyTouched,
-    resetRepetitionPenalty,
-  ] = useTouchedState(
-    initial?.repetitionPenalty ?? TEXT_GEN_DEFAULTS.repetitionPenalty,
-  )
-  const [systemPrompt, setSystemPrompt] = useState(initial?.systemPrompt ?? '')
-  const [disableReasoning, setDisableReasoning] = useState(
-    initial?.disableReasoning ?? false,
-  )
-  const [reasoningParser, setReasoningParser] = useState<ReasoningParserId>(
-    initial?.reasoningParser ?? DEFAULT_REASONING_PARSER,
-  )
+  const defaults: ParamState = {
+    custom: {},
+    systemPrompt: initial?.systemPrompt ?? '',
+    disableReasoning: initial?.disableReasoning ?? false,
+    reasoningParser: initial?.reasoningParser ?? DEFAULT_REASONING_PARSER,
+  }
+  const {
+    values: state,
+    set,
+    reset,
+  } = useDemoParams(defaults, { sessionKey: options?.sessionKey })
+  const { custom, systemPrompt, disableReasoning, reasoningParser } = state
+
+  const seeded = (key: RequestParamKey) =>
+    initial?.[key] ?? TEXT_GEN_DEFAULTS[key]
 
   const values: TextGenParamValues = {
-    maxTokens,
-    temperature,
-    topP,
-    topK,
-    repetitionPenalty,
+    maxTokens: custom.maxTokens ?? seeded('maxTokens'),
+    temperature: custom.temperature ?? seeded('temperature'),
+    topP: custom.topP ?? seeded('topP'),
+    topK: custom.topK ?? seeded('topK'),
+    repetitionPenalty: custom.repetitionPenalty ?? seeded('repetitionPenalty'),
     systemPrompt,
     disableReasoning,
     reasoningParser,
   }
 
-  const requestParams: Partial<Pick<TextGenParamValues, RequestParamKey>> = {
-    ...(maxTokensTouched ? { maxTokens } : {}),
-    ...(temperatureTouched ? { temperature } : {}),
-    ...(topPTouched ? { topP } : {}),
-    ...(topKTouched ? { topK } : {}),
-    ...(repetitionPenaltyTouched ? { repetitionPenalty } : {}),
-  }
+  const customCount =
+    Object.keys(custom).length +
+    (systemPrompt !== defaults.systemPrompt ? 1 : 0) +
+    (disableReasoning !== defaults.disableReasoning ? 1 : 0) +
+    (reasoningParser !== defaults.reasoningParser ? 1 : 0)
+
+  const slider = (
+    key: RequestParamKey,
+    spec: Omit<
+      ParamSlider,
+      'type' | 'value' | 'onChange' | 'unset' | 'onReset'
+    >,
+  ): ParamSlider => ({
+    type: 'slider',
+    ...spec,
+    value: values[key],
+    unset: custom[key] === undefined,
+    onChange: (value) => set('custom', { ...custom, [key]: value }),
+    onReset: () => {
+      const next = { ...custom }
+      delete next[key]
+      set('custom', next)
+    },
+  })
 
   const params: DemoParam[] = [
-    {
-      type: 'slider',
+    slider('maxTokens', {
       id: 'max_tokens',
       label: 'Max Tokens',
-      value: maxTokens,
       min: 32,
       max: 262144,
       step: 32,
-      onChange: setMaxTokens,
-      unset: !maxTokensTouched,
-      onReset: resetMaxTokens,
+      unit: 'tokens',
       tooltip:
-        'The maximum number of tokens that can be generated. On Auto, the model generates up to its maximum (unconstrained).',
-    },
-    {
-      type: 'slider',
+        'Most tokens to generate. By default the model may generate up to its own limit.',
+    }),
+    slider('temperature', {
       id: 'temperature',
       label: 'Temperature',
-      value: temperature,
       min: 0,
       max: 2,
       step: 0.1,
-      onChange: setTemperature,
-      unset: !temperatureTouched,
-      onReset: resetTemperature,
       tooltip:
-        'The value is used to modulate token probabilities for multinomial sampling. It enables multinomial sampling when set to > 0.0. On Auto, the server default is used.',
-    },
-    {
-      type: 'slider',
+        'Higher values give more varied output; 0 always picks the most likely token. By default the server setting applies.',
+    }),
+    slider('topP', {
       id: 'top_p',
       label: 'Top P',
-      value: topP,
       min: 0,
       max: 1,
       step: 0.05,
-      onChange: setTopP,
-      unset: !topPTouched,
-      onReset: resetTopP,
+      advanced: true,
       tooltip:
-        'Controls the cumulative probability of the top tokens to consider. Set to 1 to consider all tokens. On Auto, the server default is used.',
-    },
-    {
-      type: 'slider',
+        'Samples from the most likely tokens whose probabilities add up to this value. 1 considers all tokens.',
+    }),
+    slider('topK', {
       id: 'top_k',
       label: 'Top K',
-      value: topK,
       min: 1,
       max: 100,
       step: 1,
-      onChange: setTopK,
-      unset: !topKTouched,
-      onReset: resetTopK,
-      tooltip:
-        'Controls the number of top tokens to consider. Set to empty or -1 to consider all tokens. On Auto, the server default is used.',
-    },
-    {
-      type: 'slider',
+      advanced: true,
+      tooltip: 'Samples from this many of the most likely tokens.',
+    }),
+    slider('repetitionPenalty', {
       id: 'rep_penalty',
       label: 'Repetition Penalty',
-      value: repetitionPenalty,
       min: 1,
       max: 2,
       step: 0.05,
-      onChange: setRepetitionPenalty,
-      unset: !repetitionPenaltyTouched,
-      onReset: resetRepetitionPenalty,
+      advanced: true,
       tooltip:
-        'Penalizes new tokens based on whether they appear in the prompt and the generated text so far. Values > 1.0 encourage the model to use new tokens, while values < 1.0 encourage the model to repeat tokens. 1.0 means no penalty. On Auto, the server default is used.',
-    },
+        'Values above 1 discourage repeating tokens from the prompt and the output so far. 1 means no penalty.',
+    }),
     {
       type: 'toggle',
       id: 'disable_reasoning',
       label: 'Disable Reasoning',
       tooltip:
-        'Disable chain-of-thought reasoning (thinking). Sets the chat template enable_thinking flag to false (works for Qwen3 and Qwen3.5).',
+        'Asks the model not to reason before answering (sets the chat template enable_thinking flag to false; Qwen3, Qwen3.5 and Gemma 4).',
       checked: disableReasoning,
-      onChange: setDisableReasoning,
+      onChange: (checked) => set('disableReasoning', checked),
     },
     {
       type: 'select',
       id: 'reasoning_parser',
       label: 'Reasoning Parser',
+      advanced: true,
       tooltip:
-        "Controls how the model's thinking (<think>) output is parsed. Auto picks the right parser per model; choose Qwen3.5 for models that omit the opening <think> tag.",
+        'How <think> tags left in the answer are split out as reasoning. Reasoning the server returns separately is shown either way.',
       value: reasoningParser,
       options: REASONING_PARSER_OPTIONS.map((o) => ({
         value: o.value,
         label: o.label,
       })),
-      onChange: (v) => setReasoningParser(v as ReasoningParserId),
+      onChange: (v) => {
+        const option = REASONING_PARSER_OPTIONS.find((o) => o.value === v)
+        if (option) set('reasoningParser', option.value)
+      },
     },
     {
       type: 'textarea',
       id: 'system_prompt',
       label: 'System Prompt',
+      advanced: true,
       ...(options?.systemPromptTooltip
         ? { tooltip: options.systemPromptTooltip }
         : {}),
       placeholder: 'Enter a custom system prompt…',
       value: systemPrompt,
       rows: 3,
-      onChange: setSystemPrompt,
+      onChange: (value) => set('systemPrompt', value),
     },
   ]
 
-  return { values, requestParams, params }
+  const requestParams: RequestParams = {
+    ...(custom.maxTokens != null ? { maxTokens: custom.maxTokens } : {}),
+    temperature: values.temperature,
+    topP: values.topP,
+    topK: values.topK,
+    repetitionPenalty: values.repetitionPenalty,
+  }
+
+  return {
+    values,
+    requestParams,
+    params,
+    customCount,
+    resetParams: reset,
+  }
 }

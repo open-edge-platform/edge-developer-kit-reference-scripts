@@ -1,45 +1,47 @@
 // Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-import { NextRequest } from 'next/server'
-
-import type { VideoState } from '@/lib/digital-avatar-lite/types'
-import { VideoCacheManager } from '@/lib/digital-avatar-lite/video-cache'
-import { getStreamStateManager } from '@/lib/digital-avatar-lite/stream-state'
-import { MJPEGStreamHandler } from '@/lib/digital-avatar-lite/mjpeg-stream'
-import { logger } from '@/lib/logger'
+import { type NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
+import { jsonError, jsonErrorFrom, parseJsonBody } from '@/lib/api/json'
+import { globalSingleton } from '@/lib/global-singleton'
+import { MJPEGStreamHandler } from '@/samples/digital-avatar-lite/lib/mjpeg-stream'
+import { getStreamStateManager } from '@/samples/digital-avatar-lite/lib/stream-state'
+import type { VideoState } from '@/samples/digital-avatar-lite/lib/types'
+import { VideoCacheManager } from '@/samples/digital-avatar-lite/lib/video-cache'
 
 export const runtime = 'nodejs'
 
-declare global {
-  var avatarVideoCacheManager: VideoCacheManager | undefined
-}
-
-const videoCacheManager =
-  globalThis.avatarVideoCacheManager ?? new VideoCacheManager()
-if (!globalThis.avatarVideoCacheManager) {
-  globalThis.avatarVideoCacheManager = videoCacheManager
-}
+// Decoding the avatar videos is slow: one cache per process.
+const videoCacheManager = globalSingleton(
+  'avatarVideoCacheManager',
+  () => new VideoCacheManager(),
+)
 
 const streamStateManager = getStreamStateManager()
 
+/** Highest frame rate a client may ask for. */
+const MAX_FPS = 60
+
+/** The avatar as an MJPEG stream; `?fps=` overrides the videos' frame rate. */
 export async function GET(request: NextRequest) {
+  const fpsParam = request.nextUrl.searchParams.get('fps')
+  let requestedFPS: number | null = null
+  if (fpsParam !== null) {
+    requestedFPS = Number(fpsParam)
+    if (
+      !Number.isInteger(requestedFPS) ||
+      requestedFPS < 1 ||
+      requestedFPS > MAX_FPS
+    ) {
+      return jsonError(400, `fps must be a whole number from 1 to ${MAX_FPS}`)
+    }
+  }
+
   try {
-    const searchParams = request.nextUrl.searchParams
-    const requestedFPS = searchParams.get('fps')
-      ? parseInt(searchParams.get('fps')!)
-      : null
-
     await videoCacheManager.ensureVideosLoaded()
-
     if (!videoCacheManager.isReady()) {
-      return new Response(
-        JSON.stringify({ error: 'Failed to load video frames' }),
-        {
-          status: 500,
-          headers: { 'Content-Type': 'application/json' },
-        },
-      )
+      return jsonError(500, 'Failed to load video frames')
     }
 
     const streamHandler = new MJPEGStreamHandler(
@@ -58,66 +60,32 @@ export async function GET(request: NextRequest) {
       },
     })
   } catch (error) {
-    logger.error('Error in stream endpoint:', error)
-    return new Response(
-      JSON.stringify({
-        error: 'Internal server error',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      }),
-      {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      },
-    )
+    return jsonErrorFrom(error, 'Failed to start the avatar stream')
   }
 }
 
-const VALID_STATES = new Set<VideoState>(['idle', 'talking', 'waving'])
+const VALID_STATES = [
+  'idle',
+  'talking',
+  'waving',
+] as const satisfies readonly VideoState[]
 
+const switchSchema = z.object({
+  state: z.enum(VALID_STATES, {
+    error: 'State must be "idle", "talking", or "waving"',
+  }),
+})
+
+/** `{ state }` switches the avatar's video at the next loop point. */
 export async function POST(request: NextRequest) {
-  try {
-    const body = (await request.json()) as { state?: string }
-    const { state } = body
+  const parsed = await parseJsonBody(request, switchSchema)
+  if (!parsed.ok) return parsed.response
 
-    if (!state || !VALID_STATES.has(state as VideoState)) {
-      return new Response(
-        JSON.stringify({
-          error: 'Invalid video selection',
-          message: 'State must be "idle", "talking", or "waving"',
-        }),
-        {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' },
-        },
-      )
-    }
-
-    const selectedVideo = state as VideoState
-    streamStateManager.requestVideoSwitch(selectedVideo)
-
-    return new Response(
-      JSON.stringify({
-        success: true,
-        requestedVideo: selectedVideo,
-        currentVideo: streamStateManager.getActiveVideo(),
-        pendingSwitch: true,
-      }),
-      {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      },
-    )
-  } catch (error) {
-    logger.error('Error in POST endpoint:', error)
-    return new Response(
-      JSON.stringify({
-        error: 'Internal server error',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      }),
-      {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      },
-    )
-  }
+  streamStateManager.requestVideoSwitch(parsed.data.state)
+  return NextResponse.json({
+    success: true,
+    requestedVideo: parsed.data.state,
+    currentVideo: streamStateManager.getActiveVideo(),
+    pendingSwitch: true,
+  })
 }

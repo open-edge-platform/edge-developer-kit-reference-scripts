@@ -1,0 +1,28 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+#
+# Speech to Text's built-in backend: Whisper as an OVMS `speech2text` graph. OVMS and its conversion
+# environment are shared, set up by workers/setup.sh. audio-input-stream serves /v1/audio/stream.
+
+[project]
+name = "speech-to-text-ovms"
+version = "0.2.0"
+description = "Edge AI Studio speech-to-text worker on OpenVINO Model Server (built-in backend)"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "worker-common[audio]",
+    "model-downloader",
+    "audio-input-stream",
+    "fastapi[all]>=0.128.0",
+    "ffmpeg-python>=0.2.0",
+    "numpy>=1.26.0",
+    "openvino==2026.2.1",
+    "requests>=2.31.0",
+    "uvicorn>=0.32.1",
+    "scipy>=1.13.0",
+]
+
+[tool.uv.sources]
+worker-common = { workspace = true }
+model-downloader = { workspace = true }
+audio-input-stream = { workspace = true }

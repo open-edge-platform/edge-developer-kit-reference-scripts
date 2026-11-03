@@ -3,585 +3,428 @@
 
 'use client'
 
-import {
-  AudioLines,
-  Bell,
-  Loader2,
-  Mic,
-  MicOff,
-  Plus,
-  RefreshCw,
-  Trash2,
-  X,
-} from 'lucide-react'
-import { useMemo, useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from '@/components/ui/accordion'
+  AlertCircle,
+  AudioLines,
+  Bell,
+  Loader,
+  Mic,
+  MicOff,
+  RefreshCw,
+  X,
+} from 'lucide-react'
+import { useEffect, useEffectEvent } from 'react'
+import { useOpenConfigure } from '@/components/configure/configure-opener'
+import { EmptyState } from '@/components/common/empty-state'
+import { InlineNotice } from '@/components/common/inline-notice'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { STATE_LABEL } from '@/lib/instances/service-presentation'
 import { cn } from '@/lib/utils'
+import { DemoLayout } from '@/services/common/demo/components/demo-layout'
 import { DemoParameterSidebar } from '@/services/common/demo/components/demo-parameter-sidebar'
+import { demoStateKey } from '@/services/common/demo/demo-session'
 import type { Service } from '@/services/types'
+import { getEffectiveModel } from '@/types/service'
+import { MicVisualization } from './components/mic-visualization'
+import { ModelEventCard } from './components/model-event-card'
+import { WebhookSubscribers } from './components/webhook-subscribers'
 import {
-  type Subscriber,
-  useWakeWordHealth,
-  useWakeWordSubscribers,
-  useWakeWordDevices,
-  useWakeWordModels,
-  useSubscribeWebhook,
-  useUnsubscribeWebhook,
-  useToggleDetection,
-} from './hooks'
+  useStartDetection,
+  useStopDetection,
+} from './hooks/use-detection-control'
 import {
+  useAudioLevel,
   useDetectionEvents,
-  type DetectionEvent,
-} from './hooks/use-detection-events'
-import { useQuickStart } from './hooks/use-quick-start'
-import { useWakeWordParams } from './hooks/use-params'
-import { useAudioLevel } from './hooks/use-audio-level'
+  useDetectionFlash,
+} from './hooks/use-detection-stream'
+import { DEFAULT_DEVICE, useWakeWordParams } from './hooks/use-params'
+import {
+  useWakeWordDevices,
+  useWakeWordHealth,
+  useWakeWordModels,
+} from './hooks/use-wake-word-queries'
+import { stopDetection, wakeWordKey } from './lib/api'
+import type { DetectionEvent } from './lib/detection-stream'
+import { parseModelNames, wakeWordLabel } from './lib/model-names'
 
-function formatRelativeTime(ts: string) {
-  const now = Date.now()
-  const then = new Date(ts).getTime()
-  const diff = Math.floor((now - then) / 1000)
-  if (diff < 5) return 'just now'
-  if (diff < 60) return `${diff}s ago`
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
-  return new Date(ts).toLocaleTimeString()
+function groupByModel(events: DetectionEvent[]) {
+  const byModel = new Map<string, DetectionEvent[]>()
+  for (const event of events) {
+    const group = byModel.get(event.model) ?? []
+    group.push(event)
+    byModel.set(event.model, group)
+  }
+  return byModel
 }
 
-function formatModelName(model: string) {
-  return model
-    .replace(/_/g, ' ')
-    .replace(/v\d+\.\d+/, '')
-    .trim()
-}
-
-function MicVisualization({
-  isDetecting,
-  audioLevel,
-  hasAudio,
-  detectionFlash,
+/** One labelled state, in words: the service's, or detection's. */
+function StateRow({
+  label,
+  value,
+  active,
+  testId,
 }: {
-  isDetecting: boolean
-  audioLevel: number
-  hasAudio: boolean
-  detectionFlash: boolean
+  label: string
+  value: string
+  active: boolean
+  testId: string
 }) {
   return (
-    <div className="relative flex items-center justify-center">
-      {isDetecting && hasAudio && (
-        <>
-          <div
-            className="border-primary/20 absolute rounded-full border-2 transition-all duration-150"
-            style={{
-              width: `${80 + audioLevel * 200}px`,
-              height: `${80 + audioLevel * 200}px`,
-              opacity: Math.min(audioLevel * 5, 0.6),
-            }}
-          />
-          <div
-            className="border-primary/30 absolute rounded-full border-2 transition-all duration-150"
-            style={{
-              width: `${80 + audioLevel * 120}px`,
-              height: `${80 + audioLevel * 120}px`,
-              opacity: Math.min(audioLevel * 8, 0.8),
-            }}
-          />
-        </>
-      )}
-      {detectionFlash && (
-        <div className="absolute h-28 w-28 animate-ping rounded-full bg-green-500/20 [animation-duration:0.6s]" />
-      )}
-      <div
-        className={cn(
-          'relative flex h-20 w-20 items-center justify-center rounded-full transition-all',
-          isDetecting
-            ? 'bg-primary/15 text-primary ring-primary/20 ring-4'
-            : 'bg-muted/50 text-muted-foreground',
-          detectionFlash &&
-            'bg-green-500/15 text-green-400 ring-4 ring-green-500/40',
-        )}
+    <div className="flex items-center gap-1.5">
+      <dt className="text-muted-foreground">{label}:</dt>
+      <dd
+        className="text-foreground flex items-center gap-1.5 font-medium"
+        data-testid={testId}
       >
-        {isDetecting ? (
-          <Mic className="h-8 w-8" />
-        ) : (
-          <MicOff className="h-8 w-8" />
-        )}
-      </div>
-    </div>
-  )
-}
-
-function ModelEventCard({
-  model,
-  events,
-  isTriggered,
-}: {
-  model: string
-  events: DetectionEvent[]
-  isTriggered: boolean
-}) {
-  const count = events.length
-  const hasEvents = count > 0
-  const avgScore = hasEvents
-    ? events.reduce((s, e) => s + e.score, 0) / count
-    : 0
-  const maxScore = hasEvents ? Math.max(...events.map((e) => e.score)) : 0
-  const lastSeen = hasEvents ? events[0].timestamp : null
-  const avgPct = Math.round(avgScore * 100)
-
-  return (
-    <div
-      className={cn(
-        'border-border bg-background rounded-lg border p-3 transition-colors',
-        isTriggered && 'border-green-500/50 bg-green-500/5',
-      )}
-    >
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div
-            className={cn(
-              'flex h-7 w-7 items-center justify-center rounded-full',
-              hasEvents ? 'bg-green-500/10' : 'bg-muted',
-            )}
-          >
-            <AudioLines
-              className={cn(
-                'h-3.5 w-3.5',
-                hasEvents ? 'text-green-500' : 'text-muted-foreground',
-              )}
-            />
-          </div>
-          <span className="text-foreground text-sm font-medium">
-            {formatModelName(model)}
-          </span>
-          {isTriggered && (
-            <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-green-500" />
+        <span
+          aria-hidden="true"
+          className={cn(
+            'inline-block h-2 w-2 rounded-full',
+            active ? 'bg-success' : 'bg-muted-foreground/40',
           )}
-        </div>
-        <Badge
-          variant={hasEvents ? 'secondary' : 'outline'}
-          className="text-[10px]"
-        >
-          {count} {count === 1 ? 'event' : 'events'}
-        </Badge>
-      </div>
-      {hasEvents ? (
-        <>
-          <div className="text-muted-foreground mt-1.5 flex items-center gap-1.5 text-xs">
-            <span>Avg {avgPct}%</span>
-            <span className="text-border">·</span>
-            <span>Best {Math.round(maxScore * 100)}%</span>
-            <span className="text-border">·</span>
-            <span>{lastSeen ? formatRelativeTime(lastSeen) : '—'}</span>
-          </div>
-          <div className="mt-2 flex items-center gap-2">
-            <div className="bg-muted h-1.5 flex-1 overflow-hidden rounded-full">
-              <div
-                className={cn(
-                  'h-full rounded-full transition-all',
-                  avgPct > 80
-                    ? 'bg-green-500'
-                    : avgPct > 60
-                      ? 'bg-primary'
-                      : 'bg-muted-foreground/40',
-                )}
-                style={{ width: `${avgPct}%` }}
-              />
-            </div>
-            <span className="text-muted-foreground w-8 text-right text-[10px]">
-              {avgPct}%
-            </span>
-          </div>
-        </>
-      ) : (
-        <p className="text-muted-foreground mt-1.5 text-xs">
-          No detections yet
-        </p>
-      )}
+        />
+        {value}
+      </dd>
     </div>
   )
 }
 
-function WebhookSubscribers({
-  subscribers,
-  subscribeMutation,
-  unsubscribeMutation,
-}: {
-  subscribers: Subscriber[]
-  subscribeMutation: ReturnType<typeof useSubscribeWebhook>
-  unsubscribeMutation: ReturnType<typeof useUnsubscribeWebhook>
-}) {
-  const [webhookUrl, setWebhookUrl] = useState('')
-  const [subscriberName, setSubscriberName] = useState('')
-  const [threshold, setThreshold] = useState('0.6')
-
-  return (
-    <div className="border-border border-t pt-4">
-      <Accordion type="single" collapsible>
-        <AccordionItem value="webhooks" className="border-none">
-          <AccordionTrigger className="text-foreground py-0 text-xs font-medium">
-            <span className="flex items-center gap-2">
-              <Bell className="h-3.5 w-3.5" />
-              Webhook Subscribers
-              {subscribers.length > 0 && (
-                <Badge variant="secondary" className="text-[10px]">
-                  {subscribers.length}
-                </Badge>
-              )}
-            </span>
-          </AccordionTrigger>
-          <AccordionContent>
-            <div className="space-y-2 pt-3">
-              <Input
-                value={webhookUrl}
-                onChange={(e) => setWebhookUrl(e.target.value)}
-                placeholder="Webhook URL"
-                className="bg-muted/30 text-xs"
-              />
-              <div className="flex gap-2">
-                <Input
-                  value={subscriberName}
-                  onChange={(e) => setSubscriberName(e.target.value)}
-                  placeholder="Name"
-                  className="bg-muted/30 text-xs"
-                />
-                <Input
-                  value={threshold}
-                  onChange={(e) => setThreshold(e.target.value)}
-                  placeholder="0.6"
-                  type="number"
-                  min="0"
-                  max="1"
-                  step="0.1"
-                  className="bg-muted/30 w-16 text-xs"
-                />
-              </div>
-              <Button
-                onClick={() => {
-                  if (!webhookUrl.trim()) return
-                  subscribeMutation.mutate(
-                    {
-                      url: webhookUrl.trim(),
-                      name: subscriberName.trim() || undefined,
-                      threshold: Number.parseFloat(threshold) || 0.6,
-                    },
-                    {
-                      onSuccess: () => {
-                        setWebhookUrl('')
-                        setSubscriberName('')
-                      },
-                    },
-                  )
-                }}
-                disabled={subscribeMutation.isPending || !webhookUrl.trim()}
-                size="sm"
-                className="bg-primary hover:bg-primary-light w-full gap-1.5 text-xs text-white"
-              >
-                {subscribeMutation.isPending ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  <Plus className="h-3 w-3" />
-                )}
-                Subscribe
-              </Button>
-
-              <div className="max-h-[180px] space-y-1.5 overflow-auto">
-                {subscribers.length === 0 ? (
-                  <p className="text-muted-foreground py-3 text-center text-[11px]">
-                    No subscribers yet.
-                  </p>
-                ) : (
-                  subscribers.map((sub) => (
-                    <div
-                      key={sub.id}
-                      className="border-border flex items-center justify-between rounded-lg border p-2 text-xs"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-xs font-medium">
-                          {sub.name}
-                        </p>
-                        <p className="text-muted-foreground truncate text-[10px]">
-                          {sub.url}
-                        </p>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-1">
-                        <Badge variant="secondary" className="text-[10px]">
-                          {sub.threshold}
-                        </Badge>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6"
-                          onClick={() => unsubscribeMutation.mutate(sub.url)}
-                        >
-                          <Trash2 className="text-destructive h-3 w-3" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </AccordionContent>
-        </AccordionItem>
-      </Accordion>
-    </div>
-  )
-}
-
-export function WakeWordDetectionDemo(_props: { service: Service }) {
+export function WakeWordDetectionDemo({ service }: { service: Service }) {
+  const { apiBase } = service
   const queryClient = useQueryClient()
+  const openConfigure = useOpenConfigure()
 
-  const healthQuery = useWakeWordHealth(true)
-  const subscribersQuery = useWakeWordSubscribers(true)
-  const devicesQuery = useWakeWordDevices(true)
-  const modelsQuery = useWakeWordModels(true)
+  const health = useWakeWordHealth(apiBase).data ?? null
+  const devicesQuery = useWakeWordDevices(apiBase)
+  const modelsQuery = useWakeWordModels(apiBase)
+  const startDetection = useStartDetection(apiBase)
+  const stop = useStopDetection(apiBase)
 
-  const subscribeMutation = useSubscribeWebhook()
-  const unsubscribeMutation = useUnsubscribeWebhook()
-  const toggleMutation = useToggleDetection()
-  const quickStartMutation = useQuickStart()
-
-  const health = healthQuery.data ?? null
   const isDetecting = health?.detection_active ?? false
   const loadedModels = modelsQuery.data?.loadedModels ?? health?.models ?? []
-  const subscribers = subscribersQuery.data ?? []
-  const devices = devicesQuery.data?.devices ?? []
+  // What the worker listens for; before it reports, what the instance is
+  // configured with.
+  const wakeWords =
+    loadedModels.length > 0
+      ? loadedModels
+      : parseModelNames(getEffectiveModel(service).name)
 
-  const refreshDevices = () => {
-    queryClient.invalidateQueries({
-      queryKey: ['wake-word-detection', 'devices'],
-    })
-  }
-  const { values: paramValues, params } = useWakeWordParams(devices, {
-    onRefreshDevices: refreshDevices,
-    isRefreshingDevices: devicesQuery.isFetching,
+  const {
+    values: paramValues,
+    params,
+    deviceOptions,
+    setDeviceId,
+  } = useWakeWordParams(devicesQuery.data?.devices ?? [], {
+    sessionKey: demoStateKey(service, 'wakeword:params'),
   })
+  // A saved microphone missing from the list (unplugged, or the list not
+  // loaded yet) shows as the default, and Start sends what is shown.
+  const microphone =
+    deviceOptions.find((o) => o.value === paramValues.deviceId) ??
+    deviceOptions[0]
+  const devicesLoaded = !devicesQuery.isPending
 
-  const { events, latestEvent, clearEvents, resetSince } =
-    useDetectionEvents(isDetecting)
+  const { events, clearEvents } = useDetectionEvents(apiBase, isDetecting)
+  const { level: audioLevel } = useAudioLevel(apiBase, isDetecting)
+  const flash = useDetectionFlash(apiBase, isDetecting)
 
-  const { level: audioLevel } = useAudioLevel(isDetecting)
-  const hasAudio = audioLevel > 0.01
+  // Leaving the demo stops the detection it was showing.
+  const stopOnLeave = useEffectEvent(() => {
+    if (isDetecting && apiBase) stopDetection(apiBase).catch(() => {})
+  })
+  useEffect(() => () => stopOnLeave(), [])
 
-  const lastEventIdRef = useRef<string | null>(null)
-  const [detectionFlash, setDetectionFlash] = useState(false)
-  useEffect(() => {
-    if (!latestEvent) return
-    const eventId = `${latestEvent.timestamp}-${latestEvent.model}`
-    if (eventId === lastEventIdRef.current) return
-    lastEventIdRef.current = eventId
-    const flashOn = setTimeout(() => setDetectionFlash(true), 0)
-    const flashOff = setTimeout(() => setDetectionFlash(false), 2000)
-    return () => {
-      clearTimeout(flashOn)
-      clearTimeout(flashOff)
-    }
-  }, [latestEvent])
-
-  const isDetectingRef = useRef(isDetecting)
-  useEffect(() => {
-    isDetectingRef.current = isDetecting
-  }, [isDetecting])
-  useEffect(() => {
-    return () => {
-      if (isDetectingRef.current) {
-        fetch(`/api/wake-word-detection/v1/wake-word-detection/stop`, {
-          method: 'POST',
-        })
-      }
-    }
-  }, [])
-
-  const isStarting = quickStartMutation.isPending
-  const isStopping = toggleMutation.isPending && isDetecting
-
-  const error =
-    quickStartMutation.error?.message ??
-    subscribersQuery.error?.message ??
-    subscribeMutation.error?.message ??
-    unsubscribeMutation.error?.message ??
-    toggleMutation.error?.message ??
-    null
-
-  const refreshAll = () => {
-    queryClient.invalidateQueries({ queryKey: ['wake-word-detection'] })
-  }
+  const isStarting = startDetection.isPending
+  const isStopping = stop.isPending && isDetecting
+  const error = startDetection.error?.message ?? stop.error?.message ?? null
 
   const handleStart = () => {
-    resetSince()
-    quickStartMutation.mutate({
+    startDetection.mutate({
       deviceId:
-        paramValues.deviceId !== 'default'
-          ? Number(paramValues.deviceId)
-          : null,
+        microphone.value !== DEFAULT_DEVICE ? Number(microphone.value) : null,
       threshold: paramValues.detectionThreshold,
     })
   }
 
-  const handleStop = () => {
-    toggleMutation.mutate({ start: false })
-  }
-
-  const eventsByModel = useMemo(() => {
-    const map = new Map<string, DetectionEvent[]>()
-    for (const evt of events) {
-      const group = map.get(evt.model) ?? []
-      group.push(evt)
-      map.set(evt.model, group)
-    }
-    return map
-  }, [events])
+  const eventsByModel = groupByModel(events)
+  const prompt = isDetecting
+    ? flash
+      ? `Detected: ${wakeWordLabel(flash.model)}`
+      : `Listening on ${microphone.label}. Say a wake word.`
+    : 'Not listening. Start detection to open the microphone.'
 
   return (
-    <div className="space-y-6">
+    <DemoLayout
+      sidebar={
+        <DemoParameterSidebar params={params}>
+          <WebhookSubscribers apiBase={apiBase} />
+        </DemoParameterSidebar>
+      }
+    >
       {error && (
-        <div className="border-destructive/50 bg-destructive/10 text-destructive rounded-lg border p-3 text-sm">
+        <InlineNotice
+          tone="destructive"
+          size="sm"
+          icon={<AlertCircle aria-hidden className="h-4 w-4 shrink-0" />}
+        >
           {error}
-        </div>
+        </InlineNotice>
       )}
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
-        <div className="flex flex-col gap-6">
-          <div className="border-border bg-card flex flex-[7] flex-col rounded-xl border p-6">
-            <div className="flex items-center justify-between">
-              <p className="text-foreground flex items-center gap-2 text-sm font-medium">
-                <AudioLines className="h-4 w-4" />
-                Detection Control
-              </p>
-              <Badge
-                variant={isDetecting ? 'default' : 'outline'}
-                className={cn(
-                  'text-[10px]',
-                  isDetecting && 'bg-green-600 hover:bg-green-700',
-                )}
-              >
-                {isDetecting ? 'Listening' : 'Stopped'}
-              </Badge>
-            </div>
+      <section
+        aria-labelledby="wwd-control-heading"
+        className="border-border bg-card flex flex-col rounded-xl border p-4 sm:p-6"
+      >
+        <h3
+          id="wwd-control-heading"
+          className="text-foreground flex items-center gap-2 text-sm font-medium"
+        >
+          <AudioLines aria-hidden className="h-4 w-4" />
+          Detection
+        </h3>
 
-            <div className="flex flex-1 flex-col items-center justify-center gap-4 py-6">
-              <MicVisualization
-                isDetecting={isDetecting}
-                audioLevel={audioLevel}
-                hasAudio={hasAudio}
-                detectionFlash={detectionFlash}
-              />
+        {/* Two states: a running service listens only once detection is started. */}
+        <dl className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-xs">
+          <StateRow
+            label="Service"
+            value={STATE_LABEL[service.status]}
+            active={service.status === 'online'}
+            testId="wwd-service-state"
+          />
+          <StateRow
+            label="Detection"
+            value={isDetecting ? 'Listening' : 'Not listening'}
+            active={isDetecting}
+            testId="wwd-detection-state"
+          />
+        </dl>
 
-              <p className="text-muted-foreground text-center text-sm">
-                {isDetecting
-                  ? detectionFlash
-                    ? `Detected: ${latestEvent ? formatModelName(latestEvent.model) : 'wake word'}!`
-                    : 'Listening... Say your wake word'
-                  : loadedModels.length > 0
-                    ? `Say "${formatModelName(loadedModels[0])}" to trigger detection`
-                    : 'Click Start to begin wake word detection'}
-              </p>
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 py-6">
+          <MicVisualization
+            isDetecting={isDetecting}
+            audioLevel={audioLevel}
+            detected={flash !== null}
+          />
 
-              <div className="flex gap-2">
-                {isDetecting ? (
-                  <Button
-                    onClick={handleStop}
-                    disabled={isStopping}
-                    className="min-w-[180px] gap-2 bg-red-600 text-white hover:bg-red-700"
-                  >
-                    {isStopping ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <MicOff className="h-4 w-4" />
-                    )}
-                    Stop Detection
-                  </Button>
-                ) : (
-                  <Button
-                    onClick={handleStart}
-                    disabled={isStarting}
-                    className="bg-primary hover:bg-primary-light min-w-[180px] gap-2 text-white"
-                  >
-                    {isStarting ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Mic className="h-4 w-4" />
-                    )}
-                    Start Detection
-                  </Button>
-                )}
-                <Button
-                  onClick={refreshAll}
-                  variant="outline"
-                  size="icon"
-                  title="Refresh status"
-                >
-                  <RefreshCw className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          </div>
-
-          <div className="border-border bg-card flex flex-[3] flex-col rounded-xl border p-6">
-            <div className="mb-4 flex items-center justify-between">
-              <p className="text-foreground flex items-center gap-2 text-sm font-medium">
-                <Bell className="h-4 w-4" />
-                Detection Events
-                {events.length > 0 && (
-                  <Badge variant="secondary" className="text-[10px]">
-                    {events.length}
-                  </Badge>
-                )}
-              </p>
-              {events.length > 0 && (
-                <Button
-                  onClick={() => clearEvents()}
-                  variant="ghost"
-                  size="sm"
-                  className="text-muted-foreground h-7 gap-1 text-xs"
-                >
-                  <X className="h-3 w-3" />
-                  Clear
-                </Button>
-              )}
-            </div>
-
-            <div className="min-h-0 flex-1 overflow-auto">
-              {loadedModels.length === 0 ? (
-                <div className="text-muted-foreground flex flex-col items-center justify-center py-8 text-center text-xs">
-                  <AudioLines className="text-muted-foreground/40 mb-3 h-8 w-8" />
-                  {isDetecting
-                    ? 'Listening for wake words...'
-                    : 'Start detection to begin listening.'}
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-2">
-                  {loadedModels.map((m) => (
-                    <ModelEventCard
-                      key={m}
-                      model={m}
-                      events={eventsByModel.get(m) ?? []}
-                      isTriggered={latestEvent?.model === m && detectionFlash}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
+          <p
+            role="status"
+            className="text-muted-foreground text-center text-sm"
+          >
+            {prompt}
+          </p>
         </div>
 
-        <DemoParameterSidebar params={params}>
-          <WebhookSubscribers
-            subscribers={subscribers}
-            subscribeMutation={subscribeMutation}
-            unsubscribeMutation={unsubscribeMutation}
+        <div
+          className="border-border space-y-3 border-t pt-4"
+          data-testid="wwd-detection-setup"
+        >
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p
+                className="text-muted-foreground text-xs"
+                id="wwd-wake-words-label"
+              >
+                Wake words
+              </p>
+              {openConfigure && (
+                <Button
+                  type="button"
+                  variant="link"
+                  size="xs"
+                  className="h-auto p-0 text-xs"
+                  onClick={openConfigure}
+                >
+                  Change in Configure
+                </Button>
+              )}
+            </div>
+            {wakeWords.length > 0 ? (
+              <ul
+                aria-labelledby="wwd-wake-words-label"
+                className="flex flex-wrap gap-1.5"
+                data-testid="wwd-wake-words"
+              >
+                {wakeWords.map((model) => (
+                  <li key={model}>
+                    <Badge variant="secondary" className="text-xs">
+                      {wakeWordLabel(model)}
+                    </Badge>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-foreground text-xs">
+                No wake word is loaded. Choose wake words in Configure.
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <Label
+                htmlFor="wwd-microphone"
+                className="text-muted-foreground text-xs"
+              >
+                Microphone (on the service’s machine)
+              </Label>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Refresh the microphone list"
+                disabled={devicesQuery.isFetching}
+                onClick={() =>
+                  void queryClient.invalidateQueries({
+                    queryKey: wakeWordKey(apiBase, 'devices'),
+                  })
+                }
+              >
+                <RefreshCw
+                  aria-hidden
+                  className={cn(
+                    'h-3.5 w-3.5',
+                    devicesQuery.isFetching && 'animate-spin',
+                  )}
+                />
+              </Button>
+            </div>
+            <Select
+              value={microphone.value}
+              onValueChange={setDeviceId}
+              disabled={isDetecting}
+            >
+              <SelectTrigger
+                id="wwd-microphone"
+                className="w-full text-xs"
+                data-testid="wwd-microphone"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {deviceOptions.map((o) => (
+                  <SelectItem key={o.value} value={o.value} className="text-xs">
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {isDetecting && (
+              <p className="text-muted-foreground text-xs">
+                Stop detection to change the microphone.
+              </p>
+            )}
+          </div>
+
+          <div className="flex gap-2">
+            {isDetecting ? (
+              <Button
+                variant="destructive"
+                onClick={() => stop.mutate()}
+                disabled={isStopping}
+                className="min-w-0 flex-1 gap-2 sm:min-w-[180px] sm:flex-none"
+              >
+                {isStopping ? (
+                  <Loader aria-hidden className="h-4 w-4 animate-spin" />
+                ) : (
+                  <MicOff aria-hidden className="h-4 w-4" />
+                )}
+                Stop detection
+              </Button>
+            ) : (
+              <Button
+                onClick={handleStart}
+                disabled={isStarting || !devicesLoaded}
+                className="min-w-0 flex-1 gap-2 sm:min-w-[180px] sm:flex-none"
+              >
+                {isStarting ? (
+                  <Loader aria-hidden className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Mic aria-hidden className="h-4 w-4" />
+                )}
+                Start detection
+              </Button>
+            )}
+            <Button
+              onClick={() =>
+                void queryClient.invalidateQueries({
+                  queryKey: wakeWordKey(apiBase),
+                })
+              }
+              variant="outline"
+              size="icon"
+              title="Refresh status"
+              aria-label="Refresh status"
+            >
+              <RefreshCw aria-hidden className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      </section>
+
+      <section
+        aria-labelledby="wwd-events-heading"
+        className="border-border bg-card flex flex-col rounded-xl border p-4 sm:p-6"
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <h3
+            id="wwd-events-heading"
+            className="text-foreground flex items-center gap-2 text-sm font-medium"
+          >
+            <Bell aria-hidden className="h-4 w-4" />
+            Detection events
+            {events.length > 0 && (
+              <Badge variant="secondary" className="text-xs">
+                {events.length}
+              </Badge>
+            )}
+          </h3>
+          {events.length > 0 && (
+            <Button
+              onClick={() => clearEvents()}
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground h-8 gap-1 text-xs"
+            >
+              <X aria-hidden className="h-3 w-3" />
+              Clear
+            </Button>
+          )}
+        </div>
+
+        {loadedModels.length === 0 ? (
+          <EmptyState
+            icon={AudioLines}
+            size="sm"
+            description={
+              isDetecting
+                ? 'Listening for wake words...'
+                : 'Start detection to begin listening.'
+            }
+            className="py-8"
           />
-        </DemoParameterSidebar>
-      </div>
-    </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {loadedModels.map((m) => (
+              <ModelEventCard
+                key={m}
+                model={m}
+                events={eventsByModel.get(m) ?? []}
+                isTriggered={flash?.model === m}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+    </DemoLayout>
   )
 }

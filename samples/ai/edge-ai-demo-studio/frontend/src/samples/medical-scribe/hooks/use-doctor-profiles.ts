@@ -3,126 +3,97 @@
 
 'use client'
 
-import { useCallback } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { DoctorProfile } from '../types'
-import { parseResponse } from '../utils'
+import { useQuery } from '@tanstack/react-query'
+import { requireApiBase } from '@/lib/browser/api-base'
+import { fetchJson, postJson } from '@/lib/browser/fetch-json'
+import type { DoctorProfile } from '../lib/types'
+import { useOptimisticSessionMutation } from './use-optimistic-session-mutation'
 
-const QUERY_KEY = ['medical-scribe', 'doctor-profiles'] as const
-const API_BASE = '/api/medical-scribe-database/v1/doctor-profiles'
+const doctorProfilesKey = (apiBase: string | undefined) =>
+  ['medical-scribe', 'doctor-profiles', apiBase] as const
 
-export function useDoctorProfiles() {
-  const queryClient = useQueryClient()
+const SERVICE_NAME = 'Medical Scribe Database'
+
+export function useDoctorProfiles(apiBase: string | undefined) {
+  const queryKey = doctorProfilesKey(apiBase)
 
   const profilesQuery = useQuery({
-    queryKey: QUERY_KEY,
-    queryFn: async () => {
-      const res = await fetch(`${API_BASE}`)
-      return parseResponse<DoctorProfile[]>(
-        res,
-        'Failed to load doctor profiles',
-      )
+    queryKey,
+    enabled: Boolean(apiBase),
+    queryFn: () => {
+      requireApiBase(apiBase, SERVICE_NAME)
+      return fetchJson<DoctorProfile[]>(`${apiBase}/v1/doctor-profiles`, {
+        errorMessage: 'Failed to load doctor profiles',
+      })
     },
   })
 
-  const { mutateAsync: createProfileMutate } = useMutation({
-    mutationFn: async (profile: DoctorProfile) => {
-      const res = await fetch(`${API_BASE}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: profile.id, name: profile.name }),
-      })
-      return parseResponse<DoctorProfile>(
-        res,
-        'Failed to create doctor profile',
+  const { mutate: createProfileMutate } = useOptimisticSessionMutation<
+    DoctorProfile,
+    DoctorProfile,
+    DoctorProfile
+  >({
+    queryKey,
+    mutationFn: (profile) => {
+      requireApiBase(apiBase, SERVICE_NAME)
+      return postJson<DoctorProfile>(
+        `${apiBase}/v1/doctor-profiles`,
+        { id: profile.id, name: profile.name },
+        { errorMessage: 'Failed to create doctor profile' },
       )
     },
+    patch: (prev, profile) => [...prev, profile],
   })
 
-  const { mutateAsync: deleteProfileMutate } = useMutation({
-    mutationFn: async (id: string) => {
-      const res = await fetch(
-        new URL(`${API_BASE}/${id}`, window.location.origin),
-        {
-          method: 'DELETE',
-        },
-      )
-      if (!res.ok) {
-        const text = await res.text()
-        throw new Error(text || 'Failed to delete doctor profile')
-      }
+  const { mutate: deleteProfileMutate } = useOptimisticSessionMutation<
+    DoctorProfile,
+    string,
+    void
+  >({
+    queryKey,
+    mutationFn: (id) => {
+      requireApiBase(apiBase, SERVICE_NAME)
+      return fetchJson<void>(`${apiBase}/v1/doctor-profiles/${id}`, {
+        method: 'DELETE',
+        errorMessage: 'Failed to delete doctor profile',
+      })
     },
+    patch: (prev, id) => prev.filter((p) => p.id !== id),
   })
 
-  const { mutateAsync: updateEmbeddingMutate } = useMutation({
-    mutationFn: async ({
-      id,
-      embedding,
-    }: {
-      id: string
-      embedding: number[]
-    }) => {
-      const res = await fetch(
-        new URL(`${API_BASE}/${id}`, window.location.origin),
-        {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ embedding }),
-        },
+  const { mutate: updateEmbeddingMutate } = useOptimisticSessionMutation<
+    DoctorProfile,
+    { id: string; embedding: number[] },
+    DoctorProfile
+  >({
+    queryKey,
+    mutationFn: ({ id, embedding }) => {
+      requireApiBase(apiBase, SERVICE_NAME)
+      return postJson<DoctorProfile>(
+        `${apiBase}/v1/doctor-profiles/${id}`,
+        { embedding },
+        { method: 'PATCH', errorMessage: 'Failed to update embedding' },
       )
-      return parseResponse<DoctorProfile>(res, 'Failed to update embedding')
     },
+    patch: (prev, { id, embedding }) =>
+      prev.map((p) => (p.id === id ? { ...p, embedding } : p)),
   })
 
-  const profiles = profilesQuery.data ?? []
+  const addProfile = (name: string): DoctorProfile => {
+    const profile: DoctorProfile = {
+      id: crypto.randomUUID(),
+      name,
+      embedding: null,
+    }
+    createProfileMutate(profile)
+    return profile
+  }
 
-  const addProfile = useCallback(
-    (name: string) => {
-      const profile: DoctorProfile = {
-        id: crypto.randomUUID(),
-        name,
-        embedding: null,
-      }
-
-      queryClient.setQueryData<DoctorProfile[]>(QUERY_KEY, (prev = []) => [
-        ...prev,
-        profile,
-      ])
-
-      createProfileMutate(profile).catch(() => {
-        queryClient.invalidateQueries({ queryKey: QUERY_KEY })
-      })
-
-      return profile
-    },
-    [createProfileMutate, queryClient],
-  )
-
-  const removeProfile = useCallback(
-    (id: string) => {
-      queryClient.setQueryData<DoctorProfile[]>(QUERY_KEY, (prev = []) =>
-        prev.filter((p) => p.id !== id),
-      )
-
-      deleteProfileMutate(id).catch(() => {
-        queryClient.invalidateQueries({ queryKey: QUERY_KEY })
-      })
-    },
-    [deleteProfileMutate, queryClient],
-  )
-
-  const updateEmbedding = useCallback(
-    (id: string, embedding: number[]) => {
-      queryClient.setQueryData<DoctorProfile[]>(QUERY_KEY, (prev = []) =>
-        prev.map((p) => (p.id === id ? { ...p, embedding } : p)),
-      )
-
-      updateEmbeddingMutate({ id, embedding }).catch(() => {
-        queryClient.invalidateQueries({ queryKey: QUERY_KEY })
-      })
-    },
-    [queryClient, updateEmbeddingMutate],
-  )
-
-  return { profiles, addProfile, removeProfile, updateEmbedding }
+  return {
+    profiles: profilesQuery.data ?? [],
+    addProfile,
+    removeProfile: (id: string) => deleteProfileMutate(id),
+    updateEmbedding: (id: string, embedding: number[]) =>
+      updateEmbeddingMutate({ id, embedding }),
+  }
 }

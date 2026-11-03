@@ -3,7 +3,7 @@
 
 'use client'
 
-import type { ComponentProps, ReactNode } from 'react'
+import { type ComponentProps, type ReactNode, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -12,27 +12,23 @@ interface UploadButtonProps {
   accept: string
   /** Called with the picked file(s). Never called with an empty list. */
   onFiles: (files: File[]) => void
-  /** Allow selecting more than one file. */
   multiple?: boolean
-  /** Button label content (icon + text). */
   children: ReactNode
+  /** Refuses to open the picker; `aria-disabled`, not `disabled`, so keyboard focus stays put. */
   disabled?: boolean
   /** Reset the input value after selection so the same file can be re-picked. */
   resetOnSelect?: boolean
   variant?: ComponentProps<typeof Button>['variant']
   size?: ComponentProps<typeof Button>['size']
   className?: string
-  /** Tooltip / accessible label (useful for icon-only buttons). */
+  /** Tooltip; names the button only when nothing else does (icon-only: set it or `aria-label`). */
   title?: string
+  'aria-label'?: string
   /** data-testid for the hidden input (useful for tests to set files). */
   inputTestId?: string
 }
 
-/**
- * Compact file picker rendered as a button (hidden `<input type="file">` wrapped
- * in a `<label>`). Use this for inline "Upload" buttons; for a drop area use
- * FileDropZone / ImageDropZone / AudioDropZone instead.
- */
+/** A `<button>` driving a hidden file input, for inline uploads; drop areas use FileDropZone. */
 export function UploadButton({
   accept,
   onFiles,
@@ -44,38 +40,45 @@ export function UploadButton({
   size,
   className,
   title,
+  'aria-label': ariaLabel,
   inputTestId,
 }: UploadButtonProps) {
+  const inputRef = useRef<HTMLInputElement>(null)
   return (
-    <Button
-      asChild
-      variant={variant}
-      size={size}
-      disabled={disabled}
-      className={className}
-      title={title}
-    >
-      <label
+    <>
+      <Button
+        type="button"
+        variant={variant}
+        size={size}
         className={cn(
-          'cursor-pointer',
-          disabled && 'pointer-events-none cursor-not-allowed',
+          'aria-disabled:cursor-not-allowed aria-disabled:opacity-50',
+          className,
         )}
+        title={title}
+        aria-label={ariaLabel}
+        aria-disabled={disabled || undefined}
+        onClick={() => {
+          if (!disabled) inputRef.current?.click()
+        }}
       >
         {children}
-        <input
-          data-testid={inputTestId}
-          type="file"
-          accept={accept}
-          multiple={multiple}
-          disabled={disabled}
-          className="hidden"
-          onChange={(e) => {
-            const files = Array.from(e.target.files ?? [])
-            if (files.length) onFiles(files)
-            if (resetOnSelect) e.target.value = ''
-          }}
-        />
-      </label>
-    </Button>
+      </Button>
+      <input
+        ref={inputRef}
+        data-testid={inputTestId}
+        type="file"
+        accept={accept}
+        multiple={multiple}
+        disabled={disabled}
+        className="hidden"
+        tabIndex={-1}
+        aria-hidden="true"
+        onChange={(e) => {
+          const files = Array.from(e.target.files ?? [])
+          if (files.length) onFiles(files)
+          if (resetOnSelect) e.target.value = ''
+        }}
+      />
+    </>
   )
 }

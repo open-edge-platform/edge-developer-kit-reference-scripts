@@ -3,66 +3,52 @@
 
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { getMicErrorMessage } from '@/lib/media-utils'
+import { useMediaRecorder } from '@/hooks/use-media-recorder'
+import { useServiceApiBase } from '@/context/service-status-context'
 import { useTranscribe } from './use-transcribe'
 
 interface UseSttRecordingOptions {
   onTranscription: (text: string) => void
 }
 
+/** Chat voice input: records until stopped, then transcribes (English) to `onTranscription`. */
 export function useSttRecording({ onTranscription }: UseSttRecordingOptions) {
-  const [isRecording, setIsRecording] = useState(false)
-  const [micError, setMicError] = useState<string | null>(null)
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
-  const chunksRef = useRef<Blob[]>([])
-  const { mutate: transcribe, isPending: isTranscribePending } = useTranscribe()
+  const apiBase = useServiceApiBase('speech-to-text')
+  const { mutate: transcribe, isPending: isTranscribePending } =
+    useTranscribe(apiBase)
 
-  const startRecording = useCallback(async () => {
-    setMicError(null)
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const mediaRecorder = new MediaRecorder(stream)
-      mediaRecorderRef.current = mediaRecorder
-      chunksRef.current = []
-
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data)
-      }
-
-      mediaRecorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
-        for (const t of stream.getTracks()) t.stop()
-        transcribe(
-          { file: blob, language: 'en', useDenoise: false },
-          {
-            onSuccess: (data) => {
-              if (data.text) {
-                onTranscription(data.text)
-              }
-            },
+  const {
+    isRecording,
+    error: micError,
+    start,
+    stop,
+  } = useMediaRecorder({
+    onStop: (blob) => {
+      if (blob.size === 0) return
+      transcribe(
+        { file: blob, language: 'en', useDenoise: false },
+        {
+          onSuccess: (data) => {
+            if (data.text) {
+              onTranscription(data.text)
+            }
           },
-        )
-      }
+        },
+      )
+    },
+  })
 
-      mediaRecorder.start()
-      setIsRecording(true)
-    } catch (error) {
-      setMicError(getMicErrorMessage(error))
+  const startRecording = async () => {
+    try {
+      await start()
+    } catch {
+      // `micError` already reflects the failure via useMediaRecorder.
     }
-  }, [transcribe, onTranscription])
+  }
 
-  const stopRecording = useCallback(() => {
-    setIsRecording(false)
-    mediaRecorderRef.current?.stop()
-  }, [])
-
-  useEffect(() => {
-    return () => {
-      const tracks = mediaRecorderRef.current?.stream?.getTracks()
-      if (tracks) for (const t of tracks) t.stop()
-    }
-  }, [])
+  const stopRecording = () => {
+    stop()
+  }
 
   return {
     isRecording,
