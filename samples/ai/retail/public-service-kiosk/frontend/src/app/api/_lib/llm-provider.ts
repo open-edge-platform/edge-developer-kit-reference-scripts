@@ -3,7 +3,7 @@
 
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { safeUrl, URL_CHARS } from "@/lib/validation";
-import { llmConfig } from "./llm";
+import { extraBody, llmConfig } from "./llm";
 import { repairToolCallStream } from "./tool-call-shim";
 
 /**
@@ -23,9 +23,14 @@ import { repairToolCallStream } from "./tool-call-shim";
  */
 const TOOL_CALL_SHIM = (process.env.KIOSK_LLM_TOOL_CALL_SHIM ?? "auto") !== "off";
 
-
-export function kioskModel() {
+/**
+ * @param thinking  false switches off the reasoning the deployment turned on
+ *   (`llm.extra_body`) for every request this model makes — for chat steps that
+ *   only relay what a tool returned, where thinking costs seconds and decides nothing.
+ */
+export function kioskModel({ thinking }: { thinking?: boolean } = {}) {
   const config = llmConfig();
+  const extra = extraBody(thinking);
   const provider = createOpenAICompatible({
     name: "kiosk-llm",
     baseURL: config.baseUrl,
@@ -36,8 +41,8 @@ export function kioskModel() {
       if (init?.body) {
         const body = JSON.parse(init.body.toString()) as { tools?: unknown[] };
         usesTools = Array.isArray(body.tools) && body.tools.length > 0;
-        if (Object.keys(config.extraBody).length > 0) {
-          init = { ...init, body: JSON.stringify({ ...body, ...config.extraBody }) };
+        if (Object.keys(extra).length > 0) {
+          init = { ...init, body: JSON.stringify({ ...body, ...extra }) };
         }
       }
       // Rebuilt inline, character by character off the allowlist: the

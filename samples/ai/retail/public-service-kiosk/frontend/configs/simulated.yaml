@@ -7,7 +7,7 @@ api:
   base_url: /api
 
 terminal:
-  mode: chat
+  mode: touch
 
 session:
   restart_ms: 30000

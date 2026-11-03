@@ -87,7 +87,6 @@
   --dash: rgba(16, 27, 58, 0.2);
   --radius: 0.875rem;
 
-  /* Signature gradients. */
   --gradient-accent: linear-gradient(120deg, #00a3e8, #0068b5 60%, #004a86);
   --gradient-hero: linear-gradient(100deg, #00a3e8, #0068b5 55%, #004a86);
   --gradient-success: linear-gradient(140deg, #22c55e, var(--success));
@@ -107,7 +106,6 @@
   --grid-line: rgba(16, 27, 58, 0.3);
   /* Modal scrim. */
   --overlay: rgba(20, 28, 48, 0.4);
-  /* Elevation. */
   --shadow-rest: 0 10px 28px rgba(16, 27, 58, 0.07);
   --shadow-lift: 0 16px 34px rgba(16, 27, 58, 0.12);
   --shadow-accent: 0 18px 40px rgba(0, 104, 181, 0.26);

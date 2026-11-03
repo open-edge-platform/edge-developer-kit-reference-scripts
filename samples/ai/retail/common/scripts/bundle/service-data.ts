@@ -3,7 +3,7 @@
 
 // Injected by vertical-reference-solutions-blueprint's scripts/bundle.sh — registers the kiosk as an
 // Edge AI Studio service run as a background worker (workers/public-service-kiosk/start.sh).
-import { Landmark } from 'lucide-react'
+import { __ICON__ } from 'lucide-react'
 import type { ServiceMeta, WorkerConfig } from '@/services/types'
 import type { Service as PayloadService } from '@/payload-types'
 
@@ -13,15 +13,15 @@ const KIOSK_ID = 'public-service-kiosk' as PayloadService['type']
 export const service: ServiceMeta = {
   id: KIOSK_ID,
   name: 'Public Service Kiosk',
-  description:
-    'Self-service government kiosk (touch / chat / agent terminals) running embedded in the studio.',
+  description: __DESCRIPTION__,
   longDescription:
     'The Public Service Kiosk as an embedded sample: the studio starts the bundled ' +
     'kiosk server (workers/public-service-kiosk) as a hidden background process and the kiosk ' +
     'consumes the studio’s own AI services (text generation, OCR, face ' +
     'recognition, speech) over the local gateway.',
-  icon: Landmark,
-  port: __KIOSK_PORT__,
+  icon: __ICON__,
+  // The kiosk serves here; the port the studio allocates relays to it (bundle/server/kiosk.cjs).
+  reservedPorts: [__KIOSK_PORT__],
   supportedOS: ['linux', 'windows'],
   execution: { mode: 'worker' },
   healthCheck: { url: '/api/health' },

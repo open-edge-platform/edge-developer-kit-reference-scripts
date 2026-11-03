@@ -14,7 +14,8 @@
 #   ./setup.sh --package-studio also build the distributable studio executable
 #   ./setup.sh --hardware       also install the peripheral drivers (NFC, fi-800R scanner, OCR)
 #   ./setup.sh --build          kiosk dependencies, then the production build
-#                               (scripts/build.sh) — the studio is not set up
+#                               (scripts/build.sh: one desktop app, every kiosk a
+#                               sample of its studio) — the studio is not set up
 #   ./setup.sh --mock           no studio at all: kiosk dependencies only, for
 #                               ./start.sh --mock; with --build, the mocked
 #                               desktop apps (./start.sh --desktop --mock)
@@ -59,8 +60,9 @@ No studio at all? ./setup.sh --mock installs the kiosk dependencies only, for
 desktop app with its AI mocked, for ./start.sh --desktop --mock.
 
 Questions come first: whatever setup has to ask (the studio's system packages)
-and the build's install settings (kiosk mode, window, package format) are
-answered before the first npm install — after that, everything runs unattended.
+and the build's install settings (each kiosk's mode, what the window opens on,
+window, package format) are answered before the first npm install — after
+that, everything runs unattended.
 
 Options:
   --kiosk <names>     which kiosks, without asking: $(kiosk_ids | sed 's/ /, /g') or all,
@@ -86,16 +88,17 @@ Options:
                       (scripts/dev/dev.sh, hot reload; with --mock, no studio) —
                       with several kiosks, asks which (or pass --kiosk <name>)
   --build             after the kiosk dependencies, run the production build
-                      (scripts/build.sh: the embedded bundle packaged as a
-                      desktop app per kiosk under build/). Implies --skip-studio unless
+                      (scripts/build.sh: the embedded bundle — one studio, every
+                      chosen kiosk a sample of it — packaged as one desktop app
+                      under build/; with --mock, one mocked app per kiosk). Implies --skip-studio unless
                       --studio is also given. Everything after -- goes to the
                       build (see scripts/build.sh --help); --yes is forwarded
   --bundle            embedded-bundle setup: instead of setting up the studio
-                      checkout, export a minimal studio with the kiosk injected
-                      as a studio sample into build/kiosk-studio/<kiosk>/ and install it
-                      (run it with ./start.sh --bundle [--desktop]);
-                      the kiosk's terminal mode picks the exported services
-                      (touch: OCR+face, LLM remote; chat/agent: all five)
+                      checkout, export a minimal studio with every chosen kiosk
+                      injected as a studio sample into build/kiosk-studio/ and
+                      install it (run it with ./start.sh --bundle [--desktop]);
+                      the kiosks' terminal modes pick the auto-started services
+                      (touch: OCR+face, LLM remote; chat: all five)
   --hardware          install the peripheral drivers via
                       frontend/scripts/install-drivers.sh: pcscd (NFC reader),
                       sane-utils + the PFU pfufs backend (fi-800R scanner),
@@ -129,7 +132,7 @@ while [ $# -gt 0 ]; do
   shift
 done
 [ "${#BUILD_ARGS[@]}" -eq 0 ] || [ "$BUILD" -eq 1 ] || die "arguments after -- go to the build — add --build"
-[ "$BUILD" -eq 0 ] || [ "$BUNDLE" -eq 0 ] || die "--build (packaged desktop app) and --bundle (bundle installed under build/kiosk-studio/<kiosk>) are different outputs — pick one"
+[ "$BUILD" -eq 0 ] || [ "$BUNDLE" -eq 0 ] || die "--build (packaged desktop app) and --bundle (bundle installed under build/kiosk-studio) are different outputs — pick one"
 [ -z "$THEN" ] || { [ "$BUILD" -eq 0 ] && [ "$BUNDLE" -eq 0 ]; } || die "--$THEN runs the kiosks from this checkout — it does not combine with --build or --bundle"
 if [ "$MOCK" -eq 1 ]; then
   { [ "$BUNDLE" -eq 0 ] && [ "${STUDIO:-0}" -eq 0 ]; } || die "--mock runs without the studio — it does not combine with --studio, --package-studio or --bundle"
@@ -221,7 +224,7 @@ ask_action() {
     setup "set up only — start, develop or build later" \
     start "set up, then start serving (production build), as start.sh does" \
     dev "set up, then run one kiosk in development mode (hot reload)" \
-    build "set up, then package desktop apps into build/"
+    build "set up, then package the desktop app into build/ (mocked: one per kiosk)"
   case "$CHOICE" in
     start | dev) THEN="$CHOICE" ;;
     build) BUILD=1 ;;
@@ -308,7 +311,7 @@ if [ "$STUDIO" -eq 1 ] || [ "$BUNDLE" -eq 1 ]; then
     STUDIO_DEPS=1
   fi
 fi
-if [ "$HARDWARE" -eq 0 ] && [ "$YES" -eq 0 ] && [ -t 0 ] && command -v apt-get >/dev/null 2>&1; then
+if [ "$HARDWARE" -eq 0 ] && [ "$BUILD" -eq 0 ] && [ "$YES" -eq 0 ] && [ -t 0 ] && command -v apt-get >/dev/null 2>&1; then
   cat <<EOF
 
 Peripheral drivers (frontend/scripts/install-drivers.sh, uses sudo):
@@ -320,12 +323,19 @@ EOF
   read -r -p "Install the hardware packages? [y/N] " reply
   case "$reply" in y|Y|yes|YES) HARDWARE=1 ;; esac
 fi
-# The build's own questions (kiosk mode, window, package format), per kiosk,
-# asked now rather than after the installs. Each answer is the complete
-# argument list for that kiosk's build, so the build has nothing left to ask.
+# The build's own questions (kiosk modes, what the window opens on, window,
+# package format) asked now rather than after the installs: once for the
+# platform app that carries every kiosk, or per kiosk for the mocked apps. Each
+# answer is the complete argument list for that build, so the build has
+# nothing left to ask.
 BUILD_ANSWERS=()
 if [ "$MOCK" -eq 1 ]; then BUILD_FLOW=(--mock); else BUILD_FLOW=(--bundle-app); fi
-if [ "$BUILD" -eq 1 ]; then
+if [ "$BUILD" -eq 1 ] && [ "$MOCK" -eq 0 ]; then
+  [ "$YES" -eq 0 ] || BUILD_ARGS=(--yes ${BUILD_ARGS[@]+"${BUILD_ARGS[@]}"})
+  answers="$(build_answers "${BUILD_FLOW[@]}" ${BUILD_ARGS[@]+"${BUILD_ARGS[@]}"})" || die "the build's questions were not answered"
+  [ -n "$answers" ] || die "the build's questions were not answered"
+  BUILD_ANSWERS+=("$answers")
+elif [ "$BUILD" -eq 1 ]; then
   [ "$YES" -eq 0 ] || BUILD_ARGS=(--yes ${BUILD_ARGS[@]+"${BUILD_ARGS[@]}"})
   for dir in "${KIOSK_DIRS[@]}"; do
     use_kiosk "$dir"
@@ -362,13 +372,10 @@ if [ "$BUNDLE" -eq 1 ]; then
   # Embedded-bundle path: the studio checkout is only the export source; the
   # runnable copy (minimal studio + injected kiosk sample) lives in build/.
   [ "$STUDIO_DEPS" -eq 0 ] || install_studio_deps
-  for dir in "${KIOSK_DIRS[@]}"; do
-    use_kiosk "$dir"
-    bundle_dir="$(kiosk_bundle_dir)"
-    info "Building and installing the embedded bundle (${bundle_dir#"$WORKSPACE_ROOT"/})"
-    "$REPO_ROOT/scripts/bundle.sh" --install
-  done
-  use_kiosk "${KIOSK_DIRS[0]}"
+  bundle_dir="$(kiosk_bundle_dir)"
+  info "Building and installing the embedded bundle with $(selected_kiosk_ids) as its samples (${bundle_dir#"$WORKSPACE_ROOT"/})"
+  export_kiosk_list
+  "$REPO_ROOT/scripts/bundle.sh" --install
 elif [ "$MOCK" -eq 1 ]; then
   info "No Edge AI Studio (--mock) — the AI services are mocked"
 elif [ "$STUDIO" -eq 0 ] && [ "$BUILD" -eq 1 ]; then
@@ -384,7 +391,7 @@ else
   fi
 
   info "Running the studio's own setup (thirdparty runtimes, AI workers, gateway build) — this can take a while"
-  (cd "$EDGE_AI_STUDIO_DIR" && ./setup.sh)
+  (cd "$EDGE_AI_STUDIO_DIR" && BackendChoice="$STUDIO_LLAMACPP_BACKEND" ./setup.sh)
   ok "Edge AI Studio is set up"
 
   # Preset the services each kiosk's deployment.json lists for its terminal mode.
@@ -398,16 +405,21 @@ else
 fi
 
 # 4. Production build (--build) ---------------------------------------------
-if [ "$BUILD" -eq 1 ]; then
+if [ "$BUILD" -eq 1 ] && [ "$MOCK" -eq 0 ]; then
+  mapfile -t args < <(printf '%s\n' "${BUILD_ANSWERS[0]}")
+  info "Building the desktop app with $(selected_kiosk_ids) as studio samples (scripts/build.sh)"
+  # The kiosks are already resolved; the root build.sh takes them from --kiosk.
+  if [ "$KIOSK_PINNED" -eq 1 ]; then
+    "$REPO_ROOT/scripts/build.sh" -- "${args[@]}"
+  else
+    env -u KIOSK_DIR "$REPO_ROOT/scripts/build.sh" --kiosk "$(selected_kiosk_ids | tr -d ' ')" -- "${args[@]}"
+  fi
+elif [ "$BUILD" -eq 1 ]; then
   for i in "${!KIOSK_DIRS[@]}"; do
     use_kiosk "${KIOSK_DIRS[$i]}"
     mapfile -t args < <(printf '%s\n' "${BUILD_ANSWERS[$i]}")
-    info "Building the $(kiosk_label "$KIOSK_DIR") desktop app (scripts/build.sh)"
-    if [ "$MOCK" -eq 1 ]; then
-      "$REPO_ROOT/scripts/build.sh" --mock -- "${args[@]}"
-    else
-      "$REPO_ROOT/scripts/build.sh" -- "${args[@]}"
-    fi
+    info "Building the $(kiosk_label "$KIOSK_DIR") mocked desktop app (scripts/build.sh --mock)"
+    "$REPO_ROOT/scripts/build.sh" --mock -- "${args[@]}"
   done
   use_kiosk "${KIOSK_DIRS[0]}"
 fi
@@ -463,8 +475,8 @@ EOF
 elif [ "$BUILD" -eq 1 ]; then
   cat <<EOF
 
-Packages are in build/. Next steps:
-  ${RUN}start.sh --desktop$([ -z "$S" ] || printf ' --kiosk <name>')   launch a packaged app from this checkout
+Packages are in build/ — one app, its studio carrying the kiosk$S as samples. Next steps:
+  ${RUN}start.sh --desktop        launch the packaged app from this checkout
   build/*.deb, *.AppImage         install the .deb on a terminal (sudo dpkg -i), or copy the .AppImage over
 
 Docs: common/docs/build.md (deploying a terminal, uninstalling)
@@ -475,8 +487,8 @@ else
 Next steps:
   ${RUN}start.sh                start the Edge AI Studio and the kiosk$S (production build)
   ${RUN}start.sh --no-studio    kiosk$S only, against a gateway that is already up
-  ${RUN}setup.sh --build        package the kiosk$S as desktop apps (embedded bundle; installs
-                            the electron/ deps itself)
+  ${RUN}setup.sh --build        package the kiosk$S as one desktop app (embedded bundle, each
+                            kiosk a studio sample; installs the electron/ deps itself)
   common/scripts/dev/dev.sh --kiosk $([ -z "$S" ] && kiosk_id "$KIOSK_DIR" || printf '<name>')
                             one kiosk in development mode (hot reload; --mock: no studio needed)
 

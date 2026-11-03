@@ -4,7 +4,6 @@
 import type { CategoryDefinition } from "@/services";
 import { publicEnv } from "@/lib/public-config";
 import { apiDelete, apiGet, apiPost, apiPostBlob, apiUpload } from "./client";
-import type { StreamTarget } from "@/lib/audio/speech-stream";
 
 export type IdentityMethod = "face" | "fingerprint";
 export type PaymentMethod = "card" | "qr" | "cash";
@@ -227,6 +226,10 @@ export type ServiceHealthReport = {
      *  kiosk's mic and speaker, it never takes the kiosk out of service. */
     stt: ServiceHealthStatus;
     tts: ServiceHealthStatus;
+    /** The lip-synced assistant. Optional like voice: "off" leaves the chat
+     *  without an avatar tile, "unreachable" shows it as not connected, and
+     *  either way replies play from the page. */
+    avatar?: ServiceHealthStatus;
   };
 };
 
@@ -234,27 +237,23 @@ export function getServiceHealth() {
   return apiGet<ServiceHealthReport>("/health");
 }
 
-/** Transcribe a clip recorded from the kiosk microphone. `language` is the
- *  session's current language; the reply carries the language the utterance
- *  was detected to be in. */
-export function transcribeSpeech(audio: Blob, fileName = "recording.webm", language?: string) {
+/** An utterance recognized: its text, the kiosk language it was spoken in,
+ *  and the language Whisper said it heard (when it says). */
+export type Transcript = { text: string; language?: string; heard?: string };
+
+/** Transcribe an utterance from the kiosk microphone. `language` is the
+ *  session's current language, kept when Whisper names one the kiosk does
+ *  not speak. */
+export function transcribeSpeech(
+  audio: Blob,
+  fileName = "speech.wav",
+  language?: string,
+  signal?: AbortSignal,
+) {
   const form = new FormData();
   form.append("file", audio, fileName);
   if (language) form.append("language", language);
-  return apiUpload<{ text: string; language?: string }>("/speech/transcribe", form);
-}
-
-/** Where the microphone streams to: the speech-to-text worker's socket. Fails
- *  when the recognizer cannot stream, and clips are uploaded instead. */
-export function speechStreamTarget() {
-  return apiGet<StreamTarget>("/speech/stream");
-}
-
-/** A streamed utterance's text, finished like an uploaded clip's: the language
- *  it was spoken in and the local terms repaired. `heard` is the language the
- *  worker reported, when it did. */
-export function finishSpeech(text: string, language?: string, heard?: string) {
-  return apiPost<{ text: string; language?: string }>("/speech/transcript", { text, language, heard });
+  return apiUpload<Transcript>("/speech/transcribe", form, "POST", signal);
 }
 
 /**

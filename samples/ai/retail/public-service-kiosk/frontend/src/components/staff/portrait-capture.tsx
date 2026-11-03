@@ -89,8 +89,6 @@ export function PortraitCapture({
     canvas.toBlob(
       (blob) => {
         setBusy(false);
-        // A frame the canvas could not encode used to be a silent no-op: the
-        // spinner stopped and the button just sat there.
         if (!blob) {
           setFailed(true);
           return;

@@ -1,6 +1,7 @@
 // Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
+import { avatarHealth } from "../_lib/avatar";
 import { faceHealth, faceMatchRequired } from "../_lib/face";
 import { type ServiceHealth } from "../_lib/health";
 import { llmHealth, requireDocumentVerification } from "../_lib/llm";
@@ -14,12 +15,14 @@ function verificationHealth(llm: ServiceHealth, ocr: ServiceHealth): ServiceHeal
 }
 
 export async function GET() {
-  const [llm, ocr, face, stt, tts, nfc, scanner] = await Promise.all([
+  const [llm, ocr, face, stt, tts, avatar, nfc, scanner] = await Promise.all([
     llmHealth(),
     ocrHealth(),
     faceHealth(),
     sttHealth(),
     ttsHealth(),
+    // Report-only too: without it the chat's avatar tile says it is not connected.
+    avatarHealth(),
     // Peripherals are report-only, like stt/tts: a dead reader never flips `ok`.
     nfcPeripheral().health(),
     scannerPeripheral().health(),
@@ -31,7 +34,7 @@ export async function GET() {
       : llm !== "unreachable" && ocr !== "unreachable") &&
     (!faceMatchRequired() || face === "ok");
   return Response.json(
-    { ok, services: { llm, ocr, verification, face, stt, tts, nfc, scanner } },
+    { ok, services: { llm, ocr, verification, face, stt, tts, avatar, nfc, scanner } },
     { headers: { "cache-control": "no-store" } },
   );
 }

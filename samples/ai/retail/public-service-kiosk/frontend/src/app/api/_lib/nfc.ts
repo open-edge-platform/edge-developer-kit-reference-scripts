@@ -3,6 +3,7 @@
 
 import type { Card, Client, Err, Reader, ReaderStatusFlags } from "pcsc-mini";
 import { t } from "@/lib/i18n";
+import { handoff } from "./handoff";
 import { nfcSimulatePolicy } from "./peripherals/policy";
 import { PeripheralError } from "./peripherals/types";
 
@@ -117,7 +118,9 @@ async function readCard(
     return { uid: hex(atr), atr: hex(atr), reader: reader.name(), fromAtr: true };
   } catch (error) {
     if (error instanceof NfcError) throw error;
-    throw new NfcError("read_failed", (error as Err).message);
+    // The message is pcsc-mini's generic "Async task error"; the PC/SC reason is the code.
+    const { message, code } = error as Err;
+    throw new NfcError("read_failed", code ? `${message} (${code})` : message);
   } finally {
     // LEAVE, not RESET: powering the card down under the citizen's hand fails the next read.
     if (card) await card.disconnect(pcsc.CardDisposition.LEAVE).catch(() => {});
@@ -132,12 +135,20 @@ function announce(monitor: Monitor, card: CardRead, stillThere: boolean): void {
   for (const resolve of waiting) resolve(card);
 }
 
+/** Reads of one card on the pad that fail before it is left alone until lifted. */
+const READ_TRIES = 3;
+
 function watch(monitor: Monitor, reader: Reader, pcsc: typeof import("pcsc-mini")): void {
   const { ReaderStatus } = pcsc;
+  // The card on the pad now. Reading it changes the reader's state as well — on
+  // Windows every connect and disconnect does — so reading on every change
+  // would set off the next read, and overlapping reads fail, without end.
+  let onPad: { reading: boolean; read: boolean; failures: number } | null = null;
 
   reader.on("change", (status: ReaderStatusFlags, atr: Uint8Array) => {
     const name = reader.name();
     if (!status.has(ReaderStatus.PRESENT)) {
+      onPad = null;
       monitor.occupied.delete(name);
       if (monitor.present?.reader === name) monitor.present = null;
       return;
@@ -146,10 +157,23 @@ function watch(monitor: Monitor, reader: Reader, pcsc: typeof import("pcsc-mini"
     // MUTE is a card that will not talk; IN_USE is one another process holds.
     if (status.hasAny(ReaderStatus.MUTE, ReaderStatus.IN_USE)) return;
 
+    onPad = onPad ?? { reading: false, read: false, failures: 0 };
+    const card = onPad;
+    if (card.reading || card.read || card.failures >= READ_TRIES) return;
+    card.reading = true;
     readCard(reader, atr, pcsc)
-      .then((card) => announce(monitor, card, monitor.occupied.has(name)))
+      .then((read) => {
+        card.read = true;
+        announce(monitor, read, monitor.occupied.has(name));
+      })
       // A card half off the pad should not fail a waiting read; let it time out instead.
-      .catch((error) => console.warn(`[nfc] ${name}: ${(error as Error).message}`));
+      .catch((error) => {
+        card.failures += 1;
+        console.warn(`[nfc] ${name}: ${(error as Error).message}`);
+      })
+      .finally(() => {
+        card.reading = false;
+      });
   });
 
   reader.on("disconnect", () => {
@@ -238,6 +262,21 @@ export async function readCardUid({ timeoutMs = TIMEOUT_MS } = {}): Promise<Card
     running.waiting.add(done);
   });
 }
+
+/**
+ * A card the chat's step watch saw, kept for the read that step then asks for.
+ *
+ * The watch and the read are two requests a second or two apart, and a tap is
+ * over well inside that: by the time the identity step reads, the card is off
+ * the pad and the reader has nothing to give. Without this the citizen taps,
+ * the screen says it saw the card, and the kiosk waits for a second tap.
+ */
+const DETECTED_TTL_MS = 30_000;
+
+const detected = handoff<CardRead>("kiosk.nfc.detected", DETECTED_TTL_MS);
+
+export const handOnCard = detected.present;
+export const takeHandedCard = detected.take;
 
 export async function nfcReaders(): Promise<string[]> {
   if (nfcSimulatedAlways()) return [];

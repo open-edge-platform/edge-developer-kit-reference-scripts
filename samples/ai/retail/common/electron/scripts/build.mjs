@@ -29,9 +29,11 @@
  *                                             for external-target mode, where
  *                                             the embedded bundle is the payload
  *   node scripts/build.mjs --bundle-app       package the embedded bundle
- *                                             (build/kiosk-studio/<kiosk>) as the app:
- *                                             it ships as one tar, unpacked and
- *                                             set up on the target's first launch
+ *                                             (build/kiosk-studio: one studio, every
+ *                                             chosen kiosk a sample of it) as the
+ *                                             platform app: it ships as one tar,
+ *                                             unpacked and set up on the target's
+ *                                             first launch
  *   node scripts/build.mjs [--bundle-app] --ask-only [args]
  *                                             the questions alone: prompts on
  *                                             stderr, the resolved build args on
@@ -42,10 +44,12 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import { existsSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import readline from "node:readline/promises";
 import { fileURLToPath } from "node:url";
-import { kioskModes, kioskServices, onlineServices } from "../../scripts/studio-deployment.mjs";
+import { instances, kioskModes, kioskServices, kioskTerminalMode, online, onlineServices, resolveDeployment } from "../../scripts/studio-deployment.mjs";
+import { PLATFORM, chosenKiosks, kioskMatches, modeArgs, resolveModes } from "../../scripts/kiosks.mjs";
 
 const SHELL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ROOT = path.resolve(SHELL, "..");
@@ -88,14 +92,40 @@ function modeServices(mode) {
     fail(error.message);
   }
 }
-function bundleModes() {
+
+/**
+ * The kiosks the platform app carries (the launchers choose them), each with
+ * the mode it runs in: --mode [<kiosk>=]<mode>, else its configured mode.
+ */
+function bundleKiosks() {
   try {
-    return kioskModes(KIOSK_DIR).map((value) => ({ value, label: TERMINAL_MODES[value] ?? value }));
+    return resolveModes(chosenKiosks(), modeArgs(argv),
+      (kiosk) => kioskTerminalMode(kiosk.dir, process.env.KIOSK_PROFILE || "reference"));
   } catch (error) {
     fail(error.message);
   }
 }
-const defaultLlm = (mode) => (modeServices(mode)["text-generation"]?.status === "online" ? "local" : "remote");
+function kioskModeChoices(kiosk) {
+  try {
+    return kioskModes(kiosk.dir).map((value) => ({ value, label: TERMINAL_MODES[value] ?? value }));
+  } catch (error) {
+    fail(error.message);
+  }
+}
+/** The services the kiosks' modes run on one studio, merged as the bundle merges them. */
+function bundleServices(kiosks) {
+  try {
+    return resolveDeployment(kiosks.map(({ dir, mode }) => ({ dir, mode }))).deployment.services;
+  } catch (error) {
+    fail(error.message);
+  }
+}
+const bundleDefaultLlm = (kiosks) => (online(bundleServices(kiosks)["text-generation"]) ? "local" : "remote");
+/** The text-generation instance a preset runs: its online one, else its first. */
+function llmInstance(services) {
+  const llms = instances(services["text-generation"]);
+  return llms.find((instance) => instance?.status === "online") ?? llms[0];
+}
 
 // Everything the questions print goes through here: --ask-only moves it to
 // stderr so stdout carries only the answers.
@@ -109,9 +139,10 @@ async function main() {
     await ensureDependencies();
     step("Packaging the desktop shell, unpacked");
     await run(process.execPath, [path.join(SHELL, "scripts", "make-icons.mjs")], SHELL);
-    const config = await writeShellConfig({ fullscreen: false }, { resources: false });
+    // The shell the launchers wrap around the embedded bundle — the platform's.
+    const config = await writeShellConfig({ fullscreen: false }, { resources: false, identity: PLATFORM });
     await run(npx(), ["electron-builder", "--dir", "--config", config], SHELL);
-    note(`shell: ${path.join(OUT, unpackedDir(), "kiosk-desktop")}`);
+    note(`shell: ${path.join(OUT, unpackedDir(), PLATFORM.executableName)}`);
     return;
   }
 
@@ -131,17 +162,17 @@ async function main() {
 
   const config = await fs.readFile(path.join(FRONTEND, "config.yaml"), "utf8");
   const answers = await ask(config);
+  const shipped = applyAnswers(config, answers);
 
   if (flag("no-build")) {
     step("Reusing the last kiosk server build");
     note("the answers above only reach the browser through a real build");
   } else {
     step("Building the kiosk server");
-    await buildNextServer(answers);
+    await buildNextServer(answers, shipped);
   }
 
   step("Assembling the bundle");
-  const shipped = applyAnswers(config, answers);
   await stage(shipped, answers.mock);
   await primeDatabase();
 
@@ -191,27 +222,34 @@ function unpackedDir() {
 /* -- the embedded bundle as the app --------------------------------------- */
 
 /**
- * Package build/kiosk-studio/<kiosk> — the minimal, pre-setup studio export with the
- * kiosk injected — as the desktop app. The export ships inside the package as
- * a single tar: a tar survives what plain resource copying does not (the
- * symlinked Node runtime, execute bits), and the install is read-only anyway.
- * The shell unpacks it into the data directory on first launch, runs the
- * studio's setup there, and starts the platform (see main.js).
+ * Package build/kiosk-studio — the minimal, pre-setup studio export with every
+ * chosen kiosk injected as a sample — as the platform's desktop app. The
+ * export ships inside the package as a single tar: a tar survives what plain
+ * resource copying does not (the symlinked Node runtime, execute bits), and
+ * the install is read-only anyway. The shell unpacks it into the data
+ * directory on first launch, runs the studio's setup there, and starts the
+ * platform (see main.js).
  */
 async function bundleApp() {
   // Questions first: everything after this line is minutes of unattended work
-  // (installs, the frontend build, the studio export).
+  // (installs, the frontend builds, the studio export).
   const answers = await askBundleApp();
 
   // Fresh export every build — scripts/bundle.mjs installs what is missing,
-  // builds the kiosk server and re-exports the minimal studio, so packaging
+  // builds each kiosk's server and re-exports the minimal studio, so packaging
   // never picks up a stale or set-up-in-place tree. Shell flags stay here;
-  // everything else is bundle.mjs's. The chosen mode decides what it exports
-  // (services, deployment profile) and which kiosk the frontend build bakes in.
-  const bundleArgs = [...unanswered(argv), "--mode", answers.mode, "--llm", answers.llm];
-  await run(process.execPath, [path.join(ROOT, "scripts", "bundle.mjs"), ...bundleArgs], ROOT);
+  // everything else is bundle.mjs's. Each kiosk's mode decides what it
+  // auto-starts and which terminal its frontend build bakes in.
+  const bundleArgs = [
+    ...unanswered(argv),
+    ...answers.kiosks.flatMap((kiosk) => ["--mode", `${kiosk.id}=${kiosk.mode}`]),
+    "--llm", answers.llm,
+  ];
+  await run(process.execPath, [path.join(ROOT, "scripts", "bundle.mjs"), ...bundleArgs], ROOT, {
+    KIOSK_DIR_LIST: answers.kiosks.map((kiosk) => kiosk.dir).join(path.delimiter),
+  });
 
-  const bundleOut = process.env.KIOSK_BUNDLE_DIR || path.join(REPO, "build", "kiosk-studio", KIOSK.id);
+  const bundleOut = process.env.KIOSK_BUNDLE_DIR || path.join(REPO, "build", "kiosk-studio");
   const studio = path.join(bundleOut, "studio");
   if (!existsSync(path.join(studio, "setup.sh"))) {
     fail(`the export left no bundle at ${bundleOut} — check the bundle.sh output above`);
@@ -249,35 +287,51 @@ async function bundleApp() {
 
   step("Preparing the shell");
   await run(process.execPath, [path.join(SHELL, "scripts", "make-icons.mjs")], SHELL);
-  // The port the export gave the kiosk worker: the shell's staff menu links
-  // to the kiosk's pages by it from the platform.
+  // The ports the export gave the kiosk workers: the shell opens the window on
+  // one of them, or on the studio, and its staff menu links to their pages.
   const bundleEnv = await fs.readFile(path.join(bundleOut, "bundle.env"), "utf8");
-  answers.kioskPort = Number(bundleEnv.match(/^KIOSK_BUNDLE_PORT=(\d+)/m)?.[1]) || undefined;
+  const envList = (key) =>
+    (bundleEnv.split("\n").find((line) => line.startsWith(`${key}=`)) ?? "")
+      .slice(key.length + 1)
+      .replace(/^"|"\s*$/g, "")
+      .split(/\s+/)
+      .filter(Boolean);
+  const samples = envList("KIOSK_BUNDLE_SAMPLES");
+  const ports = envList("KIOSK_BUNDLE_PORTS").map(Number);
+  answers.bundleKiosks = answers.kiosks.map((kiosk) => {
+    const at = samples.indexOf(kiosk.sampleId);
+    if (at === -1) fail(`the export at ${bundleOut} does not carry the ${kiosk.sampleId} sample`);
+    return { id: kiosk.id, sampleId: kiosk.sampleId, title: kiosk.title, port: ports[at] || kiosk.port };
+  });
   // Identifies this build's payload: an installed terminal compares it with
   // the stamp on its unpacked platform and refreshes that on a new build.
   answers.bundleId = new Date().toISOString();
-  const overlay = await writeShellConfig(answers, { resources: true });
+  const overlay = await writeShellConfig(answers, { resources: true, identity: PLATFORM });
 
   await packageShell(overlay, answers.targets, false);
   note("install on the terminal — first launch unpacks the platform, runs its");
-  note("setup (downloads), then starts the studio with the kiosk as its worker");
+  note(`setup (downloads), then starts the studio with ${answers.kiosks.length === 1 ? "the kiosk as its worker" : "every kiosk as a worker of it"}`);
 }
 
 /**
- * The mode decides more here than which kiosk the terminal runs: it picks the
- * AI services the platform starts, from the kiosk's deployment.json, so it is
- * asked before anything is exported.
+ * Each kiosk's mode decides more here than which terminal it runs: it picks
+ * the AI services the platform starts, from the kiosk's deployment.json, so
+ * they are asked before anything is exported. Then where the LLM runs, and
+ * what the window opens on — the studio's samples gallery unless a kiosk is
+ * chosen.
  */
 async function askBundleApp() {
-  const config = await fs.readFile(path.join(FRONTEND, "config.yaml"), "utf8");
+  const kiosks = bundleKiosks();
   const llm = option("llm") ?? argValue("llm");
   if (llm && !LLM_PLACES[llm]) fail(`--llm takes ${Object.keys(LLM_PLACES).join(" or ")}, not "${llm}"`);
+  const opensOn = option("opens-on") ?? argValue("opens-on");
   const answers = {
-    mode: option("mode") ?? argValue("mode") ?? readYaml(config, "terminal", "mode") ?? "chat",
+    kiosks,
+    opensOn: opensOn ? opensOnTarget(kiosks, opensOn) : "studio",
     fullscreen: flag("fullscreen") ? true : flag("windowed") ? false : true,
     targets: (option("targets") ?? defaultTargets()).split(",").map((t) => t.trim()),
   };
-  answers.llm = llm ?? defaultLlm(answers.mode);
+  answers.llm = llm ?? bundleDefaultLlm(kiosks);
 
   if (flag("yes") || !process.stdin.isTTY) {
     describeBundleApp(answers);
@@ -286,14 +340,23 @@ async function askBundleApp() {
 
   const rl = readline.createInterface({ input: process.stdin, output: out });
   try {
-    print("\n\x1b[1mKiosk install settings\x1b[0m");
-    note("baked into this build — the platform's services follow the mode\n");
+    print("\n\x1b[1mPlatform install settings\x1b[0m");
+    note(`baked into this build — one studio carrying ${kiosks.map((k) => k.title).join(" and ")}; its services follow the modes\n`);
 
-    answers.mode = await choose(rl, "Which kiosk does this terminal run?", bundleModes(), answers.mode);
+    for (const kiosk of kiosks) {
+      kiosk.mode = await choose(rl,
+        kiosks.length === 1 ? "Which kiosk does this terminal run?" : `${kiosk.title} — which terminal mode?`,
+        kioskModeChoices(kiosk), kiosk.mode);
+    }
 
     answers.llm = await choose(rl, "Where does the LLM run?",
       Object.entries(LLM_PLACES).map(([value, label]) => ({ value, label })),
-      llm ?? defaultLlm(answers.mode));
+      llm ?? bundleDefaultLlm(kiosks));
+
+    answers.opensOn = await choose(rl, "What does the window open on?", [
+      { value: "studio", label: "The studio's samples gallery — pick a kiosk there" },
+      ...kiosks.map((kiosk) => ({ value: kiosk.sampleId, label: `${kiosk.title} — straight into the kiosk` })),
+    ], answers.opensOn);
 
     answers.fullscreen = await confirm(rl,
       "Run fullscreen with no window chrome (kiosk mode)?", answers.fullscreen);
@@ -309,6 +372,14 @@ async function askBundleApp() {
   return answers;
 }
 
+/** `--opens-on studio`, or a kiosk by id, folder or sample id — as the sample id. */
+function opensOnTarget(kiosks, value) {
+  if (value === "studio") return value;
+  const kiosk = kiosks.find((k) => kioskMatches(k, value));
+  if (!kiosk) fail(`--opens-on takes studio or one of this build's kiosks (${kiosks.map((k) => k.id).join(", ")}), not "${value}"`);
+  return kiosk.sampleId;
+}
+
 /** `--mode touch`, the spaced form scripts/bundle.mjs takes. */
 function argValue(name) {
   const at = argv.indexOf(`--${name}`);
@@ -316,17 +387,19 @@ function argValue(name) {
 }
 
 function describeBundleApp(answers) {
-  const preset = modeServices(answers.mode);
-  const llmDevice = preset["text-generation"]?.models?.default?.device;
+  const preset = bundleServices(answers.kiosks);
+  const llmDevice = llmInstance(preset)?.models?.default?.device;
   const services = [
     answers.llm === "local" ? `LLM${llmDevice ? ` (${llmDevice})` : ""}` : "",
     ...onlineServices({ services: preset }).filter((name) => name !== "text-generation"),
   ];
+  const opensOn = answers.kiosks.find((kiosk) => kiosk.sampleId === answers.opensOn);
   print();
-  note(`kiosk        ${answers.mode}`);
-  const llmModel = preset["text-generation"]?.models?.default?.name;
-  note(`LLM          ${answers.llm === "local" ? `on this terminal${llmModel ? ` — ${llmModel}` : ""}` : "remote — set llm.api_key at /settings"}`);
+  for (const kiosk of answers.kiosks) note(`kiosk        ${kiosk.title} — ${kiosk.mode}`);
+  const llmModel = llmInstance(preset)?.models?.default?.name;
+  note(`LLM          ${answers.llm === "local" ? `on this terminal${llmModel ? ` — ${llmModel}` : ""}` : "remote — set llm.api_key at each kiosk's /settings"}`);
   note(`services     ${services.filter(Boolean).join(", ")}`);
+  note(`opens on     ${opensOn ? opensOn.title : "the studio's samples gallery"}`);
   note(`window       ${answers.fullscreen ? "fullscreen" : "windowed"}`);
   note(`package      ${answers.targets.join(", ")}`);
 }
@@ -350,11 +423,13 @@ async function askOnly() {
   }
   const resolved = [
     "--yes",
-    `--mode=${answers.mode}`,
+    ...(flag("bundle-app")
+      ? answers.kiosks.map((kiosk) => `--mode=${kiosk.id}=${kiosk.mode}`)
+      : [`--mode=${answers.mode}`]),
     answers.fullscreen ? "--fullscreen" : "--windowed",
     `--targets=${answers.targets.join(",")}`,
   ];
-  if (flag("bundle-app")) resolved.push(`--llm=${answers.llm}`);
+  if (flag("bundle-app")) resolved.push(`--llm=${answers.llm}`, `--opens-on=${answers.opensOn}`);
   else resolved.push(answers.mock ? "--mock" : "--live");
   process.stdout.write(`${[...resolved, ...unanswered(argv)].join("\n")}\n`);
 }
@@ -370,8 +445,8 @@ function unanswered(args) {
   const rest = [];
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    if (arg === "--mode" || arg === "--llm") { i++; continue; }
-    if (decided.has(arg) || /^--(mode|llm|targets)=/.test(arg)) continue;
+    if (arg === "--mode" || arg === "--llm" || arg === "--opens-on") { i++; continue; }
+    if (decided.has(arg) || /^--(mode|llm|targets|opens-on)=/.test(arg)) continue;
     rest.push(arg);
   }
   return rest;
@@ -493,14 +568,23 @@ async function confirm(rl, question, fallback) {
  * the terminal. Next leaves two things out of it deliberately, because a
  * deployment normally serves them from a CDN — copy them in.
  */
-async function buildNextServer(answers) {
-  await run("npm", ["run", "build"], FRONTEND, {
-    KIOSK_STANDALONE: "1",
-    // Real environment beats config.yaml (see frontend/src/lib/kiosk-config.ts),
-    // which is how the answers reach the client bundle Next is inlining now.
-    NEXT_PUBLIC_KIOSK_MODE: answers.mode,
-    KIOSK_LLM_MOCK: String(answers.mock),
-  });
+async function buildNextServer(answers, shippedConfig) {
+  // Built against the config.yaml that ships: server code inlines NEXT_PUBLIC_*
+  // reads, and this checkout's config.local.yaml is a machine override, not the terminal's.
+  const configDir = await fs.mkdtemp(path.join(os.tmpdir(), "kiosk-build-config-"));
+  await fs.writeFile(path.join(configDir, "config.yaml"), shippedConfig);
+  try {
+    await run("npm", ["run", "build"], FRONTEND, {
+      KIOSK_STANDALONE: "1",
+      KIOSK_CONFIG_FILE: path.join(configDir, "config.yaml"),
+      // Real environment beats config.yaml (see frontend/src/lib/kiosk-config.ts),
+      // which is how the answers reach the client bundle Next is inlining now.
+      NEXT_PUBLIC_KIOSK_MODE: answers.mode,
+      KIOSK_LLM_MOCK: String(answers.mock),
+    });
+  } finally {
+    await fs.rm(configDir, { recursive: true, force: true });
+  }
 
   requireStandalone();
 }
@@ -518,6 +602,7 @@ function requireStandalone() {
 const NOT_SHIPPED = new Set([
   "db.sqlite", "db.sqlite-shm", "db.sqlite-wal", "face-photos", "tests",
   "test-results", "playwright-report", "tsconfig.tsbuildinfo", ".env.local.bak",
+  "config.local.yaml", "config.yaml.bak",
 ]);
 
 async function stage(shippedConfig, mock) {
@@ -668,6 +753,19 @@ async function writeServerEntry() {
       `require("./kiosk-config.cjs").applyKioskConfig(\n` +
       `  process.env.KIOSK_DATA_DIR || __dirname,\n` +
       `);\n` +
+      `// Under the studio: its allocated port, where it health-checks the worker, relays to PORT.\n` +
+      `const relayPort = Number(process.env.KIOSK_RELAY_PORT);\n` +
+      `if (relayPort && relayPort !== Number(process.env.PORT)) {\n` +
+      `  const http = require("node:http");\n` +
+      `  http.createServer((req, res) => {\n` +
+      `    const upstream = http.request(\n` +
+      `      { host: "127.0.0.1", port: Number(process.env.PORT), path: req.url, method: req.method, headers: req.headers },\n` +
+      `      (reply) => { res.writeHead(reply.statusCode || 502, reply.headers); reply.pipe(res); },\n` +
+      `    );\n` +
+      `    upstream.on("error", () => { if (!res.headersSent) res.writeHead(502); res.end(); });\n` +
+      `    req.pipe(upstream);\n` +
+      `  }).listen(relayPort, "127.0.0.1");\n` +
+      `}\n` +
       `require("./server.js");\n`,
   );
 }
@@ -880,7 +978,7 @@ function applyAnswers(config, answers) {
   return HEADER(answers) + out;
 }
 
-const PLATFORM_LLM = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?\/api\/text-generation(\/|$)/;
+const PLATFORM_LLM = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?\/api\/text-generation(@[\w.-]+)?(\/|$)/;
 
 // A remote-LLM bundle starts no text-generation worker, and extra_body is the local model's
 // (Gemini rejects chat_template_kwargs with a 400). A key in config.yaml would ship inside the package.
@@ -897,7 +995,7 @@ function applyLlmPlace(config, { llm, mode }) {
     note(`llm.base_url points at ${baseUrl || "nothing"}, not this terminal's platform —`);
     note("the platform's local LLM will run, but the kiosk will not call it");
   }
-  const running = modeServices(mode)["text-generation"]?.models?.default?.name;
+  const running = llmInstance(modeServices(mode))?.models?.default?.name;
   const model = readYaml(config, "llm", "model")?.replace(/^["']|["']$/g, "") ?? "";
   if (llm === "local" && running && !model.includes(running)) {
     note(`llm.model is ${model || "unset"}, but the platform runs ${running} —`);
@@ -914,15 +1012,20 @@ function applyLlmPlace(config, { llm, mode }) {
  * so a build never leaves the repository dirty. Each flow declares whether
  * the staged resources/ ships — the shell-only build carries none.
  */
-async function writeShellConfig(answers, { resources }) {
+async function writeShellConfig(answers, { resources, identity = KIOSK }) {
   const shell = {
     fullscreen: answers.fullscreen ?? true,
-    title: KIOSK.productName,
-    dataDir: KIOSK.dataDir,
-    sampleId: KIOSK.studio.sampleId,
-    kioskPort: KIOSK.studio.port,
+    title: identity.productName,
+    dataDir: identity.dataDir,
   };
-  if (answers.kioskPort) shell.kioskPort = answers.kioskPort;
+  if (answers.bundleKiosks) {
+    // The embedded bundle: every kiosk the studio runs, and what the window opens on.
+    shell.kiosks = answers.bundleKiosks;
+    shell.opensOn = answers.opensOn || "studio";
+  } else {
+    shell.sampleId = KIOSK.studio.sampleId;
+    shell.kioskPort = KIOSK.studio.port;
+  }
   if (answers.bundleId) shell.bundleId = answers.bundleId;
   await fs.writeFile(path.join(SHELL, "shell.json"), `${JSON.stringify(shell, null, 2)}\n`);
 
@@ -930,8 +1033,8 @@ async function writeShellConfig(answers, { resources }) {
   const winTargets = { nsis: "nsis", msi: "msi" };
   const targets = answers.targets ?? [];
   const config = {
-    appId: KIOSK.appId,
-    productName: KIOSK.productName,
+    appId: identity.appId,
+    productName: identity.productName,
     asar: true,
     files: ["main.js", "server-entry.js", "ui/**", "shell.json"],
     // Chromium's own UI strings only — the window has no browser chrome, and
@@ -941,7 +1044,7 @@ async function writeShellConfig(answers, { resources }) {
     afterPack: "./electron-fuses.js",
     linux: {
       target: targets.map((t) => linuxTargets[t]).filter(Boolean),
-      executableName: KIOSK.executableName,
+      executableName: identity.executableName,
       icon: "icons/icon.png",
       category: "Utility",
     },
@@ -954,11 +1057,19 @@ async function writeShellConfig(answers, { resources }) {
       target: targets.map((t) => winTargets[t]).filter(Boolean),
       icon: "icons/icon.ico",
     },
-    deb: { packageName: KIOSK.executableName },
+    deb: { packageName: identity.executableName },
     nsis: { oneClick: false, allowToChangeInstallationDirectory: true },
   };
   // A mocked build is a demo: named so it never passes for, or overwrites, the real package.
   if (answers.mock) config.artifactName = "${productName}-${version}-mock.${ext}";
+  // Verify the Electron zip against the checksums the electron npm package
+  // ships, instead of fetching SHASUMS256.txt from GitHub on every build: a
+  // TLS-intercepting proxy fails that fetch even when the zip is cached. The
+  // `force` key makes electron-builder pass the options to @electron/get as-is.
+  const checksums = path.join(SHELL, "node_modules", "electron", "checksums.json");
+  if (existsSync(checksums)) {
+    config.electronDownload = { force: false, checksums: JSON.parse(await fs.readFile(checksums, "utf8")) };
+  }
   if (config.linux.target.length === 0) delete config.linux.target;
   if (config.win.target.length === 0) delete config.win.target;
   if (resources) config.extraResources = [{ from: "resources", to: "resources" }];

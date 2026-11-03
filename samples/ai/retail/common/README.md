@@ -26,7 +26,7 @@ Each kiosk is a folder at the repo root with its own Next.js app and a `kiosk.js
 | Kiosk | Folder |
 |---|---|
 | Public service (civic) | `public-service-kiosk/` |
-| Hospital concierge | `healthcare/` |
+| Hospital concierge | `healthcare-service-kiosk/` |
 
 Paths written `<kiosk>/frontend/` in these docs mean the chosen kiosk's app.
 `./setup.sh` asks which kiosks to set up — one, the other or both — and saves
@@ -39,8 +39,8 @@ with `setup.sh`, `start.sh` and `uninstall.sh` (and `_win.bat` twins) that
 always drive that kiosk alone:
 
 ```bash
-./start.sh --kiosk healthcare --mock        # this run only
-healthcare/scripts/start.sh --mock          # same, through the kiosk's own launcher
+./start.sh --kiosk healthcare --mock               # this run only
+healthcare-service-kiosk/scripts/start.sh --mock   # same, through the kiosk's own launcher
 ```
 
 One studio serves every kiosk; with both selected it gets the deployment
@@ -93,8 +93,8 @@ No AI gateway at all? Run everything mocked — no studio checkout needed:
 | `./setup.sh` | `setup_win.bat` | One-time install: asks what to do afterwards (`--start`, `--dev`, `--build`), which kiosks (`--kiosk`) and live or mocked AI (`--mock`), then their frontend deps and the Edge AI Studio (`--skip-studio` to leave it out); optional peripheral drivers (`--hardware`) | [getting-started.md](docs/getting-started.md) |
 | `./start.sh` | `start_win.bat` | Normal start: brings the Edge AI Studio gateway up (`--no-studio` to skip), then each kiosk's production server on its own port (3000, 3001); Ctrl+C stops them all | [getting-started.md](docs/getting-started.md) |
 | `./common/scripts/dev/dev.sh --kiosk <name>` | `common\scripts\dev\dev.bat --kiosk <name>` | Development, one kiosk at a time on its own port: hot reload, `--mock` for zero-dependency UI work, `--desktop` for the desktop shell (`./setup.sh --dev` sets up first, then runs it) | [dev-mode.md](docs/dev-mode.md) |
-| `./common/scripts/dev/update.sh` | `common\scripts\dev\update.bat` | Mirror this checkout into the release tree or another directory (non-gitignored files only, minus `.git`, `.claude`, `.github`, `.vscode`, `healthcare` and the update scripts) | [dev-mode.md](docs/dev-mode.md) |
-| `./setup.sh --build` | `setup_win.bat --build` | Production build, one per kiosk: the embedded bundle as a desktop app (.AppImage/.deb on Linux, .exe/.msi on Windows) → `build/` at the repo root. Installs the kiosk deps, asks every kiosk's questions first, installs the `common/electron/` deps itself. `./common/scripts/build.sh` (`common\scripts\build.bat`) is the build alone, with `--kiosk` for one run | [build.md](docs/build.md) |
+| `./common/scripts/dev/update.sh` | `common\scripts\dev\update.bat` | Mirror this checkout into the release tree or another directory (non-gitignored files only, minus `.git`, `.claude`, `.github`, `.vscode`, `healthcare-service-kiosk` and the update scripts) | [dev-mode.md](docs/dev-mode.md) |
+| `./setup.sh --build` | `setup_win.bat --build` | Production build: the embedded bundle — one studio, every chosen kiosk a sample of its gallery — as one desktop app (.AppImage/.deb on Linux, .exe/.msi on Windows) → `build/` at the repo root. Installs the kiosk deps, asks every question first (each kiosk's mode, the LLM, what the window opens on), installs the `common/electron/` deps itself. `./common/scripts/build.sh` (`common\scripts\build.bat`) is the build alone, with `--kiosk` for one run | [build.md](docs/build.md) |
 | `./uninstall.sh` | `uninstall_win.bat` | Remove the installed apps; `--data` also removes what they wrote (database, documents, unpacked platform) | [build.md](docs/build.md) |
 
 Every script takes `--help`, and the flags are spelled the same on both platforms.
@@ -113,22 +113,22 @@ terminal styles:
 
 | Component | Path | Stack |
 |---|---|---|
-| Kiosk app (UI + API + admin) | `<kiosk>/frontend/` ([public-service](../public-service-kiosk/frontend/), [healthcare](../healthcare/frontend/)) | Next.js 16, React 19, Tailwind 4, Vercel AI SDK, MCP |
+| Kiosk app (UI + API + admin) | `<kiosk>/frontend/` ([public-service](../public-service-kiosk/frontend/), [healthcare](../healthcare-service-kiosk/frontend/)) | Next.js 16, React 19, Tailwind 4, Vercel AI SDK, MCP |
 | Admin dashboard / citizen registry | `/admin` route | Payload CMS 3 on SQLite (auto-created & seeded with 100 synthetic citizens) |
 | Staff registration desk | `/enroll` route | Enroll citizens, bind NFC cards, capture portraits |
 | Settings page | `/settings` route | Edit this terminal's `config.yaml` in the browser and restart the kiosk to apply |
 | Desktop shell | [electron/](electron/) | Electron — packages the server into a fullscreen AppImage/deb, running it on the shell's own Node |
-| Country pack (Malaysia) | `<kiosk>/frontend/src/packs/malaysia/` ([public-service](../public-service-kiosk/frontend/src/packs/malaysia/), [healthcare](../healthcare/frontend/src/packs/malaysia/)) | Everything country-shaped: the folder-defined services (10 in public-service, 19 in healthcare) with their flow planners, ID documents & copy, speech vocabulary, public-service's NLU keywords — a second country is a sibling pack |
-| Peripheral drivers | `<kiosk>/frontend/src/app/api/_lib/peripherals/` ([public-service](../public-service-kiosk/frontend/src/app/api/_lib/peripherals/), [healthcare](../healthcare/frontend/src/app/api/_lib/peripherals/)) | Driver contract + registry for NFC and the scanner; per-model scanner quirks are pluggable profiles |
-| Mock data | `<kiosk>/assets/` (generated), `<kiosk>/frontend/data/` ([public-service](../public-service-kiosk/frontend/data/), [healthcare](../healthcare/frontend/data/)) | Synthetic citizens, ID cards, scannable documents |
+| Country pack (Malaysia) | `<kiosk>/frontend/src/packs/malaysia/` ([public-service](../public-service-kiosk/frontend/src/packs/malaysia/), [healthcare](../healthcare-service-kiosk/frontend/src/packs/malaysia/)) | Everything country-shaped: the folder-defined services (10 in public-service, 19 in healthcare) with their flow planners, ID documents & copy, speech vocabulary — a second country is a sibling pack |
+| Peripheral drivers | `<kiosk>/frontend/src/app/api/_lib/peripherals/` ([public-service](../public-service-kiosk/frontend/src/app/api/_lib/peripherals/), [healthcare](../healthcare-service-kiosk/frontend/src/app/api/_lib/peripherals/)) | Driver contract + registry for NFC and the scanner; per-model scanner quirks are pluggable profiles |
+| Mock data | `<kiosk>/assets/` (generated), `<kiosk>/frontend/data/` ([public-service](../public-service-kiosk/frontend/data/), [healthcare](../healthcare-service-kiosk/frontend/data/)) | Synthetic citizens, ID cards, scannable documents |
 
 ### 🧠 The AI prerequisite: Edge AI Studio
 
 All AI features are HTTP calls to the **Edge AI Demo Studio** gateway on
-`localhost:8080` — LLM (text-generation), OCR (PaddleOCR), face recognition,
+`127.0.0.1:8080` — LLM (text-generation), OCR (PaddleOCR), face recognition,
 speech-to-text and text-to-speech. The launcher scripts build and start it for you,
 and write its `deployment.json` from each kiosk's own `deployment.json`
-([healthcare](../healthcare/deployment.json), [public service](../public-service-kiosk/deployment.json)),
+([healthcare](../healthcare-service-kiosk/deployment.json), [public service](../public-service-kiosk/deployment.json)),
 which lists the studio services every terminal mode runs, with their model and
 devices — `touch` runs OCR and face only, leaving text-generation to a **remote**
 gateway that `llm.base_url` points at; `chat`/`agent` run all five locally
@@ -174,14 +174,14 @@ so `--build` skips the studio setup unless you also pass `--studio`.
 | Goal | Command |
 |---|---|
 | Run the kiosks (normal) | `./start.sh` · `start_win.bat` |
-| Run one of them, this time | `./start.sh --kiosk healthcare` · `healthcare/scripts/start.sh` |
+| Run one of them, this time | `./start.sh --kiosk healthcare` · `healthcare-service-kiosk/scripts/start.sh` |
 | Run the packaged desktop app | `./start.sh --desktop` · `start_win.bat --desktop` (one kiosk: add `--kiosk <name>` when both are set up) |
 | Develop with hot reload | `common/scripts/dev/dev.sh --kiosk healthcare` · `common\scripts\dev\dev.bat --kiosk healthcare` · set up first: `./setup.sh --dev` |
 | Desktop shell in dev mode | `common/scripts/dev/dev.sh --kiosk <name> --desktop` · `common\scripts\dev\dev.bat --kiosk <name> --desktop` |
 | Package the kiosk apps (embedded bundle) | `./setup.sh --build` (non-interactive: `--yes -- --targets=appimage,deb`) · the build alone: `common/scripts/build.sh` |
 | Package the kiosk apps on Windows | `setup_win.bat --build` (non-interactive: `--yes -- --targets=nsis`) · the build alone: `common\scripts\build.bat` |
 | Run the bundle from the checkout | `./setup.sh --bundle` |
-| Run the embedded bundle | `./start.sh --bundle` (add `--desktop` for a desktop window; one kiosk — `--kiosk <name>` or `<kiosk>/scripts/start.sh --bundle`) |
+| Run the embedded bundle | `./start.sh --bundle` (every kiosk it carries; add `--desktop` for a desktop window on the studio, `--kiosk <name>` to open it on that kiosk) |
 | Run without any AI gateway | `./start.sh --mock` / `common/scripts/dev/dev.sh --kiosk <name> --mock` |
 | Desktop apps without any AI gateway | `./setup.sh --build --mock`, then `./start.sh --desktop --mock` (every kiosk at once; one at a time on Windows) |
 | Uninstall an installed terminal | `./uninstall.sh --dry-run` then `./uninstall.sh [--data]` · `uninstall_win.bat` |
@@ -210,7 +210,7 @@ gateway **:8080**.
 Settings resolve as **env vars → `<kiosk>/frontend/config.local.yaml` → `<kiosk>/frontend/config.yaml`
 → code defaults**. `config.yaml` is this terminal's own, gitignored copy — the launchers
 create it from the kiosk's `frontend/configs/` ([public-service](../public-service-kiosk/frontend/configs/),
-[healthcare](../healthcare/frontend/configs/)) on the first run. The committed
+[healthcare](../healthcare-service-kiosk/frontend/configs/)) on the first run. The committed
 `configs/reference.yaml` is the default profile; every option — AI endpoints, NFC reader, document scanner,
 session timing, CMS credentials, prompt overrides, launcher variables — is documented in
 **[docs/configuration.md](docs/configuration.md)**.
@@ -228,7 +228,7 @@ hardwired: identity documents and what they are called, the on-screen and
 spoken copy, the speech-recognition vocabulary, public-service's keyword
 routing and the service catalog itself all live in a **country pack**
 (`<kiosk>/frontend/src/packs/`: [public-service](../public-service-kiosk/frontend/src/packs/),
-[healthcare](../healthcare/frontend/src/packs/)), selected with `country.pack` in
+[healthcare](../healthcare-service-kiosk/frontend/src/packs/)), selected with `country.pack` in
 config.yaml. Formatting (currency, dates, clock) comes from the `locale:`
 block. Adding Vietnamese — or any other country — is a new pack directory
 plus four one-line registrations: the contract and checklist are in
@@ -249,6 +249,7 @@ absent ones, so the full flow runs on a laptop:
 | **Document scanner** | Ricoh/PFU **fi-800R** | SANE `scanimage` with PFU's proprietary **`pfufs`** backend (fi Series Linux driver, which also ships the `pfufsgetscstatus` paper-detect tool) | Duplex ADF batch scan of the citizen's paperwork, packed into one PDF per document |
 | **Webcam** | any UVC webcam | browser `getUserMedia` — no driver package needed | Face verification against the enrolled portrait; portrait capture at the staff desk |
 | **Barcode scanner** (healthcare) | a 2D imager that reads phone screens | HID keyboard wedge, or USB-CDC serial (`barcode.driver`, `barcode.device`) | Reads MRN cards and signed slips |
+| **Receipt printer** (healthcare) | YK ET80, 80 mm ESC/POS thermal with cutter | ESC/POS over USB (Windows: in-box USB Printing Support; Linux: `usblp`) or TCP 9100 (`printer.driver`, `printer.device`) | Prints the patient card and appointment slip with their Code 128 |
 
 The NFC daemon and the SANE frontend come from apt; the `pfufs` scanner backend
 is a licensed download from PFU. Install all of them with the driver script:
@@ -261,16 +262,17 @@ Which driver runs each device is configuration, not code: `nfc.driver`
 (`pcsc` | `mock`), `documents.scanner.driver` (`sane` | `mock`) and
 `documents.scanner.profile` (how the scanner reports "paper loaded" —
 `fi-800r`, or `none` for scanners without a status tool, including SANE's
-virtual `test:0`), and in healthcare `barcode.driver` (`hid` | `serial` | `mock`).
+virtual `test:0`), and in healthcare `barcode.driver` (`hid` | `serial` | `mock`) and
+`printer.driver` (`escpos` | `mock` | `off`).
 A different scanner model means a new status profile in `peripherals/scanner-profiles.ts`
 ([public-service](../public-service-kiosk/frontend/src/app/api/_lib/peripherals/scanner-profiles.ts),
-[healthcare](../healthcare/frontend/src/app/api/_lib/peripherals/scanner-profiles.ts)),
+[healthcare](../healthcare-service-kiosk/frontend/src/app/api/_lib/peripherals/scanner-profiles.ts)),
 not a fork of the driver. `/api/health` reports each peripheral (`nfc`, `scanner`;
-healthcare also `barcode`).
+healthcare also `barcode` and `printer`).
 
 Setup details: each kiosk's `frontend/README.md`
 ([public-service](../public-service-kiosk/frontend/README.md#peripheral-drivers),
-[healthcare](../healthcare/frontend/README.md#peripheral-drivers)) and
+[healthcare](../healthcare-service-kiosk/frontend/README.md#peripheral-drivers)) and
 [docs/configuration.md](docs/configuration.md#hardware).
 
 ---
@@ -287,8 +289,8 @@ Setup details: each kiosk's `frontend/README.md`
 | [docs/country-packs.md](docs/country-packs.md) | Country packs: what one owns, registration points, adding a country |
 | [docs/i18n.md](docs/i18n.md) | The translation layer: what goes through `t()`, formats, matching |
 | [docs/ci.md](docs/ci.md) | The manual CI workflow: setup with the Edge AI Studio, test run, Playwright suites |
-| `<kiosk>/frontend/README.md` ([public-service](../public-service-kiosk/frontend/README.md), [healthcare](../healthcare/frontend/README.md)) | App architecture, service flows, adding services, backend swapping |
+| `<kiosk>/frontend/README.md` ([public-service](../public-service-kiosk/frontend/README.md), [healthcare](../healthcare-service-kiosk/frontend/README.md)) | App architecture, service flows, adding services, backend swapping |
 | [electron/README.md](electron/README.md) | Desktop packaging internals |
-| `<kiosk>/frontend/tests/README.md` ([public-service](../public-service-kiosk/frontend/tests/README.md), [healthcare](../healthcare/frontend/tests/README.md)) | End-to-end test suite |
+| `<kiosk>/frontend/tests/README.md` ([public-service](../public-service-kiosk/frontend/tests/README.md), [healthcare](../healthcare-service-kiosk/frontend/tests/README.md)) | End-to-end test suite |
 
 [Edge AI Studio]: docs/getting-started.md#the-edge-ai-studio-prerequisite

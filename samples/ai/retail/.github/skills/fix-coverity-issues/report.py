@@ -13,7 +13,6 @@ Usage:
 NO_EFFECT findings on "use client"/"use server" directives are collapsed into a
 count — they are accepted noise, not work.
 """
-
 import glob
 import os
 import re
@@ -22,12 +21,11 @@ import sys
 try:
     from defusedxml.ElementTree import fromstring as xml_fromstring
 except ModuleNotFoundError:
-    # Parses local Coverity output only.
-    from xml.etree.ElementTree import fromstring as xml_fromstring  # nosec B405
+    from xml.etree.ElementTree import fromstring as xml_fromstring  # nosec B405 # parses local Coverity output only
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
-REPORTS = os.path.join(REPO, "tests", "coverity", "reports")
+REPORTS = os.path.join(REPO, "common", "tests", "coverity", "reports")
 
 
 def strip_markup(desc: str) -> str:
@@ -52,10 +50,7 @@ def main() -> int:
     out = os.path.join(report, "coverity_capture", "output")
     files = sorted(glob.glob(os.path.join(out, "*.errors.xml")))
     if not files:
-        print(
-            f"no *.errors.xml under {out} — the scan found nothing or failed",
-            file=sys.stderr,
-        )
+        print(f"no *.errors.xml under {out} — the scan found nothing or failed", file=sys.stderr)
         print(f"report dir: {report}")
         return 0
 
@@ -75,9 +70,7 @@ def main() -> int:
             main_ev = next(
                 (ev for ev in err.iter("event") if ev.findtext("main") == "true"), None
             )
-            desc = (
-                main_ev.findtext("description") if main_ev is not None else ""
-            ) or ""
+            desc = (main_ev.findtext("description") if main_ev is not None else "") or ""
             if "use client" in desc or "use server" in desc:
                 directives += 1
                 continue
@@ -85,9 +78,7 @@ def main() -> int:
             line = main_ev.findtext("line") if main_ev is not None else "?"
             rows.append((err, f"{file_}:{line} | {strip_markup(desc)[:140]}"))
         total += len(rows) + directives
-        suffix = (
-            f"  (+{directives} 'use client' directives — ignore)" if directives else ""
-        )
+        suffix = f"  (+{directives} 'use client' directives — ignore)" if directives else ""
         print(f"\n== {name}: {len(rows) + directives}{suffix}")
         for err, row in rows:
             print("  " + row)

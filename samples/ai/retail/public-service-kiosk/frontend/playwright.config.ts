@@ -22,7 +22,7 @@ applyKioskConfig();
 
 // A server someone else runs — the CI starts it through start.sh.
 const KIOSK_BASE = process.env.KIOSK_BASE;
-const BASE_URL = KIOSK_BASE ?? "http://localhost:3000";
+const BASE_URL = KIOSK_BASE ?? "http://127.0.0.1:3000";
 
 export default defineConfig({
   testDir: "./tests",
@@ -83,7 +83,7 @@ export default defineConfig({
     ? undefined
     : {
         command: "npm run dev",
-        url: "http://localhost:3000/api/health",
+        url: "http://127.0.0.1:3000/api/health",
         reuseExistingServer: true,
         timeout: 180_000,
       },

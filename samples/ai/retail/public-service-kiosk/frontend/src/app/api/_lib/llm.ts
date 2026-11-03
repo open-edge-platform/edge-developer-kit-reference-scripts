@@ -137,7 +137,6 @@ export type AnalysisTask =
  *  what it just made up. */
 type TaskPrompt = { context: string[]; checks: string[]; matchesRule: string; wantsAddress: boolean };
 
-/** Per-task user-prompt fragments: context lines, checks, and the matches rule. */
 function taskPrompt(
   task: AnalysisTask,
   requirementLabel: string,
@@ -161,7 +160,7 @@ function taskPrompt(
         "different person is a conflict. ";
     return (
       `2. Holder identity — ${whose}A detail the document simply does not show is not a ` +
-      "conflict. Ignore trivial OCR noise, formatting and letter-case differences."
+      "conflict. Ignore trivial OCR noise, formatting, letter-case and spacing differences."
     );
   };
   const holderMatchesRule =
@@ -219,7 +218,7 @@ function taskPrompt(
             "anywhere on the certificate? Both must be present. They will be in different " +
             "fields (child, father, or mother) — that is expected; do NOT require them to " +
             "appear together or in any particular field. Ignore trivial OCR noise, " +
-            "formatting and letter-case differences.",
+            "formatting, letter-case and spacing differences.",
         ],
         matchesRule: "true only if typeMatches AND both names above are printed on the certificate",
         wantsAddress: false,
@@ -270,7 +269,8 @@ export async function analyzeDocument(args: {
     `Required document: ${args.requirementLabel} (${args.requirementHint})`,
     ...context,
     "",
-    "Scanned document text (from OCR; small recognition errors are normal):",
+    "Scanned document text (from OCR; small recognition errors are normal, and the spaces " +
+      "between words are often lost — TAMANMELATI for TAMAN MELATI):",
     '"""',
     args.text.slice(0, MAX_TEXT_CHARS),
     '"""',
@@ -280,12 +280,13 @@ export async function analyzeDocument(args: {
     "",
     "Return a JSON object with exactly these keys:",
     '{"documentType": "<what kind of document this is>",',
-    ' "holderName": "<full name printed on the document itself, or null>",',
+    ' "holderName": "<full name printed on the document itself, with any spaces the OCR lost restored, or null>",',
     ' "typeMatches": <true only if the scan is the required kind of document>,',
     ...(wantsAddress
       ? [
           ' "address": <the residential address printed in the scanned text above, copied' +
-            " verbatim, or null if it prints none>,",
+            " as printed with only the spaces the OCR lost between words restored, or null if" +
+            " it prints none>,",
         ]
       : []),
     ` "matches": <${matchesRule}>,`,
@@ -294,7 +295,7 @@ export async function analyzeDocument(args: {
     .filter((line) => line !== "")
     .join("\n");
 
-  const content = await completeText(systemPrompt(args.task.kind), prompt);
+  const content = await completeText(systemPrompt(args.task.kind), prompt, { thinking: false });
   if (content === null) {
     return unverifiedAnalysis("The document check did not complete — the AI service did not answer.");
   }
@@ -360,7 +361,7 @@ export async function groupCapturedDocuments(
     '{"documents": [{"pages": [1, 2], "documentType": "<what kind of document this is>"}]}',
   ].join("\n");
 
-  const content = await completeText(systemPrompt("group-capture"), prompt);
+  const content = await completeText(systemPrompt("group-capture"), prompt, { thinking: false });
   return content === null ? null : parseGrouping(content, pages.length);
 }
 
@@ -426,12 +427,34 @@ function mockGrouping(pages: string[]): CapturedDocument[] {
 }
 
 /**
- * One-shot completion against the configured OpenAI-compatible server, for
- * the small single-task prompts this kiosk uses (document verdicts, chat
- * intent routing). Returns the raw assistant text, or null when the LLM is
- * mocked, unconfigured, or unreachable — callers must degrade gracefully.
+ * The extra body, with the thinking switch the deployment set turned off when
+ * `thinking` is false. Only a switch it already set is touched: a server that
+ * has no chat template may reject the field. The chat route's steps that only
+ * relay a flow result ask for it too (see `kioskModel`).
  */
-export async function completeText(system: string, user: string): Promise<string | null> {
+export function extraBody(thinking: boolean | undefined): Record<string, unknown> {
+  const kwargs = EXTRA_BODY.chat_template_kwargs;
+  if (thinking !== false || !kwargs || typeof kwargs !== "object") return EXTRA_BODY;
+  return { ...EXTRA_BODY, chat_template_kwargs: { ...kwargs, enable_thinking: false } };
+}
+
+/**
+ * One-shot completion against the configured OpenAI-compatible server, for
+ * the small single-task prompts this kiosk uses (document verdicts, transcript
+ * repair). Returns the raw assistant text, or null when the LLM is mocked,
+ * unconfigured, or unreachable — callers must degrade gracefully.
+ *
+ * `thinking: false` is for the checks a citizen waits on between feeding a
+ * document and seeing it accepted, where a reasoning model's thinking costs
+ * seconds and buys nothing. (Gemma 4 E4B judged the hospital kiosk's good and
+ * tampered mock documents the same with and without it: about 3 s a document
+ * instead of 24 s.)
+ */
+export async function completeText(
+  system: string,
+  user: string,
+  { thinking }: { thinking?: boolean } = {},
+): Promise<string | null> {
   if (MOCK_LLM || !BASE_URL) return null;
   try {
     const res = await fetch(`${BASE_URL}/chat/completions`, {
@@ -444,7 +467,7 @@ export async function completeText(system: string, user: string): Promise<string
         model: MODEL,
         temperature: 0,
         max_tokens: MAX_TOKENS,
-        ...EXTRA_BODY,
+        ...extraBody(thinking),
         messages: [
           { role: "system", content: system },
           { role: "user", content: user },

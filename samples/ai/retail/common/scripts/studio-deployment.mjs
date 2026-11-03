@@ -9,7 +9,7 @@
  * see docs/configuration.md.
  *
  *   node scripts/studio-deployment.mjs install [--profile <p>] [--file <f>] <studio dir> <kiosk dir>...
- *   node scripts/studio-deployment.mjs services [--profile <p>] [--file <f>] <kiosk dir>...
+ *   node scripts/studio-deployment.mjs addresses [--profile <p>] [--file <f>] <kiosk dir>...
  */
 
 import fs from "node:fs";
@@ -74,10 +74,27 @@ export function kioskServices(kioskDir, mode) {
   return structuredClone(services);
 }
 
-const online = (entry) => entry?.status === "online";
+// A service is one entry, or a list of instances (e.g. a text-to-speech instance per language).
+export const instances = (entry) => (Array.isArray(entry) ? entry : entry ? [entry] : []);
+export const online = (entry) => instances(entry).some((instance) => instance?.status === "online");
 
 export const onlineServices = (deployment) =>
   Object.entries(deployment.services ?? {}).filter(([, entry]) => online(entry)).map(([name]) => name);
+
+/**
+ * Each online instance's studio address, `<type>@<instanceId>`. The kiosks pin
+ * every id: the studio never renames an instance, and an entry whose id it does
+ * not have takes over the type's oldest instance under that one's id — so an
+ * unpinned entry ends up wherever an earlier deployment left it. An entry with
+ * no id is taken to be the type's first instance, which a fresh studio names
+ * after the type.
+ */
+export const onlineAddresses = (deployment) =>
+  Object.entries(deployment.services ?? {}).flatMap(([type, entry]) =>
+    instances(entry)
+      .filter((instance) => instance?.status === "online")
+      .map((instance) => `${type}@${instance.instanceId ?? type}`),
+  );
 
 function kioskId(kioskDir) {
   try {
@@ -154,13 +171,13 @@ function main(argv) {
   }
   const kioskDirs = command === "install" ? dirs.slice(1) : dirs;
   if (command === "install" && !fs.existsSync(dirs[0] ?? "")) throw new Error(`studio dir not found: ${dirs[0]}`);
-  if (!["install", "services"].includes(command) || !kioskDirs.length) {
-    throw new Error("usage: studio-deployment.mjs install|services [--profile <p>] [--file <f>] [<studio dir>] <kiosk dir>...");
+  if (!["install", "addresses"].includes(command) || !kioskDirs.length) {
+    throw new Error("usage: studio-deployment.mjs install|addresses [--profile <p>] [--file <f>] [<studio dir>] <kiosk dir>...");
   }
   const kiosks = kioskDirs.map((dir) => ({ dir, mode: kioskTerminalMode(dir, profile || "reference") }));
   const resolved = resolveDeployment(kiosks, { file, warn });
   if (command === "install") installDeployment(dirs[0], resolved, { info, ok });
-  else for (const name of onlineServices(resolved.deployment)) console.log(name);
+  else for (const address of onlineAddresses(resolved.deployment)) console.log(address);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

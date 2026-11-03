@@ -33,6 +33,9 @@ yarn-error.log*
 # env files — kiosk settings live in config.yaml; .env still overrides it
 .env*
 
+# the browser VAD's runtime and model (scripts/vad-assets.mjs)
+/public/vad/
+
 # the live config: copied from configs/ by the launchers, then filled in
 # (and the copy the settings page keeps of the previous version)
 /config.yaml

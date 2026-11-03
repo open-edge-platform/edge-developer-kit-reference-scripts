@@ -20,7 +20,6 @@ export class PeripheralError<R extends string = string> extends Error {
   }
 }
 
-/** Should this failure fall back to a stand-in, under this policy? */
 export function shouldStandIn(policy: SimulatePolicy, error: PeripheralError): boolean {
   if (policy === "never") return false;
   return policy === "always" || !error.attempted;

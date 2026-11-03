@@ -1,0 +1,487 @@
+// Copyright (C) 2026 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+
+import { activePack } from "@/packs";
+import { readFile } from "fs/promises";
+import path from "path";
+import { z } from "zod";
+import type { McpServer } from "@modelcontextprotocol/server";
+import { categories, getService } from "@/services";
+import {
+  continueFlow,
+  continueRequestsFlow,
+  startFlow,
+  startRequestsFlow,
+} from "../_lib/flows/engine";
+import { REQUESTS_FLOW_ID, type FlowResponse, type QueuedService } from "../_lib/flows/types";
+import { documentMimeType } from "../_lib/media";
+import { callRoute, type RouteResult } from "../_lib/route-call";
+import { POST as applicationsRoute } from "../applications/route";
+import { POST as documentsRoute } from "../documents/route";
+import { GET as feesRoute } from "../fees/route";
+import { GET as healthRoute } from "../health/route";
+import { GET as readIdDocumentRoute } from "../identity/document/route";
+import { POST as verifyIdentityRoute } from "../identity/verify/route";
+import { POST as paymentsRoute } from "../payments/route";
+import {
+  DELETE as requestsDeleteRoute,
+  GET as requestsGetRoute,
+  POST as requestsPostRoute,
+} from "../requests/route";
+
+const ID_DOC = activePack().idDocuments.label;
+
+// Every tool delegates to an exported route handler, so the routes stay the
+// single source of truth for business rules.
+
+function toolResult({ ok, body }: RouteResult) {
+  return {
+    content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }],
+    isError: !ok,
+  };
+}
+
+const failure = (error: string) => toolResult({ ok: false, body: { error } });
+
+const documentNumberField = z
+  .string()
+  .describe(`The citizen's ID document number (${ID_DOC} IC number or passport number)`);
+
+const dataField = z
+  .record(z.string(), z.string())
+  .describe(
+    "Answers collected for the service, keyed by field id — use get_service_details to see " +
+      "the service's flow, fields and priced fields.",
+  );
+
+function flowResult(flow: Awaited<ReturnType<typeof startFlow>>) {
+  return {
+    content: [{ type: "text" as const, text: JSON.stringify(flow, null, 2) }],
+    isError: flow.status === "failed",
+  };
+}
+
+const answersField = z
+  .record(z.string(), z.string())
+  .describe("Answers to the previous response's asks, keyed by ask id");
+
+const uploadsField = z
+  .array(
+    z.object({
+      documentId: z.string().describe("The ask id of a document ask"),
+      fileBase64: z.string().optional().describe("PDF bytes, base64-encoded"),
+      filePath: z.string().optional().describe("Absolute PDF path on the kiosk machine"),
+      fileName: z.string().optional(),
+    }),
+  )
+  .describe("PDF uploads answering document asks");
+
+const signInField = z
+  .string()
+  .optional()
+  .describe("Set by the kiosk from the patient's earlier flow — leave it out");
+
+const citizenField = z
+  .object({ name: z.string(), documentNumber: z.string() })
+  .describe(
+    `My Requests flow only: the previous response's \`citizen\`, passed back unchanged`,
+  );
+
+const thenField = z
+  .array(
+    z.object({
+      serviceId: z.string().describe("Service id from the kiosk's service list"),
+      answers: z
+        .record(z.string(), z.string())
+        .optional()
+        .describe(
+          "What the citizen already said for that service — a doctor, clinic, day, time or place — keyed by its field ids",
+        ),
+    }),
+  )
+  .describe(
+    "The other services the citizen asked for in the same breath, in the order they asked — " +
+      'the bill in "check me in, then let me pay my bill". Each one starts when the one before it ends.',
+  );
+
+/** A queue holds what one person asks for at once, not a script: unknown ids go, and so does a long tail. */
+const MAX_QUEUED = 3;
+
+function withQueue(flow: FlowResponse, then: QueuedService[] | undefined): FlowResponse {
+  const queued = (then ?? [])
+    .filter(({ serviceId }) => serviceId === REQUESTS_FLOW_ID || getService(serviceId))
+    .slice(0, MAX_QUEUED)
+    .map(({ serviceId, answers }) => (answers && Object.keys(answers).length > 0 ? { serviceId, answers } : { serviceId }));
+  return queued.length > 0 ? { ...flow, queued } : flow;
+}
+
+export function registerKioskTools(server: McpServer): void {
+  server.registerTool(
+    "start_service_flow",
+    {
+      title: "Start a guided service flow",
+      description:
+        "PREFERRED way to serve a citizen: runs the whole service server-side — identity " +
+        "verification, registry lookups, eligibility checks, fee quote, payment and " +
+        "submission — stopping at every point that needs the citizen. The response carries " +
+        "ready-to-relay text (`say`) and `asks`: \"options\"/\"text\" asks are questions to " +
+        "answer, \"document\" asks want a PDF upload, and \"action\" asks are physical " +
+        `steps at the kiosk (insert ${ID_DOC}, tap card) the citizen performs and then confirms ` +
+        "with the answer \"done\". Relay each ask, then call continue_service_flow. No " +
+        `other tools are needed for a standard application. Pass in \`answers\` whatever the ` +
+        "citizen already said the service will ask (a doctor, a day, a time): it is kept " +
+        "through the identity check and used when the flow gets there. Asked for several " +
+        "services at once? Start the first and put the rest in `then`: the response carries " +
+        "them as `queued`, and the next one starts — with the citizen's verification — once " +
+        "this flow ends. serviceId " +
+        `"${REQUESTS_FLOW_ID}" runs My Requests instead: verify identity, then list the ` +
+        "citizen's saved and pending applications and offer to resume a saved one.",
+      inputSchema: z.object({
+        serviceId: z
+          .string()
+          .describe(`Service id from the kiosk's service list, or "${REQUESTS_FLOW_ID}" for My Requests`),
+        answers: z
+          .record(z.string(), z.string())
+          .optional()
+          .describe("What the citizen already said, keyed by the service's field ids (as listed with the service, or by get_service_details)"),
+        then: thenField.optional(),
+        signIn: signInField,
+      }),
+    },
+    async ({ serviceId, answers, then, signIn }) =>
+      flowResult(
+        withQueue(
+          await (serviceId === REQUESTS_FLOW_ID ? startRequestsFlow(signIn) : startFlow(serviceId, signIn, answers)),
+          then,
+        ),
+      ),
+  );
+
+  server.registerTool(
+    "continue_service_flow",
+    {
+      title: "Continue a guided service flow",
+      description:
+        "Feeds the citizen's answers (and any document PDFs) into a flow started with " +
+        "start_service_flow. Answer an \"action\" ask with the string \"done\" once the " +
+        "citizen confirms the physical step. Repeat until status is \"completed\" or " +
+        "\"failed\". Pass the previous response's sessionId once it is non-null; before " +
+        "that (during the identity hand-off) pass its serviceId instead, and its " +
+        "`heldAnswers` back in `answers`. A need_input flow " +
+        "is saved as a draft the citizen can also resume at the kiosk touch UI. The My " +
+        `Requests flow always takes serviceId "${REQUESTS_FLOW_ID}" and the previous ` +
+        "response's citizen. Something else the citizen wants once this one is done goes in " +
+        "`then`, added after any services already queued.",
+      inputSchema: z.object({
+        sessionId: z
+          .string()
+          .optional()
+          .describe("sessionId from the previous flow response, once non-null"),
+        serviceId: z
+          .string()
+          .optional()
+          .describe("The flow's serviceId — required while sessionId is still null"),
+        answers: answersField.optional(),
+        uploads: uploadsField.optional(),
+        citizen: citizenField.optional(),
+        then: thenField.optional(),
+        signIn: signInField,
+      }),
+    },
+    async ({ sessionId, serviceId, answers, uploads, citizen, then, signIn }) =>
+      flowResult(
+        withQueue(
+          await (serviceId === REQUESTS_FLOW_ID
+            ? continueRequestsFlow({ sessionId, answers, citizen, signIn })
+            : continueFlow({ sessionId, serviceId, answers, uploads, signIn })),
+          then,
+        ),
+      ),
+  );
+
+  server.registerTool(
+    "get_service_catalog",
+    {
+      title: "List kiosk services",
+      description:
+        "All government services this kiosk offers, grouped by category. Returns each " +
+        "service's id, label, description, and base fee. Call get_service_details for a " +
+        "service's full flow and document requirements.",
+      inputSchema: z.object({}),
+    },
+    async () =>
+      toolResult({
+        ok: true,
+        body: {
+          categories: categories().map((category) => ({
+            id: category.id,
+            label: category.label,
+            description: category.description,
+            groups: category.groups.map((group) => ({
+              label: group.label,
+              services: group.services.map((service) => ({
+                id: service.id,
+                label: service.label,
+                description: service.description,
+                fee: service.fee,
+              })),
+            })),
+          })),
+        },
+      }),
+  );
+
+  server.registerTool(
+    "get_service_details",
+    {
+      title: "Service details",
+      description:
+        "Full definition of one service: the ordered step flow, required supporting " +
+        "documents (with fallback relationship proofs), fee and per-answer pricing. Use it " +
+        "to learn which inputs to collect from the citizen before quoting, paying, or " +
+        "submitting.",
+      inputSchema: z.object({
+        serviceId: z.string().describe("Service id from get_service_catalog"),
+      }),
+    },
+    async ({ serviceId }) => {
+      const service = getService(serviceId);
+      if (!service) return failure(`unknown serviceId "${serviceId}"`);
+      const details = { ...service };
+      delete details.dir;
+      return toolResult({ ok: true, body: details });
+    },
+  );
+
+  server.registerTool(
+    "read_id_document",
+    {
+      title: "Read inserted ID document",
+      description:
+        `Reads the ${ID_DOC} or passport currently inserted in the kiosk's document reader and ` +
+        "returns its type, number, and holder name. This is the first step of identity " +
+        "verification; follow it with verify_identity.",
+      inputSchema: z.object({}),
+    },
+    async () => toolResult(await callRoute(readIdDocumentRoute)),
+  );
+
+  server.registerTool(
+    "verify_identity",
+    {
+      title: "Verify identity",
+      description:
+        "Matches a biometric (face scan at the kiosk) against the citizen " +
+        "record for the ID document read by read_id_document. Returns the citizen's " +
+        "profile on success. Identity must be verified before paying or submitting on a " +
+        "citizen's behalf. The thumbprint scanner is not supported for now.",
+      inputSchema: z.object({
+        method: z
+          .enum(["face", "fingerprint"])
+          .describe("Biometric capture method (fingerprint is not supported for now)"),
+        documentNumber: documentNumberField,
+      }),
+    },
+    async ({ method, documentNumber }) =>
+      toolResult(await callRoute(verifyIdentityRoute, { json: { method, documentNumber } })),
+  );
+
+  server.registerTool(
+    "get_fee_quote",
+    {
+      title: "Quote service fee",
+      description:
+        "Fee breakdown (service fee, processing fee, total) for a service given the answers " +
+        "collected so far. Some services price from the answers collected — get_service_details " +
+        "shows which fields feed the quote. Always quote before pay_service_fee.",
+      inputSchema: z.object({
+        serviceId: z.string().describe("Service id from get_service_catalog"),
+        data: dataField.optional(),
+      }),
+    },
+    async ({ serviceId, data }) =>
+      toolResult(await callRoute(feesRoute, { params: { serviceId, ...data } })),
+  );
+
+  server.registerTool(
+    "verify_document",
+    {
+      title: "Upload and verify a supporting document",
+      description:
+        "Uploads a supporting PDF for a service requirement and runs OCR + AI verification " +
+        "that it is the right kind of document and belongs to the expected holder. Provide " +
+        "the PDF either as an absolute file path on the kiosk machine or as base64 bytes. " +
+        "Get documentId from get_service_details (documents[].id, or a nested " +
+        "relationshipProof.id when proving a family link).",
+      inputSchema: z.object({
+        serviceId: z.string().describe("Service id from get_service_catalog"),
+        documentId: z.string().describe("Requirement id from get_service_details"),
+        documentNumber: documentNumberField
+          .optional()
+          .describe("Verified citizen's ID number — enables the holder-match check"),
+        relatedName: z
+          .string()
+          .optional()
+          .describe("For relationship proofs: the other party's name as it appears on the proof"),
+        filePath: z
+          .string()
+          .optional()
+          .describe("Absolute path of the PDF on the kiosk machine"),
+        fileBase64: z
+          .string()
+          .optional()
+          .describe("PDF file content, base64-encoded — alternative to filePath"),
+        fileName: z.string().optional().describe("Original file name, for display"),
+      }),
+    },
+    async ({ serviceId, documentId, documentNumber, relatedName, filePath, fileBase64, fileName }) => {
+      let bytes: Buffer;
+      let name: string;
+      if (filePath) {
+        try {
+          bytes = await readFile(filePath);
+        } catch {
+          return failure(`could not read a document at "${filePath}"`);
+        }
+        name = fileName ?? path.basename(filePath);
+      } else if (fileBase64) {
+        bytes = Buffer.from(fileBase64, "base64");
+        name = fileName ?? `${documentId}.pdf`;
+      } else {
+        return failure("provide the document via filePath or fileBase64");
+      }
+      const form = new FormData();
+      form.set("serviceId", serviceId);
+      form.set("documentId", documentId);
+      if (documentNumber) form.set("documentNumber", documentNumber);
+      if (relatedName) form.set("relatedName", relatedName);
+      form.set("file", new File([new Uint8Array(bytes)], name, {
+        type: documentMimeType(name) ?? "application/octet-stream",
+      }));
+      return toolResult(await callRoute(documentsRoute, { form }));
+    },
+  );
+
+  server.registerTool(
+    "pay_service_fee",
+    {
+      title: "Pay service fee",
+      description:
+        "Captures payment for a service at the kiosk terminal and returns the payment id " +
+        "and receipt details. Include the same data used for the quote. Free services cannot " +
+        "be paid; pass the resulting paymentId to submit_application for fee-bearing services.",
+      inputSchema: z.object({
+        serviceId: z.string().describe("Service id from get_service_catalog"),
+        method: z.enum(["card", "qr", "cash"]).describe("Payment method chosen by the citizen"),
+        data: dataField.optional(),
+        documentNumber: documentNumberField
+          .optional()
+          .describe("Verified citizen's ID number, to link the payment to their record"),
+      }),
+    },
+    async ({ serviceId, method, data, documentNumber }) =>
+      toolResult(
+        await callRoute(paymentsRoute, {
+          json: { serviceId, method, data: data ?? {}, documentNumber },
+        }),
+      ),
+  );
+
+  server.registerTool(
+    "submit_application",
+    {
+      title: "Submit application",
+      description:
+        "Files the service application for review and returns a case id with the review " +
+        "status. A pending duplicate case for the same service puts the new one on hold with " +
+        "the reason. Verify identity first, and pay before submitting when the service has a " +
+        "fee.",
+      inputSchema: z.object({
+        serviceId: z.string().describe("Service id from get_service_catalog"),
+        documentNumber: documentNumberField.optional(),
+        paymentId: z
+          .string()
+          .optional()
+          .describe("Payment id from pay_service_fee, for fee-bearing services"),
+        data: dataField.optional(),
+      }),
+    },
+    async ({ serviceId, documentNumber, paymentId, data }) =>
+      toolResult(
+        await callRoute(applicationsRoute, {
+          json: { serviceId, documentNumber, paymentId, data: data ?? {} },
+        }),
+      ),
+  );
+
+  server.registerTool(
+    "list_requests",
+    {
+      title: "List saved and pending requests",
+      description:
+        "One citizen's saved (paused) drafts and submitted applications still pending " +
+        "review — always scoped to a document number, never listed globally. Drafts " +
+        "include the step and answers needed to resume; pending cases show their review " +
+        "status. Check this before re-applying to avoid duplicates.",
+      inputSchema: z.object({
+        documentNumber: documentNumberField,
+        serviceId: z.string().optional().describe("Filter by service"),
+      }),
+    },
+    async ({ documentNumber, serviceId }) =>
+      toolResult(await callRoute(requestsGetRoute, { params: { documentNumber, serviceId } })),
+  );
+
+  server.registerTool(
+    "save_request_draft",
+    {
+      title: "Save request draft",
+      description:
+        "Saves an in-progress service request so the citizen can resume later. One draft " +
+        "per citizen and service — saving again updates the existing draft.",
+      inputSchema: z.object({
+        serviceId: z.string().describe("Service id from get_service_catalog"),
+        documentNumber: documentNumberField,
+        stepId: z.string().describe("Flow step id the citizen paused at (see the service's flow)"),
+        stepIndex: z.number().int().min(0).describe("Index of that step in the service's flow"),
+        data: dataField.optional(),
+        documents: z
+          .record(z.string(), z.unknown())
+          .optional()
+          .describe("Document upload state collected so far, keyed by requirement id"),
+      }),
+    },
+    async ({ serviceId, documentNumber, stepId, stepIndex, data, documents }) =>
+      toolResult(
+        await callRoute(requestsPostRoute, {
+          json: { serviceId, documentNumber, stepId, stepIndex, data, documents },
+        }),
+      ),
+  );
+
+  server.registerTool(
+    "delete_request_draft",
+    {
+      title: "Delete request draft",
+      description: "Discards a saved draft by its request id (REQ-…).",
+      inputSchema: z.object({
+        requestId: z.string().describe("Request id from list_requests (kind \"saved\")"),
+      }),
+    },
+    async ({ requestId }) =>
+      toolResult(await callRoute(requestsDeleteRoute, { method: "DELETE", params: { requestId } })),
+  );
+
+  server.registerTool(
+    "check_ai_health",
+    {
+      title: "Check AI service health",
+      description:
+        "Availability of the kiosk's document-understanding services (LLM and OCR). A " +
+        "service that is \"off\" is intentionally not configured; only \"unreachable\" " +
+        "means something is down. Document verification degrades gracefully without them.",
+      inputSchema: z.object({}),
+    },
+    async () => toolResult(await callRoute(healthRoute)),
+  );
+}

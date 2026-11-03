@@ -18,9 +18,7 @@ import { kioskMode } from "@/lib/kiosk-mode";
  */
 export function KioskEntry() {
   const configured = kioskMode();
-  const [mode, setMode] = useState<"touch" | "chat">(
-    configured === "touch" ? "touch" : "chat",
-  );
+  const [mode, setMode] = useState(configured);
   const modeSwitch = useMemo(
     () => ({ mode, toggle: () => setMode(mode === "touch" ? "chat" : "touch") }),
     [mode],
@@ -28,12 +26,7 @@ export function KioskEntry() {
 
   return (
     <ModeSwitchContext.Provider value={modeSwitch}>
-      {mode === "touch" ? (
-        <KioskApp />
-      ) : (
-        // Same component for both assistants — only the endpoint behind it differs.
-        <ChatKiosk api={configured === "agent" ? "/api/chat/agent" : "/api/chat"} />
-      )}
+      {mode === "touch" ? <KioskApp /> : <ChatKiosk />}
     </ModeSwitchContext.Provider>
   );
 }

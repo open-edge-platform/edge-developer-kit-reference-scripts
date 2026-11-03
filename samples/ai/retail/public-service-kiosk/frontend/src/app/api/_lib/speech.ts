@@ -1,16 +1,16 @@
 // Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-import type { StreamTarget } from "@/lib/audio/speech-stream";
 import { safeUrl, URL_CHARS } from "@/lib/validation";
 import { activePack } from "@/packs";
 import { healthCheckEnabled, probeService, type ServiceHealth } from "./health";
 import {
-  chatLanguages,
   defaultLanguage,
-  detectLanguage,
+  kioskLanguage,
+  languageCode,
   recognizerLanguage,
   supportedLanguage,
+  voiceFor,
 } from "./languages";
 import { completeText } from "./llm";
 import { systemPrompt } from "./prompts";
@@ -28,6 +28,8 @@ const TTS_VOICE = process.env.KIOSK_TTS_VOICE ?? "af_heart";
 const TTS_SPEED = Number(process.env.KIOSK_TTS_SPEED ?? 1.3);
 const TTS_FORMAT = process.env.KIOSK_TTS_FORMAT ?? "mp3";
 const TTS_MAX_CHARS = Number(process.env.KIOSK_TTS_MAX_CHARS ?? 1_500);
+/** The most of one reply that is read aloud. */
+export const ttsMaxChars = () => TTS_MAX_CHARS;
 
 /** The Studio's STT API takes no prompt or hot-word parameter, so local terms the recogniser
  *  mangles ("MyKad" -> "my cad") are repaired in the transcript instead. */
@@ -107,10 +109,11 @@ async function repairWithLlm(text: string): Promise<string | null> {
   }
 }
 
-/** The model first (it catches unlisted mishearings), then the alias list as a floor. */
-export async function repairTranscript(text: string): Promise<string> {
+/** The model first (it catches unlisted mishearings), then the alias list as
+ *  a floor. An `aborted` request skips the model: nobody waits for the answer. */
+export async function repairTranscript(text: string, aborted?: AbortSignal): Promise<string> {
   if (!text) return text;
-  const byLlm = (await repairWithLlm(text)) ?? text;
+  const byLlm = aborted?.aborted ? text : ((await repairWithLlm(text)) ?? text);
   return applyVocabulary(byLlm);
 }
 
@@ -146,162 +149,133 @@ export const ttsHealth = (): Promise<ServiceHealth> =>
     enabled: healthCheckEnabled("KIOSK_TTS_HEALTH_CHECK"),
   });
 
-/** One raw recognizer call: the text ("" when nothing was picked up) and the
- *  language the recognizer says it heard, when it says. */
+/**
+ * One recognizer call, listening for `language` (`auto`: Whisper detects
+ * it): the text ("" when nothing was picked up) and the language Whisper
+ * says it heard. The studio's OEP backend says (in `verbose_json`); its
+ * OVMS backend does not.
+ */
 async function recognize(
   audio: Blob,
   fileName: string,
-): Promise<{ text: string; language?: string }> {
+  language: string,
+  signal?: AbortSignal,
+): Promise<{ text: string; heard?: string }> {
   if (!STT_BASE_URL) throw new SpeechServiceError("speech-to-text is not configured");
 
   const form = new FormData();
   form.append("file", audio, fileName);
-  form.append("language", recognizerLanguage());
+  form.append("language", language);
   form.append("response_format", "verbose_json");
   form.append("use_denoise", String(STT_DENOISE));
 
+  const timeout = AbortSignal.timeout(STT_TIMEOUT_MS);
   const res = await request(`${STT_BASE_URL}/audio/transcriptions`, {
     method: "POST",
     body: form,
-    signal: AbortSignal.timeout(STT_TIMEOUT_MS),
+    signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
   });
   const body = (await res.json().catch(() => null)) as {
     text?: string;
     language?: unknown;
   } | null;
-  return { text: body?.text?.trim() ?? "", language: reportedLanguage(body?.language) };
-}
-
-/** A recognizer's language label (`en`, `<|en|>`) as one of the kiosk's codes. */
-export function reportedLanguage(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
-  const code = value.replace(/^<\|/, "").replace(/\|>$/, "").trim().toLowerCase();
-  return chatLanguages().includes(code) ? code : undefined;
+  return { text: body?.text?.trim() ?? "", heard: languageCode(body?.language) };
 }
 
 /**
- * A recognized utterance made ready to send: the language it was spoken in,
- * then the local terms the recognizer mangled repaired. `language` is the
- * session's current one; `reported` the one the recognizer heard, when it
- * says. Batch clips and streamed utterances both finish here.
- */
-export async function finishTranscript(
-  heard: string,
-  language?: string,
-  reported?: string,
-): Promise<{ text: string; language: string }> {
-  const current = supportedLanguage(language);
-  const detected = await detectLanguage(heard, current, reportedLanguage(reported) ?? current);
-  // The repair prompt and its worked examples are tuned to the pack's language.
-  const text =
-    detected === defaultLanguage() ? await repairTranscript(heard) : applyVocabulary(heard);
-  return { text, language: detected };
-}
-
-/** The trailing silence that ends a streamed utterance. The OVMS worker cuts
- *  in 0.5 s chunks, so the default is exactly two of them. */
-const STREAM_PAUSE_MS = Number(process.env.NEXT_PUBLIC_KIOSK_VAD_SILENCE_MS) || 1_000;
-/** The worker VAD's own threshold, unset = its default. */
-const STREAM_VAD_THRESHOLD = Number(process.env.KIOSK_STT_VAD_THRESHOLD) || undefined;
-/** The OVMS worker's 15 s default would split a long answer into two turns. */
-const STREAM_MAX_SPEECH_S = 30;
-
-/** A studio instance address: origin, service type, instance id. */
-const STUDIO_ADDRESS = /^(https?:\/\/[^/]+)\/api\/([a-z0-9-]+)@([a-z0-9-]+)(?:\/|$)/;
-const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]"]);
-
-type StudioServiceRow = {
-  type?: string;
-  instanceId?: string;
-  status?: string;
-  port?: number | null;
-  metadata?: { sttBackend?: string } | null;
-  applied?: { metadata?: { sttBackend?: string } | null } | null;
-};
-
-/**
- * Where the browser streams the microphone: the socket of the studio worker
- * behind `voice.stt.base_url`. The studio proxies HTTP only, so the socket is
- * on the worker's own port, looked up in the studio's service list (which
- * sends no CORS headers, hence here and not in the browser). Workers listen
- * on 127.0.0.1 only, so a studio on another machine cannot stream.
+ * An utterance to text, and the language it was spoken in — Whisper's call,
+ * never the kiosk's own guess: the recognizer listens with `language=auto`
+ * and says which language it heard.
  *
- * Null when the recognizer is not a studio worker the browser can reach —
- * clips are uploaded instead; throws when it is one but is not running.
+ * That language is the utterance's when the kiosk speaks it, or a close one
+ * it speaks instead (Whisper writes some Malay as Indonesian). One the kiosk
+ * does not speak is far more often Whisper picking wrong than a citizen
+ * speaking it — short Malay comes back as Portuguese or Korean, Tamil as
+ * Hindi, most of them in hall noise — so the utterance is transcribed again,
+ * in the session's current `language`, and stays in it. A recognizer that
+ * names no language (the OVMS backend) leaves the session's language as it
+ * was. Then the local terms the recognizer mangled are repaired.
+ *
+ * `signal`: the browser's request; once it is gone (the citizen talked on
+ * after the pause this was recognized at), the second pass and the repair
+ * are skipped.
  */
-export async function speechStreamTarget(): Promise<StreamTarget | null> {
-  const address = STT_BASE_URL?.match(STUDIO_ADDRESS);
-  if (!address) return null;
-  const [, origin, type, instanceId] = address;
-  if (!LOOPBACK.has(new URL(origin).hostname)) return null;
-
-  const res = await request(`${origin}/api/services`, { signal: AbortSignal.timeout(5_000) });
-  const rows = (await res.json().catch(() => null)) as StudioServiceRow[] | null;
-  const row = Array.isArray(rows)
-    ? rows.find((r) => r?.type === type && r?.instanceId === instanceId)
-    : undefined;
-  if (!row || row.status !== "active" || typeof row.port !== "number") {
-    throw new SpeechServiceError(`${type}@${instanceId} is not running`);
-  }
-
-  const socket = `ws://127.0.0.1:${row.port}`;
-  const language = recognizerLanguage();
-  const backend = row.applied?.metadata?.sttBackend ?? row.metadata?.sttBackend ?? "oep";
-  if (backend === "ovms") {
-    const query = new URLSearchParams({
-      language,
-      pause_duration: String(STREAM_PAUSE_MS / 1_000),
-      max_continuous_speech_s: String(STREAM_MAX_SPEECH_S),
-    });
-    if (STREAM_VAD_THRESHOLD !== undefined) query.set("vad_threshold", String(STREAM_VAD_THRESHOLD));
-    return { protocol: "audio-stream", url: `${socket}/v1/audio/stream?${query}` };
-  }
-  // The realtime socket takes no `auto`: leaving the language out detects it.
-  const query = new URLSearchParams({ intent: "transcription" });
-  if (language !== "auto") query.set("language", language);
-  return {
-    protocol: "realtime",
-    url: `${socket}/v1/realtime?${query}`,
-    turnDetection: {
-      silence_duration_ms: STREAM_PAUSE_MS,
-      ...(STREAM_VAD_THRESHOLD !== undefined ? { threshold: STREAM_VAD_THRESHOLD } : {}),
-    },
-  };
-}
-
-/** A recorded clip to text, plus the language it was spoken in. */
 export async function transcribeAudio(
   audio: Blob,
   fileName: string,
   language?: string,
-): Promise<{ text: string; language: string }> {
-  const heard = await recognize(audio, fileName);
-  return finishTranscript(heard.text, language, heard.language);
+  signal?: AbortSignal,
+): Promise<{ text: string; language: string; heard?: string }> {
+  const current = supportedLanguage(language);
+  const listen = recognizerLanguage();
+  const first = await recognize(audio, fileName, listen, signal);
+  const heard = first.heard;
+  let text = first.text;
+  let spoken = listen === "auto" ? current : listen;
+  if (listen === "auto" && heard) {
+    const kiosk = kioskLanguage(heard);
+    if (kiosk) spoken = kiosk;
+    else if (text && !signal?.aborted) ({ text } = await recognize(audio, fileName, current, signal));
+  }
+  // The repair prompt and its worked examples are tuned to the pack's language.
+  text = spoken === defaultLanguage() ? await repairTranscript(text, signal) : applyVocabulary(text);
+  return { text, language: spoken, ...(heard ? { heard } : {}) };
 }
 
 export type Speech = { audio: ArrayBuffer; contentType: string };
 
+/** A studio instance id: what follows `@` in its address. */
+const INSTANCE_ID = /^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/;
+
+/** The text-to-speech base URL for `instance` (languages.ts `voiceFor`): a base
+ *  URL as given, or a studio instance id put in `voice.tts.base_url`'s address. */
+function ttsBaseUrl(instance: string | undefined): string | undefined {
+  if (!instance || !TTS_BASE_URL) return TTS_BASE_URL;
+  if (/^https?:\/\//i.test(instance)) return instance.replace(/\/$/, "");
+  if (!INSTANCE_ID.test(instance)) {
+    throw new SpeechServiceError(`"${instance}" is neither a base URL nor a studio instance id`);
+  }
+  const address = /\/api\/text-to-speech@[a-z0-9-]+/;
+  if (!address.test(TTS_BASE_URL)) {
+    throw new SpeechServiceError(
+      `voice.tts.base_url is not a studio instance address, so "${instance}" cannot be found next to it`,
+    );
+  }
+  return TTS_BASE_URL.replace(address, `/api/text-to-speech@${instance}`);
+}
+
+/**
+ * `language` picks the voice — and the instance it is on — that
+ * `voice.languages` gives it (languages.ts `voiceFor`); `voice` overrides
+ * that with one on `voice.tts`. `format` overrides the configured one — the
+ * avatar takes WAV whatever the speakers get.
+ */
 export async function synthesizeSpeech(
   text: string,
-  options: { voice?: string; speed?: number } = {},
+  options: { language?: string; voice?: string; speed?: number; format?: string } = {},
 ): Promise<Speech> {
   if (!TTS_BASE_URL) throw new SpeechServiceError("text-to-speech is not configured");
 
-  const res = await request(`${TTS_BASE_URL}/audio/speech`, {
+  const chosen: { voice?: string; instance?: string } = options.voice
+    ? { voice: options.voice }
+    : voiceFor(options.language);
+  const baseUrl = ttsBaseUrl(chosen.instance);
+  const format = options.format ?? TTS_FORMAT;
+  const res = await request(`${baseUrl}/audio/speech`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       input: text.slice(0, TTS_MAX_CHARS),
-      voice: options.voice ?? TTS_VOICE,
+      voice: chosen.voice ?? TTS_VOICE,
       speed: options.speed ?? TTS_SPEED,
-      response_format: TTS_FORMAT,
+      response_format: format,
       stream: false,
     }),
     signal: AbortSignal.timeout(TTS_TIMEOUT_MS),
   });
   return {
     audio: await res.arrayBuffer(),
-    contentType: res.headers.get("content-type") ?? CONTENT_TYPES[TTS_FORMAT] ?? "audio/mpeg",
+    contentType: res.headers.get("content-type") ?? CONTENT_TYPES[format] ?? "audio/mpeg",
   };
 }
 

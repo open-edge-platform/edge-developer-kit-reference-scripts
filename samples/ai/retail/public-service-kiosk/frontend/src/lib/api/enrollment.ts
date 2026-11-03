@@ -51,9 +51,10 @@ export type CardRead = {
 };
 
 /** The bench route, not the identity step — it never stands a citizen in
- *  when no reader answers, so a simulated serial can never be bound. */
-export function readCard(timeoutMs: number, signal?: AbortSignal) {
-  return apiGet<CardRead>(`/identity/card?timeout=${timeoutMs}`, signal);
+ *  when no reader answers, so a simulated serial can never be bound.
+ *  `handoff`: the card it sees is the one the chat's next identity read gets. */
+export function readCard(timeoutMs: number, signal?: AbortSignal, { handoff = false } = {}) {
+  return apiGet<CardRead>(`/identity/card?timeout=${timeoutMs}${handoff ? "&handoff=1" : ""}`, signal);
 }
 
 export function searchCitizens(q: string) {

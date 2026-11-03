@@ -195,9 +195,7 @@ const mykadCopy = (P) => (d) => {
   // Chip
   d.roundedRect(cardX + 16, y + 52, 34, 28, 4).lineWidth(1).strokeColor("#b39b45").stroke();
   d.fontSize(5.5).fillColor("#b39b45").text("CIP", cardX + 27, y + 62);
-  // ID number
   d.fontSize(15).fillColor("#111111").font("Helvetica-Bold").text(P.id, cardX + 62, y + 46);
-  // Name + address
   d.fontSize(10).text(P.name, cardX + 62, y + 74, { width: 160 });
   d.fontSize(7.5).fillColor("#333333").font("Helvetica")
     .text(P.address, cardX + 62, y + 102, { width: 150 });

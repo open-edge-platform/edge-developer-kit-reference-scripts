@@ -108,13 +108,13 @@ const SETTINGS = {
     wait_for_speech: "NEXT_PUBLIC_KIOSK_WAIT_FOR_SPEECH",
     barge_in: "NEXT_PUBLIC_KIOSK_BARGE_IN",
     vad_silence_ms: "NEXT_PUBLIC_KIOSK_VAD_SILENCE_MS",
+    vad_threshold: "NEXT_PUBLIC_KIOSK_VAD_THRESHOLD",
     vad_sensitivity: "NEXT_PUBLIC_KIOSK_VAD_SENSITIVITY",
     stt: {
       base_url: "KIOSK_STT_BASE_URL",
       timeout_ms: "KIOSK_STT_TIMEOUT_MS",
       language: "KIOSK_STT_LANGUAGE",
       denoise: "KIOSK_STT_DENOISE",
-      vad_threshold: "KIOSK_STT_VAD_THRESHOLD",
       vocabulary: "KIOSK_STT_VOCABULARY",
       health_path: "KIOSK_STT_HEALTH_PATH",
       health_check: "KIOSK_STT_HEALTH_CHECK",
@@ -129,19 +129,21 @@ const SETTINGS = {
       health_path: "KIOSK_TTS_HEALTH_PATH",
       health_check: "KIOSK_TTS_HEALTH_CHECK",
     },
+    avatar: {
+      base_url: "KIOSK_AVATAR_BASE_URL",
+      timeout_ms: "KIOSK_AVATAR_TIMEOUT_MS",
+      health_path: "KIOSK_AVATAR_HEALTH_PATH",
+      health_check: "KIOSK_AVATAR_HEALTH_CHECK",
+    },
   },
   prompts: {
-    assistant: "KIOSK_PROMPT_ASSISTANT",
     agent: "KIOSK_PROMPT_AGENT",
     agent_single: "KIOSK_PROMPT_AGENT_SINGLE",
     document: "KIOSK_PROMPT_DOCUMENT",
     address_proof: "KIOSK_PROMPT_ADDRESS_PROOF",
     relationship_proof: "KIOSK_PROMPT_RELATIONSHIP_PROOF",
     group_capture: "KIOSK_PROMPT_GROUP_CAPTURE",
-    route_service: "KIOSK_PROMPT_ROUTE_SERVICE",
-    extract_answers: "KIOSK_PROMPT_EXTRACT_ANSWERS",
     repair_transcript: "KIOSK_PROMPT_REPAIR_TRANSCRIPT",
-    detect_language: "KIOSK_PROMPT_DETECT_LANGUAGE",
   },
   documents: {
     source: "NEXT_PUBLIC_KIOSK_DOCUMENT_SOURCE",
@@ -184,12 +186,19 @@ const SERIALIZE: Record<string, (value: unknown) => string> = {
           .map(([uid, citizen]) => `${uid}=${citizen}`)
           .join(";"),
   // A YAML mapping (or list) of language -> TTS voice, joined into
-  // "en=af_heart;ms=" — an absent voice means "the default voice".
+  // "en=af_heart;ms=" — an absent voice means "the language's default voice".
+  // A voice on another instance is "voice@instance", or { voice, instance }.
   KIOSK_VOICE_LANGUAGES: (value) => {
     if (typeof value === "string") return value;
     if (Array.isArray(value)) return value.map((language) => `${String(language)}=`).join(";");
+    const voiceOf = (voice: unknown): string => {
+      if (voice == null) return "";
+      if (typeof voice !== "object") return String(voice);
+      const { voice: id, instance } = voice as { voice?: unknown; instance?: unknown };
+      return `${id == null ? "" : String(id)}${instance == null ? "" : `@${String(instance)}`}`;
+    };
     return Object.entries(value as Record<string, unknown>)
-      .map(([language, voice]) => `${language}=${voice == null ? "" : String(voice)}`)
+      .map(([language, voice]) => `${language}=${voiceOf(voice)}`)
       .join(";");
   },
   // Canonical: [alias, alias] -> "Canonical=alias|alias;Canonical=alias"

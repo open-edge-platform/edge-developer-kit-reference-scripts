@@ -10,8 +10,7 @@ import type { Service as PayloadService } from '@/payload-types'
 export const sample: Sample = {
   id: 'public-service-kiosk',
   title: 'Public Service Kiosk',
-  description:
-    'A self-service government kiosk — touch, chat and voice-agent terminals with identity verification and AI document checks.',
+  description: __DESCRIPTION__,
   longDescription:
     'The Public Service Kiosk runs as a hidden child process managed by the studio, ' +
     'like the Edge AI suites: start the services below and the kiosk server boots ' +
@@ -28,12 +27,12 @@ export const sample: Sample = {
     { serviceId: 'speech-to-text', role: 'optional' },
     { serviceId: 'text-to-speech', role: 'optional' },
   ],
-  tags: ['Kiosk', 'Government Services', 'Touch', 'Chat', 'Agent', 'OCR'],
+  tags: __TAGS__,
   image: sampleImage,
   supportedOS: ['linux', 'windows'],
   demo: {
     type: 'external',
-    externalUrl: 'http://localhost:__KIOSK_PORT__',
+    externalUrl: 'http://127.0.0.1:__KIOSK_PORT__',
     externalLabel: 'Open the kiosk',
     externalDescription:
       'The kiosk terminal runs as a studio-managed background process on this machine.',
@@ -44,12 +43,12 @@ export const sample: Sample = {
       'Embedded build of the Public Service Kiosk. The studio starts the kiosk server ' +
       'as a background worker (`workers/public-service-kiosk`) and the kiosk talks to the ' +
       'studio’s AI services on the local gateway.\n\n' +
-      '- [Kiosk terminal](http://localhost:__KIOSK_PORT__)\n' +
-      '- [Registration desk](http://localhost:__KIOSK_PORT__/enroll) — staff; sign in with the CMS admin account\n' +
-      '- [Kiosk settings](http://localhost:__KIOSK_PORT__/settings) — staff; edits the terminal\'s config.yaml and restarts the kiosk\n' +
-      '- [Admin dashboard](http://localhost:__KIOSK_PORT__/admin)\n' +
-      '- Health: http://localhost:__KIOSK_PORT__/api/health\n\n' +
-      'Touch-mode installs need only **ocr** and **face-recognition**; chat/agent installs ' +
+      '- [Kiosk terminal](http://127.0.0.1:__KIOSK_PORT__)\n' +
+      '- [Registration desk](http://127.0.0.1:__KIOSK_PORT__/enroll) — staff; sign in with the CMS admin account\n' +
+      '- [Kiosk settings](http://127.0.0.1:__KIOSK_PORT__/settings) — staff; edits the terminal\'s config.yaml and restarts the kiosk\n' +
+      '- [Admin dashboard](http://127.0.0.1:__KIOSK_PORT__/admin)\n' +
+      '- Health: http://127.0.0.1:__KIOSK_PORT__/api/health\n\n' +
+      'Touch-mode installs need only **ocr** and **face-recognition**; chat installs ' +
       'also use the speech services. text-generation runs here unless the kiosk was built ' +
       'with a remote LLM (`--llm remote`, the touch default).',
   },

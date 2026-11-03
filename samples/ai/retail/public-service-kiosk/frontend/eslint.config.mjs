@@ -15,6 +15,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // ONNX Runtime Web, copied out of node_modules by scripts/vad-assets.mjs
+    "public/vad/**",
   ]),
 ]);
 

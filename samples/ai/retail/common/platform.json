@@ -1,0 +1,6 @@
+{
+  "productName": "Vertical Reference Solutions Blueprint",
+  "appId": "com.verticalreferencesolutionsblueprint.desktop",
+  "executableName": "kiosk-desktop",
+  "dataDir": "VRSB"
+}

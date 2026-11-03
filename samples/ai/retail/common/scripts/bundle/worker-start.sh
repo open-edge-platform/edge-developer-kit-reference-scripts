@@ -46,7 +46,10 @@ command -v "$NODE" >/dev/null 2>&1 || NODE="node"
 
 cd "$BUNDLE/server"
 export NODE_ENV=production
-export PORT="$PORT"
+# --port is allocated by the studio, which health-checks it there; kiosk.cjs
+# relays it to the kiosk's own fixed port, where the shell and links find it.
+export KIOSK_RELAY_PORT="$PORT"
+export PORT=__KIOSK_PORT__
 export HOSTNAME=127.0.0.1
 export KIOSK_DATA_DIR="$DATA"
 export KIOSK_UPLOADS_DIR="$DATA/documents"

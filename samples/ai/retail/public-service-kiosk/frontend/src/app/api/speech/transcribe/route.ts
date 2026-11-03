@@ -5,12 +5,13 @@ import { badRequest, unavailable } from "../../_lib/http";
 import { SpeechServiceError, sttEnabled, transcribeAudio } from "../../_lib/speech";
 
 /**
- * Microphone → text for the assistant kiosk. The browser posts the recorded
- * clip as multipart `file`, with the session's current language as an
- * optional `language` hint; the reply is `{ text, language }` — `text` empty
- * when the recorder picked up nothing intelligible, `language` the one the
- * utterance was detected to be in (always the hint on a single-language
- * kiosk).
+ * Microphone → text for the assistant kiosk. The browser posts one utterance
+ * (a 16 kHz WAV its VAD cut) as multipart `file`, with the session's current
+ * language as an optional `language`; the reply is `{ text, language, heard? }`
+ * — `text` empty when nothing intelligible was picked up, `language` the
+ * kiosk language it was spoken in, as Whisper detected it (always the session's
+ * on a single-language kiosk), and `heard` the language Whisper named, when it
+ * names one.
  */
 export async function POST(req: Request) {
   if (!sttEnabled()) {
@@ -23,9 +24,9 @@ export async function POST(req: Request) {
   }
   const language = form?.get("language");
   try {
-    const name = file instanceof File ? file.name : "recording.webm";
+    const name = file instanceof File ? file.name : "speech.wav";
     return Response.json(
-      await transcribeAudio(file, name, typeof language === "string" ? language : undefined),
+      await transcribeAudio(file, name, typeof language === "string" ? language : undefined, req.signal),
     );
   } catch (error) {
     if (error instanceof SpeechServiceError) return unavailable(error.message);

@@ -20,7 +20,24 @@ export type SpeechPlayback = {
   stop: () => void;
 };
 
-export function useSpeechPlayback(): SpeechPlayback {
+/** An utterance a sink is saying: how far through its text the voice is, 0–1,
+ *  and whether it has finished — asked as often as the caption moves. */
+export type SinkUtterance = { at: () => { progress: number; done: boolean } };
+
+/**
+ * Somewhere else for the voice to come out: the lip-synced avatar, whose
+ * stream carries the speech with the video. While it is `ready` utterances go
+ * to it; otherwise — or when it fails one — they play from the page.
+ */
+export type SpeechSink = {
+  ready: boolean;
+  /** Resolves once the utterance is being heard. */
+  say: (text: string, language: string | undefined, signal: AbortSignal) => Promise<SinkUtterance>;
+  /** Cut off whatever it is saying. */
+  hush: () => void;
+};
+
+export function useSpeechPlayback(sink?: SpeechSink): SpeechPlayback {
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -29,8 +46,22 @@ export function useSpeechPlayback(): SpeechPlayback {
   const speakingIdRef = useRef<string | null>(null);
   // Bumped per request; a synthesis finishing after a newer one (or a stop) is dropped.
   const requestRef = useRef(0);
+  const sinkRef = useRef(sink);
+  useEffect(() => {
+    sinkRef.current = sink;
+  });
+  /** The sink's utterance in flight: aborted, and the sink hushed, on stop. */
+  const sinkAbortRef = useRef<AbortController | null>(null);
+  const clockRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
   const stopAudio = useCallback(() => {
+    clearInterval(clockRef.current);
+    const said = sinkAbortRef.current;
+    if (said) {
+      sinkAbortRef.current = null;
+      said.abort();
+      sinkRef.current?.hush();
+    }
     const audio = audioRef.current;
     if (!audio) return;
     audio.pause();
@@ -58,31 +89,62 @@ export function useSpeechPlayback(): SpeechPlayback {
       setSpeakingId(id);
       setIsLoading(true);
 
-      synthesizeSpeech(text, language)
-        .then((audioBlob) => {
-          if (requestRef.current !== request) return;
-          const url = URL.createObjectURL(audioBlob);
-          const audio = new Audio(url);
-          audioRef.current = audio;
-          const finish = () => {
+      const finish = () => {
+        if (requestRef.current !== request) return;
+        stopAudio();
+        speakingIdRef.current = null;
+        setSpeakingId(null);
+        setProgress(0);
+      };
+
+      const playHere = () =>
+        synthesizeSpeech(text, language)
+          .then((audioBlob) => {
             if (requestRef.current !== request) return;
-            stopAudio();
-            speakingIdRef.current = null;
-            setSpeakingId(null);
-            setProgress(0);
-          };
-          audio.onended = finish;
-          audio.onerror = finish;
-          audio.ontimeupdate = () => {
-            if (requestRef.current !== request || !(audio.duration > 0)) return;
-            setProgress(audio.currentTime / audio.duration);
-          };
+            const url = URL.createObjectURL(audioBlob);
+            const audio = new Audio(url);
+            audioRef.current = audio;
+            audio.onended = finish;
+            audio.onerror = finish;
+            audio.ontimeupdate = () => {
+              if (requestRef.current !== request || !(audio.duration > 0)) return;
+              setProgress(audio.currentTime / audio.duration);
+            };
+            setIsLoading(false);
+            audio.play().catch(finish);
+          })
+          .catch(() => {
+            // The kiosk stays usable without audio — drop back to the screen.
+            if (requestRef.current === request) stop();
+          });
+
+      const avatar = sinkRef.current;
+      if (!avatar?.ready) {
+        playHere();
+        return;
+      }
+      const said = new AbortController();
+      sinkAbortRef.current = said;
+      avatar
+        .say(text, language, said.signal)
+        .then((utterance) => {
+          if (requestRef.current !== request) return;
           setIsLoading(false);
-          audio.play().catch(finish);
+          // The stream has no position to read: the sink keeps the clock.
+          clockRef.current = setInterval(() => {
+            const { progress, done } = utterance.at();
+            if (done) {
+              sinkAbortRef.current = null; // said in full: nothing to cut off
+              finish();
+            } else {
+              setProgress(progress);
+            }
+          }, 100);
         })
         .catch(() => {
-          // The kiosk stays usable without audio — drop back to the screen.
-          if (requestRef.current === request) stop();
+          if (requestRef.current !== request) return;
+          sinkAbortRef.current = null;
+          playHere();
         });
     },
     [stop, stopAudio],

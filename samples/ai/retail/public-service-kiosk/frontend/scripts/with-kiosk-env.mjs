@@ -50,6 +50,8 @@ function run() {
 }
 
 await applyEnv();
+// The browser's voice activity detection model and runtime, served from public/vad/.
+await (await import("./vad-assets.mjs")).ensureVadAssets();
 let code = await run();
 while (code === RESTART_EXIT_CODE) {
   console.log("with-kiosk-env: restart requested — starting again");

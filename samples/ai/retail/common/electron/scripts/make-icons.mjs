@@ -68,8 +68,6 @@ function inRoundedRect(u, v, x, y, w, h, radius) {
   return dx * dx + dy * dy <= radius * radius;
 }
 
-/* -- PNG ------------------------------------------------------------------ */
-
 const CRC_TABLE = Array.from({ length: 256 }, (_, n) => {
   let c = n;
   for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
@@ -134,8 +132,6 @@ function ico(images) {
 
   return Buffer.concat([header, ...entries, ...images.map((image) => image.data)]);
 }
-
-/* -- output --------------------------------------------------------------- */
 
 const FILES = {
   "32x32.png": 32,

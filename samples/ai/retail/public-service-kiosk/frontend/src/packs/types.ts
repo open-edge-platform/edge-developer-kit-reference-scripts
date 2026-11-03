@@ -5,7 +5,7 @@
 export type PackIdDocument = "mykad" | "passport";
 
 export type LocaleMeta = {
-  /** BCP-47 language tag — <html lang>, STT language hint, case folding. */
+  /** BCP-47 language tag — <html lang>, STT language hint. */
   language: string;
   /** Intl locale for money amounts (formatMoney). */
   moneyLocale: string;
@@ -15,8 +15,6 @@ export type LocaleMeta = {
   clockLocale: string;
   /** ISO 4217 currency code for every fee the kiosk quotes. */
   currency: string;
-  /** Shortest label word the option matcher counts as distinctive (see src/lib/ask-match.ts). */
-  minKeywordWordLength: number;
 };
 
 /** Flat catalog; Malaysia's is the canonical key set — a pack missing a key is a compile error. */
@@ -53,16 +51,6 @@ export type CountryPack = {
   }): string;
   messages: Messages;
   speech: PackSpeech;
-  nlu: {
-    /** Hand-tuned synonyms per service id, for the no-LLM fallback matcher. */
-    serviceKeywords: Record<string, string[]>;
-    /** Phrases about existing applications — routed to My Requests. */
-    requestsKeywords: string[];
-    /** What garbled local terms sound like, for the router LLM (no trailing newline). */
-    phoneticHint: string;
-    /** Worked routing examples for the router LLM, verbatim prompt lines. */
-    routeExamples: string;
-  };
   /** `{{placeholder}}` values for every system prompt — see src/app/api/_lib/prompts.ts. */
   promptVars: Record<string, string>;
 };

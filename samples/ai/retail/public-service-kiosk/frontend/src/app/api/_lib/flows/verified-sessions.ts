@@ -82,6 +82,14 @@ export function verificationHolds(
   return grant.documentNumber === documentNumber;
 }
 
+/** Whose live verification this token is, or null — how a signed-in citizen skips the card for their next service. */
+export function verifiedHolder(token: string | undefined): string | null {
+  if (!token) return null;
+  const grant = grants().get(token);
+  if (!grant || grant.expiresAt <= Date.now()) return null;
+  return grant.documentNumber;
+}
+
 /**
  * The two halves of a flow's sessionId: the request id that finds the draft,
  * and the token that says the citizen behind it verified.

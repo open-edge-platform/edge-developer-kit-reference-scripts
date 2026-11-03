@@ -3,38 +3,19 @@
 
 "use client";
 
-import {
-  BookText,
-  CarFront,
-  ChevronRight,
-  FolderClock,
-  Hand,
-  House,
-  IdCard,
-  ShieldCheck,
-  Users,
-  type LucideIcon,
-} from "lucide-react";
+import { ChevronRight, FolderClock, Hand } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ActionHint } from "@/components/kiosk/action-hint";
+import { CATEGORY_ICONS } from "@/components/kiosk/service-icons";
 import { Spinner } from "@/components/ui/spinner";
 import { IconTile } from "@/components/kiosk/icon-tile";
 import { LoadFailed } from "@/components/kiosk/status-block";
 import { TapCard } from "@/components/kiosk/tap-card";
 import { useCatalog } from "@/hooks/use-kiosk-api";
 import { countOf } from "@/lib/format";
-import type { CategoryDefinition, CategoryIconId, ServiceDefinition } from "@/services/types";
+import type { CategoryDefinition, ServiceDefinition } from "@/services/types";
 import type { StepProps } from "../step-props";
 import { StepShell } from "../step-shell";
-
-const CATEGORY_ICONS: Record<CategoryIconId, LucideIcon> = {
-  car: CarFront,
-  book: BookText,
-  "id-card": IdCard,
-  house: House,
-  users: Users,
-  shield: ShieldCheck,
-};
 
 export default function ServiceStep({ state, actions }: StepProps) {
   const catalog = useCatalog();

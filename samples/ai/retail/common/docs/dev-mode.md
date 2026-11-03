@@ -33,19 +33,20 @@ Then open (public-service shown; healthcare is the same on :3001):
 
 | URL | What |
 |---|---|
-| http://localhost:3000 | Kiosk UI — opens on the terminal `terminal.mode` names, with a touch/chat toggle |
-| http://localhost:3000/chat | Chat / voice terminal |
-| http://localhost:3000/enroll | Staff registration desk |
-| http://localhost:3000/settings | Settings page — edits `config.yaml`; its restart button restarts the dev server (Next's own exit code 77) |
-| http://localhost:3000/mock-documents | Mock documents — pick a registered citizen, generate their genuine and tampered sets, download a PDF or a zip (CMS admin login) |
-| http://localhost:3000/admin | Payload CMS admin (`admin@demo.local`; the password `common/scripts/dev/dev.sh` prints, from `cms.admin_password`) |
-| http://localhost:3000/api/health | Aggregated service health JSON |
-| http://localhost:8080 | Edge AI Studio gateway |
+| http://127.0.0.1:3000 | Kiosk UI — opens on the terminal `terminal.mode` names, with a touch/chat toggle |
+| http://127.0.0.1:3000/chat | Chat / voice terminal |
+| http://127.0.0.1:3000/enroll | Staff registration desk |
+| http://127.0.0.1:3000/settings | Settings page — edits `config.yaml`; its restart button restarts the dev server (Next's own exit code 77) |
+| http://127.0.0.1:3000/mock-documents | Mock documents — pick a registered citizen, generate their genuine and tampered sets, download a PDF or a zip; in healthcare also tap their card, scan their patient card or slip, or feed a document to this kiosk's simulated peripherals (CMS admin login) |
+| http://127.0.0.1:3001/outbox | Healthcare: the SMS, emails and clinic notes the kiosk sent (`notify.driver: outbox`; CMS admin login) |
+| http://127.0.0.1:3000/admin | Payload CMS admin (`admin@demo.local`; the password `common/scripts/dev/dev.sh` prints, from `cms.admin_password`) |
+| http://127.0.0.1:3000/api/health | Aggregated service health JSON |
+| http://127.0.0.1:8080 | Edge AI Studio gateway |
 
 `./common/scripts/dev/dev.sh` is a thin orchestrator: it health-checks the Edge AI Studio gateway
 (starting it from `EDGE_AI_STUDIO_DIR` if it isn't running), then runs `npm run dev`
 in the kiosk's `frontend/` ([public-service](../../public-service-kiosk/frontend/),
-[healthcare](../../healthcare/frontend/)). Stop everything with `Ctrl+C`.
+[healthcare](../../healthcare-service-kiosk/frontend/)). Stop everything with `Ctrl+C`.
 
 Flags (see `./common/scripts/dev/dev.sh --help`):
 
@@ -61,7 +62,7 @@ Flags (see `./common/scripts/dev/dev.sh --help`):
 
 - **Next.js dev server** with hot module reload — edit anything under the kiosk's
   `frontend/src/` ([public-service](../../public-service-kiosk/frontend/src/),
-  [healthcare](../../healthcare/frontend/src/)) and the page updates in place.
+  [healthcare](../../healthcare-service-kiosk/frontend/src/)) and the page updates in place.
 - **Database auto-setup** — on the first request, Payload creates `<kiosk>/frontend/db.sqlite`
   and seeds it: 100 synthetic citizens from `<kiosk>/frontend/data/citizens.csv`
   (public-service also seeds their traffic fines), and the admin user. No reference
@@ -72,9 +73,10 @@ Flags (see `./common/scripts/dev/dev.sh --help`):
   `face.require_match: true`): `documents.source: scanner` drives a real SANE
   scanner and the card read needs a real PC/SC reader. On a laptop use `--mock`,
   the `simulated` profile, or set those three to `auto`/`auto`/`false` in
-  `config.local.yaml`; the stand-ins (documents from `documents.mocks_dir`, a
-  registry citizen for the card read) then carry the whole flow
-  (welcome → verify → documents → payment → receipt).
+  `config.local.yaml`; the stand-ins (documents from `documents.mocks_dir` — in
+  healthcare, generated for the patient being served — and a registry citizen for
+  the card read) then carry the whole flow (welcome → verify → documents →
+  payment → receipt).
 
 Configuration in dev follows the normal precedence (env vars →
 `<kiosk>/frontend/config.local.yaml` → `<kiosk>/frontend/config.yaml`); see
@@ -169,7 +171,7 @@ What travels is what git tracks plus what is untracked and not gitignored, so
 `node_modules/`, `build/`, `db.sqlite`, `.kioskrc` and `config.local.yaml`
 never do; the target runs `./setup.sh` for itself. The update scripts stay
 behind too — they belong to the checkout you mirror *from*. `.git`, `.claude`,
-`.github`, `.vscode`, `build` and `healthcare` are left alone: not copied, and
+`.github`, `.vscode`, `build` and `healthcare-service-kiosk` are left alone: not copied, and
 not removed from the target, so the release tree keeps its own workflows and
 does not get the healthcare kiosk yet. `--keep <name>` adds an entry to that
 list, `--all` empties it. The target is emptied, which the script asks about
@@ -181,7 +183,7 @@ checkout, or anything containing it.
 ## Useful dev commands
 
 All run inside the kiosk's `frontend/` ([public-service](../../public-service-kiosk/frontend/),
-[healthcare](../../healthcare/frontend/)) unless noted:
+[healthcare](../../healthcare-service-kiosk/frontend/)) unless noted:
 
 | Command | What it does |
 |---|---|
@@ -191,7 +193,7 @@ All run inside the kiosk's `frontend/` ([public-service](../../public-service-ki
 | `npm run mocks:gen` | Regenerate mock scan documents for citizen 1 into `../assets/mocks`. Variants: `node scripts/gen-mock-docs.mjs --citizens 1,4,7`, `--all`. The same documents download from `/mock-documents`. |
 | `npm run nfc:probe` | Watch a real PC/SC reader and print card UIDs (`-- --once` for a single read). |
 | `npm run payload` | Payload CLI against the kiosk config. |
-| `curl localhost:3000/api/identity/card` | Manual NFC read (waits up to 15 s; `?timeout=0` returns what's on the reader now). |
+| `curl 127.0.0.1:3000/api/identity/card` | Manual NFC read (waits up to 15 s; `?timeout=0` returns what's on the reader now). |
 | `cd common/electron && npm run stage` | Stage the frontend into the shell's resources without building a bundle. |
 
 ### Service catalog development
@@ -200,10 +202,10 @@ Services are auto-discovered from folders under the country pack,
 `<kiosk>/frontend/src/packs/<pack>/services/<category>/<group>/<service>/service.ts`
 — adding a service is adding a folder with a `service.ts`; deleting the folder
 removes it everywhere (in healthcare, `npm run modules -- remove <id>` does that
-and tidies up after it — see [healthcare/docs/modules.md](../../healthcare/docs/modules.md)).
+and tidies up after it — see [healthcare-service-kiosk/docs/modules.md](../../healthcare-service-kiosk/docs/modules.md)).
 See [country-packs.md](country-packs.md) for the layout and each kiosk's
 `frontend/README.md` ([public-service](../../public-service-kiosk/frontend/README.md),
-[healthcare](../../healthcare/frontend/README.md)) for the service spec format.
+[healthcare](../../healthcare-service-kiosk/frontend/README.md)) for the service spec format.
 
 ---
 
@@ -218,15 +220,15 @@ npm run test:report    # open the HTML report
 ```
 
 The Playwright config auto-starts `npm run dev` and waits on `/api/health` at the
-kiosk's port (`http://localhost:3000` for public-service, `:3001` for healthcare),
+kiosk's port (`http://127.0.0.1:3000` for public-service, `:3001` for healthcare),
 reusing an already-running dev server — unless
 `KIOSK_BASE` names a server you started yourself. `npm run test:ui` runs the specs that
 need no AI service against a `--mock` server; CI runs both ([ci.md](ci.md)). **The
 suite expects live AI services** (the Edge AI Studio gateway) — see each kiosk's
 `frontend/tests/README.md` ([public-service](../../public-service-kiosk/frontend/tests/README.md),
-[healthcare](../../healthcare/frontend/tests/README.md)) for prerequisites, and keep
-`mock.identity.citizen` consistent with `documents.mocks_dir` (the tests gate on this
-pairing).
+[healthcare](../../healthcare-service-kiosk/frontend/tests/README.md)) for prerequisites, and keep
+`mock.identity.citizen` consistent with the documents the tests upload (citizen 1's, from
+`npm run mocks:gen`; the tests gate on this pairing).
 
 ---
 
@@ -254,7 +256,7 @@ already have an `SPDX-License-Identifier`, and skips formats with no comment syn
 ## Troubleshooting
 
 - **Out-of-service screen on load** — the health check failed. Check
-  `curl localhost:3000/api/health`; either start the studio gateway (`./start.sh`
+  `curl 127.0.0.1:3000/api/health`; either start the studio gateway (`./start.sh`
   handles this) or go mocked (`common/scripts/dev/dev.sh --kiosk <name> --mock`).
 - **Stale/odd registry data** — `npm run db:reset` and reload.
 - **NFC reads fail on Linux** — the PC/SC daemon must be running:

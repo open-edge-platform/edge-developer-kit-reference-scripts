@@ -33,7 +33,7 @@ Useful flags — both scripts pass everything through to `scripts/build.mjs`:
 |---|---|
 | `--yes` | don't ask; take the defaults from `frontend/config.yaml` |
 | `--ask-only` | only ask: prompts on stderr, the resolved build arguments on stdout, one per line — how `./setup.sh --build` asks before its own installs |
-| `--mode=touch\|chat\|agent` | which kiosk this terminal runs |
+| `--mode=touch\|chat` | which kiosk this terminal runs |
 | `--fullscreen` / `--windowed` | window chrome, or none |
 | `--mock` / `--live` | mock the AI services, or call them. A mocked build ships config.yaml with the AI services off and the hardware simulated (what `./start.sh --mock` sets), defaults the mode to the kiosk's `configs/simulated.yaml`, and is named `<product>-<version>-mock.*` (what `../scripts/build.sh --mock` runs) |
 | `--targets=appimage,deb` | what to package (`nsis`, `msi` on Windows) |
@@ -41,7 +41,7 @@ Useful flags — both scripts pass everything through to `scripts/build.mjs`:
 | `--stage-only` | assemble the bundle without packaging it |
 | `--dev` | run the shell without packaging — the fastest way to try a change |
 | `--shell-only` | package just the shell, unpacked (external-target mode) |
-| `--bundle-app` | package `build/kiosk-studio/<kiosk>` as the app (what `../scripts/build.sh` runs) |
+| `--bundle-app` | package `build/kiosk-studio` — one studio, every kiosk in `KIOSK_DIR_LIST` a sample — as the platform app (`../platform.json`; what `../scripts/build.sh` runs) |
 
 ## What the questions decide
 

@@ -51,17 +51,26 @@ if ($major -lt 20) {
 # The shipped config.yaml is baked into the package, so it has to exist and
 # carry an admin password before the build reads it (a direct run here skips
 # the root launchers, where Confirm-Config/Confirm-AdminPassword live).
+# --bundle-app carries every kiosk in KIOSK_DIR_LIST (; separated), so each gets the same.
+$workspace = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 if (-not $env:KIOSK_DIR) { $env:KIOSK_DIR = 'public-service-kiosk' }
 if (-not [System.IO.Path]::IsPathRooted($env:KIOSK_DIR)) {
-    $env:KIOSK_DIR = Join-Path (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path $env:KIOSK_DIR
+    $env:KIOSK_DIR = Join-Path $workspace $env:KIOSK_DIR
 }
-$kioskConfig = Join-Path $env:KIOSK_DIR 'frontend\config.yaml'
-if (-not (Test-Path -LiteralPath $kioskConfig)) {
-    $kioskProfile = if ($env:KIOSK_PROFILE) { $env:KIOSK_PROFILE } else { 'reference' }
-    Copy-Item -LiteralPath (Join-Path $env:KIOSK_DIR "frontend\configs\$kioskProfile.yaml") -Destination $kioskConfig
-    Write-Host "Created $kioskConfig from the $kioskProfile profile"
+$kioskDirs = if ($env:KIOSK_DIR_LIST) { @($env:KIOSK_DIR_LIST -split ';' | Where-Object { $_ }) } else { @($env:KIOSK_DIR) }
+$pinned = $env:KIOSK_DIR
+foreach ($dir in $kioskDirs) {
+    if (-not [System.IO.Path]::IsPathRooted($dir)) { $dir = Join-Path $workspace $dir }
+    $kioskConfig = Join-Path $dir 'frontend\config.yaml'
+    if (-not (Test-Path -LiteralPath $kioskConfig)) {
+        $kioskProfile = if ($env:KIOSK_PROFILE) { $env:KIOSK_PROFILE } else { 'reference' }
+        Copy-Item -LiteralPath (Join-Path $dir "frontend\configs\$kioskProfile.yaml") -Destination $kioskConfig
+        Write-Host "Created $kioskConfig from the $kioskProfile profile"
+    }
+    $env:KIOSK_DIR = $dir
+    node ..\scripts\ensure-admin-password.mjs
 }
-node ..\scripts\ensure-admin-password.mjs
+$env:KIOSK_DIR = $pinned
 
 node scripts/build.mjs @BuildArgs
 exit $LASTEXITCODE

@@ -3,15 +3,14 @@
 
 import { publicEnv } from "@/lib/public-config";
 
-export type KioskMode = "touch" | "chat" | "agent";
+export type KioskMode = "touch" | "chat";
 
 /**
  * Which kiosk this terminal runs, fixed at install time.
  *
  *   "touch" (default) the guided touch flow
- *   "chat"            the assistant, driven by the flow engine
- *   "agent"           the same assistant, driven by a tool-calling model over
- *                     the kiosk's own MCP server (see `/api/chat/agent`)
+ *   "chat"            the assistant: a tool-calling model driving the kiosk's
+ *                     own MCP server (see `/api/chat`)
  *
  * This names the mode a terminal starts in (and returns to on reload); the
  * entry page also offers an on-screen ModeToggle between touch and the
@@ -19,6 +18,5 @@ export type KioskMode = "touch" | "chat" | "agent";
  * restart, the way every other browser-visible setting works.
  */
 export function kioskMode(): KioskMode {
-  const mode = publicEnv("NEXT_PUBLIC_KIOSK_MODE");
-  return mode === "chat" || mode === "agent" ? mode : "touch";
+  return publicEnv("NEXT_PUBLIC_KIOSK_MODE") === "chat" ? "chat" : "touch";
 }

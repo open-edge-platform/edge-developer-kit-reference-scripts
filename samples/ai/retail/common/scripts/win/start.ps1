@@ -40,7 +40,7 @@ Starts the blueprint for normal use - every kiosk setup_win.bat set up, or the
 ones --kiosk names:
   1. builds each kiosk's frontend if no production build exists
   2. serves each kiosk on its own port (kiosk.json "port": public-service
-     http://localhost:3000, healthcare http://localhost:3001)
+     http://127.0.0.1:3000, healthcare http://127.0.0.1:3001)
 
 The Edge AI Studio is started from EDGE_AI_STUDIO_DIR when its gateway isn't
 already live at STUDIO_URL, and waited for before the kiosks serve - a missing
@@ -59,16 +59,16 @@ Options:
                  STUDIO_URL (someone else launches it - another machine, a
                  service, the studio app)
   --mock         run with mocked AI services (skips the studio entirely)
-  --desktop      launch the desktop shell instead of the web server
-                 (usually combined with --bundle - build the app with
-                 setup_win.bat --build; with --mock, the mocked app from
-                 setup_win.bat --build --mock).
-                 One kiosk only
-  --bundle       start the embedded bundle (build\kiosk-studio\<kiosk>): the
-                 minimal studio boots and starts the kiosk as its own hidden child
-                 process. Combine with --desktop for a desktop window on the
-                 studio (its kiosk sample runs the kit on its own URL).
-                 Build it first: setup_win.bat --bundle. One kiosk only
+  --desktop      launch the packaged desktop app instead of the web server
+                 (setup_win.bat --build: one app, its studio carrying every
+                 kiosk as a sample; with --mock, the mocked app from
+                 setup_win.bat --build --mock - one kiosk only)
+  --bundle       start the embedded bundle (build\kiosk-studio): the minimal
+                 studio boots and starts each kiosk it carries as its own
+                 hidden child process, every kiosk a tile of its samples
+                 gallery. Combine with --desktop for a desktop window on the
+                 studio - or, with --kiosk <name>, on that kiosk.
+                 Build it first: setup_win.bat --bundle
   --rebuild      force a fresh production build
   --port <n>     serve on a different port (with several kiosks: the first on
                  <n>, the next on <n+1>, ...; with --desktop this pins
@@ -107,15 +107,18 @@ for ($i = 0; $i -lt $Arguments.Count; $i++) {
 
 Resolve-Kiosks $KioskArg
 # The desktop app is the unpacked build under electron\out\, which holds the
-# kiosk built last - so unlike Linux, --desktop --mock opens one kiosk here too.
-if ($KioskDirs.Count -gt 1 -and ($Bundle -or $Desktop)) {
-    Stop-WithError "--bundle and --desktop start one kiosk - pick it with --kiosk <$((Get-KioskIds) -replace ', ', '|')>"
+# app built last - so unlike Linux, --desktop --mock opens one kiosk here.
+if ($KioskDirs.Count -gt 1 -and $Desktop -and $Mock) {
+    Stop-WithError "--desktop --mock starts one kiosk - pick it with --kiosk <$((Get-KioskIds) -replace ', ', '|')>"
+}
+if ($KioskDirs.Count -gt 1 -and $Bundle -and $KioskArg) {
+    Stop-WithError '--bundle --kiosk names the one kiosk the window opens on - the bundle runs every kiosk it carries'
 }
 Assert-Node
 
 # Embedded-bundle mode: the bundle's own studio is the process manager - it
-# boots on :8080 and starts the kiosk as a hidden worker process, so none of
-# the normal studio/build/serve steps below apply.
+# boots on :8080 and starts every kiosk it carries as a hidden worker process,
+# so none of the normal studio/build/serve steps below apply.
 if ($Bundle) {
     $bundleDir = Get-KioskBundleDir
     $bundleEnv = Join-Path $bundleDir 'bundle.env'
@@ -128,24 +131,50 @@ if ($Bundle) {
             $bundleSettings[$Matches[1]] = $Matches[2].Trim('"')
         }
     }
+    $bundleKiosks = @("$($bundleSettings['KIOSK_BUNDLE_KIOSKS'])" -split '\s+' | Where-Object { $_ })
+    $bundlePorts = @("$($bundleSettings['KIOSK_BUNDLE_PORTS'])" -split '\s+' | Where-Object { $_ })
+    $bundleModes = @("$($bundleSettings['KIOSK_BUNDLE_MODES'])" -split '\s+' | Where-Object { $_ })
+    if ($bundleKiosks.Count -eq 0) {
+        Stop-WithError "$bundleEnv is from an older build - export it again: setup_win.bat --bundle"
+    }
     $studioDir = Join-Path $bundleDir 'studio'
     if (-not (Test-Path -LiteralPath (Join-Path $studioDir 'frontend\.next\BUILD_ID'))) {
         Stop-WithError "bundle not set up yet - run: setup_win.bat --bundle  (or: cd $studioDir; setup_win.bat)"
     }
-    $bundlePort = $bundleSettings['KIOSK_BUNDLE_PORT']
+
+    # The kiosks the bundle carries, as "<id> :<port> (<mode>)" and as the
+    # shell's staff-menu list; --kiosk picks the one the window opens on.
+    $studioUrl = 'http://127.0.0.1:8080'
+    $openUrl = $studioUrl
+    $summary = @()
+    $links = @()
+    for ($i = 0; $i -lt $bundleKiosks.Count; $i++) {
+        $id = $bundleKiosks[$i]
+        $url = "http://127.0.0.1:$($bundlePorts[$i])"
+        $dir = Find-Kiosk $id
+        $title = if ($dir) { (Read-KioskJson $dir).studio.title } else { $id }
+        $summary += "$id :$($bundlePorts[$i]) ($($bundleModes[$i]))"
+        $links += [pscustomobject]@{ title = $title; url = $url }
+        if ($KioskArg -and $id -eq $Kiosk.id) { $openUrl = $url }
+    }
+    if ($KioskArg -and $openUrl -eq $studioUrl) {
+        Stop-WithError "the bundle at $bundleDir does not carry $($Kiosk.id) - it carries $($bundleKiosks -join ', ') (export it again: setup_win.bat --bundle --kiosk <names>)"
+    }
+    $summary = $summary -join ', '
 
     if ($Desktop) {
-        $app = Join-Path $ElectronDir "out\win-unpacked\$($Kiosk.productName).exe"
+        $app = Join-Path $ElectronDir "out\win-unpacked\$((Read-PlatformJson).productName).exe"
         if (-not (Test-Path -LiteralPath $app)) {
             Stop-WithError "no desktop build found at $app - build one first: setup_win.bat --build"
         }
-        Write-Info "Launching the desktop shell on the embedded bundle (studio :8080, kiosk :$bundlePort)"
+        Write-Info "Launching the desktop shell on the embedded bundle (studio :8080; $summary)"
         # External-target mode of the shell (electron/main.js): it runs the
-        # bundle's start script and opens the window on the kiosk; the studio
-        # that runs it stays reachable from the staff menu (F9) and F2.
-        if (-not $env:KIOSK_SHELL_KIOSK_URL) { $env:KIOSK_SHELL_KIOSK_URL = "http://127.0.0.1:$bundlePort" }
-        if (-not $env:KIOSK_SHELL_PLATFORM_URL) { $env:KIOSK_SHELL_PLATFORM_URL = 'http://127.0.0.1:8080' }
-        if (-not $env:KIOSK_SHELL_URL) { $env:KIOSK_SHELL_URL = $env:KIOSK_SHELL_KIOSK_URL }
+        # bundle's start script and opens the window on the studio's samples
+        # gallery (or the --kiosk one); the staff menu (F9) and F2 reach the rest.
+        if ($bundleKiosks.Count -eq 1 -and -not $env:KIOSK_SHELL_KIOSK_URL) { $env:KIOSK_SHELL_KIOSK_URL = $links[0].url }
+        if (-not $env:KIOSK_SHELL_KIOSKS) { $env:KIOSK_SHELL_KIOSKS = ConvertTo-Json -Compress -InputObject @($links) }
+        if (-not $env:KIOSK_SHELL_PLATFORM_URL) { $env:KIOSK_SHELL_PLATFORM_URL = $studioUrl }
+        if (-not $env:KIOSK_SHELL_URL) { $env:KIOSK_SHELL_URL = $openUrl }
         $env:KIOSK_SHELL_CMD = 'start_win.bat'
         $env:KIOSK_SHELL_CWD = $studioDir
         if (-not $env:KIOSK_SHELL_TIMEOUT_SECS) { $env:KIOSK_SHELL_TIMEOUT_SECS = '900' }
@@ -153,9 +182,23 @@ if ($Bundle) {
         exit $LASTEXITCODE
     }
 
-    Write-Info "Starting the embedded bundle (studio :8080, kiosk :$bundlePort, mode: $($bundleSettings['KIOSK_BUNDLE_MODE']))"
+    Write-Info "Starting the embedded bundle (studio :8080; $summary)"
     Set-Location -LiteralPath $studioDir
     & cmd.exe /c start_win.bat
+    exit $LASTEXITCODE
+}
+
+# The packaged desktop app is the platform: it unpacks, sets up and starts its
+# own studio on :8080, which runs every kiosk it was built with - so the
+# checkout's studio must not be started here.
+if ($Desktop -and -not $Mock) {
+    $app = Join-Path $ElectronDir "out\win-unpacked\$((Read-PlatformJson).productName).exe"
+    if (-not (Test-Path -LiteralPath $app)) {
+        Stop-WithError "no desktop build found at $app - package one first: setup_win.bat --build"
+    }
+    if ($PortArg) { Stop-WithError "--port is for the mocked app - the platform app's kiosks keep their kiosk.json studio.port" }
+    Write-Info "Launching the desktop app: $app"
+    & $app
     exit $LASTEXITCODE
 }
 
@@ -201,13 +244,13 @@ if ($Mock) {
 }
 
 # 2. Desktop app mode -------------------------------------------------------
-# The packaged app carries its own frontend build and pre-seeded database, and
+# The mocked app carries its own frontend build and pre-seeded database, and
 # spawns its own web-server process on a loopback port - so after step 1 we
 # just launch the app (the unpacked build under electron\out\).
 if ($Desktop) {
     $app = Join-Path $ElectronDir "out\win-unpacked\$($Kiosk.productName).exe"
     if (-not (Test-Path -LiteralPath $app)) {
-        $build = "common\scripts\build.bat$(if ($Mock) { ' --mock' }) --kiosk $(Get-KioskId $KioskDir)"
+        $build = "common\scripts\build.bat --mock --kiosk $(Get-KioskId $KioskDir)"
         Stop-WithError "no desktop build found at $app - package one first: $build"
     }
     if ($PortArg) { $env:KIOSK_PORT = $PortArg }
@@ -230,12 +273,15 @@ for ($i = 0; $i -lt $KioskDirs.Count; $i++) {
         Write-Info 'No database yet - priming db.sqlite with a one-off dev boot (first run only)'
         $primeLog = Join-Path $KioskDir '.prime.log'
         Remove-Item -LiteralPath $primeLog -Force -ErrorAction SilentlyContinue
-        $prime = Start-Process -FilePath 'cmd.exe' -ArgumentList '/c', "`"$npm`" run dev > `"$primeLog`" 2>&1" `
+        # cmd /c strips the first and last quote of a line holding more than two, so the
+        # whole line is wrapped once more - otherwise the redirect target loses its quote
+        # and nothing runs.
+        $prime = Start-Process -FilePath 'cmd.exe' -ArgumentList '/c', "`"`"$npm`" run dev > `"$primeLog`" 2>&1`"" `
             -WorkingDirectory $FrontendDir -WindowStyle Hidden -PassThru
         $waited = 0
         try {
             while (-not ((Test-Path -LiteralPath $db) -and (Get-Item -LiteralPath $db).Length -gt 0)) {
-                Test-Url "http://localhost:$($Ports[$i])/admin" 5 | Out-Null
+                Test-Url "http://127.0.0.1:$($Ports[$i])/admin" 5 | Out-Null
                 Start-Sleep -Seconds 3
                 $waited += 3
                 if ($waited -ge 240) { Stop-WithError "database was not created within 240s - check $primeLog" }
@@ -259,10 +305,10 @@ for ($i = 0; $i -lt $KioskDirs.Count; $i++) {
 
 # 5. Serve ------------------------------------------------------------------
 function Show-Banner([int]$Port) {
-    Write-Info "Starting $(Get-KioskLabel $KioskDir) at http://localhost:$Port"
-    Write-Host "    kiosk UI      http://localhost:$Port"
-    Write-Host "    admin (CMS)   http://localhost:$Port/admin  ($(Get-AdminLogin))"
-    Write-Host "    health        http://localhost:$Port/api/health"
+    Write-Info "Starting $(Get-KioskLabel $KioskDir) at http://127.0.0.1:$Port"
+    Write-Host "    kiosk UI      http://127.0.0.1:$Port"
+    Write-Host "    admin (CMS)   http://127.0.0.1:$Port/admin  ($(Get-AdminLogin))"
+    Write-Host "    health        http://127.0.0.1:$Port/api/health"
     Write-Host ''
 }
 

@@ -23,7 +23,7 @@ Usage: common/scripts/dev/dev.sh [--kiosk <name>] [options] [-- <extra args>]
 
 Development mode: ensures the Edge AI Studio gateway is running, then starts
 the Next.js dev server (hot reload) on the kiosk's port (kiosk.json "port":
-public-service http://localhost:3000, healthcare http://localhost:3001; PORT
+public-service http://127.0.0.1:3000, healthcare http://127.0.0.1:3001; PORT
 overrides it). One kiosk at a time. ./setup.sh --dev sets the kiosks up
 first, then runs this.
 
@@ -86,12 +86,12 @@ if [ "$DESKTOP" -eq 1 ]; then
 fi
 
 export PORT="${PORT:-$(kiosk_port "$KIOSK_DIR")}"
-info "Starting the Next.js dev server for $(kiosk_label "$KIOSK_DIR") at http://localhost:$PORT"
-echo "    kiosk UI      http://localhost:$PORT"
-echo "    chat/voice    http://localhost:$PORT/chat"
-echo "    enroll desk   http://localhost:$PORT/enroll"
-echo "    admin (CMS)   http://localhost:$PORT/admin  ($(kiosk_admin_login))"
-echo "    health        http://localhost:$PORT/api/health"
+info "Starting the Next.js dev server for $(kiosk_label "$KIOSK_DIR") at http://127.0.0.1:$PORT"
+echo "    kiosk UI      http://127.0.0.1:$PORT"
+echo "    chat/voice    http://127.0.0.1:$PORT/chat"
+echo "    enroll desk   http://127.0.0.1:$PORT/enroll"
+echo "    admin (CMS)   http://127.0.0.1:$PORT/admin  ($(kiosk_admin_login))"
+echo "    health        http://127.0.0.1:$PORT/api/health"
 echo
 cd "$FRONTEND_DIR" || die "cannot enter $FRONTEND_DIR"
 exec npm run dev ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}

@@ -42,7 +42,6 @@ export async function callRoute(
   return { ok: response.ok, body };
 }
 
-/** The error message a failed route call carries, or a fallback. */
 export function routeError(result: RouteResult, fallback: string): string {
   const body = result.body as { error?: string } | null;
   return body?.error || fallback;

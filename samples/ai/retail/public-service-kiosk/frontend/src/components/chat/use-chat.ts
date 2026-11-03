@@ -7,6 +7,7 @@ import { useChat as useAIChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import type { KioskUIMessage } from "@/app/api/chat/route";
 import type { Ask, FlowResponse, FlowUpload } from "@/app/api/_lib/flows/types";
+import { activePack } from "@/packs";
 
 /**
  * Chat session state for the assistant kiosk, on the Vercel AI SDK. Replies
@@ -37,14 +38,22 @@ export function messageText(message: KioskUIMessage): string {
  * dialogs. Someone who is not looking at the screen would hear "the last step
  * is payment" and never learn what the options were, so narration reads the
  * asks too. The visible UI is unchanged; this is the spoken version of it.
+ *
+ * The asks are the pack's own copy, though, so they are read only after a
+ * reply in the pack's language. A reply in another language already asks the
+ * question and names the options in the citizen's words — the model relays
+ * every ask — and the pack's wording after it would be read out in that
+ * language's voice.
  */
 export function speakableText(message: KioskUIMessage): string {
   const flow = message.parts.findLast((part) => part.type === "data-flow")?.data as
     | FlowResponse
     | undefined;
   const spoken = [messageText(message)];
+  const language = message.metadata?.language;
+  const inPackLanguage = !language || language === activePack().locale.language;
 
-  for (const ask of flow?.status === "need_input" ? flow.asks : []) {
+  for (const ask of flow?.status === "need_input" && inPackLanguage ? flow.asks : []) {
     spoken.push(ask.question);
     if (ask.options?.length) {
       // The labels carry the detail that matters aloud — "1 year — MYR 30.00".
@@ -61,16 +70,10 @@ export function speakableText(message: KioskUIMessage): string {
   return spoken.filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
 }
 
-/**
- * @param api  Which brain answers the turn. `/api/chat` is the deterministic
- *   one — the flow engine decides, the LLM only does two tiny NLU tasks.
- *   `/api/chat/agent` is the agentic one, a tool-calling loop over the
- *   kiosk's MCP server. Both stream the same parts, so the UI is unchanged.
- */
-export function useKioskChat({ api = "/api/chat" }: { api?: string } = {}) {
+export function useKioskChat() {
   const { messages, sendMessage, status, stop, setMessages, error, regenerate, clearError } =
     useAIChat<KioskUIMessage>({
-      transport: new DefaultChatTransport({ api }),
+      transport: new DefaultChatTransport({ api: "/api/chat" }),
     });
 
   const busy = status === "submitted" || status === "streaming";
@@ -113,13 +116,21 @@ export function useKioskChat({ api = "/api/chat" }: { api?: string } = {}) {
       clearError();
       setMessages([]);
     },
-    sendText: (text: string, language?: string) =>
-      sendMessage({ text, ...(language ? { metadata: { language } } : {}) }),
-    startService: (serviceId: string, label: string) =>
-      sendMessage({ text: label, metadata: { startServiceId: serviceId } }),
-    sendAnswers: (answers: Record<string, string>, shownAs: string) =>
-      sendMessage({ text: shownAs, metadata: { answers } }),
-    sendUpload: (upload: FlowUpload, shownAs: string) =>
-      sendMessage({ text: shownAs, metadata: { uploads: [upload] } }),
+    // Every turn names the session's language — a tap or an upload as much as words — and the reply is written in it.
+    /** `answers` are options already tapped this round, so words finishing it don't drop them. */
+    sendText: (text: string, language: string, answers?: Record<string, string>) =>
+      sendMessage({
+        text,
+        metadata: {
+          language,
+          ...(answers && Object.keys(answers).length > 0 ? { answers } : {}),
+        },
+      }),
+    startService: (serviceId: string, label: string, language: string) =>
+      sendMessage({ text: label, metadata: { startServiceId: serviceId, language } }),
+    sendAnswers: (answers: Record<string, string>, shownAs: string, language: string) =>
+      sendMessage({ text: shownAs, metadata: { answers, language } }),
+    sendUpload: (upload: FlowUpload, shownAs: string, language: string) =>
+      sendMessage({ text: shownAs, metadata: { uploads: [upload], language } }),
   };
 }

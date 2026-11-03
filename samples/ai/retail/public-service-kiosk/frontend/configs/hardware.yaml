@@ -36,7 +36,7 @@ cms:
 
 llm:
   mock: false
-  base_url: http://localhost:8080/api/text-generation@text-generation/v1
+  base_url: http://127.0.0.1:8080/api/text-generation@kiosk-llm/v1
   model: llamacpp:unsloth/gemma-4-E4B-it-GGUF:Q4_K_M
   timeout_ms: 120000
   extra_body:
@@ -44,28 +44,32 @@ llm:
       enable_thinking: true
 
 ocr:
-  base_url: http://localhost:8080/api/ocr@ocr
+  base_url: http://127.0.0.1:8080/api/ocr@ocr
   health_path: /healthcheck
   timeout_ms: 60000
   dpi: 300
 
 face:
-  base_url: http://localhost:8080/api/face-recognition@face-recognition
+  base_url: http://127.0.0.1:8080/api/face-recognition@face-recognition
   health_path: /healthcheck
   require_match: true
   timeout_ms: 30000
 
 voice:
   stt:
-    base_url: http://localhost:8080/api/speech-to-text@speech-to-text/v1
+    base_url: http://127.0.0.1:8080/api/speech-to-text@kiosk-stt/v1
     health_path: /../healthcheck
     timeout_ms: 60000
   tts:
-    base_url: http://localhost:8080/api/text-to-speech@text-to-speech/v1
+    base_url: http://127.0.0.1:8080/api/text-to-speech@kiosk-tts-en/v1
     health_path: /../healthcheck
     timeout_ms: 60000
     voice: af_heart
     format: mp3
+  avatar:
+    base_url: http://127.0.0.1:8080/api/lipsync@kiosk-avatar/v1
+    health_path: /../healthcheck
+    timeout_ms: 60000
   hands_free: false
   read_aloud: false
   wait_for_speech: false

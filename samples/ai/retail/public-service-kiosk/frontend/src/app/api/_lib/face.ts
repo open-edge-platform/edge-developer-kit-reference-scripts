@@ -17,7 +17,7 @@ import { healthCheckEnabled, probeService, type ServiceHealth } from "./health";
 /**
  * Face verification against the face-recognition service at
  * KIOSK_FACE_BASE_URL (the Edge AI Demo Studio worker at
- * `http://localhost:8080/api/face-recognition@face-recognition`).
+ * `http://127.0.0.1:8080/api/face-recognition@face-recognition`).
  *
  * The pipeline the kiosk drives is 1:1 in intent and 1:N in mechanism:
  *
@@ -77,6 +77,17 @@ export const faceHealth = (): Promise<ServiceHealth> =>
 /* ── Keeping the worker's gallery in step with the registry ───────────────── */
 
 /**
+ * The worker's gallery is shared, not this kiosk's own: every kiosk in a
+ * bundle talks to the one studio worker. Under bare citizen IDs, a person on
+ * file with another kiosk under a different record was in this kiosk's match
+ * too — and as the stronger "lookalike" of themselves, failed here. Entries
+ * are therefore enrolled under this kiosk's prefix, and only those compete.
+ */
+const GALLERY_PREFIX = "public-service:";
+const galleryName = (citizenId: string) => `${GALLERY_PREFIX}${citizenId}`;
+const isOurs = (name: string) => name.startsWith(GALLERY_PREFIX);
+
+/**
  * Which portrait this worker currently holds for each citizen.
  *
  * Two things can put this out of date, and both have to be caught or the
@@ -100,7 +111,12 @@ async function refreshGallery(): Promise<void> {
   const persons = await listGallery();
   // The worker does not report which image it holds, so nothing learned this
   // way can vouch for a portrait — the empty key forces a re-enroll on use.
-  enrolled.byCitizen = new Map(persons.map((p) => [p.name, { personId: p.id, photoKey: "" }]));
+  enrolled.byCitizen = new Map(
+    persons
+      .filter((p) => isOurs(p.name))
+      .map((p) => [p.name.slice(GALLERY_PREFIX.length), { personId: p.id, photoKey: "" }]),
+  );
+  // Every kiosk's entries, like the gallery_size it is compared against.
   enrolled.size = persons.length;
 }
 
@@ -125,7 +141,7 @@ async function ensureEnrolled(citizenId: string, photo: ReferencePhoto): Promise
   await forgetEnrollment(citizenId);
 
   const { bytes, mimeType } = await cmsFile("face-photos", photo.filename);
-  const person = await enrollPerson(citizenId, {
+  const person = await enrollPerson(galleryName(citizenId), {
     bytes,
     mimeType: photo.mimeType || mimeType,
     fileName: photo.filename,
@@ -235,13 +251,19 @@ export async function verifyFace(
   // has to be one of them — but on the face that is theirs, they must still be
   // the strongest match in the gallery, not merely present in it.
   const threshold = MIN_SIMILARITY ?? result.threshold;
-  const scored = result.faces.map((face) => ({
-    face,
-    similarity: face.similarities.find((s) => s.name === citizenId)?.similarity ?? null,
-  }));
+  const name = galleryName(citizenId);
+  const scored = result.faces.map((face) => {
+    // The worker's own `match` ranks every kiosk's entries; ours is re-ranked
+    // over this kiosk's registry alone.
+    const ours = face.similarities.filter((s) => isOurs(s.name));
+    return {
+      top: ours.length ? ours.reduce((a, b) => (b.similarity > a.similarity ? b : a)) : null,
+      similarity: ours.find((s) => s.name === name)?.similarity ?? null,
+    };
+  });
   const best = scored.reduce((a, b) => ((b.similarity ?? -1) > (a.similarity ?? -1) ? b : a));
 
-  const isCardholder = best.face.match?.name === citizenId;
+  const isCardholder = best.top?.name === name;
   if (isCardholder && best.similarity !== null && best.similarity >= threshold) {
     return { ok: true, similarity: best.similarity, threshold };
   }
@@ -251,8 +273,8 @@ export async function verifyFace(
     similarity: best.similarity,
     detail: isCardholder
       ? `similarity ${best.similarity?.toFixed(3)} is below the ${threshold} threshold`
-      : best.face.match
-        ? `the strongest match in the gallery is ${best.face.match.name}, not ${citizenId}`
+      : best.top
+        ? `the strongest match in the gallery is ${best.top.name.slice(GALLERY_PREFIX.length)}, not ${citizenId}`
         : `no gallery entry is close enough to the face in frame`,
   };
 }

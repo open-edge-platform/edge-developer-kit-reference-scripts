@@ -76,7 +76,10 @@ function Resolve-KitPath([string]$Path) {
 
 $EdgeAiStudioDir = Resolve-KitPath (Get-Setting 'EDGE_AI_STUDIO_DIR' ([IO.Path]::GetFullPath((Join-Path $RepoRoot '..\..\edge-ai-demo-studio'))))
 $StudioAutostart = Get-Setting 'STUDIO_AUTOSTART' '1'
-$StudioUrl = (Get-Setting 'STUDIO_URL' 'http://localhost:8080').TrimEnd('/')
+$StudioUrl = (Get-Setting 'STUDIO_URL' 'http://127.0.0.1:8080').TrimEnd('/')
+# Loopback never goes to a proxy: the studio boots on its own readiness probe to 127.0.0.1.
+$env:NO_PROXY = (@($env:NO_PROXY, 'localhost', '127.0.0.1', '::1') -join ',' -split ',' |
+    ForEach-Object { $_.Trim() } | Where-Object { $_ } | Select-Object -Unique) -join ','
 $StudioWaitSecs = [int](Get-Setting 'STUDIO_WAIT_SECS' '600')
 $StudioRunMode = Get-Setting 'STUDIO_RUN_MODE' 'auto'
 $StudioDeploymentFile = Resolve-KitPath (Get-Setting 'STUDIO_DEPLOYMENT_FILE' '')
@@ -197,16 +200,29 @@ function Get-KioskPort([string]$Dir) {
     return 3000
 }
 
-# Where scripts/bundle.mjs exports the current kiosk's embedded bundle.
+# Where scripts/bundle.mjs exports the embedded bundle: one studio, every
+# chosen kiosk a sample of it.
 function Get-KioskBundleDir {
-    $default = Join-Path $BuildDir "kiosk-studio\$($Kiosk.id)"
+    $default = Join-Path $BuildDir 'kiosk-studio'
     Resolve-KitPath $(if ($env:KIOSK_BUNDLE_DIR) { $env:KIOSK_BUNDLE_DIR } else { $default })
 }
 
-# The build's questions for the current kiosk, answered now: the full argument
-# list for its build, so the build has nothing left to ask.
-# The first of $BuildArgs is the flow: --bundle-app, or --mock for the kiosk alone.
+# Hand the chosen kiosks to the Node side (scripts/bundle.mjs, electron/scripts/build.mjs).
+function Set-KioskDirList {
+    $env:KIOSK_DIR_LIST = @($KioskDirs) -join [System.IO.Path]::PathSeparator
+}
+
+# The packaged platform app's identity (common\platform.json): the embedded
+# bundle ships as one app, whichever kiosks it carries.
+$PlatformJson = Join-Path $RepoRoot 'platform.json'
+function Read-PlatformJson { Get-Content -LiteralPath $PlatformJson -Raw | ConvertFrom-Json }
+
+# The build's questions, answered now: the full argument list for the build,
+# so the build has nothing left to ask. The first of $BuildArgs is the flow:
+# --bundle-app (every chosen kiosk, one platform app), or --mock for the
+# current kiosk alone.
 function Get-BuildAnswers([string[]]$BuildArgs) {
+    if ($BuildArgs.Count -gt 0 -and $BuildArgs[0] -eq '--bundle-app') { Set-KioskDirList }
     $asker = Join-Path $ElectronDir 'scripts\build.mjs'
     $answers = @(& node $asker --ask-only @BuildArgs)
     if ($LASTEXITCODE -ne 0) { Stop-WithError "the build's questions failed (exit $LASTEXITCODE)" }
@@ -402,7 +418,7 @@ function Get-StudioPackagedBin {
     return $null
 }
 
-# Mirrors studio_deployment in common.sh: install <studio dir> | services, for every selected kiosk.
+# Mirrors studio_deployment in common.sh: install <studio dir> | addresses, for every selected kiosk.
 function Invoke-StudioDeployment([string]$Command, [string[]]$Extra = @()) {
     Assert-Node
     $cli = @($Command, '--profile', $KioskProfile)
@@ -475,13 +491,15 @@ function Wait-Studio {
 }
 
 # The kiosk's health semantics: any HTTP reply < 500 counts as up (the gateway
-# answers 500 for an inactive service, 404 for a path a live worker doesn't serve).
+# answers 500 for an inactive service, 404 for a path a live worker doesn't serve),
+# except the gateway's 404 for an instance it does not have.
 function Test-ServiceUp([string]$Url) {
     try {
         $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 10
         return [int]$response.StatusCode -lt 500
     } catch {
         $status = $_.Exception.Response.StatusCode.value__
+        if ("$($_.ErrorDetails.Message)" -match '"Unknown service instance') { return $false }
         if ($status) { return [int]$status -lt 500 }
         return $false
     }
@@ -489,10 +507,10 @@ function Test-ServiceUp([string]$Url) {
 
 function Test-StudioServices {
     $allOk = $true
-    foreach ($name in @(Invoke-StudioDeployment 'services')) {
-        $url = if ($name -eq 'text-generation') { "$StudioUrl/api/text-generation@text-generation/v1/models" } else { "$StudioUrl/api/$($name)@$($name)/healthcheck" }
+    foreach ($address in @(Invoke-StudioDeployment 'addresses')) {
+        $url = if ($address -like 'text-generation@*') { "$StudioUrl/api/$address/v1/models" } else { "$StudioUrl/api/$address/healthcheck" }
         if (-not (Test-ServiceUp $url)) {
-            Write-Warn "studio service '$name' is not active"
+            Write-Warn "studio service '$address' is not active"
             $allOk = $false
         }
     }
@@ -540,7 +558,7 @@ function Set-MockEnv {
     # kiosk out of service.
     $env:KIOSK_LLM_MOCK = 'true'
     $env:KIOSK_REQUIRE_DOCUMENT_VERIFICATION = 'false'
-    foreach ($name in @('KIOSK_OCR_BASE_URL', 'KIOSK_FACE_BASE_URL', 'KIOSK_STT_BASE_URL', 'KIOSK_TTS_BASE_URL')) {
+    foreach ($name in @('KIOSK_OCR_BASE_URL', 'KIOSK_FACE_BASE_URL', 'KIOSK_STT_BASE_URL', 'KIOSK_TTS_BASE_URL', 'KIOSK_AVATAR_BASE_URL')) {
         Set-Item -Path "Env:$name" -Value ''
         # An empty value means "off"; a *missing* one falls back to config.yaml's
         # live URL, which fails /api/health and puts the kiosk out of service.

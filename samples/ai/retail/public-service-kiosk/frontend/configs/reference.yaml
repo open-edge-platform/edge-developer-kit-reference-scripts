@@ -43,7 +43,7 @@ cms:
 # --- Document analysis (the LLM verdict on an uploaded document) -------------
 llm:
   mock: false
-  base_url: http://localhost:8080/api/text-generation@text-generation/v1
+  base_url: http://127.0.0.1:8080/api/text-generation@kiosk-llm/v1
   model: llamacpp:unsloth/gemma-4-E4B-it-GGUF:Q4_K_M
   timeout_ms: 120000
   extra_body:
@@ -52,25 +52,35 @@ llm:
 
 # --- OCR ---------------------------------------------------------------------
 ocr:
-  base_url: http://localhost:8080/api/ocr@ocr
+  base_url: http://127.0.0.1:8080/api/ocr@ocr
   health_path: /healthcheck
 
 # --- Face recognition (the identity step's face check) -----------------------
 face:
-  base_url: http://localhost:8080/api/face-recognition@face-recognition
+  base_url: http://127.0.0.1:8080/api/face-recognition@face-recognition
   health_path: /healthcheck
   require_match: true
 
 # --- Voice: speech-to-text + text-to-speech (assistant kiosk only) -----------
 voice:
   stt:
-    base_url: http://localhost:8080/api/speech-to-text@speech-to-text/v1
+    base_url: http://127.0.0.1:8080/api/speech-to-text@kiosk-stt/v1
     health_path: /../healthcheck
   tts:
-    base_url: http://localhost:8080/api/text-to-speech@text-to-speech/v1
+    base_url: http://127.0.0.1:8080/api/text-to-speech@kiosk-tts-en/v1
     health_path: /../healthcheck
     voice: af_heart
-  # Every Kokoro language, one voice each — spoken-language detection is on (docs/i18n.md):
+  # The chat's lip-synced assistant (Wav2Lip, deployment.json); blank: no avatar.
+  avatar:
+    base_url: http://127.0.0.1:8080/api/lipsync@kiosk-avatar/v1
+    health_path: /../healthcheck
+  # Spoken-language detection (docs/i18n.md): Whisper names each utterance's
+  # language and the chat follows the citizen into any language listed here.
+  # Kokoro speaks the first eight on voice.tts; Malay, Indonesian, Vietnamese
+  # and Tamil speak on their own studio instances (text-to-speech-<code>,
+  # deployment.json). A blank voice is the language's default voice
+  # (docs/configuration.md#spoken-languages-chat-mode); `voice@instance` picks
+  # another one.
   languages:
     en: af_heart
     es: ef_dora
@@ -80,6 +90,10 @@ voice:
     ja: jf_alpha
     pt: pf_dora
     zh: zf_xiaobei
+    ms:   # Malaya: Shafiqah Idayu
+    id:   # Pocket TTS: female_1
+    vi:   # VieNeu-TTS: Trúc Ly
+    ta:   # Fastspeech2-HS: tamil_female
   wait_for_speech: false
   barge_in: true
 

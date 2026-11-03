@@ -71,8 +71,6 @@ export function RequestsScreen({ actions }: { actions: KioskFlowActions }) {
     });
   };
 
-  // Identity first: nothing is fetched or shown until the visitor has
-  // verified who they are, and the list is scoped to that citizen only.
   if (!identity) {
     return (
       <div className="fixed inset-0 flex flex-col bg-background">
@@ -166,8 +164,6 @@ export function RequestsScreen({ actions }: { actions: KioskFlowActions }) {
               </div>
             </Card>
           )}
-          {/* A failed discard used to stop its spinner and leave the row
-              sitting there as if nothing had been tapped. */}
           {discard.isError && (
             <StepError>That request could not be discarded — please try again.</StepError>
           )}
