@@ -1,0 +1,6 @@
+# uv overrides applied to upstream's requirements.txt (see "install" in workers/oep-services.json):
+# only for what would not install or run on our platforms. Drop a line once upstream no longer needs it.
+
+# No Windows wheels: it compiles whisper.cpp there. Upstream imports it only for its whisper.cpp
+# provider, which this worker does not offer, so it is left out everywhere.
+pywhispercpp ; sys_platform == 'never'

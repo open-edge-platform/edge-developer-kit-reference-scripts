@@ -4,33 +4,72 @@
 
 set -euo pipefail
 
-XPU_SMI_RELEASE_URL="https://github.com/intel/xpumanager/releases/download/v1.3.6/xpu-smi_1.3.6_20260206.143628.1004f6cb.u24.04_amd64.deb"
-XPU_SMI_DOWNLOAD_FILE="xpu-smi.deb"
-
-# Parse command-line arguments
 AUTO_YES=false
 AUTO_NO=false
-while getopts "yn" opt; do
-  case $opt in
-    y)
+ONEAPI_ONLY=false
+
+print_usage() {
+  cat <<EOF
+Usage: sudo $0 [-y|--yes | -n|--no]
+
+Installs the system packages, espeak-ng and the Intel GPU/NPU drivers. Must
+be run as root (sudo).
+
+Options:
+  -y, --yes       Install the GPU/NPU drivers without asking.
+  -n, --no        Skip the GPU/NPU driver installation.
+  -h, --help      Show this help and exit.
+
+Non-interactive use (CI, Docker): with no TTY to answer prompts the driver
+step requires -y or -n.
+
+The SYCL llama.cpp backend no longer needs the Intel oneAPI Toolkit: ./setup.sh
+installs its runtime from Python wheels. --oneapi and --no-oneapi are ignored,
+and --oneapi-only exits without doing anything.
+EOF
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -y|--yes)
       AUTO_YES=true
       ;;
-    n)
+    -n|--no)
       AUTO_NO=true
       ;;
-    \?)
-      echo "Invalid option: -$OPTARG" >&2
-      echo "Usage: $0 [-y] [-n]"
-      echo "  -y    Auto-accept GPU driver installation (non-interactive mode)"
-      echo "  -n    Auto-skip GPU driver installation (non-interactive mode)"
+    --oneapi|--no-oneapi)
+      echo "Note: $1 is ignored - the SYCL runtime is installed by ./setup.sh, not the Intel oneAPI Toolkit."
+      ;;
+    --oneapi-only)
+      ONEAPI_ONLY=true
+      ;;
+    -h|--help)
+      print_usage
+      exit 0
+      ;;
+    *)
+      echo "Error: unknown option '$1'" >&2
+      print_usage >&2
       exit 1
       ;;
   esac
+  shift
 done
 
 if [ "$AUTO_YES" = true ] && [ "$AUTO_NO" = true ]; then
-  echo "Error: -y and -n are mutually exclusive."
+  echo "Error: -y and -n are mutually exclusive." >&2
   exit 1
+fi
+
+if [ "$ONEAPI_ONLY" = true ]; then
+  echo "Nothing to install: the SYCL llama.cpp backend no longer needs the Intel oneAPI Toolkit."
+  echo "Run ./setup.sh --backend sycl to switch the engine over; it installs the SYCL runtime."
+  exit 0
+fi
+
+# No TTY, or -y/-n given, means non-interactive: keep apt/dpkg off debconf prompts too.
+if [ ! -t 0 ] || [ "$AUTO_YES" = true ] || [ "$AUTO_NO" = true ]; then
+  export DEBIAN_FRONTEND="${DEBIAN_FRONTEND:-noninteractive}"
 fi
 
 if [ "$EUID" -eq 0 ]; then
@@ -48,34 +87,6 @@ if [ -z "${SUDO_USER:-}" ]; then
   fi
 fi
 
-command_exists() {
-    command -v "$1" >/dev/null 2>&1
-}
-
-download_deb_file() {
-    local url="$1"
-    local output="$2"
-    local description="${3:-file}"
-    
-    echo "Downloading $description..."
-  # Fail on HTTP errors, follow redirects and be silent about progress
-  if ! curl -fSL -o "$output" "$url"; then
-    echo "❌ ERROR: Failed to download $description from $url"
-    return 1
-  fi
-
-  # Basic validation: ensure the file looks like a .deb (dpkg-deb can read it)
-  if ! dpkg-deb -I "$output" >/dev/null 2>&1; then
-    echo "❌ ERROR: Downloaded $description does not appear to be a valid .deb: $output"
-    rm -f "$output"
-    return 1
-  fi
-
-  echo "✅ Downloaded and validated $description"
-    return 0
-}
-
-# Dynamic function to install and verify packages
 # Usage: install_and_verify_packages "package1 package2 package3" "Package Category Name"
 install_and_verify_packages() {
   local packages="$1"
@@ -83,7 +94,6 @@ install_and_verify_packages() {
   
   echo "Installing $category_name..."
   
-  # Convert space-separated string to array
   local pkg_array
   read -ra pkg_array <<< "$packages"
   
@@ -91,21 +101,28 @@ install_and_verify_packages() {
     echo "❌ ERROR: Failed to update apt package list"
     return 1
   fi
+
+  if ! apt-get check >/dev/null 2>&1; then
+    echo "⚠️  Detected broken package dependencies. Attempting to repair with 'apt --fix-broken install'..."
+    if ! apt --fix-broken install -y; then
+      echo "❌ ERROR: Failed to repair broken package dependencies."
+      echo "Please resolve them manually (e.g. 'sudo apt --fix-broken install') and re-run this script."
+      return 1
+    fi
+    echo "✅ Broken package dependencies repaired."
+  fi
   
   if ! apt install -y "${pkg_array[@]}"; then
     echo "❌ ERROR: Failed to install $category_name"
     return 1
   fi
   
-  # Verify installation
   echo "Verifying $category_name installation..."
   local missing_packages=()
   
   for pkg in "${pkg_array[@]}"; do
-    # Check if it's a command-line tool
     if command -v "$pkg" >/dev/null 2>&1; then
       continue
-    # Check if it's an installed package
     elif dpkg -s "$pkg" >/dev/null 2>&1; then
       continue
     else
@@ -123,7 +140,7 @@ install_and_verify_packages() {
 }
 
 install_system_dependencies() {
-  local system_packages="curl wget libxml2 git software-properties-common vulkan-tools libportaudio2 unzip"
+  local system_packages="curl wget libxml2 git software-properties-common vulkan-tools libportaudio2 unzip jq"
   
   if ! install_and_verify_packages "$system_packages" "system dependencies"; then
     echo "❌ ERROR: Failed to install system dependencies"
@@ -144,7 +161,6 @@ download_espeak_ng() {
         exit 1
     fi
     
-    # Additional verification that espeak-ng command is available
     if ! command -v espeak-ng >/dev/null 2>&1; then
         echo "❌ ERROR: espeak-ng command not found after installation"
         exit 1
@@ -179,6 +195,11 @@ install_drivers() {
     echo ""
     return 0
   elif [ "$AUTO_YES" = false ]; then
+    if [ ! -t 0 ]; then
+      echo "❌ ERROR: No TTY to ask about the driver installation."
+      echo "   Re-run with -y (install the drivers) or -n (skip them)."
+      return 1
+    fi
     read -p "Would you like to download and run the drivers installer script now? (y/N): " -n 1 -r
     echo ""
     
@@ -220,7 +241,6 @@ install_drivers() {
   echo "This may take several minutes. Please wait..."
   echo ""
   
-  # Save current directory and change to /tmp
   local original_dir
   original_dir=$(pwd)
   cd /tmp || return 1
@@ -237,60 +257,11 @@ install_drivers() {
     return 1
   fi
   
-  # Cleanup and return to original directory
   rm -f "$driver_script"
   cd "$original_dir" || {
     echo "❌ ERROR: Failed to return to original directory: $original_dir"
     return 1
   }
-}
-
-
-# Install XPU-SMI (Intel GPU monitoring tool)
-install_xpu_smi() {
-    echo "XPU-SMI Installation"
-    
-    if command_exists xpu-smi; then
-        echo "✅ XPU-SMI is already installed."
-        return 0
-    fi
-    
-    # Download the .deb package
-    if ! download_deb_file "$XPU_SMI_RELEASE_URL" "$XPU_SMI_DOWNLOAD_FILE" "XPU-SMI package"; then
-        return 1
-    fi
-    
-    # Check if we can install system-wide (requires sudo)
-    if command_exists dpkg && [[ $EUID -eq 0 ]]; then
-        echo "Installing XPU-SMI system-wide..."
-        if sudo apt install -y "./$XPU_SMI_DOWNLOAD_FILE"; then
-            rm -f "$XPU_SMI_DOWNLOAD_FILE"
-            echo "XPU-SMI installed system-wide."
-            return 0
-        else
-            echo "❌ ERROR: System-wide XPU-SMI installation failed."
-            echo "Please install manually: sudo apt install ./$XPU_SMI_DOWNLOAD_FILE"
-            rm -f "$XPU_SMI_DOWNLOAD_FILE"
-            return 1
-        fi
-    elif command_exists dpkg && sudo -n true 2>/dev/null; then
-        echo "Installing XPU-SMI system-wide..."
-        if sudo apt install -y "./$XPU_SMI_DOWNLOAD_FILE"; then
-            rm -f "$XPU_SMI_DOWNLOAD_FILE"
-            echo "XPU-SMI installed system-wide."
-            return 0
-        else
-            echo "❌ ERROR: System-wide XPU-SMI installation failed."
-            echo "Please install manually: sudo apt install ./$XPU_SMI_DOWNLOAD_FILE"
-            rm -f "$XPU_SMI_DOWNLOAD_FILE"
-            return 1
-        fi
-    else
-        echo "Cannot install system-wide (no sudo access or not on Debian/Ubuntu)"
-        rm -f "$XPU_SMI_DOWNLOAD_FILE"
-        return 1
-    fi
-    
 }
 
 
@@ -306,12 +277,9 @@ main() {
   download_espeak_ng
   echo ""
   
-  install_drivers
+  install_drivers || exit 1
   echo ""
 
-  install_xpu_smi
-  echo ""
-  
   echo "=========================================="
   echo "✅ All dependencies installed and verified successfully!"
   echo "=========================================="
@@ -322,6 +290,9 @@ main() {
   echo "  ✅ GPU drivers installed and verified"
   echo "  ✅ NPU drivers installed and verified"
   echo "  ✅ OpenVINO runtime compatibility confirmed"
+  echo ""
+  echo "Next step: run ./setup.sh to pick the llama.cpp backend (SYCL or Vulkan)"
+  echo "and download the matching binaries."
   echo ""
 }
 

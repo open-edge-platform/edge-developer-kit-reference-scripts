@@ -3,306 +3,111 @@
 
 'use client'
 
-import { Cpu, Globe, Mic } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
+import { ChevronRight, Globe, Mic } from 'lucide-react'
+import { ConfigSection } from '@/components/configure/config-section'
 import { Badge } from '@/components/ui/badge'
-import { Label } from '@/components/ui/label'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { Separator } from '@/components/ui/separator'
-import { useSystemInfo } from '@/context/system-info-context'
-import { useDevicesQuery, resolveDeviceOptions } from '@/hooks/use-devices'
-import { useUpdateServiceConfig } from '@/hooks/use-service-config'
-import { ClearModelCacheSection } from '@/services/common/demo/components/clear-model-cache-section'
-import {
-  CpuAffinitySection,
-  isCpuAffinityValid,
-  normalizeCpuAffinity,
-} from '@/components/common/cpu-affinity-section'
-import {
-  type ConfigurePanelStatus,
-  ServiceConfigurePanel,
-} from '@/components/common/service-configure-panel'
-import {
-  type Service,
-  getBackendForModel,
-  getDevicesForModel,
-} from '@/services/types'
-import { getLanguagesForModel, getVoicesForModel } from '../config'
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
+import { useConfigureDraftHost } from '@/hooks/use-configure-draft'
+import { plural } from '@/lib/browser/format'
+import { WorkerConfigurePanel } from '@/services/common/configure/worker-configure-panel'
+import type { Service } from '@/services/types'
+import { getLanguagesForModel, getVoicesForModel } from '../lib/tts-models'
 
-interface TtsConfigurePanelProps {
-  service: Service
-}
-
-export function TtsConfigurePanel({ service }: TtsConfigurePanelProps) {
-  const { systemInfo } = useSystemInfo()
-  const isLinux = systemInfo?.os === 'linux'
-
-  const currentModel =
-    service.currentModel ?? service.defaultModel?.name ?? 'kokoro'
-  const currentDevice =
-    service.currentDevice ?? service.defaultModel?.device ?? 'CPU'
-  const currentCpuAffinity =
-    (service.metadata as { cpuAffinity?: string } | undefined)?.cpuAffinity ??
-    ''
-
-  const [open, setOpen] = useState(false)
-  const [draftModel, setDraftModel] = useState(currentModel)
-  const [draftDevice, setDraftDevice] = useState(currentDevice)
-  const [draftCpuAffinity, setDraftCpuAffinity] = useState(currentCpuAffinity)
-
-  const { mutate: updateConfig, isPending: isSaving } = useUpdateServiceConfig()
-
-  const availableModels = service.config?.availableModels ?? []
-  const availableDevices = getDevicesForModel(service.config, draftModel)
-
-  const resolvedBackend = useMemo(
-    () => getBackendForModel(service.config, draftModel),
-    [service.config, draftModel],
-  )
-  const { data: backendDevices, isError: isDeviceError } =
-    useDevicesQuery(resolvedBackend)
-
-  const deviceList = useMemo(
-    () =>
-      resolveDeviceOptions(availableDevices, backendDevices, resolvedBackend),
-    [availableDevices, backendDevices, resolvedBackend],
-  )
-
-  // Read-only voice/language info for the draft model
-  const languages = useMemo(
-    () => getLanguagesForModel(draftModel),
-    [draftModel],
-  )
-  const voices = useMemo(() => getVoicesForModel(draftModel), [draftModel])
-
-  const voicesByLanguage = useMemo(() => {
-    const counts = new Map<string, number>()
-    for (const v of voices) {
-      counts.set(v.language, (counts.get(v.language) ?? 0) + 1)
-    }
-    return Array.from(counts, ([language, count]) => ({ language, count }))
-  }, [voices])
-
-  const handleOpenChange = useCallback(
-    (newOpen: boolean) => {
-      if (!newOpen) {
-        setDraftModel(currentModel)
-        setDraftDevice(currentDevice)
-        setDraftCpuAffinity(currentCpuAffinity)
-      }
-      setOpen(newOpen)
-    },
-    [currentModel, currentDevice, currentCpuAffinity],
-  )
-
-  const normalizedDraftAffinity = normalizeCpuAffinity(draftCpuAffinity)
-  const cpuAffinityChanged =
-    normalizedDraftAffinity !== normalizeCpuAffinity(currentCpuAffinity)
-  const cpuAffinityValid = isCpuAffinityValid(draftCpuAffinity)
-
-  const isDirty =
-    draftModel !== currentModel ||
-    draftDevice.toLowerCase() !== currentDevice.toLowerCase() ||
-    cpuAffinityChanged
-
-  const isValid = cpuAffinityValid
-
-  const handleCancel = useCallback(() => {
-    setDraftModel(currentModel)
-    setDraftDevice(currentDevice)
-    setDraftCpuAffinity(currentCpuAffinity)
-  }, [currentModel, currentDevice, currentCpuAffinity])
-
-  const handleSave = useCallback(() => {
-    if (!service.dbId || !isValid) return
-
-    updateConfig(
-      {
-        serviceId: service.dbId,
-        serviceType: service.id,
-        config: {
-          name: draftModel,
-          device: draftDevice,
-          ...(cpuAffinityChanged && {
-            metadata: { cpuAffinity: normalizedDraftAffinity },
-          }),
-        },
-      },
-      { onSuccess: () => setOpen(false) },
-    )
-  }, [
-    service.dbId,
-    service.id,
-    draftModel,
-    draftDevice,
-    cpuAffinityChanged,
-    normalizedDraftAffinity,
-    isValid,
-    updateConfig,
-  ])
-
-  const statusItems: ConfigurePanelStatus[] = [
-    { label: 'Current model', value: currentModel || '—' },
-    { label: 'Current device', value: currentDevice || '—' },
-    ...(isLinux
-      ? [
-          {
-            label: 'CPU affinity',
-            value: currentCpuAffinity || 'all cores',
-          },
-        ]
-      : []),
-  ]
+/**
+ * The drafted model's languages and voice counts. A reference, not a setting, so it starts
+ * folded in the New instance sheet and open in Runtime Settings.
+ */
+function TtsVoicesSection({
+  model,
+  defaultOpen,
+}: {
+  model: string
+  defaultOpen: boolean
+}) {
+  const languages = getLanguagesForModel(model)
+  const voices = getVoicesForModel(model)
+  const voiceCounts = new Map<string, number>()
+  for (const v of voices) {
+    voiceCounts.set(v.language, (voiceCounts.get(v.language) ?? 0) + 1)
+  }
 
   return (
-    <ServiceConfigurePanel
-      serviceName={service.name}
-      statusItems={statusItems}
-      isDirty={isDirty}
-      isValid={isValid}
-      onSave={handleSave}
-      isSaving={isSaving}
-      onCancel={handleCancel}
-      open={open}
-      onOpenChange={handleOpenChange}
-    >
-      <div className="space-y-3 px-2">
-        <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
-          Model
-        </p>
-        <div className="space-y-2">
-          <Label
-            htmlFor="tts-cfg-model"
-            className="text-muted-foreground text-xs"
-          >
-            Model
-          </Label>
-          <Select value={draftModel} onValueChange={setDraftModel}>
-            <SelectTrigger
-              data-testid="tts-cfg-model"
-              id="tts-cfg-model"
-              className="w-full text-xs"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {availableModels.map((m) => (
-                <SelectItem key={m.value} value={m.value} className="text-xs">
-                  {m.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      <Separator />
-
-      <div className="space-y-3 px-2">
-        <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
-          Available Voices
-        </p>
-        <p className="text-muted-foreground text-xs">
-          Language and voice can be configured in the demo panel at runtime.
-        </p>
-        <div className="text-muted-foreground flex items-center gap-2 text-xs">
-          <Globe className="h-3 w-3 shrink-0" />
-          <span>
-            {languages.length} language{languages.length !== 1 ? 's' : ''}
+    <ConfigSection title="Available Voices">
+      <p className="text-muted-foreground text-xs">
+        Language and voice can be configured in the demo panel at runtime.
+      </p>
+      <Collapsible defaultOpen={defaultOpen} className="group/voices space-y-2">
+        <div className="text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+          <Globe aria-hidden className="h-3.5 w-3.5 shrink-0" />
+          <span>{plural(languages.length, 'language')}</span>
+          <span aria-hidden className="text-muted-foreground/50">
+            ·
           </span>
-          <span className="text-muted-foreground/50">·</span>
-          <Mic className="h-3 w-3 shrink-0" />
-          <span>
-            {voices.length} voice{voices.length !== 1 ? 's' : ''}
+          <Mic aria-hidden className="h-3.5 w-3.5 shrink-0" />
+          <span data-testid="tts-voices-count">
+            {plural(voices.length, 'voice')}
           </span>
-        </div>
-        <div className="divide-border max-h-44 divide-y overflow-y-auto rounded-md border">
-          {voicesByLanguage.map(({ language, count }) => (
-            <div
-              key={language}
-              className="flex items-center justify-between gap-2 px-2.5 py-1.5"
+          {voiceCounts.size > 0 && (
+            <CollapsibleTrigger
+              data-testid="tts-voices-toggle"
+              className="text-primary hover:bg-muted/60 focus-visible:ring-ring/50 ml-auto inline-flex h-8 items-center gap-1 rounded-md px-2 text-xs font-medium outline-none focus-visible:ring-[3px]"
             >
-              <span className="truncate text-xs">{language}</span>
-              <Badge
-                variant="secondary"
-                className="shrink-0 text-[10px] tabular-nums"
-              >
-                {count} voice{count !== 1 ? 's' : ''}
-              </Badge>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <Separator />
-
-      <div className="space-y-3 px-2">
-        <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
-          Accelerator
-        </p>
-        <div className="space-y-2">
-          <Label
-            htmlFor="cfg-device-select"
-            className="text-muted-foreground text-xs"
-          >
-            <Cpu className="mr-1 inline-block h-3 w-3" />
-            Device
-          </Label>
-          <Select value={draftDevice} onValueChange={setDraftDevice}>
-            <SelectTrigger
-              data-testid="cfg-device-select"
-              id="cfg-device-select"
-              className="w-full text-xs"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {deviceList.map((d) => (
-                <SelectItem
-                  key={d.value}
-                  value={d.value}
-                  textValue={d.value}
-                  className="text-xs"
-                >
-                  <span>{d.value}</span>
-                  {d.value !== d.label && (
-                    <span className="text-muted-foreground font-normal">
-                      {d.label}
-                    </span>
-                  )}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {isDeviceError && (
-            <p className="text-destructive text-[10px]">
-              Failed to fetch GPU devices. Check that the helper service is
-              running.
-            </p>
+              <ChevronRight
+                aria-hidden="true"
+                className="h-3.5 w-3.5 transition-transform duration-150 group-data-[state=open]/voices:rotate-90"
+              />
+              <span className="group-data-[state=open]/voices:hidden">
+                Show voices by language
+              </span>
+              <span className="hidden group-data-[state=open]/voices:inline">
+                Hide voices by language
+              </span>
+            </CollapsibleTrigger>
           )}
         </div>
-      </div>
+        {voiceCounts.size > 0 && (
+          <CollapsibleContent>
+            <ul
+              data-testid="tts-voices-list"
+              className="divide-border max-h-44 divide-y overflow-y-auto rounded-md border"
+            >
+              {[...voiceCounts].map(([language, count]) => (
+                <li
+                  key={language}
+                  className="flex items-center justify-between gap-2 px-2.5 py-1.5"
+                >
+                  <span className="truncate text-xs">{language}</span>
+                  <Badge
+                    variant="secondary"
+                    className="shrink-0 text-xs tabular-nums"
+                  >
+                    {plural(count, 'voice')}
+                  </Badge>
+                </li>
+              ))}
+            </ul>
+          </CollapsibleContent>
+        )}
+      </Collapsible>
+    </ConfigSection>
+  )
+}
 
-      {isLinux && (
-        <>
-          <Separator />
-          <CpuAffinitySection
-            value={draftCpuAffinity}
-            onChange={setDraftCpuAffinity}
-            currentServiceId={service.id}
-          />
-        </>
+/** Worker settings with the drafted model's voices between the model and the device. */
+export function TtsConfigurePanel({ service }: { service: Service }) {
+  const drafting = useConfigureDraftHost() !== null
+  return (
+    <WorkerConfigurePanel
+      service={service}
+      listPresetsBy="label"
+      modelSelectTestId="tts-cfg-model"
+      renderAfterModel={({ model }) => (
+        <TtsVoicesSection model={model} defaultOpen={!drafting} />
       )}
-
-      <Separator />
-
-      <ClearModelCacheSection service={service} />
-    </ServiceConfigurePanel>
+    />
   )
 }

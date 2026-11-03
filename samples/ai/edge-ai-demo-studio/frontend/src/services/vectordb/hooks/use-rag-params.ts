@@ -4,10 +4,16 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { useGetServices } from '@/context/service-status-context'
-import { engines } from '@/engines/registry'
+import { useBoundInstanceKey } from '@/context/sample-instances-context'
+import {
+  useGetServices,
+  useServiceInstances,
+} from '@/context/service-status-context'
 import type { ServiceParamGroup } from '@/types/demo-params'
 import type { KnowledgeBase } from '../types'
+import { useVectorDbConfig } from './index'
+import { configuredInstanceKey } from './use-vectordb-dependencies'
+import { useVectorDbSiblings } from './use-vectordb-siblings'
 
 interface UseRagParamsOptions {
   rerankOptional?: boolean
@@ -19,63 +25,38 @@ export function useRagParams(options?: UseRagParamsOptions) {
   const [selectedKb, setSelectedKb] = useState<KnowledgeBase | null>(null)
   const [rerankEnabled, setRerankEnabled] = useState(true)
 
-  const {
-    embeddings: embeddingsService,
-    vectordb: vectordbService,
-    rerank: rerankService,
-  } = useGetServices(['embeddings', 'vectordb', 'rerank'])
-
-  const embeddingsOnline = embeddingsService?.status === 'online'
+  const { vectordb: vectordbService } = useGetServices(['vectordb'])
   const vectordbOnline = vectordbService?.status === 'online'
+  const vectordbApiBase = vectordbService?.apiBase
+  const workerConfig = useVectorDbConfig(
+    vectordbOnline ? vectordbApiBase : undefined,
+  ).data
 
-  const embeddingPort = embeddingsService?.port
-  const embeddingEngine = embeddingsService?.engine ?? 'multiserve'
-  const embeddingModelConfig = {
-    name:
-      embeddingsService?.currentModel ??
-      embeddingsService?.defaultModel?.name ??
-      '',
-    device:
-      embeddingsService?.currentDevice ??
-      embeddingsService?.defaultModel?.device ??
-      '',
-    backend:
-      embeddingsService?.currentBackend ??
-      embeddingsService?.defaultModel?.backend,
-    quant: embeddingsService?.defaultModel?.quant,
-  }
-  const embeddingModelName =
-    embeddingsOnline && embeddingPort
-      ? engines[embeddingEngine].getModelName(embeddingModelConfig, true)
-      : undefined
+  // Embeddings: the sample's binding, else the one the worker already embeds with (its knowledge
+  // bases were built with it), else the type's own.
+  const embeddingInstances = useServiceInstances('embeddings')
+  const embeddingsKey =
+    useBoundInstanceKey('embeddings') ??
+    configuredInstanceKey(embeddingInstances, workerConfig?.embedding_url)
+  const siblings = useVectorDbSiblings({
+    rerank: rerankOptional ? rerankEnabled : true,
+    embeddings: embeddingsKey,
+  })
+  const {
+    embeddingsOnline,
+    rerankOnline: rerankServiceOnline,
+    embeddingUrl,
+    embeddingModelName,
+    rerankUrl,
+    rerankModelName,
+  } = siblings
 
-  const rerankOnline =
-    rerankService?.status === 'online' &&
-    (rerankOptional ? rerankEnabled : true)
-  const rerankPort = rerankOnline ? rerankService?.port : undefined
-  const rerankEngine = rerankService?.engine ?? 'multiserve'
-  const rerankModelConfig = {
-    name:
-      rerankService?.currentModel ?? rerankService?.defaultModel?.name ?? '',
-    device:
-      rerankService?.currentDevice ?? rerankService?.defaultModel?.device ?? '',
-    backend:
-      rerankService?.currentBackend ?? rerankService?.defaultModel?.backend,
-    quant: rerankService?.defaultModel?.quant,
-  }
-  const rerankModelName =
-    rerankOnline && rerankPort
-      ? engines[rerankEngine].getModelName(rerankModelConfig, true)
-      : undefined
-
-  const rerankServiceOnline = rerankService?.status === 'online'
-
-  // Memoized so the vectordb feature provider can publish these groups through
-  // the collector without re-render churn (see docs/OPTIONAL-SERVICES.md).
+  // Memoized so the vectordb feature provider can publish these groups without re-render churn.
   const ragGroup: ServiceParamGroup = useMemo(
     () => ({
       serviceLabel: 'RAG',
       serviceId: 'vectordb',
+      instanceTypes: ['vectordb', 'embeddings'],
       online: vectordbOnline && embeddingsOnline,
       optional: true,
       offlineMessage:
@@ -106,10 +87,32 @@ export function useRagParams(options?: UseRagParamsOptions) {
 
   const groups = useMemo(() => [ragGroup, rerankGroup], [ragGroup, rerankGroup])
 
-  const extraBody = useMemo(
-    () => (selectedKb?.id != null ? { knowledgeBaseId: selectedKb.id } : {}),
-    [selectedKb],
-  )
+  // The chat route re-applies these services before searching (the worker keeps whichever it was
+  // last given), but only once the worker's config, which the choice may follow, is known.
+  const workerConfigKnown = workerConfig !== undefined
+  const extraBody = useMemo(() => {
+    if (selectedKb?.id == null) return {}
+    return {
+      knowledgeBaseId: selectedKb.id,
+      ...(workerConfigKnown && embeddingUrl && embeddingModelName
+        ? {
+            vectordbConfig: {
+              embeddingUrl,
+              embeddingModel: embeddingModelName,
+              rerankerUrl: rerankUrl,
+              rerankerModel: rerankModelName,
+            },
+          }
+        : {}),
+    }
+  }, [
+    selectedKb,
+    workerConfigKnown,
+    embeddingUrl,
+    embeddingModelName,
+    rerankUrl,
+    rerankModelName,
+  ])
 
   return {
     selectedKb,
@@ -117,10 +120,8 @@ export function useRagParams(options?: UseRagParamsOptions) {
     extraBody,
     embeddingsOnline,
     vectordbOnline,
-    embeddingPort,
-    embeddingModelName,
-    rerankPort,
-    rerankModelName,
+    vectordbApiBase,
+    siblings,
     groups,
   }
 }

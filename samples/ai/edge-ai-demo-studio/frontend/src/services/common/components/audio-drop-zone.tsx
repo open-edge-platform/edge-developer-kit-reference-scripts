@@ -4,33 +4,26 @@
 'use client'
 
 import { FileAudio } from 'lucide-react'
-import { useCallback } from 'react'
 import { FileDropZone } from '@/components/common/file-drop-zone'
 
 const MAX_AUDIO_SIZE_BYTES = 50 * 1024 * 1024
 const AUDIO_EXTENSIONS = '.wav,.mp3,.flac,.ogg,.webm,.m4a,.aac,.wma'
 
 interface AudioDropZoneProps {
-  /** Currently selected file */
   file: File | null
-  /** Called when a valid file is selected or dropped */
+  /** Called when a valid file is selected or dropped. */
   onFileChange: (file: File | null) => void
   /** Restrict accepted extensions (defaults to a broad audio set). */
   accept?: string
-  /**
-   * Validate strictly by file extension against `accept`. When false (default)
-   * any audio/* MIME type is also accepted, matching the original behaviour.
-   */
+  /** Validate by extension only; by default any audio/* MIME type is accepted too. */
   strictExtensions?: boolean
-  /** Whether to disable interactions */
   disabled?: boolean
-  /** Use compact layout (for secondary/optional upload areas) */
+  /** Compact layout, for secondary or optional uploads. */
   compact?: boolean
-  /** Custom label for the drop zone (defaults to "Drop your audio file here") */
   label?: string
-  /** Custom hint text below the label */
+  /** Hint text below the label. */
   hint?: string
-  /** data-testid for the hidden file input (for programmatic file setting in tests) */
+  /** Test id of the hidden file input, for setting files in tests. */
   inputTestId?: string
 }
 
@@ -66,10 +59,7 @@ export function AudioDropZone({
   hint,
   inputTestId,
 }: AudioDropZoneProps) {
-  const validate = useCallback(
-    (f: File) => validateAudio(f, accept, strictExtensions),
-    [accept, strictExtensions],
-  )
+  const validate = (f: File) => validateAudio(f, accept, strictExtensions)
 
   return (
     <FileDropZone

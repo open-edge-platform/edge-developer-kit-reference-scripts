@@ -6,16 +6,9 @@
 import { createContext, useContext, type ReactNode } from 'react'
 
 /**
- * Voice-input (speech-to-text) recording controls shared between the
- * speech-to-text feature provider (which owns the recording state) and chat UI
- * such as `conversation-panel`.
- *
- * This contract lives in neutral shared infra — NOT in the speech-to-text
- * folder — so a required-service component (conversation-panel lives in the
- * text-generation folder) can read it without statically importing the optional
- * speech-to-text folder. When STT is excluded at export time its provider is
- * never mounted, the context value stays `null`, and the mic UI simply hides.
- * See docs/OPTIONAL-SERVICES.md.
+ * STT recording controls shared between the STT feature provider and chat UI (the mic button).
+ * Lives outside the optional speech-to-text folder so required services can read it; without STT
+ * the value stays `null` and the mic UI hides (docs/OPTIONAL-SERVICES.md).
  */
 export interface VoiceInputControls {
   isRecording: boolean

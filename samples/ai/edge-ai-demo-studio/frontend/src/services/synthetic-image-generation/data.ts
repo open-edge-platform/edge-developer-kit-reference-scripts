@@ -13,7 +13,6 @@ export const service: ServiceMeta = {
   longDescription:
     'A project-based synthetic image generation pipeline for creating training datasets. Upload a base image and generate variations including good samples, missing component scenarios, and custom modifications. Uses diffusion models for high-quality synthetic data generation.',
   icon: Image,
-  port: 8021,
   supportedOS: ['linux'],
   execution: { mode: 'worker' },
   logSources: [
@@ -33,5 +32,7 @@ export const worker: WorkerConfig = {
   buildArgs: (doc: PayloadService) => {
     return ['--port', String(doc.port)]
   },
-  workerSubDir: 'synthetic-image-generation',
+  workerSubDir: 'services/synthetic-image-generation',
+  // FastSAM in its own folder; FLUX weights load from the shared Hugging Face cache.
+  modelDirectories: ['models/synthetic-image-generation', 'models/huggingface'],
 }

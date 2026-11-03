@@ -3,9 +3,9 @@
 
 import type { ServiceConfig } from '@/services/types'
 
-// NPU is omitted: the NPU compiler cannot fit RIFE's GridSample warp in CMX at
-// full-frame resolutions, so interpolation hangs at compile time on real inputs.
-const FRAME_GENERATION_DEVICES = ['CPU', 'GPU']
+// No NPU (and AUTO never picks it): the NPU compiler cannot fit RIFE's GridSample warp in CMX at
+// full-frame resolutions, so compilation hangs on real inputs.
+const FRAME_GENERATION_DEVICES = ['AUTO', 'CPU', 'GPU']
 
 export const serviceConfig: ServiceConfig = {
   supportsCustomModel: false,
@@ -14,6 +14,8 @@ export const serviceConfig: ServiceConfig = {
       value: 'RIFE',
       label: 'RIFE',
       availableDevices: FRAME_GENERATION_DEVICES,
+      // Converted from PyTorch with compress_to_fp16.
+      availableWeightFormats: ['fp16'],
       backend: 'openvino',
     },
   ],

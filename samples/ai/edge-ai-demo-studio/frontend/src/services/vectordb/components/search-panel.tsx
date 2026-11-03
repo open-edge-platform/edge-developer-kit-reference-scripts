@@ -3,12 +3,14 @@
 
 'use client'
 
-import { Loader2, Search } from 'lucide-react'
+import { Loader, Search } from 'lucide-react'
+import { TruncatedText } from '@/components/common/truncated-text'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Progress } from '@/components/ui/progress'
 import type { SearchResult } from '../types'
-import { PanelCard } from './panel-card'
 
 interface SearchPanelProps {
   query: string
@@ -19,6 +21,8 @@ interface SearchPanelProps {
   disabled: boolean
   /** Results of the last search, or undefined if none has run. */
   results?: SearchResult[]
+  /** The knowledge base searched, named under the heading. */
+  knowledgeBaseName?: string
 }
 
 /** "Search Knowledge Base" panel: semantic query input and ranked results. */
@@ -29,88 +33,109 @@ export function SearchPanel({
   isSearching,
   disabled,
   results,
+  knowledgeBaseName,
 }: SearchPanelProps) {
   const hasResults = results !== undefined && results.length > 0
+  const canSearch = !isSearching && !disabled && query.trim() !== ''
 
   return (
-    <PanelCard
-      icon={Search}
-      title="Search Knowledge Base"
-      bodyClassName="space-y-3"
-    >
-      <div className="flex gap-2">
-        <Input
-          value={query}
-          onChange={(e) => onQueryChange(e.target.value)}
-          placeholder="Enter search query..."
-          className="bg-muted/30 text-sm"
-          onKeyDown={(e) => e.key === 'Enter' && onSearch()}
-        />
-        <Button
-          onClick={onSearch}
-          disabled={isSearching || !query.trim() || disabled}
-          size="icon"
-          className="bg-primary hover:bg-primary-light shrink-0 text-white"
-          title="Search"
-        >
-          {isSearching ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Search className="h-4 w-4" />
-          )}
-        </Button>
-      </div>
-
-      {hasResults ? (
-        <div className="space-y-2">
-          <p className="text-muted-foreground text-xs font-medium">
-            Results ({results.length})
+    <Card className="gap-3.5 py-5">
+      <CardHeader className="px-5">
+        <CardTitle className="flex items-center gap-2.5 text-sm">
+          <Search aria-hidden="true" className="text-primary h-4 w-4" />
+          Search knowledge base
+        </CardTitle>
+        {knowledgeBaseName && (
+          <p className="text-muted-foreground flex min-w-0 items-baseline gap-1 text-xs">
+            <span className="shrink-0">Searches</span>
+            <TruncatedText
+              text={knowledgeBaseName}
+              className="text-foreground max-w-56"
+            />
           </p>
-          <div className="max-h-[300px] space-y-2 overflow-auto">
-            {results.map((result, i) => (
-              <div
-                key={`result-${i}`}
-                data-testid="vectordb-search-result"
-                className="border-border bg-muted/20 space-y-1.5 rounded-lg border p-3"
-              >
-                <p className="text-foreground line-clamp-3 text-sm">
-                  {result.content}
-                </p>
-                {result.score !== undefined && (
-                  <div className="flex items-center gap-2">
-                    <div className="bg-muted h-1.5 flex-1 overflow-hidden rounded-full">
-                      <div
-                        className="bg-primary h-full rounded-full"
-                        style={{
-                          width: `${Math.min(result.score * 100, 100)}%`,
-                        }}
+        )}
+      </CardHeader>
+      <CardContent className="space-y-3 px-5">
+        <div className="flex gap-2">
+          <Input
+            value={query}
+            onChange={(e) => onQueryChange(e.target.value)}
+            placeholder="Enter search query..."
+            aria-label="Search query"
+            className="bg-muted/30 text-sm"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && canSearch) onSearch()
+            }}
+          />
+          <Button
+            onClick={onSearch}
+            disabled={!canSearch}
+            size="icon"
+            className="shrink-0"
+            aria-label="Search"
+            title="Search"
+          >
+            {isSearching ? (
+              <Loader aria-hidden="true" className="h-4 w-4 animate-spin" />
+            ) : (
+              <Search aria-hidden="true" className="h-4 w-4" />
+            )}
+          </Button>
+        </div>
+
+        {hasResults ? (
+          <div className="space-y-2">
+            <p className="text-muted-foreground text-xs font-medium">
+              Results ({results.length})
+            </p>
+            <ul className="max-h-[300px] space-y-2 overflow-auto">
+              {results.map((result, i) => (
+                <li
+                  key={`result-${i}`}
+                  data-testid="vectordb-search-result"
+                  className="border-border bg-muted/20 space-y-1.5 rounded-lg border p-3"
+                >
+                  <p className="text-foreground line-clamp-3 text-sm">
+                    {result.content}
+                  </p>
+                  {result.score !== undefined && (
+                    <div className="flex items-center gap-2">
+                      <Progress
+                        value={Math.min(result.score * 100, 100)}
+                        aria-label={`Score of result ${i + 1}`}
+                        className="h-1.5 flex-1"
                       />
+                      <span className="text-muted-foreground font-mono text-xs">
+                        {result.score.toFixed(3)}
+                      </span>
                     </div>
-                    <span className="text-muted-foreground font-mono text-[10px]">
-                      {result.score.toFixed(3)}
-                    </span>
-                  </div>
-                )}
-                {result.metadata && Object.keys(result.metadata).length > 0 && (
-                  <div className="flex flex-wrap gap-1">
-                    {Object.entries(result.metadata).map(([k, v]) => (
-                      <Badge key={k} variant="secondary" className="text-[9px]">
-                        {k}: {String(v)}
-                      </Badge>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
+                  )}
+                  {result.metadata &&
+                    Object.keys(result.metadata).length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {Object.entries(result.metadata).map(([k, v]) => (
+                          <Badge
+                            key={k}
+                            variant="secondary"
+                            className="max-w-full text-xs"
+                          >
+                            {k}: {String(v)}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+                </li>
+              ))}
+            </ul>
           </div>
-        </div>
-      ) : (
-        <div className="border-border text-muted-foreground bg-muted/20 rounded-lg border p-6 text-center text-xs">
-          {results !== undefined
-            ? 'No matches found for this query.'
-            : 'Run a query to see semantic matches.'}
-        </div>
-      )}
-    </PanelCard>
+        ) : (
+          <p className="border-border text-muted-foreground bg-muted/20 rounded-lg border p-6 text-center text-xs">
+            {results !== undefined
+              ? 'No matches found for this query.'
+              : 'Run a query to see semantic matches.'}
+          </p>
+        )}
+      </CardContent>
+    </Card>
   )
 }

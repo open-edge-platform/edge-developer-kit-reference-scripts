@@ -3,7 +3,7 @@
 
 'use client'
 
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useEffectEvent, useMemo } from 'react'
 import {
   useFeatureHandles,
   useFeaturePublish,
@@ -16,12 +16,8 @@ import { useSttRecording } from './hooks/use-stt-recording'
 const noop = () => {}
 
 /**
- * Headless feature provider for the optional speech-to-text integration. Owns
- * the recording state and publishes: its config group, the `sttOnline` flag,
- * and `voiceInput` controls so chat UI (e.g. conversation-panel, via
- * VoiceInputContext) can render the mic button. Also registers a guarded
- * `stt.startRecording` handle the wake-word provider calls.
- * See docs/OPTIONAL-SERVICES.md.
+ * Headless provider for optional STT: publishes its config group, `sttOnline` and `voiceInput`
+ * controls for the chat mic button, and registers the `stt.startRecording` handle for wake word.
  */
 export function SttFeatureProvider({
   onTranscription,
@@ -37,6 +33,7 @@ export function SttFeatureProvider({
   const stt = useSttRecording({ onTranscription: onTranscription ?? noop })
   const { setHandle } = useFeatureHandles()
 
+  // Kept stable: the collector re-registers the provider whenever `exports` changes identity.
   const voiceInput: VoiceInputControls = useMemo(
     () => ({
       isRecording: stt.isRecording,
@@ -60,22 +57,14 @@ export function SttFeatureProvider({
     [voiceInput, optional.enabled],
   )
 
-  // Expose a guarded start to the wake-word provider via the handle bus — only
-  // starts a new recording when not already recording (mirrors the former
-  // use-wake-word-stt wiring). The ref keeps the guard current without
-  // re-registering on every recording-state change.
-  const { isRecording, startRecording } = stt
-  const isRecordingRef = useRef(isRecording)
+  // Effect event: reads the current recording state without re-registering the handle.
+  const startUnlessRecording = useEffectEvent(() => {
+    if (!stt.isRecording) stt.startRecording()
+  })
   useEffect(() => {
-    isRecordingRef.current = isRecording
-  }, [isRecording])
-  useEffect(() => {
-    const triggerStart = () => {
-      if (!isRecordingRef.current) startRecording()
-    }
-    setHandle('stt.startRecording', triggerStart)
+    setHandle('stt.startRecording', () => startUnlessRecording())
     return () => setHandle('stt.startRecording', null)
-  }, [setHandle, startRecording])
+  }, [setHandle])
 
   useFeaturePublish('speech-to-text', { groups, exports })
 

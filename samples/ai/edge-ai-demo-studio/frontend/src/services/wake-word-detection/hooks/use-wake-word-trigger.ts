@@ -3,70 +3,99 @@
 
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { useServiceLiveStatus } from '@/context/service-status-context'
-import { type DetectionEvent, useDetectionEvents } from './use-detection-events'
-import { useQuickStart } from './use-quick-start'
-import type { ServiceParamGroup } from '@/types/demo-params'
+import { useEffect, useEffectEvent, useRef } from 'react'
+import { toast } from 'sonner'
+import { useServiceApiBase } from '@/context/service-status-context'
+import { useOptionalServiceGroup } from '@/hooks/use-optional-service-group'
+import { type DetectionEvent, detectionStream } from '../lib/detection-stream'
+import { useStartDetection } from './use-detection-control'
+import { useDetectionStream } from './use-detection-stream'
+
+// A wake word scores above the threshold for several 80 ms chunks in a row;
+// detections this close after the last one handled are the same utterance.
+const TRIGGER_COOLDOWN_MS = 1_000
 
 interface UseWakeWordTriggerOptions {
   onWakeWord: (event: DetectionEvent) => void
   threshold?: number
 }
 
+/**
+ * Wake word as a sample feature: while online and enabled, starts detection and calls `onWakeWord`
+ * once per utterance above `threshold`. Returns the feature's parameter group with its toggle.
+ */
 export function useWakeWordTrigger({
   onWakeWord,
   threshold = 0.5,
 }: UseWakeWordTriggerOptions) {
-  const [enabled, setEnabled] = useState(true)
-  const online = useServiceLiveStatus('wake-word-detection') === 'online'
-  const active = online && enabled
+  // Headless feature provider, so it targets the type's primary instance.
+  const apiBase = useServiceApiBase('wake-word-detection')
+  const {
+    enabled: active,
+    online,
+    group,
+  } = useOptionalServiceGroup({
+    serviceId: 'wake-word-detection',
+    serviceLabel: 'Wake Word Detection',
+    offlineMessage:
+      'Enable wake word detection for hands-free interaction. Start the service from the services page.',
+  })
 
-  const quickStart = useQuickStart()
-  const { latestEvent, resetSince } = useDetectionEvents(active)
+  const {
+    mutate: startDetection,
+    error: startError,
+    reset: resetStart,
+  } = useStartDetection(apiBase)
+  useDetectionStream(apiBase, active)
 
-  // Track the last-handled event timestamp to avoid duplicate triggers
-  const handledRef = useRef<string | null>(null)
-
-  // Auto-start detection when the service comes online and is enabled
+  // Start once each time the service comes online and enabled. A failed start (no server mic)
+  // toasts once and stays for the group to show until a retry or the feature is switched off.
   const startedRef = useRef(false)
   useEffect(() => {
     if (active && !startedRef.current) {
       startedRef.current = true
-      resetSince()
-      quickStart.mutate({ threshold })
+      startDetection(
+        { threshold },
+        {
+          onError: (error) =>
+            toast.error('Wake word detection could not start', {
+              description: error.message,
+            }),
+        },
+      )
     }
     if (!active) {
       startedRef.current = false
+      resetStart()
     }
-  }, [active, quickStart, threshold, resetSince])
+  }, [active, startDetection, resetStart, threshold])
+  const retryStart = () => {
+    resetStart()
+    startDetection({ threshold })
+  }
 
-  // Fire the callback when a new detection event arrives
+  // Live detections only, never the ones stored before this page connected.
+  const lastFiredRef = useRef(0)
+  const handleDetection = useEffectEvent((event: DetectionEvent) => {
+    if (event.score < threshold) return
+    const now = Date.now()
+    if (now - lastFiredRef.current < TRIGGER_COOLDOWN_MS) return
+    lastFiredRef.current = now
+    onWakeWord(event)
+  })
   useEffect(() => {
-    if (!active || !latestEvent) return
-    if (latestEvent.timestamp === handledRef.current) return
-    if (latestEvent.score < threshold) return
+    if (!apiBase || !active) return
+    return detectionStream(apiBase).onDetection((event) =>
+      handleDetection(event),
+    )
+  }, [apiBase, active])
 
-    handledRef.current = latestEvent.timestamp
-    onWakeWord(latestEvent)
-  }, [active, latestEvent, threshold, onWakeWord])
-
-  // Memoized so the wake-word feature provider can publish it through the
-  // collector without re-render churn (see docs/OPTIONAL-SERVICES.md).
-  const group: ServiceParamGroup = useMemo(
-    () => ({
-      serviceLabel: 'Wake Word Detection',
-      serviceId: 'wake-word-detection',
-      online,
-      optional: true,
-      offlineMessage:
-        'Enable wake word detection for hands-free interaction. Start the service from the services page.',
-      enabled,
-      onToggle: setEnabled,
-      params: [],
-    }),
-    [online, enabled],
-  )
-
-  return { enabled: active, online, group }
+  return {
+    enabled: active,
+    online,
+    group,
+    /** Why detection did not start, while it has not. */
+    startError: active ? startError : null,
+    retryStart,
+  }
 }

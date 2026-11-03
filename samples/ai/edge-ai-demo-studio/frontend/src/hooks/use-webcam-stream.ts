@@ -16,10 +16,29 @@ export interface VideoDevice {
   label: string
 }
 
+function describeCameraError(err: unknown): string {
+  const name = err instanceof DOMException ? err.name : ''
+  switch (name) {
+    case 'NotAllowedError':
+    case 'SecurityError':
+      return 'Camera access was denied. Allow the camera for this site in your browser, then try again.'
+    case 'NotFoundError':
+    case 'OverconstrainedError':
+      return 'No camera was found. Connect one, or choose another device.'
+    case 'NotReadableError':
+    case 'AbortError':
+      return 'The camera is in use by another app. Close it, then try again.'
+    default:
+      return 'Unable to access the camera. Check its connection and try again.'
+  }
+}
+
 export function useWebcamStream() {
   const videoNodeRef = useRef<HTMLVideoElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
 
+  // Stable on purpose: a new callback ref each render would re-attach the stream and restart
+  // playback; the other callbacks are effect dependencies here and in callers.
   const videoRef: RefCallback<HTMLVideoElement> = useCallback((node) => {
     videoNodeRef.current = node
     if (node && streamRef.current) {
@@ -93,8 +112,8 @@ export function useWebcamStream() {
 
           await listDevices(false)
         }
-      } catch {
-        setError('Unable to access webcam')
+      } catch (err) {
+        setError(describeCameraError(err))
       }
     },
     [clearError, listDevices],
@@ -137,29 +156,16 @@ export function useWebcamStream() {
   useEffect(() => {
     if (typeof navigator === 'undefined' || !navigator.mediaDevices) return
 
-    const initializeDevices = async () => {
+    const refreshDevices = async () => {
       const hasPermission = await checkPermission()
       await listDevices(hasPermission)
     }
 
-    initializeDevices()
-  }, [checkPermission, listDevices])
+    refreshDevices()
 
-  useEffect(() => {
-    if (typeof navigator === 'undefined' || !navigator.mediaDevices) return
-
-    const handleDeviceChange = async () => {
-      const hasPermission = await checkPermission()
-      await listDevices(hasPermission)
-    }
-
-    navigator.mediaDevices.addEventListener('devicechange', handleDeviceChange)
-
+    navigator.mediaDevices.addEventListener('devicechange', refreshDevices)
     return () => {
-      navigator.mediaDevices.removeEventListener(
-        'devicechange',
-        handleDeviceChange,
-      )
+      navigator.mediaDevices.removeEventListener('devicechange', refreshDevices)
     }
   }, [checkPermission, listDevices])
 

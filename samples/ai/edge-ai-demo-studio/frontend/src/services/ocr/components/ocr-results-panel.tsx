@@ -3,8 +3,10 @@
 
 'use client'
 
-import { AlertCircle, Check, Copy, ScanText, Timer } from 'lucide-react'
-import { useState } from 'react'
+import { AlertCircle, Ban, Loader, ScanText, Square, Timer } from 'lucide-react'
+import { EmptyState } from '@/components/common/empty-state'
+import { InlineNotice } from '@/components/common/inline-notice'
+import type { Tone } from '@/components/common/tones'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -19,113 +21,161 @@ import {
 } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 import type { OcrResult } from '../hooks'
+import { OcrTextReview } from './ocr-text-review'
 
 interface OcrResultsPanelProps {
   result: OcrResult | null
   isRunning: boolean
+  /** Text recognised so far while a run is in progress (VL models stream it). */
+  partialText: string
+  /** Cancel was pressed and the run has not stopped yet. */
+  isCancelling: boolean
+  /** The last run was cancelled. */
+  isCancelled: boolean
+  onCancel: () => void
   error: Error | null
   highlightIndex: number | null
   onRegionHover: (index: number | null) => void
+  /** The image's file name, to name the downloads after. */
+  sourceName?: string
 }
 
-function confidenceBadgeClass(c: number) {
-  if (c >= 0.9)
-    return 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300'
-  if (c >= 0.7)
-    return 'bg-amber-100 text-amber-800 dark:bg-amber-900/20 dark:text-amber-300'
-  return 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-300'
+function confidenceTone(c: number): Tone {
+  if (c >= 0.9) return 'success'
+  if (c >= 0.7) return 'warning'
+  return 'destructive'
+}
+
+function RunProgress({
+  isCancelling,
+  onCancel,
+}: {
+  isCancelling: boolean
+  onCancel: () => void
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-muted-foreground inline-flex items-center gap-1.5 text-xs">
+        <Loader aria-hidden="true" className="h-3 w-3 animate-spin" />
+        {isCancelling ? 'Cancelling…' : 'Generating…'}
+      </span>
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-7 gap-1.5"
+        onClick={onCancel}
+        disabled={isCancelling}
+        data-testid="ocr-cancel"
+      >
+        <Square aria-hidden="true" className="h-3 w-3" />
+        Cancel
+      </Button>
+    </div>
+  )
 }
 
 export function OcrResultsPanel({
   result,
   isRunning,
+  partialText,
+  isCancelling,
+  isCancelled,
+  onCancel,
   error,
   highlightIndex,
   onRegionHover,
+  sourceName,
 }: OcrResultsPanelProps) {
-  const [copied, setCopied] = useState(false)
-
-  const copyText = async () => {
-    if (!result?.full_text) return
-    await navigator.clipboard.writeText(result.full_text)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1500)
-  }
-
-  // ── Error ────────────────────────────────────────────────────────────────
   if (error) {
     return (
-      <div className="border-destructive/50 bg-destructive/10 text-destructive flex items-start gap-3 rounded-lg border p-4">
-        <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
-        <div>
-          <p className="font-semibold">OCR failed</p>
-          <p className="text-sm">{error.message}</p>
+      <InlineNotice
+        tone="destructive"
+        size="sm"
+        icon={<AlertCircle aria-hidden="true" className="h-4 w-4 shrink-0" />}
+      >
+        <span className="font-semibold">OCR failed:</span> {error.message}
+      </InlineNotice>
+    )
+  }
+
+  if (isRunning && partialText) {
+    return (
+      <div className="min-w-0 space-y-2" data-testid="ocr-results-partial">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-medium">Extracted Text</p>
+          <RunProgress isCancelling={isCancelling} onCancel={onCancel} />
+        </div>
+        <div
+          data-testid="ocr-partial-text"
+          aria-live="polite"
+          className="border-border bg-muted/20 max-h-[200px] overflow-auto rounded-xl border p-4 text-sm leading-relaxed break-words whitespace-pre-wrap"
+        >
+          {partialText}
         </div>
       </div>
     )
   }
 
-  // ── Loading ──────────────────────────────────────────────────────────────
   if (isRunning) {
     return (
       <div className="space-y-3">
-        <Skeleton className="h-[28px] w-24 rounded-md" />
+        <div className="flex items-center justify-between">
+          <Skeleton className="h-[28px] w-24 rounded-md" />
+          <RunProgress isCancelling={isCancelling} onCancel={onCancel} />
+        </div>
         <Skeleton className="h-[120px] rounded-xl" />
         <Skeleton className="h-[200px] rounded-xl" />
       </div>
     )
   }
 
-  // ── Empty ────────────────────────────────────────────────────────────────
-  if (!result) {
+  if (isCancelled) {
     return (
-      <div className="text-muted-foreground flex h-full min-h-[300px] flex-col items-center justify-center rounded-xl border border-dashed p-8 text-center">
-        <div className="bg-muted mb-3 flex h-14 w-14 items-center justify-center rounded-full">
-          <ScanText className="h-7 w-7" />
-        </div>
-        <p className="text-sm font-medium">No results yet</p>
-        <p className="text-xs">
-          Run OCR on an image to see detected text here.
-        </p>
+      <div data-testid="ocr-results-cancelled" className="h-full">
+        <EmptyState
+          icon={Ban}
+          title="Cancelled"
+          description="Run OCR again to see detected text here."
+          className="h-full min-h-[300px]"
+        />
       </div>
     )
   }
 
-  // ── Success ──────────────────────────────────────────────────────────────
+  if (!result) {
+    return (
+      <EmptyState
+        icon={ScanText}
+        title="No results yet"
+        description="Run OCR on an image to see detected text here."
+        className="h-full min-h-[300px]"
+      />
+    )
+  }
+
   return (
     <div className="min-w-0 space-y-4" data-testid="ocr-results">
       <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <p className="text-sm font-medium">Extracted Text</p>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="gap-1.5"
-            onClick={copyText}
-            disabled={!result.full_text}
-          >
-            {copied ? (
-              <Check className="h-3.5 w-3.5" />
-            ) : (
-              <Copy className="h-3.5 w-3.5" />
-            )}
-            {copied ? 'Copied' : 'Copy'}
-          </Button>
-        </div>
-        <div
-          data-testid="ocr-extracted-text"
-          className="border-border bg-muted/20 max-h-[200px] overflow-auto rounded-xl border p-4 text-sm leading-relaxed break-words whitespace-pre-wrap"
-        >
-          {result.full_text || (
-            <span className="text-muted-foreground">No text detected.</span>
-          )}
-        </div>
+        {result.full_text ? (
+          <OcrTextReview result={result} sourceName={sourceName} />
+        ) : (
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Extracted text</p>
+            <p
+              data-testid="ocr-no-text"
+              className="border-border bg-muted/20 text-muted-foreground rounded-xl border p-4 text-sm"
+            >
+              No text detected. Try a sharper image, or another language or
+              model.
+            </p>
+          </div>
+        )}
         <div className="text-muted-foreground flex items-center text-xs">
           <span
             title={`Latency: ${result.elapsed_ms} ms`}
             className="bg-muted/50 inline-flex items-center gap-1.5 rounded-md px-2 py-1 font-medium tabular-nums"
           >
-            <Timer className="h-3 w-3 shrink-0" />
+            <Timer aria-hidden="true" className="h-3 w-3 shrink-0" />
             {result.elapsed_ms} ms
           </span>
         </div>
@@ -134,7 +184,11 @@ export function OcrResultsPanel({
       {result.regions.length > 0 && (
         <div className="space-y-2">
           <p className="text-sm font-medium">
-            Regions ({result.regions.length})
+            Detected regions ({result.regions.length})
+          </p>
+          <p className="text-muted-foreground text-xs">
+            Each line as the model read it, with its confidence. Hover a row to
+            find it on the image.
           </p>
           <ScrollArea className="h-[280px] rounded-xl border">
             <Table className="w-full table-fixed">
@@ -164,11 +218,8 @@ export function OcrResultsPanel({
                     </TableCell>
                     <TableCell className="text-right">
                       <Badge
-                        variant="secondary"
-                        className={cn(
-                          'tabular-nums',
-                          confidenceBadgeClass(r.confidence),
-                        )}
+                        tone={confidenceTone(r.confidence)}
+                        className="tabular-nums"
                       >
                         {(r.confidence * 100).toFixed(1)}%
                       </Badge>

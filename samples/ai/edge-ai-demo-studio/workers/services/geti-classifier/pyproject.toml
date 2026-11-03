@@ -1,0 +1,38 @@
+# Excluded from the workers/ uv workspace: geti-sdk (through 2.13.1) requires openvino<2026, so
+# this project keeps its own uv.lock and .venv until geti-sdk supports openvino 2026.
+[project]
+name = "geti-classifier"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "worker-common",
+    "fastapi>=0.111.0",
+    "uvicorn>=0.29.0",
+    "python-multipart>=0.0.9",
+    # Not headless: it has no wheels for some Windows Python versions.
+    "opencv-python>=4.10",
+    "numpy>=2.1",
+    "openvino>=2025.2,<2026.0",
+    "geti-sdk~=2.13",
+]
+
+[tool.uv]
+environments = [
+    "sys_platform == 'win32'",
+    "sys_platform == 'linux'",
+    "sys_platform == 'darwin'",
+]
+override-dependencies = [
+    "cryptography>=48.0.1",
+    "pillow>=13.0.0",
+    # geti-sdk pins certifi to 2025.11.*, whose bundle still trusts the compromised emSign roots
+    # (GHSA-6q48-6c7w-9gw2). certifi is CA data only.
+    "certifi>=2026.10.19",
+    # geti-sdk pulls opencv-python-headless next to the opencv-python above;
+    # both unpack into the same cv2/ directory, so only the full build stays.
+    "opencv-python-headless ; sys_platform == 'never'",
+]
+
+[tool.uv.sources]
+# Not a workspace member, so the shared library comes in by path.
+worker-common = { path = "../../common", editable = true }

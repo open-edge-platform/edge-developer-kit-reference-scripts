@@ -10,7 +10,6 @@ NODE_PATH="$NODE_BIN_DIR/node"
 SETUP_THIRDPARTY="$SCRIPT_DIR/scripts/bash/setup_thirdparty.sh"
 EXPORT_SCRIPT="$SCRIPT_DIR/scripts/export-bundle.mjs"
 
-# Install bundled Node.js if not already present
 if [ ! -f "$NODE_PATH" ]; then
     echo "Bundled Node.js not found. Running thirdparty setup..."
     if [ ! -f "$SETUP_THIRDPARTY" ]; then
@@ -27,9 +26,7 @@ if ! command -v node >/dev/null 2>&1; then
     exit 1
 fi
 
-# --dry-run/--plan alone should still walk through the interactive prompts
-# (just previewing the plan instead of writing files), so pull it out before
-# deciding whether to forward everything non-interactively.
+# --dry-run/--plan alone still runs the interactive prompts, so set it aside first.
 DRY_RUN_FLAG=""
 REMAINING_ARGS=()
 for a in "$@"; do
@@ -40,16 +37,15 @@ for a in "$@"; do
     fi
 done
 
-# If other arguments were passed, forward everything directly (non-interactive mode).
+# Any other argument means non-interactive mode: forward everything.
 if [ "${#REMAINING_ARGS[@]}" -gt 0 ]; then
     exec node "$EXPORT_SCRIPT" "$@"
 fi
 
-# ── Interactive mode ──────────────────────────────────────────────
+# Interactive mode
 echo ""
 echo "Discovering available samples and services..."
-# --list prints two sections ("Available samples:" / "Available services:"),
-# each with "  - <id>" entries.
+# --list prints "Available samples:" / "Available services:" sections of "  - <id>" lines.
 SAMPLES=()
 SERVICES=()
 section=""
@@ -89,9 +85,7 @@ done
 NUM_SERVICES="${#SERVICES[@]}"
 TOTAL=$((NUM_SAMPLES + NUM_SERVICES))
 
-# Resolve a space/comma-separated selection (numbers continue past the sample
-# list into the service list, or literal ids) into CHOSEN_SAMPLES /
-# CHOSEN_SERVICES. Exits with an error on any unmatched token.
+# Resolve numbers (services are numbered after samples) or ids into CHOSEN_SAMPLES/CHOSEN_SERVICES.
 resolve_selection() {
     local input="${1//,/ }"
     local tok item

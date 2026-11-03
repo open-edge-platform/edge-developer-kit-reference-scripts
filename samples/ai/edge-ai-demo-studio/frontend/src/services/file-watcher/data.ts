@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { FolderSync } from 'lucide-react'
+import { getServiceMetadata } from '@/lib/instances/service-metadata'
 import type { Service as PayloadService } from '@/payload-types'
 import type { ServiceMeta, WorkerConfig } from '@/services/types'
 
@@ -13,7 +14,6 @@ export const service: ServiceMeta = {
   longDescription:
     'Real-time file watcher service that monitors a configured folder for new image files using watchdog. Broadcasts each new file as a base64-encoded WebSocket message for downstream consumers such as the AI Exam Marking scanner.',
   icon: FolderSync,
-  port: 8030,
   supportedOS: ['linux', 'windows'],
   execution: { mode: 'worker' },
   hidden: true,
@@ -23,6 +23,14 @@ export const service: ServiceMeta = {
 }
 
 export const worker: WorkerConfig = {
-  buildArgs: (doc: PayloadService) => ['--port', String(doc.port)],
-  workerSubDir: 'file-watcher',
+  buildArgs: (doc: PayloadService) => {
+    const args = ['--port', String(doc.port)]
+    // Each instance can watch its own folder; unset → <data dir>/watched_folder.
+    const { watchPath } = getServiceMetadata(doc)
+    if (typeof watchPath === 'string' && watchPath.trim()) {
+      args.push('--path', watchPath.trim())
+    }
+    return args
+  },
+  workerSubDir: 'services/file-watcher',
 }

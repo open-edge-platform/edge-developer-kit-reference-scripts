@@ -1,0 +1,22 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+[project]
+name = "image-generation"
+version = "0.1.0"
+description = "Image generation worker (remote inference over an OpenAI-compatible API)"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "worker-common",
+    "model-downloader",
+    "fastapi>=0.120.1",
+    "uvicorn[standard]>=0.24.0",
+    "python-multipart>=0.0.6",
+    "openai>=2.15.0",
+    "requests>=2.33.0",
+]
+
+[tool.uv.sources]
+worker-common = { workspace = true }
+model-downloader = { workspace = true }

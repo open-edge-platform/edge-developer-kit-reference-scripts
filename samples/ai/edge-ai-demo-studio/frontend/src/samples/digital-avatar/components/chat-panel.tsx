@@ -4,58 +4,40 @@
 'use client'
 
 import { ImagePlus, Keyboard, MessageSquare, Mic, Sparkles } from 'lucide-react'
-import type {
-  ChatMsg,
-  ChatStatus,
-} from '@/services/text-generation/components/chat-helpers'
-import { VlmChatPanel } from '@/services/text-generation/components/vlm-chat-panel'
+import { ConversationPanel } from '@/services/text-generation/components/conversation-panel'
+import type { useTextGenChat } from '@/services/text-generation/hooks/use-chat'
 
 interface ChatPanelProps {
-  messages: ChatMsg[]
-  status: ChatStatus
-  input: string
-  onInputChange: (value: string) => void
-  onSend: () => void
-  onStop?: () => void
-  onReset: () => void
+  chat: ReturnType<typeof useTextGenChat>
+  /** Stops the reply and the avatar's speech. */
+  onStop: () => void
   isConnected: boolean
   sttOnline?: boolean
   isVlm?: boolean
-  imagePreviews?: string[]
-  onImageSelect?: (e: React.ChangeEvent<HTMLInputElement>) => void
-  onImageRemove?: (index: number) => void
 }
 
 export function ChatPanel({
-  messages,
-  status,
-  input,
-  onInputChange,
-  onSend,
+  chat,
   onStop,
-  onReset,
   isConnected,
   sttOnline,
   isVlm,
-  imagePreviews,
-  onImageSelect,
-  onImageRemove,
 }: ChatPanelProps) {
   return (
-    <VlmChatPanel
-      messages={messages}
-      status={status}
-      input={input}
-      onInputChange={onInputChange}
-      onSend={onSend}
+    <ConversationPanel
+      messages={chat.messages}
+      status={chat.status}
+      input={chat.input}
+      onInputChange={chat.setInput}
+      onSend={() => chat.handleSend()}
       onStop={onStop}
-      onReset={onReset}
+      onReset={chat.handleReset}
+      error={chat.error}
+      onRetry={chat.handleRetry}
       disabled={!isConnected}
       sttOnline={sttOnline}
-      isVlm={isVlm}
-      imagePreviews={imagePreviews}
-      onImageSelect={onImageSelect}
-      onImageRemove={onImageRemove}
+      attachments={chat.attachments}
+      allowImageAttach={isVlm}
       className="max-h-[600px]"
       placeholder={
         !isConnected ? 'Connect to the avatar first…' : 'Type a message…'
@@ -64,7 +46,7 @@ export function ChatPanel({
         isConnected ? (
           <div className="flex h-full flex-col items-center justify-center px-4 text-center">
             <div className="bg-primary/10 mb-4 flex h-12 w-12 items-center justify-center rounded-xl">
-              <Sparkles className="text-primary h-6 w-6" />
+              <Sparkles className="text-primary h-6 w-6" aria-hidden />
             </div>
             <p className="text-foreground mb-1 text-sm font-medium">
               Ready to chat
@@ -75,16 +57,16 @@ export function ChatPanel({
             </p>
             <div className="text-muted-foreground/60 mt-5 flex flex-wrap items-center justify-center gap-3 text-[11px]">
               <span className="flex items-center gap-1">
-                <Keyboard className="h-3 w-3" /> Text input
+                <Keyboard className="h-3 w-3" aria-hidden /> Text input
               </span>
               {sttOnline && (
                 <span className="flex items-center gap-1">
-                  <Mic className="h-3 w-3" /> Voice input
+                  <Mic className="h-3 w-3" aria-hidden /> Voice input
                 </span>
               )}
               {isVlm && (
                 <span className="flex items-center gap-1">
-                  <ImagePlus className="h-3 w-3" /> Image input
+                  <ImagePlus className="h-3 w-3" aria-hidden /> Image input
                 </span>
               )}
             </div>
@@ -92,7 +74,10 @@ export function ChatPanel({
         ) : (
           <div className="flex h-full flex-col items-center justify-center px-4 text-center">
             <div className="bg-muted/60 mb-4 flex h-12 w-12 items-center justify-center rounded-xl">
-              <MessageSquare className="text-muted-foreground/40 h-6 w-6" />
+              <MessageSquare
+                className="text-muted-foreground/40 h-6 w-6"
+                aria-hidden
+              />
             </div>
             <p className="text-muted-foreground max-w-[220px] text-sm leading-relaxed">
               Connect to the avatar stream to start chatting

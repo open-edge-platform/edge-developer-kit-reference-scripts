@@ -3,8 +3,8 @@
 
 'use client'
 
+import { RefImage } from '@/components/common/ref-media'
 import type { RecognizedFace } from '../hooks'
-import { RefImage } from './ref-image'
 
 interface FaceImageOverlayProps {
   imageUrl: string
@@ -40,7 +40,7 @@ export function FaceImageOverlay({
             const [x, y, w, h] = face.box
             const label = face.match
               ? `${face.matched ? face.match.name : 'Unknown'} ${face.match.similarity.toFixed(2)}`
-              : 'No gallery'
+              : 'Unknown'
             return (
               <g key={faceIndex}>
                 <rect
@@ -48,7 +48,7 @@ export function FaceImageOverlay({
                   y={y}
                   width={w}
                   height={h}
-                  className="fill-transparent stroke-sky-500"
+                  className="stroke-info fill-transparent"
                   strokeWidth={stroke}
                 />
                 {face.landmarks.map(([lx, ly], i) => (
@@ -57,7 +57,7 @@ export function FaceImageOverlay({
                     cx={lx}
                     cy={ly}
                     r={stroke}
-                    className="fill-sky-500"
+                    className="fill-info"
                   />
                 ))}
                 <text
@@ -65,7 +65,7 @@ export function FaceImageOverlay({
                   y={Math.max(fontSize, y - stroke * 2)}
                   fontSize={fontSize}
                   fontWeight={600}
-                  className="fill-sky-500"
+                  className="fill-info"
                   stroke="rgba(0,0,0,0.65)"
                   strokeWidth={fontSize / 8}
                   style={{ paintOrder: 'stroke' }}

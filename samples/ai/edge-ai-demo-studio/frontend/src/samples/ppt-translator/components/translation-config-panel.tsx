@@ -3,13 +3,6 @@
 
 'use client'
 
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import {
@@ -20,187 +13,146 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { SUPPORTED_LANGUAGES } from '../hooks'
-import type { PptTranslatorParamValues } from '../hooks'
+import type { Setters } from '@/hooks/use-param-state'
+import type { PptTranslatorParamValues } from '../hooks/use-params'
 
 interface TranslationConfigPanelProps {
   disabled?: boolean
   values: PptTranslatorParamValues
   availableModels: string[]
-  onChangeSourceLanguage: (v: string) => void
-  onChangeTargetLanguage: (v: string) => void
-  onChangeModel: (v: string) => void
-  onChangePreserveProperNouns: (v: boolean) => void
-  onChangeTranslateSpeakerNotes: (v: boolean) => void
-  onChangeAutoAdjustFontSize: (v: boolean) => void
-  onChangePresentationContext: (v: string) => void
+  setters: Setters<PptTranslatorParamValues>
 }
 
+function SwitchRow({
+  id,
+  label,
+  description,
+  checked,
+  onCheckedChange,
+  disabled,
+  testId,
+}: {
+  id: string
+  label: string
+  description: string
+  checked: boolean
+  onCheckedChange: (checked: boolean) => void
+  disabled?: boolean
+  testId: string
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div className="min-w-0 space-y-0.5">
+        <Label htmlFor={id} className="text-xs">
+          {label}
+        </Label>
+        <p className="text-muted-foreground text-[11px]">{description}</p>
+      </div>
+      <Switch
+        data-testid={testId}
+        id={id}
+        checked={checked}
+        onCheckedChange={onCheckedChange}
+        disabled={disabled}
+        className="shrink-0"
+      />
+    </div>
+  )
+}
+
+/** Advanced translation settings for the Parameters sheet; the languages sit beside the upload. */
 export function TranslationConfigPanel({
   disabled,
   values,
   availableModels,
-  onChangeSourceLanguage,
-  onChangeTargetLanguage,
-  onChangeModel,
-  onChangePreserveProperNouns,
-  onChangeTranslateSpeakerNotes,
-  onChangeAutoAdjustFontSize,
-  onChangePresentationContext,
+  setters,
 }: TranslationConfigPanelProps) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Translation Settings</CardTitle>
-        <CardDescription>Configure translation options</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        <div className="space-y-2">
-          <Label htmlFor="source-language">Source Language</Label>
-          <Select
-            value={values.sourceLanguage}
-            onValueChange={onChangeSourceLanguage}
-            disabled={disabled}
-          >
-            <SelectTrigger
-              id="source-language"
-              data-testid="source-language-select"
-            >
-              <SelectValue placeholder="Select source language" />
-            </SelectTrigger>
-            <SelectContent data-testid="source-language-content">
-              {SUPPORTED_LANGUAGES.map((lang: string) => (
-                <SelectItem key={lang} value={lang}>
-                  {lang}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+    <div className="space-y-5">
+      {disabled && (
+        <p className="text-muted-foreground text-[11px]">
+          Settings are locked while a translation runs; they apply to the next
+          job.
+        </p>
+      )}
 
-        <div className="space-y-2">
-          <Label htmlFor="target-language">Target Language</Label>
-          <Select
-            value={values.targetLanguage}
-            onValueChange={onChangeTargetLanguage}
-            disabled={disabled}
-          >
-            <SelectTrigger
-              id="target-language"
-              data-testid="target-language-select"
-            >
-              <SelectValue placeholder="Select target language" />
-            </SelectTrigger>
-            <SelectContent data-testid="target-language-content">
-              {SUPPORTED_LANGUAGES.map((lang: string) => (
-                <SelectItem key={lang} value={lang}>
-                  {lang}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {availableModels.length > 1 && (
-          <div className="space-y-2">
-            <Label htmlFor="model">AI Model</Label>
-            <Select
-              value={values.model}
-              onValueChange={onChangeModel}
-              disabled={disabled}
-            >
-              <SelectTrigger id="model" data-testid="model-select">
-                <SelectValue placeholder="Select AI model" />
-              </SelectTrigger>
-              <SelectContent data-testid="model-content">
-                {availableModels.map((modelName) => (
-                  <SelectItem key={modelName} value={modelName}>
-                    {modelName}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
-
-        <div className="space-y-2">
-          <Label htmlFor="context">
-            Presentation Context{' '}
-            <span className="text-muted-foreground font-normal">
-              (optional)
-            </span>
+      {availableModels.length > 1 && (
+        <div className="space-y-1.5">
+          <Label htmlFor="model" className="text-xs">
+            AI model
           </Label>
-          <Textarea
-            data-testid="presentation-context-textarea"
-            id="context"
-            placeholder="e.g., This is a technology conference about IoT and edge computing"
-            value={values.presentationContext}
-            onChange={(e) => onChangePresentationContext(e.target.value)}
+          <Select
+            value={values.model}
+            onValueChange={setters.setModel}
             disabled={disabled}
-            rows={3}
-            className="resize-none"
-          />
-          <p className="text-muted-foreground text-xs">
-            Provide context to improve translation accuracy
-          </p>
+          >
+            <SelectTrigger
+              id="model"
+              data-testid="model-select"
+              className="w-full"
+            >
+              <SelectValue placeholder="Select AI model" />
+            </SelectTrigger>
+            <SelectContent data-testid="model-content">
+              {availableModels.map((modelName) => (
+                <SelectItem key={modelName} value={modelName}>
+                  {modelName}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
+      )}
 
-        <div className="space-y-4 pt-2">
-          <div className="flex items-center justify-between space-x-2 rounded-lg border p-4">
-            <div className="space-y-0.5">
-              <Label htmlFor="preserve-names" className="text-base">
-                Preserve Proper Nouns
-              </Label>
-              <p className="text-muted-foreground text-sm">
-                Keep names and brands unchanged
-              </p>
-            </div>
-            <Switch
-              data-testid="preserve-proper-nouns-toggle"
-              id="preserve-names"
-              checked={values.preserveProperNouns}
-              onCheckedChange={onChangePreserveProperNouns}
-              disabled={disabled}
-            />
-          </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="context" className="text-xs">
+          Presentation context{' '}
+          <span className="text-muted-foreground font-normal">(optional)</span>
+        </Label>
+        <Textarea
+          data-testid="presentation-context-textarea"
+          id="context"
+          placeholder="e.g. A technology conference talk about IoT and edge computing"
+          value={values.presentationContext}
+          onChange={(e) => setters.setPresentationContext(e.target.value)}
+          disabled={disabled}
+          rows={3}
+          className="bg-muted/30 resize-none text-xs"
+        />
+        <p className="text-muted-foreground text-[11px]">
+          A sentence about the deck helps the model choose the right terms.
+        </p>
+      </div>
 
-          <div className="flex items-center justify-between space-x-2 rounded-lg border p-4">
-            <div className="space-y-0.5">
-              <Label htmlFor="speaker-notes" className="text-base">
-                Translate Speaker Notes
-              </Label>
-              <p className="text-muted-foreground text-sm">
-                Include notes in translation
-              </p>
-            </div>
-            <Switch
-              data-testid="translate-speaker-notes-toggle"
-              id="speaker-notes"
-              checked={values.translateSpeakerNotes}
-              onCheckedChange={onChangeTranslateSpeakerNotes}
-              disabled={disabled}
-            />
-          </div>
-
-          <div className="flex items-center justify-between space-x-2 rounded-lg border p-4">
-            <div className="space-y-0.5">
-              <Label htmlFor="auto-adjust" className="text-base">
-                Auto-Adjust Font Size
-              </Label>
-              <p className="text-muted-foreground text-sm">
-                Dynamically resize text to fit
-              </p>
-            </div>
-            <Switch
-              data-testid="auto-adjust-font-size-toggle"
-              id="auto-adjust"
-              checked={values.autoAdjustFontSize}
-              onCheckedChange={onChangeAutoAdjustFontSize}
-              disabled={disabled}
-            />
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+      <div className="space-y-4">
+        <SwitchRow
+          id="preserve-names"
+          testId="preserve-proper-nouns-toggle"
+          label="Preserve proper nouns"
+          description="Keep names and brands unchanged"
+          checked={values.preserveProperNouns}
+          onCheckedChange={setters.setPreserveProperNouns}
+          disabled={disabled}
+        />
+        <SwitchRow
+          id="speaker-notes"
+          testId="translate-speaker-notes-toggle"
+          label="Translate speaker notes"
+          description="Include the notes under each slide"
+          checked={values.translateSpeakerNotes}
+          onCheckedChange={setters.setTranslateSpeakerNotes}
+          disabled={disabled}
+        />
+        <SwitchRow
+          id="auto-adjust"
+          testId="auto-adjust-font-size-toggle"
+          label="Auto-adjust font size"
+          description="Shrink text that no longer fits its box"
+          checked={values.autoAdjustFontSize}
+          onCheckedChange={setters.setAutoAdjustFontSize}
+          disabled={disabled}
+        />
+      </div>
+    </div>
   )
 }

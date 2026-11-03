@@ -9,30 +9,24 @@ import { KnowledgeBasePanel } from './components/knowledge-base-panel'
 import { useRagParams } from './hooks/use-rag-params'
 
 /**
- * Headless feature provider for the optional RAG integration (embeddings +
- * vectordb + rerank). Auto-registered into `featureProviderRegistry` by codegen
- * and keyed by `vectordb` (its owning folder); a host sample mounts it via
- * `useFeatureProviders` to surface the RAG + Rerank config groups (with the
- * KnowledgeBasePanel embedded) and contribute `knowledgeBaseId` to the chat
- * request body. See docs/OPTIONAL-SERVICES.md.
+ * Headless RAG feature (embeddings + vectordb + rerank), registered by codegen under `vectordb`:
+ * adds the RAG and Rerank config groups and `knowledgeBaseId` to a sample's chat request.
  */
 export function RagFeatureProvider() {
   const rag = useRagParams()
   const {
     groups: ragGroups,
     vectordbOnline,
+    vectordbApiBase,
     embeddingsOnline,
     selectedKb,
     onSelectKb,
-    embeddingPort,
-    embeddingModelName,
-    rerankPort,
-    rerankModelName,
+    siblings,
     extraBody,
   } = rag
 
-  // Embed the KnowledgeBasePanel as children of the vectordb group when both
-  // embeddings and vectordb are online (mirrors the former use-rag-chat-setup).
+  // Memoized: `useFeaturePublish` publishes from an effect, so a new identity every render
+  // would re-publish (and re-render the host) in a loop.
   const groups = useMemo(
     () =>
       ragGroups.map((group) =>
@@ -41,13 +35,10 @@ export function RagFeatureProvider() {
               ...group,
               children: (
                 <KnowledgeBasePanel
+                  apiBase={vectordbApiBase}
                   selectedKb={selectedKb}
                   onSelectKb={onSelectKb}
-                  embeddingsOnline={embeddingsOnline}
-                  embeddingPort={embeddingPort}
-                  embeddingModelName={embeddingModelName}
-                  rerankPort={rerankPort}
-                  rerankModelName={rerankModelName}
+                  siblings={siblings}
                 />
               ),
             }
@@ -56,13 +47,11 @@ export function RagFeatureProvider() {
     [
       ragGroups,
       vectordbOnline,
+      vectordbApiBase,
       embeddingsOnline,
       selectedKb,
       onSelectKb,
-      embeddingPort,
-      embeddingModelName,
-      rerankPort,
-      rerankModelName,
+      siblings,
     ],
   )
 

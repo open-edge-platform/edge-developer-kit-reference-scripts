@@ -3,17 +3,14 @@
 
 import { useMutation } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { fetchOk } from '@/lib/browser/fetch-json'
+import { toastError } from '@/lib/browser/toast-error'
 
 async function restartPipeline(): Promise<void> {
-  const res = await fetch('/api/services/loss-prevention/restart-pipeline', {
+  await fetchOk('/api/services/loss-prevention/restart-pipeline', {
     method: 'POST',
+    errorMessage: 'Failed to restart pipeline',
   })
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}))
-    throw new Error(
-      (data as { error?: string }).error ?? 'Failed to restart pipeline',
-    )
-  }
 }
 
 export function useRestartPipeline() {
@@ -22,10 +19,6 @@ export function useRestartPipeline() {
     onSuccess: () => {
       toast.success('Pipeline restarted — display window should reappear')
     },
-    onError: (error: Error) => {
-      toast.error('Failed to restart pipeline', {
-        description: error.message,
-      })
-    },
+    onError: toastError('Failed to restart pipeline'),
   })
 }

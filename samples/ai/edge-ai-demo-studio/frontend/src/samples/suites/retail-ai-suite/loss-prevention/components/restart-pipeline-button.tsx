@@ -3,7 +3,7 @@
 
 'use client'
 
-import { Loader2, RotateCw } from 'lucide-react'
+import { Loader, RotateCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useRestartPipeline } from '../hooks/use-restart-pipeline'
 
@@ -19,7 +19,7 @@ export function RestartPipelineButton() {
       onClick={() => restart()}
     >
       {isPending ? (
-        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+        <Loader className="mr-2 h-4 w-4 animate-spin" />
       ) : (
         <RotateCw className="mr-2 h-4 w-4" />
       )}

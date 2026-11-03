@@ -3,13 +3,13 @@
 
 'use client'
 
-import { useCallback, useEffect, useRef } from 'react'
-import { SentenceProcessor } from '@/lib/sentence-processor'
+import { useEffectEvent, useLayoutEffect, useRef } from 'react'
+import { SentenceProcessor } from '@/lib/llm/sentence-processor'
 import type {
   ChatMsg,
   ChatStatus,
-} from '@/services/text-generation/components/chat-helpers'
-import { extractTextContent } from '@/services/text-generation/components/chat-helpers'
+} from '@/services/text-generation/lib/chat-helpers'
+import { extractTextContent } from '@/services/text-generation/lib/chat-helpers'
 
 interface UseSentenceSpeechOptions {
   messages: ChatMsg[]
@@ -23,9 +23,9 @@ interface UseSentenceSpeechOptions {
 }
 
 /**
- * Watches streaming chat messages and splits the assistant's response into
- * sentences in real-time using `SentenceProcessor`. Calls `onSentence` for
- * each completed sentence, enabling progressive TTS playback.
+ * Splits the streaming assistant reply into sentences for progressive TTS. Layout effects hand over
+ * the last sentence in the commit that ends the reply, so a caller never paints a frame showing the
+ * reply as neither streaming nor being spoken.
  */
 export function useSentenceSpeech({
   messages,
@@ -35,55 +35,46 @@ export function useSentenceSpeech({
   enabled = true,
 }: UseSentenceSpeechOptions) {
   const processedLengthRef = useRef(0)
-  const processorRef = useRef<SentenceProcessor>(new SentenceProcessor())
+  const processorRef = useRef<SentenceProcessor | null>(null)
   const prevMessageIdRef = useRef<string | null>(null)
   const flushedRef = useRef(false)
 
-  // Store callbacks in refs so they never cause effect re-runs
-  const onSentenceRef = useRef(onSentence)
-  const onCompleteRef = useRef(onComplete)
-  useEffect(() => {
-    onSentenceRef.current = onSentence
-    onCompleteRef.current = onComplete
-  }, [onSentence, onComplete])
+  const processor = () => (processorRef.current ??= new SentenceProcessor())
 
-  // Mirror latest messages/status into refs for use in transition effects
-  const messagesRef = useRef(messages)
-  const statusRef = useRef(status)
-  useEffect(() => {
-    messagesRef.current = messages
-  }, [messages])
-  useEffect(() => {
-    statusRef.current = status
-  }, [status])
+  const speak = useEffectEvent((sentences: string[]) => {
+    for (const sentence of sentences) onSentence(sentence)
+  })
+  const complete = useEffectEvent(() => onComplete?.())
 
-  // When enabled transitions false → true, fast-forward the tracked state to
-  // the current assistant message so stale content is not re-spoken.
+  /** Tracks from the reply on screen, never speaking what it already says; `finished`: no flush. */
+  const skipCurrentReply = (finished: boolean) => {
+    const lastMsg = messages[messages.length - 1]
+    if (lastMsg?.role !== 'assistant') return false
+    processorRef.current = new SentenceProcessor()
+    prevMessageIdRef.current = lastMsg.id
+    processedLengthRef.current = extractTextContent(lastMsg).length
+    flushedRef.current = finished
+    return true
+  }
+
+  // On re-enable, skip past the current reply so stale content is not re-spoken.
   const prevEnabledRef = useRef(enabled)
-  useEffect(() => {
+  const fastForward = useEffectEvent(() => {
+    skipCurrentReply(status !== 'streaming')
+  })
+  useLayoutEffect(() => {
     if (prevEnabledRef.current === enabled) return
     prevEnabledRef.current = enabled
-
-    if (enabled) {
-      const msgs = messagesRef.current
-      const lastMsg = msgs[msgs.length - 1]
-      if (lastMsg?.role === 'assistant') {
-        prevMessageIdRef.current = lastMsg.id
-        processedLengthRef.current = extractTextContent(lastMsg).length
-        processorRef.current = new SentenceProcessor()
-        flushedRef.current = statusRef.current !== 'streaming'
-      }
-    }
+    if (enabled) fastForward()
   }, [enabled])
 
   // Process new text chunks as the streaming message grows
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!enabled) return
 
     const lastMsg = messages[messages.length - 1]
     if (!lastMsg || lastMsg.role !== 'assistant') return
 
-    // Reset processor when a new assistant message starts
     if (lastMsg.id !== prevMessageIdRef.current) {
       prevMessageIdRef.current = lastMsg.id
       processedLengthRef.current = 0
@@ -91,7 +82,6 @@ export function useSentenceSpeech({
       flushedRef.current = false
     }
 
-    // Don't re-process after flush
     if (flushedRef.current) return
 
     const text = extractTextContent(lastMsg)
@@ -99,35 +89,32 @@ export function useSentenceSpeech({
     if (!newText) return
 
     processedLengthRef.current = text.length
-
-    const sentences = processorRef.current.addTextChunk(newText)
-    for (const sentence of sentences) {
-      onSentenceRef.current(sentence)
-    }
+    speak(processor().addTextChunk(newText))
   }, [messages, enabled])
 
   // Flush remaining text when streaming completes
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!enabled) return
     if (status !== 'ready') return
     if (flushedRef.current) return
 
     flushedRef.current = true
-
-    const sentences = processorRef.current.flush()
-    for (const sentence of sentences) {
-      onSentenceRef.current(sentence)
-    }
-
-    onCompleteRef.current?.()
+    speak(processor().flush())
+    complete()
   }, [status, enabled])
 
-  const reset = useCallback(() => {
-    processedLengthRef.current = 0
+  /**
+   * Drops what is unspoken and finishes with the reply on screen, so a later render of the same
+   * message (e.g. a stop marker) is not spoken; the next reply has a new id and is tracked afresh.
+   */
+  const reset = () => {
     processorRef.current = new SentenceProcessor()
-    prevMessageIdRef.current = null
-    flushedRef.current = false
-  }, [])
+    if (!skipCurrentReply(true)) {
+      prevMessageIdRef.current = null
+      processedLengthRef.current = 0
+      flushedRef.current = false
+    }
+  }
 
   return { reset }
 }

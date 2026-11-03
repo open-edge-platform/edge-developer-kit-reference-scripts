@@ -33,18 +33,23 @@ RUN printf '%s\n' \
   '  exit 0' \
   'fi' > /usr/local/bin/clinfo && chmod +x /usr/local/bin/clinfo
 
+RUN printf '%s\n' '#!/bin/sh' 'exit 0' > /usr/local/bin/rmmod && \
+    chmod +x /usr/local/bin/rmmod && \
+    printf '%s\n' '#!/bin/sh' 'exit 0' > /usr/local/bin/modprobe && \
+    chmod +x /usr/local/bin/modprobe
+
 # Mock hardware and run install dependencies
 RUN mkdir -p /dev/dri && \
     touch /dev/dri/renderD128 /dev/dri/card0 && \
     chmod 666 /dev/dri/* && \
     /home/ubuntu/install_dependencies.sh -y && \
     rm -rf /dev/dri && \
-    rm -f /usr/local/bin/clinfo
+    rm -f /usr/local/bin/clinfo /usr/local/bin/rmmod /usr/local/bin/modprobe
 
 COPY . /home/ubuntu
 RUN chown -R ${USER}:${USER} /home/ubuntu && \
     rm -f /etc/sudoers.d/${USER}
-
+    
 WORKDIR /home/ubuntu
 
 USER ${USER}
@@ -54,7 +59,6 @@ RUN mkdir -p /home/ubuntu/models
 RUN mkdir -p /home/ubuntu/logs
 RUN mkdir -p /home/ubuntu/data
 
-# Basic healthcheck: ensure the start script is present and executable
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD test -x /home/ubuntu/start.sh || exit 1
 

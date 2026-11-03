@@ -1,41 +1,56 @@
 // Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useCallback } from 'react'
+import {
+  useMutation,
+  useMutationState,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
+import {
+  getInstanceApiBase,
+  getInstanceKey,
+  getInstanceLabel,
+  pickPrimaryInstance,
+} from '@/lib/instances/instances'
 import type { Service as PayloadService } from '@/payload-types'
+import { metaMap } from '@/services/_generated/meta'
+import {
+  instancePreference,
+  mapPayloadStatus,
+  type ServiceAction,
+  type ServiceStatus,
+} from '@/lib/instances/service-status'
+import type { DeviceBackend, ModelSource } from '@/services/types'
 import type {
-  DeviceBackend,
-  ModelSource,
-  ServiceStatus,
-} from '@/services/types'
+  AppliedConfig,
+  ServiceRuntimeFields,
+  StartupTelemetry,
+} from '@/lib/instances/runtime-fields'
+import { fetchJson, postJson } from '@/lib/browser/fetch-json'
 
-const SERVICES_QUERY_KEY = ['services'] as const
+export const SERVICES_QUERY_KEY = ['services'] as const
 const POLL_INTERVAL = 5000
 
-function mapPayloadStatus(
-  status: PayloadService['status'] | null | undefined,
-): ServiceStatus {
-  switch (status) {
-    case 'active':
-      return 'online'
-    case 'prepare':
-    case 'restart':
-      return 'starting'
-    case 'error':
-      return 'error'
-    default:
-      return 'offline'
-  }
-}
-
+/** One `services` row, keyed in `serviceInfoMap` by its instance key `type@instanceId`. */
 export interface PayloadServiceInfo {
   id: number
   type: string
+  instanceId: string
+  label: string
+  instanceKey: string
+  apiBase: string
+  port: number | undefined
   status: ServiceStatus
   payloadStatus: PayloadService['status']
   isHealthy: boolean
+  /** Why the row is in `error`, when the app knows. */
+  statusMessage: string | undefined
+  /** Epoch ms the current start began: `updatedAt`, set on entering `prepare` (the server timeout's clock). */
+  startingSince: number | undefined
   engine: PayloadService['engine']
+  /** The row's own check: an engine-backed row uses its backend's. */
+  healthCheck: PayloadService['healthCheck']
   currentModel: string | undefined
   currentDevice: string | undefined
   currentBackend: DeviceBackend | undefined
@@ -43,6 +58,10 @@ export interface PayloadServiceInfo {
   currentQuant: string | undefined
   currentSource: ModelSource | undefined
   metadata: PayloadService['metadata']
+  /** What its running process was started with (server memory); `null`: nothing runs. */
+  applied: AppliedConfig | null
+  /** What the current (or failed) start reported; absent when nothing was. */
+  startup: StartupTelemetry | undefined
 }
 
 function toModelSource(source: unknown): ModelSource | undefined {
@@ -51,12 +70,67 @@ function toModelSource(source: unknown): ModelSource | undefined {
     : undefined
 }
 
-async function fetchServices(): Promise<PayloadService[]> {
-  const res = await fetch('/api/services')
-  if (!res.ok) {
-    throw new Error(`Failed to fetch services: ${res.status}`)
+const DEVICE_BACKENDS: readonly DeviceBackend[] = [
+  'openvino',
+  'pytorch',
+  'vulkan',
+  'llamacpp',
+]
+
+function toDeviceBackend(backend: unknown): DeviceBackend | undefined {
+  return DEVICE_BACKENDS.find((b) => b === backend)
+}
+
+/** `GET /api/services`: every row. */
+export function fetchServices(): Promise<PayloadService[]> {
+  return fetchJson('/api/services', {
+    errorMessage: 'Failed to fetch services',
+  })
+}
+
+function toServiceInfo(
+  doc: PayloadService & ServiceRuntimeFields,
+): PayloadServiceInfo {
+  return {
+    id: doc.id,
+    type: doc.type,
+    instanceId: doc.instanceId,
+    label: getInstanceLabel(doc),
+    instanceKey: getInstanceKey(doc),
+    apiBase: getInstanceApiBase(doc),
+    port: doc.port ?? undefined,
+    status: mapPayloadStatus(doc.status),
+    payloadStatus: doc.status,
+    isHealthy: doc.isHealthy ?? false,
+    statusMessage: doc.statusMessage?.trim() || undefined,
+    startingSince:
+      mapPayloadStatus(doc.status) === 'starting'
+        ? Date.parse(doc.updatedAt)
+        : undefined,
+    engine: doc.engine,
+    healthCheck: doc.healthCheck,
+    currentModel: doc.models?.default?.name,
+    currentDevice: doc.models?.default?.device,
+    currentBackend: toDeviceBackend(doc.models?.default?.backend),
+    currentModelType: doc.models?.default?.type ?? undefined,
+    currentQuant: doc.models?.default?.quant ?? undefined,
+    currentSource: toModelSource(doc.models?.default?.source),
+    metadata: doc.metadata ?? undefined,
+    applied: doc.applied ?? null,
+    startup: doc.startup ?? undefined,
   }
-  return res.json()
+}
+
+/** The row behind an instance key, or a bare type's primary row (running, else first created). */
+export function resolveServiceInfo(
+  map: Record<string, PayloadServiceInfo>,
+  keyOrType: string,
+): PayloadServiceInfo | undefined {
+  if (keyOrType.includes('@')) return map[keyOrType]
+  const rows = Object.values(map)
+    .filter((info) => info.type === keyOrType)
+    .sort((a, b) => a.id - b.id)
+  return pickPrimaryInstance(rows, (info) => instancePreference(info.status))
 }
 
 function buildServiceInfoMap(
@@ -64,100 +138,112 @@ function buildServiceInfoMap(
 ): Record<string, PayloadServiceInfo> {
   const map: Record<string, PayloadServiceInfo> = {}
   for (const doc of docs) {
-    map[doc.type] = {
-      id: doc.id,
-      type: doc.type,
-      status: mapPayloadStatus(doc.status),
-      payloadStatus: doc.status,
-      isHealthy: doc.isHealthy ?? false,
-      engine: doc.engine,
-      currentModel: doc.models?.default?.name,
-      currentDevice: doc.models?.default?.device,
-      currentBackend: doc.models?.default?.backend as DeviceBackend | undefined,
-      currentModelType: doc.models?.default?.type ?? undefined,
-      currentQuant: doc.models?.default?.quant ?? undefined,
-      currentSource: toModelSource(doc.models?.default?.source),
-      metadata: doc.metadata ?? undefined,
-    }
+    const info = toServiceInfo(doc)
+    map[info.instanceKey] = info
   }
   return map
 }
 
+const EMPTY_MAP: Record<string, PayloadServiceInfo> = {}
+
 /**
- * Fetches and polls all services from PayloadCMS.
- * Returns serviceInfoMap and query status. Effective status is derived by the
- * service-status context (the single owner of the status map).
+ * Polls all service rows. Leaves `isFetching` unread on purpose: react-query re-renders only for
+ * fields a caller reads, and that one flips on every poll.
  */
 export function useServicesQuery() {
   const query = useQuery({
     queryKey: SERVICES_QUERY_KEY,
     queryFn: fetchServices,
     refetchInterval: POLL_INTERVAL,
+    select: buildServiceInfoMap,
   })
 
-  const serviceInfoMap = query.data ? buildServiceInfoMap(query.data) : {}
-
-  // Status is derivable from serviceInfoMap (`info.status`), so we don't build a
-  // separate statusMap here — the context owns the single effective-status map.
   return {
-    serviceInfoMap,
+    serviceInfoMap: query.data ?? EMPTY_MAP,
+    /** A list has loaded at least once (a later refresh may still fail). */
+    hasData: query.data !== undefined,
     isLoading: query.isLoading,
     isError: query.isError,
-    error: query.error,
+    refetch: query.refetch,
   }
 }
 
+export type { ServiceAction } from '@/lib/instances/service-status'
+
 interface ServiceActionVariables {
-  serviceId: number
+  /** `undefined` when the type has no instance yet. */
+  serviceId: number | undefined
   serviceType: string
-  action: 'start' | 'stop' | 'restart'
+  /** Instance key or service type, to track pending state. */
+  serviceKey: string
+  action: ServiceAction
+}
+
+export function patchServiceAction(
+  dbId: number,
+  action: ServiceAction,
+): Promise<void> {
+  return postJson(
+    `/api/services/${dbId}`,
+    { action },
+    { method: 'PATCH', errorMessage: `Service action "${action}" failed` },
+  )
 }
 
 async function performServiceAction({
   serviceId,
+  serviceType,
   action,
 }: ServiceActionVariables): Promise<void> {
-  const res = await fetch(`/api/services/${serviceId}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action }),
-  })
-  if (!res.ok) {
-    throw new Error(`Service action "${action}" failed: ${res.status}`)
+  if (serviceId !== undefined) {
+    await patchServiceAction(serviceId, action)
+    return
   }
+  // A service with no row yet: starting it adds one instance from its defaults, autostarted.
+  if (action !== 'start') {
+    throw new Error(`${serviceType} has no instance to ${action}`)
+  }
+  await postJson(
+    '/api/services',
+    {
+      type: serviceType,
+      label: metaMap[serviceType as keyof typeof metaMap]?.name ?? serviceType,
+      autostart: true,
+    },
+    { errorMessage: 'Failed to add the service' },
+  )
 }
 
-/**
- * Mutation hook for service start/stop/restart actions.
- * Automatically invalidates the services query on success.
- * Tracks pending action per service type.
- */
+const SERVICE_ACTION_MUTATION_KEY = ['service-action'] as const
+
+/** Start/stop/restart mutation, tracking every pending action by instance key. */
 export function useServiceAction() {
   const queryClient = useQueryClient()
 
-  const mutation = useMutation({
+  // `mutateAsync`, not `mutate`: `mutate` reports only to its latest call, so of two instances
+  // stopped at once only one would settle.
+  const { mutateAsync: run } = useMutation({
+    mutationKey: SERVICE_ACTION_MUTATION_KEY,
     mutationFn: performServiceAction,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: SERVICES_QUERY_KEY })
     },
   })
 
-  const pendingServiceType =
-    mutation.isPending && mutation.variables
-      ? mutation.variables.serviceType
-      : null
+  const pending = useMutationState({
+    filters: { mutationKey: SERVICE_ACTION_MUTATION_KEY, status: 'pending' },
+    select: (m) => m.state.variables as ServiceActionVariables | undefined,
+  })
 
-  const isActionPending = useCallback(
-    (serviceType: string) => serviceType === pendingServiceType,
-    [pendingServiceType],
-  )
+  const getPendingAction = (serviceKey: string): ServiceAction | null =>
+    pending.findLast((v) => v?.serviceKey === serviceKey)?.action ?? null
+
+  const isActionPending = (serviceKey: string) =>
+    getPendingAction(serviceKey) !== null
 
   return {
-    mutate: mutation.mutate,
-    isPending: mutation.isPending,
-    isError: mutation.isError,
-    error: mutation.error,
-    pendingServiceType,
+    run,
     isActionPending,
+    getPendingAction,
   }
 }

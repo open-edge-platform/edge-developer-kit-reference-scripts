@@ -1,0 +1,66 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+#
+# The optimum-cli environment OVMS converts with: `ovms --pull` runs `optimum-cli export openvino`
+# from the first Python on PATH, and model_downloader.ovms_env puts this .venv there (Linux; on
+# Windows engines\multiserve\setup.bat installs optimum into OVMS's own Python).
+#
+# Outside the workspace: it overrides optimum-intel's transformers cap (see [tool.uv]). torch,
+# openvino and transformers match services/embeddings, so uv hard-links the shared wheels and only
+# what OVMS needs on top (diffusers, sentence-transformers) costs disk. optimum-intel 2.2.0 and nncf
+# 3.4.0 are what Windows installs into OVMS's Python (scripts/worker-common.ps1).
+#
+# tests/test_conversions.py runs every conversion `ovms --pull` issues; rerun it on any pin change.
+#
+# `datasets` (data-aware int4 compression: --dataset, --awq, --scale_estimation) is left out: no
+# pull the app issues uses it, and it brings pyarrow (~160 MB).
+
+[project]
+name = "ovms-export"
+version = "0.1.0"
+description = "optimum-cli environment used by OpenVINO Model Server during ovms --pull"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "openvino==2026.2.1",
+    "openvino-tokenizers==2026.2.1.0",
+    "nncf==3.4.0",
+    "optimum-intel[openvino]==2.2.0",
+    "transformers==5.15.1",
+    "torch==2.13.0",
+    "torchvision==0.28.0",
+    "numpy==2.4.6",
+    "accelerate",
+    # 0.38 fixes CVE-2026-44513/-45804 (trust_remote_code bypass) and needs safetensors 0.8, which
+    # optimum-intel 2.1.0 capped. optimum-intel caps huggingface-hub <1.22 and diffusers 0.40 needs
+    # >=1.23, so this resolves to 0.39 (pure Python, ~26 MB, not shared with the workspace's 0.40).
+    "diffusers>=0.38",
+    "einops",
+    "pillow>=13.0.0",
+    "requests",
+    # 6.0 fixes CVE-2026-68770 (the advisory's 5.6 only warns and still imports local custom code).
+    # 5.4 replaced the `_text_length` OVSentenceTransformer (optimum-intel 2.2.0 and main) binds,
+    # which failed every int8 embeddings pull; compat/ puts it back.
+    "sentence-transformers==6.2.0",
+    "ovms-export-compat",
+    "sentencepiece",
+]
+
+[tool.uv]
+# optimum-intel 2.2.0 declares transformers <5.6; 5.10 fixes CVE-2026-9856. 5.15 is optimum-intel
+# main's ceiling (huggingface/optimum-intel#1886) and the workspace's release. 5.17, which also fixes
+# CVE-2026-80047 in code, renames a class optimum-intel imports. Drop with optimum-intel's next release.
+override-dependencies = ["transformers==5.15.1"]
+environments = [
+    "sys_platform == 'win32'",
+    "sys_platform == 'linux'",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+ovms-export-compat = { path = "compat" }
+torch = { index = "pytorch-cpu" }
+torchvision = { index = "pytorch-cpu" }

@@ -1,27 +1,44 @@
 // Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-import config from '@payload-config'
 import { NextResponse } from 'next/server'
-import { getPayload } from 'payload'
+import { z } from 'zod'
+import { jsonErrorFrom, parseJsonBody } from '@/lib/api/json'
+import {
+  readAppSettings,
+  updateAppSettings,
+} from '@/lib/settings/app-settings-store'
 
 export const dynamic = 'force-dynamic'
 
+/** `{ hasToken }` — the token itself never leaves the server. */
 export async function GET() {
-  const payload = await getPayload({ config })
-  // overrideAccess needed so the field (read: false) is returned to trusted server code.
-  const settings = await payload.findGlobal({
-    slug: 'app-settings',
-    overrideAccess: true,
-  })
-  const token = settings.hfToken
-  return NextResponse.json({ hasToken: Boolean(token) })
+  try {
+    const settings = await readAppSettings()
+    return NextResponse.json({ hasToken: Boolean(settings.hfToken) })
+  } catch (error) {
+    return jsonErrorFrom(
+      error,
+      'The settings could not be read from the database.',
+      'Failed to read the HF token status',
+    )
+  }
 }
 
+/** `{ hfToken }` saves the token; an empty string removes it. */
+const hfTokenSchema = z.object({ hfToken: z.string().trim() })
+
 export async function POST(request: Request) {
-  const body = await request.json()
-  const token = typeof body.hfToken === 'string' ? body.hfToken : ''
-  const payload = await getPayload({ config })
-  await payload.updateGlobal({ slug: 'app-settings', data: { hfToken: token } })
+  const parsed = await parseJsonBody(request, hfTokenSchema)
+  if (!parsed.ok) return parsed.response
+  try {
+    await updateAppSettings({ hfToken: parsed.data.hfToken })
+  } catch (error) {
+    return jsonErrorFrom(
+      error,
+      'The settings database did not accept the change.',
+      'Failed to save the HF token',
+    )
+  }
   return NextResponse.json({ success: true })
 }

@@ -36,16 +36,15 @@ The application includes a demonstration video for testing. The video loops cont
 
 - Matched search results, including metadata, timestamps, confidence scores, and frames
 
-![Screenshot of the Image-Based Video Search sample application interface displaying search input and matched results](https://github.com/open-edge-platform/edge-ai-suites/blob/release-2026.0.0/metro-ai-suite/image-based-video-search/docs/user-guide/_assets/imagesearch2.png?raw=true)
+![Screenshot of the Image-Based Video Search sample application interface displaying search input and matched results](https://github.com/open-edge-platform/edge-ai-suites/blob/2026.2.1/metro-ai-suite/image-based-video-search/docs/user-guide/_assets/imagesearch2.png?raw=true)
 
 ### Learn More
 
-- [Get Started](https://github.com/open-edge-platform/edge-ai-suites/blob/release-2026.0.0/metro-ai-suite/image-based-video-search/docs/user-guide/get-started.md)
-- [System Requirements](https://github.com/open-edge-platform/edge-ai-suites/blob/release-2026.0.0/metro-ai-suite/image-based-video-search/docs/user-guide/get-started/system-requirements.md)
-- [How It Works](https://github.com/open-edge-platform/edge-ai-suites/blob/release-2026.0.0/metro-ai-suite/image-based-video-search/docs/user-guide/how-it-works.md)
-- [Deploy with Helm](https://github.com/open-edge-platform/edge-ai-suites/blob/release-2026.0.0/metro-ai-suite/image-based-video-search/docs/user-guide/get-started/deploy-with-helm.md)
-- [Deploy with Edge Orchestrator](https://github.com/open-edge-platform/edge-ai-suites/blob/release-2026.0.0/metro-ai-suite/image-based-video-search/docs/user-guide/get-started/deploy-with-edge-orchestrator.md)
-- [Release Notes](https://github.com/open-edge-platform/edge-ai-suites/blob/release-2026.0.0/metro-ai-suite/image-based-video-search/docs/user-guide/release-notes.md)
+- [Get Started](https://github.com/open-edge-platform/edge-ai-suites/blob/2026.2.1/metro-ai-suite/image-based-video-search/docs/user-guide/get-started.md)
+- [System Requirements](https://github.com/open-edge-platform/edge-ai-suites/blob/2026.2.1/metro-ai-suite/image-based-video-search/docs/user-guide/get-started/system-requirements.md)
+- [How It Works](https://github.com/open-edge-platform/edge-ai-suites/blob/2026.2.1/metro-ai-suite/image-based-video-search/docs/user-guide/how-it-works.md)
+- [Deploy with Helm](https://github.com/open-edge-platform/edge-ai-suites/blob/2026.2.1/metro-ai-suite/image-based-video-search/docs/user-guide/get-started/deploy-with-helm.md)
+- [Release Notes](https://github.com/open-edge-platform/edge-ai-suites/blob/2026.2.1/metro-ai-suite/image-based-video-search/docs/user-guide/release-notes.md)
 
 ## Important Notice
 

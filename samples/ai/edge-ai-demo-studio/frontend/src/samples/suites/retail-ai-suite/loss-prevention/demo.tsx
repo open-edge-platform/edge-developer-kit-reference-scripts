@@ -8,9 +8,8 @@ import { RestartPipelineButton } from './components/restart-pipeline-button'
 import { lossPreventionSuite } from './config'
 
 export function LossPreventionDemo() {
-  // Loss Prevention runs in visual mode — the GStreamer pipeline opens a
-  // display window directly on the host (RENDER_MODE=1 DISPLAY=:0).
-  // There is no browser-accessible web UI to link to.
+  // Visual mode: the pipeline opens a window on the host display (RENDER_MODE=1 DISPLAY=:0), so
+  // there is no web UI to link to.
   return (
     <SuiteLaunchPanel
       {...lossPreventionSuite}

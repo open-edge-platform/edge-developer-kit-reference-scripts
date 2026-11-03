@@ -12,12 +12,7 @@ import type { TtsPlaybackControls } from '@/context/tts-playback-context'
 import { useTtsParams } from './hooks/use-tts-params'
 import { useTtsPlayback } from './hooks/use-tts-playback'
 
-/**
- * Headless feature provider for the optional text-to-speech integration.
- * Publishes the TTS config group, and exposes per-message playback controls as
- * `ttsPlayback` (consumed by chat UI via TtsPlaybackContext) plus the `ttsOnline`
- * flag. See docs/OPTIONAL-SERVICES.md.
- */
+/** Headless provider for optional TTS: publishes its group, `ttsPlayback` and `ttsOnline`. */
 export function TtsFeatureProvider({ sampleId }: { sampleId?: string }) {
   const tts = useTtsParams(sampleId ?? '')
   const playback = useTtsPlayback({
@@ -27,6 +22,7 @@ export function TtsFeatureProvider({ sampleId }: { sampleId?: string }) {
 
   const groups = useSingletonGroup(tts.group)
 
+  // Kept stable: the collector re-registers the provider whenever `exports` changes identity.
   const ttsPlayback: TtsPlaybackControls = useMemo(
     () => ({
       speakingMsgId: playback.speakingMsgId,

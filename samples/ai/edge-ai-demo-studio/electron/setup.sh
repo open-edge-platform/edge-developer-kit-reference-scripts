@@ -2,17 +2,13 @@
 # Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
-# Exit on error
 set -euo pipefail
 
-# Get the directory of this script
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Node.js path from thirdparty
 NODE_PATH="$SCRIPT_DIR/../thirdparty/node/bin"
 OLD_PATH="$PATH"
 
-# Function to set up Node.js environment
 setup_node_env() {
     echo "Setting up Node.js environment..."
     if [ ! -d "$NODE_PATH" ]; then
@@ -22,7 +18,6 @@ setup_node_env() {
     
     export PATH="$NODE_PATH:$PATH"
     
-    # Check for node and npm
     if ! command -v node >/dev/null 2>&1; then
         echo "Error: node is not available in PATH."
         exit 1
@@ -37,13 +32,11 @@ setup_node_env() {
     echo "npm version: $(npm -v)"
 }
 
-# Function to reset environment
 reset_env() {
     echo "Resetting environment variables..."
     export PATH="$OLD_PATH"
 }
 
-# Main installation
 main() {
     cd "$SCRIPT_DIR"
     
@@ -56,7 +49,6 @@ main() {
     echo "Electron Builder setup complete!"
 }
 
-# Trap to ensure environment is reset on exit
 trap reset_env EXIT
 
 main

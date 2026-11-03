@@ -1,73 +1,59 @@
 // Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-import { supportedBackends } from '@/engines/multiserve/backends'
-import type {
-  BackendId,
-  ModelSource,
-  ModelUsage,
-} from '@/engines/multiserve/types'
-import type { OS } from '@/types/common'
-
-/** UI-level source tab — extends ModelSource with "preset" for verified models. */
-export type SourceTab = ModelSource | 'preset'
+import { getDefaultBackend, isBackendId } from '@/engines/multiserve/backends'
+import { splitModelName } from '@/engines/multiserve/quant-selection'
+import type { BackendId, ModelUsage } from '@/engines/multiserve/types'
+import type { HostOS, ModelSource } from '@/types/common'
+import type { EffectiveModel } from '@/types/service'
 
 export interface ConfigDraft {
   backend: BackendId
-  source: SourceTab
+  source: ModelSource
+  /** The repo; a llama.cpp quant is kept apart in `quant`. */
   modelName: string
   device: string
+  /** `device` is the backend's default after a backend switch, not the user's pick. */
+  deviceAutoFilled: boolean
   quant: string
   modelType: ModelUsage
   pipelineType: string
   weightFormat: string
+  /** `weightFormat` came from the picked model, not from the user. */
   weightFormatAutoFilled: boolean
+  /** Conversion options for `ovms --pull` (saved in `params`). */
   additionalParams: string
+  /** Extra model-server arguments (`metadata.serverArgs`), as typed. */
+  serverArgs: string
 }
 
-/**
- * Pick the default backend based on the current OS.
- * Prefers the backend whose `recommendedOS` matches, falls back to the first.
- */
-function getDefaultBackend(os?: OS): BackendId {
-  if (os) {
-    const recommended = supportedBackends.find(
-      (b) => b.recommendedOS === os && b.supportedOS.includes(os),
-    )
-    if (recommended) return recommended.value as BackendId
-  }
-  return (supportedBackends[0]?.value as BackendId) ?? 'openvino'
-}
-
+/** The draft a configure panel starts from: what the instance runs. */
 export function buildInitialDraft(
-  currentModel: string,
-  currentDevice: string,
-  currentBackend?: string,
-  os?: OS,
-  currentQuant?: string,
-  currentSource?: string,
+  current: EffectiveModel,
+  os?: HostOS,
+  serverArgs = '',
 ): ConfigDraft {
-  // For llamacpp the stored name may be "repo:quant" — split to get separate fields
-  let modelName = currentModel
-  let quant = currentQuant ?? ''
-  if (currentBackend === 'llamacpp') {
-    const colonIdx = currentModel.lastIndexOf(':')
-    if (colonIdx !== -1) {
-      modelName = currentModel.slice(0, colonIdx)
-      quant = quant || currentModel.slice(colonIdx + 1)
-    }
-  }
+  // A llama.cpp model is stored as `<repo>:<QUANT>`; the draft keeps the
+  // quant apart, as the model list picks it.
+  const { repoId, quant } =
+    current.backend === 'llamacpp'
+      ? splitModelName(current.name, current.quant)
+      : { repoId: current.name, quant: current.quant }
 
   return {
-    backend: (currentBackend as BackendId) || getDefaultBackend(os),
-    source: (currentSource as SourceTab) || 'huggingface',
-    modelName,
-    device: currentDevice,
-    quant,
+    backend: isBackendId(current.backend)
+      ? current.backend
+      : getDefaultBackend(os),
+    source: current.source ?? 'huggingface',
+    modelName: repoId,
+    device: current.device,
+    deviceAutoFilled: false,
+    quant: quant ?? '',
     modelType: 'default',
     pipelineType: 'AUTO',
     weightFormat: '',
     weightFormatAutoFilled: false,
     additionalParams: '',
+    serverArgs,
   }
 }

@@ -3,8 +3,8 @@
 
 'use client'
 
-import { useState } from 'react'
 import type { DemoParam } from '@/types/demo-params'
+import { useDemoParams } from '@/services/common/demo/use-demo-params'
 
 const IMAGE_GEN_DEFAULTS = {
   steps: 30,
@@ -13,29 +13,34 @@ const IMAGE_GEN_DEFAULTS = {
   strength: 0.75,
 }
 
-export interface ImageGenParamValues {
-  steps: number
-  cfgScale: number
-  resolution: string
-  strength: number
+/**
+ * Turbo models are distilled for a few steps without guidance; at 30 steps and CFG 7.5 they burn
+ * out to white. CFG 1 turns guidance off, which the worker's NPU turbo pipeline is built for.
+ */
+const TURBO_DEFAULTS = { steps: 4, cfgScale: 1 }
+
+function modelDefaults(model: string) {
+  return /turbo/i.test(model) ? TURBO_DEFAULTS : undefined
 }
 
-export function useImageGenParams(
-  options?: { showStrength?: boolean },
-  initial?: Partial<ImageGenParamValues>,
-): { values: ImageGenParamValues; params: DemoParam[] } {
-  const [steps, setSteps] = useState(initial?.steps ?? IMAGE_GEN_DEFAULTS.steps)
-  const [cfgScale, setCfgScale] = useState(
-    initial?.cfgScale ?? IMAGE_GEN_DEFAULTS.cfgScale,
-  )
-  const [resolution, setResolution] = useState(
-    initial?.resolution ?? IMAGE_GEN_DEFAULTS.resolution,
-  )
-  const [strength, setStrength] = useState(
-    initial?.strength ?? IMAGE_GEN_DEFAULTS.strength,
-  )
+interface UseImageGenParamsOptions {
+  /** The model the settings are for: turbo models start from their own. */
+  model: string
+  /** Offer Strength (image-to-image only). */
+  showStrength?: boolean
+  /** Under a `DemoSessionProvider`, keeps the settings per instance across remounts. */
+  sessionKey?: string
+}
 
-  const values: ImageGenParamValues = { steps, cfgScale, resolution, strength }
+export function useImageGenParams({
+  model,
+  showStrength = false,
+  sessionKey,
+}: UseImageGenParamsOptions) {
+  const { values, setters } = useDemoParams(IMAGE_GEN_DEFAULTS, {
+    sessionKey,
+    initial: modelDefaults(model),
+  })
 
   const params: DemoParam[] = [
     {
@@ -44,11 +49,11 @@ export function useImageGenParams(
       label: 'Steps',
       tooltip:
         'Denoising iteration count. Higher values increase quality and generation time.',
-      value: steps,
+      value: values.steps,
       min: 1,
       max: 100,
       step: 1,
-      onChange: setSteps,
+      onChange: setters.setSteps,
     },
     {
       type: 'slider',
@@ -56,25 +61,25 @@ export function useImageGenParams(
       label: 'CFG Scale',
       tooltip:
         'Controls how closely the model follows the text prompt. Higher values produce more prompt-aligned results.',
-      value: cfgScale,
+      value: values.cfgScale,
       min: 1,
       max: 20,
       step: 0.5,
-      onChange: setCfgScale,
+      onChange: setters.setCfgScale,
     },
     {
       type: 'select',
       id: 'resolution',
       label: 'Resolution',
-      value: resolution,
+      value: values.resolution,
       options: [
         { value: '512x512', label: '512 × 512' },
         { value: '768x768', label: '768 × 768' },
         { value: '1024x1024', label: '1024 × 1024' },
       ],
-      onChange: setResolution,
+      onChange: setters.setResolution,
     },
-    ...(options?.showStrength
+    ...(showStrength
       ? [
           {
             type: 'slider' as const,
@@ -82,11 +87,11 @@ export function useImageGenParams(
             label: 'Strength',
             tooltip:
               'How much to transform the source image. 0.0 keeps the original, 1.0 fully replaces it.',
-            value: strength,
+            value: values.strength,
             min: 0.0,
             max: 1.0,
             step: 0.05,
-            onChange: setStrength,
+            onChange: setters.setStrength,
           },
         ]
       : []),

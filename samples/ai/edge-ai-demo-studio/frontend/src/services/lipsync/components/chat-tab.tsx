@@ -7,12 +7,15 @@ import {
   AlertTriangle,
   CheckCircle2,
   Download,
-  Loader2,
+  Loader,
   Send,
   Volume2,
 } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
+import { useState } from 'react'
 import { toast } from 'sonner'
+import { ServiceLink } from '@/components/common/service-link'
+import { EmptyState } from '@/components/common/empty-state'
+import { TruncatedText } from '@/components/common/truncated-text'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import {
@@ -25,44 +28,58 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import {
   useGetService,
+  useServiceActivity,
   useServiceStatus,
 } from '@/context/service-status-context'
-import { getVoicesForModel } from '@/services/text-to-speech/config'
+import { siblingWorkerAddress } from '@/lib/instances/instances'
+import { toastError } from '@/lib/browser/toast-error'
+import { DEFAULT_TTS_MODEL } from '@/services/text-to-speech/config'
+import { getVoicesForModel } from '@/services/text-to-speech/lib/tts-models'
+import { getEffectiveModel } from '@/types/service'
 import { useTtsVoiceStatus } from '@/services/text-to-speech/hooks/use-voice-status'
 import { useLipsyncChat } from '../hooks'
 import { FrameGenerationSwitch } from './frame-generation-switch'
+
+const SPEED_OPTIONS = [
+  { value: '0.5', label: '0.5x' },
+  { value: '0.75', label: '0.75x' },
+  { value: '1.0', label: '1.0x (Normal)' },
+  { value: '1.25', label: '1.25x' },
+  { value: '1.5', label: '1.5x' },
+]
 
 export interface ChatTabProps {
   sessionId: string | null
   frameGeneration: boolean
   onFrameGenerationChange: (checked: boolean) => void
+  apiBase: string | undefined
 }
 
 export function ChatTab({
   sessionId,
   frameGeneration,
   onFrameGenerationChange,
+  apiBase,
 }: ChatTabProps) {
   const [chatText, setChatText] = useState('Hello, welcome to the demo!')
   const [speed, setSpeed] = useState('1.0')
 
-  const { mutate: chatMutate, isPending: isChatPending } = useLipsyncChat()
+  const { mutate: chatMutate, isPending: isChatPending } =
+    useLipsyncChat(apiBase)
 
-  const { startService, isActionPending } = useServiceStatus()
+  const { startService } = useServiceStatus()
+  const { isActionPending } = useServiceActivity()
   const ttsService = useGetService('text-to-speech')
   const ttsStatus = ttsService?.status ?? 'offline'
   const isTtsOnline = ttsStatus === 'online'
   const currentModel =
-    ttsService?.currentModel ?? ttsService?.defaultModel?.name ?? 'kokoro'
-  const voiceOptions = useMemo(() => {
-    return getVoicesForModel(currentModel).map((v) => ({
-      value: v.id,
-      label: `${v.language} (${v.label})`,
-    }))
-  }, [currentModel])
+    (ttsService && getEffectiveModel(ttsService).name) || DEFAULT_TTS_MODEL
+  const voiceOptions = getVoicesForModel(currentModel).map((v) => ({
+    value: v.id,
+    label: `${v.language} (${v.label})`,
+  }))
   const [voice, setVoice] = useState(() => voiceOptions[0]?.value ?? '')
 
-  // Reset selected voice when model changes or current selection is no longer valid
   const [prevModel, setPrevModel] = useState(currentModel)
   if (prevModel !== currentModel) {
     setPrevModel(currentModel)
@@ -71,15 +88,17 @@ export function ChatTab({
     setVoice(voiceOptions[0]?.value ?? '')
   }
 
-  const { isVoiceDownloaded } = useTtsVoiceStatus()
+  const { isVoiceDownloaded } = useTtsVoiceStatus(ttsService?.apiBase, {
+    enabled: isTtsOnline,
+  })
 
   const isConnected = sessionId !== null
 
-  const sendChat = useCallback(() => {
+  const sendChat = () => {
     if (!sessionId || !chatText.trim()) return
     const text = chatText.trim()
-    const ttsUrl = ttsService
-      ? `http://localhost:${ttsService.port}/v1`
+    const ttsUrl = ttsService?.instanceKey
+      ? siblingWorkerAddress(ttsService.instanceKey)
       : undefined
     chatMutate(
       {
@@ -96,61 +115,78 @@ export function ChatTab({
           setChatText('')
           toast.success('Message sent to avatar')
         },
-        onError: (e) =>
-          toast.error(e instanceof Error ? e.message : 'Failed to send chat'),
+        onError: toastError('Failed to send chat'),
       },
     )
-  }, [
-    sessionId,
-    chatText,
-    voice,
-    speed,
-    frameGeneration,
-    chatMutate,
-    ttsService,
-  ])
+  }
+
+  // Chat needs a Text to Speech instance; none was added yet.
+  if (!ttsService?.added) {
+    return (
+      <EmptyState
+        icon={Volume2}
+        title="Text to Speech required"
+        description="Chat turns your text into speech with the Text to Speech service before the avatar lip-syncs it. Add a Text to Speech instance to use Chat; Audio works without it."
+        className="py-10"
+      >
+        <Button size="sm" className="mt-4" asChild>
+          <ServiceLink serviceType="text-to-speech">
+            <Volume2 aria-hidden="true" className="h-3.5 w-3.5" />
+            Add Text to Speech
+          </ServiceLink>
+        </Button>
+      </EmptyState>
+    )
+  }
 
   if (!isTtsOnline) {
+    const isStarting =
+      ttsStatus === 'starting' || isActionPending('text-to-speech')
     return (
-      <div className="border-border bg-muted/10 flex flex-col items-center gap-3 rounded-lg border border-dashed px-6 py-10 text-center">
-        <div className="bg-muted flex h-10 w-10 items-center justify-center rounded-full">
-          <Volume2 className="text-muted-foreground h-5 w-5" />
-        </div>
-        <div>
-          <p className="text-foreground text-sm font-medium">
-            Text-to-Speech service required
-          </p>
-          <p className="text-muted-foreground mt-1 text-xs">
-            Chat uses TTS to convert your text into speech for the avatar.
-            Enable the Text-to-Speech service to use this feature.
-          </p>
-        </div>
+      <EmptyState
+        icon={Volume2}
+        title="Text to Speech is not running"
+        description={`Chat voices your text with ${ttsService.label ?? 'Text to Speech'}, which is stopped. Start it to use Chat; Audio works without it.`}
+        className="py-10"
+      >
         <Button
           size="sm"
-          className="bg-primary hover:bg-primary-light mt-1 text-white"
-          disabled={
-            isActionPending('text-to-speech') || ttsStatus === 'starting'
-          }
+          className="mt-4"
+          disabled={isStarting}
           onClick={() => startService('text-to-speech')}
         >
-          {ttsStatus === 'starting' || isActionPending('text-to-speech') ? (
-            <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+          {isStarting ? (
+            <Loader aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
           ) : (
-            <Volume2 className="mr-1.5 h-3.5 w-3.5" />
+            <Volume2 aria-hidden="true" className="h-3.5 w-3.5" />
           )}
-          {ttsStatus === 'starting' ? 'Starting...' : 'Start Text-to-Speech'}
+          {isStarting
+            ? 'Starting…'
+            : `Start ${ttsService.label ?? 'Text to Speech'}`}
         </Button>
-      </div>
+      </EmptyState>
     )
   }
 
   return (
     <>
-      <p className="text-muted-foreground text-xs">
-        Type text for the avatar to speak aloud.
+      <p
+        className="text-muted-foreground flex min-w-0 flex-wrap items-baseline gap-x-1 text-xs"
+        data-testid="lipsync-chat-voice"
+      >
+        <span>Type text for the avatar to speak. Voiced by</span>
+        <TruncatedText
+          text={ttsService.label ?? 'Text to Speech'}
+          className="text-foreground max-w-48"
+        />
+        <span>(Text to Speech).</span>
       </p>
       <div className="space-y-2">
+        <Label htmlFor="lipsync-chat-text" className="sr-only">
+          Text for the avatar to speak
+        </Label>
         <Textarea
+          id="lipsync-chat-text"
           value={chatText}
           onChange={(e) => setChatText(e.target.value)}
           placeholder="Type text for the avatar to speak..."
@@ -176,10 +212,9 @@ export function ChatTab({
               onClick={sendChat}
               disabled={isChatPending || !isConnected || !chatText.trim()}
               size="sm"
-              className="bg-primary hover:bg-primary-light text-white"
             >
               {isChatPending ? (
-                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                <Loader className="mr-1.5 h-3.5 w-3.5 animate-spin" />
               ) : (
                 <Send className="mr-1.5 h-3.5 w-3.5" />
               )}
@@ -189,62 +224,61 @@ export function ChatTab({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5">
+      <div className="flex flex-wrap gap-3">
+        <div className="min-w-0 flex-[2_1_14rem] space-y-1.5">
           <Label htmlFor="voice-select" className="text-xs">
             Voice
           </Label>
           <Select value={voice} onValueChange={setVoice}>
-            <SelectTrigger id="voice-select" className="text-xs">
-              <SelectValue />
+            <SelectTrigger id="voice-select" className="w-full min-w-0 text-xs">
+              <SelectValue className="min-w-0 flex-1 text-left" />
             </SelectTrigger>
             <SelectContent>
               {voiceOptions.map((v) => (
                 <SelectItem key={v.value} value={v.value} className="text-xs">
-                  <span className="flex items-center gap-1.5">
-                    {isTtsOnline &&
-                      (isVoiceDownloaded(v.value) ? (
-                        <CheckCircle2 className="text-success h-3 w-3 shrink-0" />
-                      ) : (
-                        <Download className="text-muted-foreground h-3 w-3 shrink-0" />
-                      ))}
-                    {v.label}
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    {isVoiceDownloaded(v.value) ? (
+                      <CheckCircle2
+                        aria-label="Downloaded"
+                        className="text-success h-3 w-3 shrink-0"
+                      />
+                    ) : (
+                      <Download
+                        aria-label="Not downloaded"
+                        className="text-muted-foreground h-3 w-3 shrink-0"
+                      />
+                    )}
+                    <span className="truncate">{v.label}</span>
                   </span>
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
-          {isTtsOnline && !isVoiceDownloaded(voice) && (
-            <p className="text-warning flex items-center gap-1 text-[10px]">
-              <AlertTriangle className="h-3 w-3 shrink-0" />
+          {!isVoiceDownloaded(voice) && (
+            <p className="text-warning-strong flex items-center gap-1 text-xs">
+              <AlertTriangle aria-hidden="true" className="h-3 w-3 shrink-0" />
               Voice not cached — first run may be slow
             </p>
           )}
         </div>
-        <div className="space-y-1.5">
+        <div className="min-w-0 flex-[1_1_8rem] space-y-1.5">
           <Label htmlFor="speed-select" className="text-xs">
             Speed
           </Label>
           <Select value={speed} onValueChange={setSpeed}>
-            <SelectTrigger id="speed-select" className="text-xs">
+            <SelectTrigger id="speed-select" className="w-full min-w-0 text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="0.5" className="text-xs">
-                0.5x
-              </SelectItem>
-              <SelectItem value="0.75" className="text-xs">
-                0.75x
-              </SelectItem>
-              <SelectItem value="1.0" className="text-xs">
-                1.0x (Normal)
-              </SelectItem>
-              <SelectItem value="1.25" className="text-xs">
-                1.25x
-              </SelectItem>
-              <SelectItem value="1.5" className="text-xs">
-                1.5x
-              </SelectItem>
+              {SPEED_OPTIONS.map((opt) => (
+                <SelectItem
+                  key={opt.value}
+                  value={opt.value}
+                  className="text-xs"
+                >
+                  {opt.label}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>

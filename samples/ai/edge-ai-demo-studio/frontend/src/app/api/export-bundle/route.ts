@@ -1,31 +1,31 @@
 // Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-import { ZipArchive } from 'archiver'
 import { type NextRequest, NextResponse } from 'next/server'
+import { jsonErrorFrom } from '@/lib/api/json'
 import {
   buildExportBundle,
   cleanupBundle,
+  type ExportDone,
   ExportError,
   exportFileName,
+  type ExportSelection,
   parseExportSelection,
   resolveExportPlan,
-} from '@/lib/export-bundle'
+} from '@/lib/deployment/export-bundle'
+import {
+  bundleDownloadPath,
+  bundleZipResponse,
+  registerBundleDownload,
+} from '@/lib/deployment/export-bundle-download'
 import { logger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'
-// Exports can take a while (codegen runs in the exported tree).
-export const maxDuration = 300
+
+const UNEXPECTED = 'Unexpected error while exporting samples'
 
 function errorResponse(err: unknown) {
-  if (err instanceof ExportError) {
-    return NextResponse.json({ error: err.message }, { status: err.status })
-  }
-  logger.error('Export route error:', err)
-  return NextResponse.json(
-    { error: 'Unexpected error while exporting samples' },
-    { status: 500 },
-  )
+  return jsonErrorFrom(err, UNEXPECTED, 'Export route error')
 }
 
 function parseIncludeOptional(value: string | null | undefined): boolean {
@@ -52,59 +52,123 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * Zip a directory tree into a single Buffer, nesting its contents under a
- * single top-level `rootDir` folder so the archive unpacks into one folder
- * rather than spilling files into the current directory.
+ * POST { samples, services, includeOptional }. With `Accept: text/event-stream` it streams
+ * `progress` `{ phase, message }`, then `done` `{ downloadId, fileName, url, expiresAt }` or `error`
+ * `{ error }`; closing the stream cancels the export. Otherwise it answers with the zip itself.
  */
-function zipDirectory(dir: string, rootDir: string): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const archive = new ZipArchive({ zlib: { level: 9 } })
-    const chunks: Buffer[] = []
-    archive.on('data', (chunk: Buffer) => chunks.push(chunk))
-    archive.on('warning', (warn) => logger.warn?.(`zip warning: ${warn}`))
-    archive.on('error', reject)
-    archive.on('end', () => resolve(Buffer.concat(chunks)))
-    // Place the directory contents under `rootDir/` inside the zip.
-    archive.directory(dir, rootDir)
-    archive.finalize()
-  })
-}
-
-/** POST /api/export-bundle { samples, services, includeOptional } → zip download. */
 export async function POST(request: NextRequest) {
-  let bundleTmpDir: string | undefined
+  let selection: ExportSelection
+  let includeOptional: boolean
   try {
     const body = (await request.json().catch(() => ({}))) as {
       samples?: unknown
       services?: unknown
       includeOptional?: unknown
     }
-    const selection = parseExportSelection(body.samples, body.services)
-    const includeOptional = body.includeOptional === true
-
-    const { outDir, tmpDir } = await buildExportBundle(
-      selection,
-      includeOptional,
-    )
-    bundleTmpDir = tmpDir
-
-    const fileName = exportFileName(selection)
-    // Use the zip's base name (sans `.zip`) as the single wrapping folder.
-    const rootDir = fileName.replace(/\.zip$/, '')
-    const zip = await zipDirectory(outDir, rootDir)
-
-    return new NextResponse(new Uint8Array(zip), {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/zip',
-        'Content-Disposition': `attachment; filename="${fileName}"`,
-        'Content-Length': String(zip.byteLength),
-        'Cache-Control': 'no-store',
-      },
-    })
+    selection = parseExportSelection(body.samples, body.services)
+    includeOptional = body.includeOptional === true
   } catch (err) {
     return errorResponse(err)
-  } finally {
-    if (bundleTmpDir) await cleanupBundle(bundleTmpDir)
   }
+
+  if (request.headers.get('accept')?.includes('text/event-stream')) {
+    return exportEventStream(request, selection, includeOptional)
+  }
+
+  try {
+    const bundle = await buildExportBundle(selection, includeOptional, {
+      signal: request.signal,
+    })
+    return bundleZipResponse(bundle, exportFileName(selection))
+  } catch (err) {
+    return errorResponse(err)
+  }
+}
+
+const encoder = new TextEncoder()
+const KEEPALIVE = encoder.encode(': keep-alive\n\n')
+const KEEPALIVE_MS = 15_000
+
+function sseEvent(event: string, data: unknown): Uint8Array {
+  return encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+}
+
+/** Runs the export, relaying its output as events (see `POST`). */
+function exportEventStream(
+  request: NextRequest,
+  selection: ExportSelection,
+  includeOptional: boolean,
+): Response {
+  const abort = new AbortController()
+  const cancel = () => abort.abort()
+  request.signal.addEventListener('abort', cancel, { once: true })
+
+  const body = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      let open = true
+      const send = (chunk: Uint8Array) => {
+        if (!open) return
+        try {
+          controller.enqueue(chunk)
+        } catch {
+          open = false
+        }
+      }
+      // Copying and codegen can go quiet for a while; a comment line keeps
+      // any proxy in between from treating the stream as idle.
+      const keepAlive = setInterval(() => send(KEEPALIVE), KEEPALIVE_MS)
+
+      try {
+        const bundle = await buildExportBundle(selection, includeOptional, {
+          signal: abort.signal,
+          onProgress: (progress) => send(sseEvent('progress', progress)),
+        })
+        if (abort.signal.aborted) {
+          await cleanupBundle(bundle.tmpDir)
+          return
+        }
+        const fileName = exportFileName(selection)
+        const { id: downloadId, expiresAt } = registerBundleDownload(
+          bundle,
+          fileName,
+        )
+        const done: ExportDone = {
+          downloadId,
+          fileName,
+          url: bundleDownloadPath(downloadId),
+          expiresAt,
+        }
+        send(sseEvent('done', done))
+      } catch (err) {
+        if (!(err instanceof ExportError)) {
+          logger.error('Export route error:', err)
+        }
+        send(
+          sseEvent('error', {
+            error: err instanceof ExportError ? err.message : UNEXPECTED,
+          }),
+        )
+      } finally {
+        clearInterval(keepAlive)
+        request.signal.removeEventListener('abort', cancel)
+        if (open) {
+          open = false
+          try {
+            controller.close()
+          } catch {
+            // Already cancelled by the client.
+          }
+        }
+      }
+    },
+    cancel,
+  })
+
+  return new Response(body, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      'X-Accel-Buffering': 'no',
+    },
+  })
 }

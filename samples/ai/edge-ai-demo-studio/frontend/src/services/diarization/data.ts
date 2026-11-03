@@ -9,12 +9,12 @@ import { serviceConfig } from './config'
 export const service: ServiceMeta = {
   id: 'diarization',
   name: 'Speaker Diarization',
+  multiInstance: true,
   description:
     'Identify and label speakers in audio recordings using pyannote.audio speaker diarization models.',
   longDescription:
     'Speaker diarization service using pyannote.audio to detect and segment speakers in audio recordings. Supports voice enrollment for named speaker identification, cosine-similarity matching, and multi-speaker timeline generation.',
   icon: Users,
-  port: 8026,
   supportedOS: ['linux', 'windows'],
   execution: { mode: 'worker' },
   defaultModel: {
@@ -33,6 +33,7 @@ export const service: ServiceMeta = {
 const VALID_SOURCES = new Set(['huggingface', 'modelscope'])
 
 export const worker: WorkerConfig = {
+  modelCatalog: 'script',
   buildArgs: (doc: PayloadService) => {
     const rawSource = doc.models?.default?.source
     const source =
@@ -47,6 +48,6 @@ export const worker: WorkerConfig = {
     ]
     return args
   },
-  workerSubDir: 'diarization',
+  workerSubDir: 'services/diarization',
   modelDirectories: ['models/diarization'],
 }

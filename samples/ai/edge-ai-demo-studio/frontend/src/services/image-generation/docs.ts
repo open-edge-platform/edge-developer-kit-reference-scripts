@@ -16,12 +16,30 @@ export const getDocsData = ({
       : model) || 'OpenVINO/stable-diffusion-v1-5-int8-ov'
 
   return {
+    quickStart: {
+      steps: [
+        `Send a prompt to \`POST /v1/images/generations\` with the model \`${genModel}\`.`,
+        'The image comes back base64-encoded in `data[0].b64_json`; decode it into a PNG file.',
+        'An instance makes one image at a time. For longer runs, add `"is_polling": true` and follow the job with `GET /v1/images/jobs/{job_id}/events`.',
+      ],
+      request: {
+        language: 'cURL',
+        languageCode: 'bash',
+        code: `curl ${host}/v1/images/generations \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "${genModel}",
+    "prompt": "A lighthouse at dusk, watercolor",
+    "num_inference_steps": 20
+  }' | jq -r '.data[0].b64_json' | base64 -d > image.png`,
+      },
+    },
     overview:
-      'The Image Generation service creates images from text prompts using Stable Diffusion models accelerated with OpenVINO. It supports text-to-image generation and image-to-image editing via OpenAI-compatible API endpoints backed by OpenVINO Model Server (OVMS).',
+      "The Image Generation service creates images from text prompts using Stable Diffusion models accelerated with OpenVINO. It supports text-to-image generation and image-to-image editing through OpenAI-compatible endpoints backed by OpenVINO Model Server (OVMS): the paths, request fields and response shape match OpenAI's Images API, so an OpenAI SDK pointed at this base URL works unchanged. The same routes are also served under the legacy `/v3` prefix for backwards compatibility. An instance makes one image at a time: requests from every client wait in one queue, first come first served, and a request answered at once waits its turn like a background job.",
     endpoints: [
       {
         method: 'POST',
-        path: '/v3/images/generations',
+        path: '/v1/images/generations',
         description: 'Generate images from a text prompt',
         params: [
           {
@@ -102,11 +120,23 @@ export const getDocsData = ({
             required: false,
             desc: 'Max sequence length for T5 encoder (SD3/FLUX). Lower values improve performance.',
           },
+          {
+            name: 'response_format',
+            type: 'string',
+            required: false,
+            desc: "`b64_json` answers the image data; `url` answers where each image is served (`/api/<type>@<instance>/v1/images/jobs/{job_id}/images/{index}`, relative to the app), kept as long as a finished job. Also applies to a background job's `/result`. (default: b64_json)",
+          },
+          {
+            name: 'is_polling',
+            type: 'boolean',
+            required: false,
+            desc: 'Run as a background job: answers at once with `{ job_id }`, and the images are made one at a time (a set `rng_seed` moves on by one per image). Follow the job with `GET /v1/images/jobs/{job_id}/events`; cancel it with `DELETE /v1/images/jobs/{job_id}`. (default: false)',
+          },
         ],
       },
       {
         method: 'POST',
-        path: '/v3/images/edits',
+        path: '/v1/images/edits',
         description:
           'Edit an existing image with a text prompt (multipart/form-data)',
         params: [
@@ -170,13 +200,107 @@ export const getDocsData = ({
             required: false,
             desc: 'Random seed for reproducibility',
           },
+          {
+            name: 'response_format',
+            type: 'string',
+            required: false,
+            desc: '`b64_json` or `url`, as for generations (default: b64_json)',
+          },
+          {
+            name: 'is_polling',
+            type: 'boolean',
+            required: false,
+            desc: 'Run as a background job: answers at once with `{ job_id }`, and the images are made one at a time (a set `rng_seed` moves on by one per image). Follow the job with `GET /v1/images/jobs/{job_id}/events`; cancel it with `DELETE /v1/images/jobs/{job_id}`. (default: false)',
+          },
         ],
       },
       {
         method: 'GET',
-        path: '/v3/images/tasks/{task_type}',
+        path: '/v1/images/jobs/{job_id}/events',
         description:
-          'Get the status of a long-running generation or edit task. Task types: "image-generation" or "image-edit".',
+          'Follow a background job as Server-Sent Events: a `status` event whenever it changes, ending with the final one (`completed`, `failed` or `cancelled`). A status is `{ id, type, status: "pending" | "in_progress" | "completed" | "failed" | "cancelled", n, images_done, elapsed_time, estimated_time, error? }`. While `pending` it waits in the queue at `position` (1 is next); `in_progress` adds `cancel_requested` once a cancel was asked for. `estimated_time` is the seconds the job should run, from the time images take on this instance; while unfinished, `seconds_per_image` is the time one image should take, and a running job has `started` and `image_started` (epoch seconds), so `elapsed_time - (image_started - started)` is how far the image in progress is. A completed job carries `perf`. Read the images from `/images/{index}` or `/result`.',
+        params: [
+          {
+            name: 'job_id',
+            type: 'string',
+            required: true,
+            desc: 'The `job_id` a request with `is_polling` answered with (path parameter)',
+          },
+        ],
+      },
+      {
+        method: 'GET',
+        path: '/v1/images/jobs/{job_id}/result',
+        description:
+          'The images a job has finished so far, in the images response shape (`{ created, data: [{ b64_json }] }`, or `[{ url }]` for a request with `response_format: "url"`). Finished jobs stay readable for 30 minutes (at most the 16 most recent), and until the worker restarts.',
+        params: [
+          {
+            name: 'job_id',
+            type: 'string',
+            required: true,
+            desc: 'Job ID (path parameter)',
+          },
+          {
+            name: 'offset',
+            type: 'integer',
+            required: false,
+            desc: 'Skip the first `offset` images, to read only the ones finished since the last read (default: 0)',
+          },
+        ],
+      },
+      {
+        method: 'GET',
+        path: '/v1/images/jobs/{job_id}/images/{index}',
+        description:
+          'One finished image of a job, as PNG. Images do not change once made, so they can be cached.',
+        params: [
+          {
+            name: 'job_id',
+            type: 'string',
+            required: true,
+            desc: 'Job ID (path parameter)',
+          },
+          {
+            name: 'index',
+            type: 'integer',
+            required: true,
+            desc: 'Image index, from 0 up to `images_done - 1` (path parameter)',
+          },
+        ],
+      },
+      {
+        method: 'GET',
+        path: '/v1/images/jobs/{job_id}',
+        description:
+          'Poll a background job: its status, with the images finished so far in `result` (or the error message of a failed job).',
+        params: [
+          {
+            name: 'job_id',
+            type: 'string',
+            required: true,
+            desc: 'Job ID (path parameter)',
+          },
+        ],
+      },
+      {
+        method: 'DELETE',
+        path: '/v1/images/jobs/{job_id}',
+        description:
+          'Cancel a background job and answer with its status, as `GET` does. A job still `pending` becomes `cancelled` at once; a running one keeps `in_progress` with `cancel_requested: true` until its image in progress is done (a call to the model server cannot be interrupted), then becomes `cancelled`, and the images it made stay readable; a finished job is left as it is. `cancelled` is final and carries no `perf`.',
+        params: [
+          {
+            name: 'job_id',
+            type: 'string',
+            required: true,
+            desc: 'Job ID (path parameter)',
+          },
+        ],
+      },
+      {
+        method: 'GET',
+        path: '/v1/images/tasks/{task_type}',
+        description:
+          'Get the status of the most recent background job of a type, in the same shape as `GET /v1/images/jobs/{job_id}`. Task types: "image-generation" or "image-edit".',
         params: [
           {
             name: 'task_type',
@@ -185,6 +309,12 @@ export const getDocsData = ({
             desc: 'Type of task to check: "image-generation" or "image-edit" (path parameter)',
           },
         ],
+      },
+      {
+        method: 'GET',
+        path: '/v1/models',
+        description:
+          'List the model this worker serves, in the OpenAI models shape (`{ object: "list", data: [{ id, object, created, owned_by }] }`). `GET /v1/models/{id}` retrieves one.',
       },
       {
         method: 'GET',
@@ -210,7 +340,7 @@ from io import BytesIO
 from PIL import Image
 
 client = OpenAI(
-    base_url="${host}/v3",
+    base_url="${host}/v1",
     api_key="unused"
 )
 
@@ -234,7 +364,7 @@ image.save("generate_output.png")`,
           {
             language: 'cURL',
             languageCode: 'bash',
-            code: `curl -X POST ${host}/v3/images/generations \\
+            code: `curl -X POST ${host}/v1/images/generations \\
   -H "Content-Type: application/json" \\
   -d '{
     "model": "${genModel}",
@@ -259,7 +389,7 @@ from io import BytesIO
 from PIL import Image
 
 client = OpenAI(
-    base_url="${host}/v3",
+    base_url="${host}/v1",
     api_key="unused"
 )
 
@@ -283,7 +413,7 @@ image.save("edit_output.png")`,
           {
             language: 'cURL',
             languageCode: 'bash',
-            code: `curl -X POST ${host}/v3/images/edits \\
+            code: `curl -X POST ${host}/v1/images/edits \\
   -F "model=${genModel}" \\
   -F "image=@generate_output.png" \\
   -F "prompt=Three astronauts in the jungle, vibrant color palette, detailed, 8k" \\
@@ -291,6 +421,38 @@ image.save("edit_output.png")`,
   -F "size=512x512" \\
   -F "num_inference_steps=50" \\
   -F "strength=0.67"`,
+          },
+        ],
+      },
+      {
+        title: 'Run as a background job',
+        codeSnippets: [
+          {
+            language: 'cURL',
+            languageCode: 'bash',
+            code: `# Start the job: answers at once with its job_id
+JOB_ID=$(curl -s -X POST ${host}/v1/images/generations \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "${genModel}",
+    "prompt": "Three astronauts on the moon, cold color palette, muted colors, detailed, 8k",
+    "n": 2,
+    "is_polling": true
+  }' | jq -r .job_id)
+
+# Follow its status (queue position, then progress) until it is completed,
+# failed or cancelled
+curl -N ${host}/v1/images/jobs/$JOB_ID/events
+
+# Save the images as PNG
+curl -s -o image-0.png ${host}/v1/images/jobs/$JOB_ID/images/0
+curl -s -o image-1.png ${host}/v1/images/jobs/$JOB_ID/images/1
+
+# Or read them in the images response shape
+curl -s ${host}/v1/images/jobs/$JOB_ID/result
+
+# Cancel it: dropped at once while queued, else stops before its next image
+curl -s -X DELETE ${host}/v1/images/jobs/$JOB_ID`,
           },
         ],
       },

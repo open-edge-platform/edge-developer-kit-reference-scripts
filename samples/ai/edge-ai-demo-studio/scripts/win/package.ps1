@@ -1,9 +1,9 @@
 # Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
-# Exit immediately if a command fails
 $ErrorActionPreference = "Stop"
+# Windows PowerShell 5.1's progress bar slows Compress-Archive many times over.
+$ProgressPreference = 'SilentlyContinue'
 
-# Define variables
 $SCRIPT_DIR = $PSScriptRoot
 $PROJECT_ROOT = Split-Path (Split-Path $SCRIPT_DIR -Parent) -Parent
 $TEMP_DIR = "$PROJECT_ROOT/build"
@@ -25,10 +25,11 @@ function Add-NodeToPath {
         $script:nodePathAdded = $true
         Write-Host "Temporarily added Node.js to PATH: $NODE_PATH" -ForegroundColor Green
         
-        # Check for node and npm
         try {
-            $nodeVersion = & node --version 2>$null
-            $npmVersion = & npm --version 2>$null
+            # Not redirected: under Stop, Windows PowerShell 5.1 throws on any
+            # redirected stderr line, such as an npm config warning.
+            $nodeVersion = & node --version
+            $npmVersion = & npm --version
             Write-Host "Node.js version: $nodeVersion" -ForegroundColor Green
             Write-Host "npm version: $npmVersion" -ForegroundColor Green
         } catch {
@@ -49,10 +50,8 @@ function Remove-NodeFromPath {
     }
 }
 
-# Parse .gitignore files (root + under a source dir) and return two arrays suitable for robocopy:
-#   DirPatterns  - safe directory exclusions for /XD
-#   FilePatterns - safe file exclusions for /XF
-# Patterns that robocopy cannot handle (character classes, wildcard-in-path) are skipped.
+# Robocopy /XD and /XF exclusions from the .gitignore files (root + under SrcDir). Patterns robocopy
+# cannot express (character classes, wildcard in a path) are skipped.
 function Get-GitignoreExcludes {
     param(
         [Parameter(Mandatory=$true)] [string] $SrcDir
@@ -61,9 +60,7 @@ function Get-GitignoreExcludes {
     $dirExcludes  = [System.Collections.Generic.List[string]]::new()
     $fileExcludes = [System.Collections.Generic.List[string]]::new()
 
-    # Classifies one gitignore line and appends it to the appropriate list.
-    # Runs in the caller's child scope; modifies $dirExcludes / $fileExcludes via .Add() on the
-    # shared List objects (reference semantics - no scope issue).
+    # Classifies one gitignore line; .Add() on the shared lists works from the child scope.
     $processLine = {
         param([string]$RawLine, [string]$Prefix, [string]$BaseDir)
 
@@ -88,21 +85,18 @@ function Get-GitignoreExcludes {
             $leaf = $parts[-1]
         }
 
-        # Decide: file pattern vs directory/plain-name pattern.
-        # File patterns: leaf looks like "*.ext" or "name.ext"
-        # Hidden-dir names like ".venv", ".cache" are NOT file patterns (start with dot, no second dot).
+        # File pattern: leaf like "*.ext" or "name.ext"; hidden dirs like ".venv" (one leading dot) are not.
         $isFilePat = $leaf -match '^\*\.' -or ($leaf -match '\.' -and $leaf -notmatch '^\.[-\w]+$')
 
         if ($isFilePat) {
             if ($parts.Count -eq 1) {
-                # Simple wildcard extension, e.g. *.log - safe for /XF.
-                # Also add to /XD so that directories named e.g. "*.egg-info" are covered.
+                # e.g. *.log; also /XD so directories like "*.egg-info" match too.
                 $fileExcludes.Add($line)
                 $dirExcludes.Add($line)
             } else {
                 # Path-specific file; resolve to absolute path for /XF.
                 $absPath = Join-Path $BaseDir $line
-                if (Test-Path $absPath -PathType Leaf) { $fileExcludes.Add($absPath) }
+                if (Test-Path -LiteralPath $absPath -PathType Leaf) { $fileExcludes.Add($absPath) }
             }
         } else {
             if ($parts.Count -eq 1) {
@@ -135,14 +129,26 @@ function Get-GitignoreExcludes {
     # Hard-coded defaults - simple dir names, safe for /XD
     '.venv', 'thirdparty', '__pycache__', 'models', 'avatars' | ForEach-Object { $dirExcludes.Add($_) }
 
+    # The robocopy command line is capped at 32767 chars, which the per-directory entries overrun.
+    # Drop paths outside SrcDir and absolute paths with a component a bare-name exclude already
+    # covers (a bare name matches at any depth, so the whole subtree is skipped).
+    $isAbsolute = { param([string]$Pattern) $Pattern -match '^[A-Za-z]:[\\/]' }
+    $bareNames = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    $dirExcludes | Where-Object { -not (& $isAbsolute $_) } | ForEach-Object { [void]$bareNames.Add($_) }
+    $srcPrefix = ($SrcDir -replace '/', '\').TrimEnd('\') + '\'
+    $dirPatterns = $dirExcludes | Where-Object {
+        -not (& $isAbsolute $_) -or
+        ($_.StartsWith($srcPrefix, [StringComparison]::OrdinalIgnoreCase) -and
+            -not ($_.Substring($srcPrefix.Length) -split '\\' | Where-Object { $bareNames.Contains($_) }))
+    } | Select-Object -Unique
+
     return @{
-        DirPatterns  = $dirExcludes.ToArray()
+        DirPatterns  = @($dirPatterns)
         FilePatterns = $fileExcludes.ToArray()
     }
 }
 
 function Add-TempDir {
-    # Create a temporary directory for worker files
     try {
         if (Test-Path $TEMP_DIR) {
             Write-Host "Temporary directory already exists. Cleaning up..." -ForegroundColor Yellow
@@ -159,7 +165,6 @@ function Add-TempDir {
 }
 
 function Remove-TempDir {
-    # Clean up the temporary directory
     try {
         if (Test-Path $TEMP_DIR) {
             Write-Host "Cleaning up temporary directory..." -ForegroundColor Green
@@ -175,7 +180,6 @@ function Remove-TempDir {
 }
 
 function Add-WorkerFiles {
-    # Copy worker files to the temporary directory
     Write-Host "Copying worker files to temporary directory..." -ForegroundColor Green
     try {
         if (-not (Test-Path $WORKER_DIR)) {
@@ -183,7 +187,6 @@ function Add-WorkerFiles {
         }
         New-Item -ItemType Directory -Path "$TEMP_DIR/workers" -ErrorAction Stop | Out-Null
 
-        # Build excludes from .gitignore (root + per-worker), split into dir vs file patterns
         $excludes = Get-GitignoreExcludes -SrcDir $WORKER_DIR
         $robocopyArgs = [System.Collections.Generic.List[string]]::new()
         $robocopyArgs.Add($WORKER_DIR)
@@ -216,7 +219,6 @@ function Add-ScriptFiles {
     Write-Host "Copying scripts to temporary directory..." -ForegroundColor Green
     
     try {
-        # Get the scripts root directory (parent of win folder)
         $SCRIPTS_ROOT = $SCRIPT_DIR
         
         if (-not (Test-Path $SCRIPTS_ROOT)) {
@@ -228,17 +230,14 @@ function Add-ScriptFiles {
         if ($ps1Files) {
             foreach ($file in $ps1Files) {
                 try {
-                    # Calculate relative path from scripts root
                     $relativePath = $file.FullName.Substring($SCRIPTS_ROOT.Length + 1)
                     $destinationPath = Join-Path "$TEMP_DIR/scripts" $relativePath
                     $destinationDir = Split-Path $destinationPath -Parent
                     
-                    # Create destination directory if it doesn't exist
                     if (-not (Test-Path $destinationDir)) {
                         New-Item -ItemType Directory -Path $destinationDir -Force -ErrorAction Stop | Out-Null
                     }
                     
-                    # Copy the file preserving directory structure
                     Copy-Item $file.FullName $destinationPath -Force -ErrorAction Stop
                     Write-Host "  Copied: $relativePath" -ForegroundColor Gray
                 } catch {
@@ -255,10 +254,8 @@ function Add-ScriptFiles {
     }
 }
 
-# Copy deployment.json (and its editor schema) into the build directory so
-# electron-builder bundles them into resources/ (see extraResources in
-# electron/package.json). The packaged frontend then picks the presets up from
-# resources/deployment.json on startup.
+# Copy deployment.json (if any), its example and docs into the build dir; electron-builder bundles
+# them into resources/ (extraResources in electron/package.json) for the packaged frontend.
 function Add-DeploymentConfig {
     Write-Host "Copying deployment.json to temporary directory..." -ForegroundColor Green
 
@@ -268,14 +265,17 @@ function Add-DeploymentConfig {
             Copy-Item $deploymentConfig "$TEMP_DIR/" -Force -ErrorAction Stop
             Write-Host "deployment.json copied successfully." -ForegroundColor Green
         } else {
-            Write-Host "Warning: deployment.json not found at $deploymentConfig - the package will use built-in service defaults." -ForegroundColor Yellow
+            Write-Host "No deployment.json at $deploymentConfig - the package applies no presets; services are added in the UI." -ForegroundColor Yellow
         }
 
-        # Ship the deployment docs alongside it: the schema keeps the
-        # "$schema": "./docs/deployment.schema.json" reference working for editor
-        # validation, and shipping deployment-config.md means the startup doc
-        # regeneration (frontend/src/lib/deployment-docs.ts) finds identical content
-        # in resources/docs and skips rewriting it.
+        $deploymentExample = Join-Path $PROJECT_ROOT "deployment.example.json"
+        if (Test-Path $deploymentExample -PathType Leaf) {
+            Copy-Item $deploymentExample "$TEMP_DIR/" -Force -ErrorAction Stop
+            Write-Host "deployment.example.json copied successfully." -ForegroundColor Green
+        }
+
+        # The schema keeps the "$schema" reference working in editors; with deployment-config.md
+        # shipped, the startup doc regeneration finds it unchanged and skips rewriting it.
         foreach ($docFile in @("deployment.schema.json", "deployment-config.md")) {
             $docPath = Join-Path $PROJECT_ROOT "docs/$docFile"
             if (Test-Path $docPath -PathType Leaf) {
@@ -291,7 +291,6 @@ function Add-DeploymentConfig {
 }
 
 function Invoke-FrontendBuild {
-    # Build the frontend application
     Write-Host "Building frontend application..." -ForegroundColor Green
     
     if (-not (Test-Path $FRONTEND_DIR)) {
@@ -301,7 +300,6 @@ function Invoke-FrontendBuild {
     
     Push-Location $FRONTEND_DIR
     try {
-        # Check if setup.ps1 exists
         if (-not (Test-Path "./setup.ps1")) {
             throw "setup.ps1 not found in frontend directory"
         }
@@ -312,17 +310,14 @@ function Invoke-FrontendBuild {
             throw "Frontend setup script failed with exit code $LASTEXITCODE"
         }
         
-        # Create frontend directory structure
         Write-Host "Creating frontend build directory structure..." -ForegroundColor Cyan
         New-Item -ItemType Directory -Path "$TEMP_DIR/frontend" -Force -ErrorAction Stop | Out-Null
         New-Item -ItemType Directory -Path "$TEMP_DIR/frontend/.next" -Force -ErrorAction Stop | Out-Null
         
-        # Verify build output exists
         if (-not (Test-Path ".next")) {
             throw "Frontend build output (.next directory) not found. Build may have failed."
         }
         
-        # Copy standalone and static files
         $standalonePath = ".next/standalone"
         $staticPath = ".next/static"
         
@@ -341,8 +336,17 @@ function Invoke-FrontendBuild {
         } else {
             Write-Host "Warning: Static build output not found at $staticPath" -ForegroundColor Yellow
         }
-        
-        # Verify at least some files were copied
+
+        # server.js serves public/ from beside itself; the standalone output holds only the traced part.
+        if (Test-Path "public") {
+            Write-Host "Copying public frontend files..." -ForegroundColor Cyan
+            New-Item -ItemType Directory -Path "$TEMP_DIR/frontend/public" -Force -ErrorAction Stop | Out-Null
+            Copy-Item -Recurse "public/*" "$TEMP_DIR/frontend/public/" -Force -ErrorAction Stop
+            Write-Host "Public frontend files copied successfully." -ForegroundColor Green
+        } else {
+            Write-Host "Warning: Public folder not found at public" -ForegroundColor Yellow
+        }
+
         $frontendFiles = Get-ChildItem -Path "$TEMP_DIR/frontend" -Recurse -File
         if ($frontendFiles.Count -eq 0) {
             throw "No frontend files were copied to build directory"
@@ -359,7 +363,6 @@ function Invoke-FrontendBuild {
 }
 
 function Start-ElectronPackage {
-    # Package the Electron application
     Write-Host "Packaging Electron application..." -ForegroundColor Green
     
     if (-not (Test-Path $ELECTRON_DIR)) {
@@ -369,7 +372,6 @@ function Start-ElectronPackage {
     
     Push-Location $ELECTRON_DIR
     try {
-        # Check if package.json exists
         if (-not (Test-Path "package.json")) {
             throw "package.json not found in Electron directory"
         }
@@ -398,10 +400,9 @@ function Start-ElectronPackage {
 }
 
 function Invoke-FinalizePackage {
-    # Copy distribution files to the final output directory and create zip
+    # Rename win-unpacked to the project name and zip it.
     Write-Host "Finalizing package..." -ForegroundColor Green
     
-    # Determine the output folder name (Windows build)
     $OUT_FOLDER = Join-Path $PROJECT_ROOT "out/win-unpacked"
     
     if (-not (Test-Path $OUT_FOLDER)) {
@@ -409,20 +410,17 @@ function Invoke-FinalizePackage {
         exit 1
     }
     
-    # Create the new package structure using project name
     Write-Host "Creating $PROJECT_NAME package structure..." -ForegroundColor Green
     $outDir = Join-Path $PROJECT_ROOT "out"
     Push-Location $outDir
     
     try {
-        # Remove existing project directory if it exists
         if (Test-Path $PROJECT_NAME) {
             Remove-Item -Recurse -Force $PROJECT_NAME
             Write-Host "Removed existing $PROJECT_NAME directory" -ForegroundColor Green
         }
 
-        # Move the win-unpacked folder to the project name. If move fails,
-        # fall back to copying the contents into a newly created project folder.
+        # Copy the contents instead when the move fails.
         if (Test-Path $OUT_FOLDER) {
             try {
                 Move-Item -LiteralPath $OUT_FOLDER -Destination (Join-Path $outDir $PROJECT_NAME) -Force
@@ -438,7 +436,6 @@ function Invoke-FinalizePackage {
             exit 1
         }
         
-        # Create zip file with the new structure
         Write-Host "Creating $PROJECT_NAME.zip..." -ForegroundColor Green
         if (Test-Path "$PROJECT_NAME.zip") {
             Remove-Item "$PROJECT_NAME.zip" -Force
@@ -464,7 +461,6 @@ function Invoke-FinalizePackage {
                         if ($_.LastWriteTime -lt $minDate) { $_.LastWriteTime = $minDate }
                     }
                 } catch {
-                    # Ignore files we cannot update
                     Write-Host "Warning: could not normalize timestamp for $($_.FullName): $_" -ForegroundColor Yellow
                 }
             }
@@ -472,7 +468,6 @@ function Invoke-FinalizePackage {
 
         Normalize-Timestamps -RootPath $PROJECT_NAME
 
-        # Use PowerShell's Compress-Archive cmdlet
         Compress-Archive -Path $PROJECT_NAME -DestinationPath "$PROJECT_NAME.zip" -Force
         Write-Host "$PROJECT_NAME.zip created successfully." -ForegroundColor Green
         
@@ -495,7 +490,6 @@ try {
     Start-ElectronPackage
     Invoke-FinalizePackage
 
-    # Check the size of the build folder
     Write-Host "Checking the size of the build folder..." -ForegroundColor Green
     try {
         $buildSize = (Get-ChildItem -Recurse $TEMP_DIR | Measure-Object -Property Length -Sum).Sum / 1MB
@@ -504,15 +498,13 @@ try {
         Write-Host "Failed to calculate the build folder size." -ForegroundColor Yellow
     }
 
-    # Final message
-    $outPath = Join-Path $SCRIPT_DIR "../out"
+    $outPath = Join-Path $PROJECT_ROOT "out"
     Write-Host "Packaging completed successfully. Files are available in $outPath" -ForegroundColor Green
     Write-Host "Zip file created: $outPath\$PROJECT_NAME.zip" -ForegroundColor Green
 } catch {
     Write-Host "An error occurred: $_" -ForegroundColor Red
     exit 1
 } finally {
-    # Clean up Node.js PATH if it was modified
     Remove-TempDir
     Remove-NodeFromPath
     Pop-Location

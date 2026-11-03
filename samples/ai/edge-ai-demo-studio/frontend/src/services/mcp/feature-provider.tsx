@@ -11,21 +11,24 @@ import {
 import { useMcpParams } from './hooks/use-mcp-params'
 
 /**
- * Headless feature provider for the optional MCP integration. Auto-registered
- * into `featureProviderRegistry` by codegen; a host sample mounts it (via
- * `useFeatureProviders`) to surface the MCP Tools config group and contribute
- * `mcpServerIds` to the chat request body. See docs/OPTIONAL-SERVICES.md.
+ * Headless MCP feature provider (registered by codegen): adds the MCP Tools config group, and
+ * `mcpServerIds` with the tool-call parser and result format to the chat request body.
  */
 export function McpFeatureProvider() {
   const mcp = useMcpParams()
 
   const groups = useSingletonGroup(mcp.group)
+  // Memoized on purpose: published from an effect (`useFeaturePublish`).
   const extraBody = useMemo(
     () =>
       mcp.enabled && mcp.selectedServerIds.length > 0
-        ? { mcpServerIds: mcp.selectedServerIds }
+        ? {
+            mcpServerIds: mcp.selectedServerIds,
+            toolCallParser: mcp.toolCallParser,
+            mcpTextResults: mcp.textResults,
+          }
         : {},
-    [mcp.enabled, mcp.selectedServerIds],
+    [mcp.enabled, mcp.selectedServerIds, mcp.toolCallParser, mcp.textResults],
   )
 
   useFeaturePublish('mcp', { groups, extraBody })

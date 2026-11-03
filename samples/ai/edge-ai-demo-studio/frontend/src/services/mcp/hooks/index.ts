@@ -1,7 +1,14 @@
 // Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
+import { fetchJson, postJson } from '@/lib/browser/fetch-json'
+import { getErrorMessage } from '@/lib/errors'
 import type { McpServer } from '@/payload-types'
 
 const QUERY_KEY = ['mcp-servers']
@@ -21,125 +28,123 @@ export interface McpProbeResult {
   serverInfo?: { name?: string; version?: string }
 }
 
+/** The API key is write-only: send a new one, `null` to remove it, or leave it out to keep it. */
+export type McpServerInput = Omit<
+  McpServer,
+  'id' | 'updatedAt' | 'createdAt' | 'hasApiKey'
+>
+
 export function useMcpServers() {
   return useQuery<McpServer[]>({
     queryKey: QUERY_KEY,
     queryFn: async () => {
-      const url = new URL('/api/mcp-servers', window.location.origin)
-      const res = await fetch(url)
-      if (!res.ok) throw new Error(await res.text())
-      const data = await res.json()
+      // Every server: Payload would otherwise answer its first page of 10.
+      const data = await fetchJson<{ docs?: McpServer[] }>(
+        '/api/mcp-servers?limit=0',
+      )
       return data.docs ?? []
     },
   })
 }
 
-export function useCreateMcpServer() {
+/** After any change, the list and every probe are refetched. */
+function useInvalidateMcp() {
   const queryClient = useQueryClient()
+  return () => {
+    queryClient.invalidateQueries({ queryKey: QUERY_KEY })
+    queryClient.invalidateQueries({ queryKey: PROBE_QUERY_KEY })
+  }
+}
+
+export function useCreateMcpServer() {
+  const invalidate = useInvalidateMcp()
   return useMutation({
-    mutationFn: async (
-      server: Omit<McpServer, 'id' | 'updatedAt' | 'createdAt'>,
-    ) => {
-      const url = new URL('/api/mcp-servers', window.location.origin)
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(server),
-      })
-      const text = await res.text()
-      if (!res.ok) throw new Error(text)
-      const data = JSON.parse(text)
-      return data.doc as McpServer
+    mutationFn: async (server: McpServerInput) => {
+      const data = await postJson<{ doc: McpServer }>(
+        '/api/mcp-servers',
+        server,
+      )
+      return data.doc
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: QUERY_KEY })
-      queryClient.invalidateQueries({ queryKey: PROBE_QUERY_KEY })
-    },
+    onSuccess: invalidate,
   })
 }
 
 export function useUpdateMcpServer() {
-  const queryClient = useQueryClient()
+  const invalidate = useInvalidateMcp()
   return useMutation({
     mutationFn: async ({
       id,
       data,
     }: {
       id: number
-      data: Partial<Omit<McpServer, 'id' | 'updatedAt' | 'createdAt'>>
+      data: Partial<McpServerInput>
     }) => {
-      const url = new URL(`/api/mcp-servers/${id}`, window.location.origin)
-      const res = await fetch(url, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      })
-      if (!res.ok) throw new Error(await res.text())
-      const result = await res.json()
-      return result.doc as McpServer
+      const result = await postJson<{ doc: McpServer }>(
+        `/api/mcp-servers/${id}`,
+        data,
+        { method: 'PATCH' },
+      )
+      return result.doc
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: QUERY_KEY })
-      queryClient.invalidateQueries({ queryKey: PROBE_QUERY_KEY })
-    },
+    onSuccess: invalidate,
   })
 }
 
 export function useDeleteMcpServer() {
-  const queryClient = useQueryClient()
+  const invalidate = useInvalidateMcp()
   return useMutation({
-    mutationFn: async (id: number) => {
-      const url = new URL(`/api/mcp-servers/${id}`, window.location.origin)
-      const res = await fetch(url, {
-        method: 'DELETE',
-      })
-      if (!res.ok) throw new Error(await res.text())
-      return res.json()
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: QUERY_KEY })
-      queryClient.invalidateQueries({ queryKey: PROBE_QUERY_KEY })
-    },
+    mutationFn: (id: number) =>
+      fetchJson(`/api/mcp-servers/${id}`, { method: 'DELETE' }),
+    onSuccess: invalidate,
   })
 }
 
-export function useMcpServersProbe(servers: McpServer[]) {
+/** Connects to a saved server (by id: the server reads its URL and key). */
+async function probeServer(id: number): Promise<McpProbeResult> {
+  try {
+    return await postJson<McpProbeResult>('/api/mcp-servers/probe', { id })
+  } catch (error) {
+    return { online: false, tools: [], error: getErrorMessage(error) }
+  }
+}
+
+/** What a connection test probes: a saved server, or an address being entered. */
+export type McpProbeTarget = { id: number } | { url: string; apiKey?: string }
+
+/**
+ * Connects, lists the tools and disconnects, without saving. Resolves `online: false` when the
+ * server did not answer; rejects only when the address is refused (MCP address policy, bad key).
+ */
+export function useTestMcpConnection() {
+  return useMutation({
+    mutationFn: (target: McpProbeTarget) =>
+      postJson<McpProbeResult>('/api/mcp-servers/probe', target),
+  })
+}
+
+/**
+ * One probe per enabled server, so each row settles on its own. Keyed by id and last change, so a
+ * re-addressed or re-keyed server is probed afresh. A server with no entry is still being checked.
+ */
+export function useMcpServersProbe(
+  servers: McpServer[],
+): Record<number, McpProbeResult> {
   const enabledServers = servers.filter((s) => !s.disabled)
-  return useQuery<Record<number, McpProbeResult>>({
-    queryKey: [
-      ...PROBE_QUERY_KEY,
-      'all',
-      enabledServers.map((s) => s.id).join(','),
-    ],
-    queryFn: async () => {
-      const results: Record<number, McpProbeResult> = {}
-      await Promise.all(
-        enabledServers.map(async (server) => {
-          try {
-            const url = new URL(
-              '/api/mcp-servers/probe',
-              window.location.origin,
-            )
-            const res = await fetch(url, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ url: server.url, apiKey: server.apiKey }),
-            })
-            results[server.id] = res.ok
-              ? await res.json()
-              : {
-                  online: false,
-                  tools: [],
-                  error: `Probe failed: ${res.status}`,
-                }
-          } catch {
-            results[server.id] = { online: false, tools: [] }
-          }
-        }),
-      )
-      return results
+  return useQueries({
+    queries: enabledServers.map((server) => ({
+      queryKey: [...PROBE_QUERY_KEY, server.id, server.updatedAt],
+      queryFn: () => probeServer(server.id),
+      refetchInterval: PROBE_POLL_INTERVAL,
+    })),
+    // Structurally shared by react-query: the same object while nothing
+    // changed, so consumers can memoize on it.
+    combine: (results) => {
+      const probes: Record<number, McpProbeResult> = {}
+      results.forEach((result, i) => {
+        if (result.data) probes[enabledServers[i].id] = result.data
+      })
+      return probes
     },
-    enabled: enabledServers.length > 0,
-    refetchInterval: PROBE_POLL_INTERVAL,
   })
 }

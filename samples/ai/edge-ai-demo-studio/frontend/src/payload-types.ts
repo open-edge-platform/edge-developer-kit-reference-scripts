@@ -94,9 +94,11 @@ export interface Config {
   fallbackLocale: null;
   globals: {
     'app-settings': AppSetting;
+    'sample-settings': SampleSetting;
   };
   globalsSelect: {
     'app-settings': AppSettingsSelect<false> | AppSettingsSelect<true>;
+    'sample-settings': SampleSettingsSelect<false> | SampleSettingsSelect<true>;
   };
   locale: null;
   widgets: {
@@ -139,6 +141,7 @@ export interface User {
   resetPasswordExpiration?: string | null;
   salt?: string | null;
   hash?: string | null;
+  resetPasswordRequestedAt?: string | null;
   loginAttempts?: number | null;
   lockUntil?: string | null;
   sessions?:
@@ -182,6 +185,8 @@ export interface Service {
     | 'text-to-speech'
     | 'vectordb'
     | 'wake-word-detection';
+  instanceId: string;
+  label?: string | null;
   models: {
     default: {
       name: string;
@@ -227,13 +232,49 @@ export interface Service {
      */
     vadThreshold?: number;
     /**
-     * CPU cores to pin this service to (numactl -C format, e.g. "0-7" or "0,2,4"). Empty / missing = all cores. Linux only.
+     * CPU cores to pin this service to (numactl -C format, e.g. "0-7" or "0,2,4"). Empty / missing = all cores. Linux, and Windows for CPUs 0-63.
      */
     cpuAffinity?: string;
     /**
      * Allow lipsync frame generation (interpolation). Only activates when the accelerator cannot infer enough frames per second on its own.
      */
     frameGeneration?: boolean;
+    /**
+     * Frames per lipsync inference. Empty / missing = automatic: 8 on the NPU, 16 on other devices. Smaller batches start talking sooner; larger ones can infer more frames per second.
+     */
+    batchSize?: number;
+    /**
+     * Backend of the Speech to Text service: "oep" runs the Open Edge Platform audio-analyzer natively (Whisper on OpenVINO GenAI, streaming and live /v1/realtime); "ovms" runs the built-in OpenVINO Model Server worker (batch transcription and translation, optional noise suppression).
+     */
+    sttBackend?: 'oep' | 'ovms';
+    /**
+     * Vector store for the Vector Database service: "faiss" keeps an index per knowledge base on disk; "pgvector" stores vectors in PostgreSQL + pgvector through the OEP document-ingestion pipeline.
+     */
+    vectorDbBackend?: 'faiss' | 'pgvector';
+    /**
+     * PostgreSQL URL for the pgvector backend. Empty / missing = embedded PostgreSQL managed by the worker.
+     */
+    pgConnectionString?: string;
+    /**
+     * Inputs per inference of the Open Edge Platform embeddings worker (INFER_BATCH_SIZE). Empty / missing = 64 on GPU, 16 on other devices; the NPU keeps its static batch of 16.
+     */
+    embeddingBatchSize?: number;
+    /**
+     * OpenVINO performance hint of the Open Edge Platform embeddings worker (OV_PERFORMANCE_MODE). Empty / missing = THROUGHPUT on GPU, LATENCY on other devices.
+     */
+    performanceMode?: 'LATENCY' | 'THROUGHPUT';
+    /**
+     * Keep the compiled OpenVINO model of the Open Edge Platform embeddings worker on CPU and GPU too (OV_ENABLE_MODEL_CACHE), so restarts skip compiling. The NPU always caches.
+     */
+    compiledModelCache?: boolean;
+    /**
+     * Device of the noise suppression model on the OpenVINO Model Server backend of Speech to Text. Empty / missing = models.denoise.device, else the speech model's device. The worker falls back to CPU when the model cannot compile there.
+     */
+    denoiseDevice?: string;
+    /**
+     * Extra arguments the model server starts with, as typed (quote values with spaces): llama-server flags, which replace the engine's own, or OpenVINO Model Server graph options (ovms --pull). Flags the engine sets itself (port, host, model) are refused.
+     */
+    serverArgs?: string;
     [k: string]: unknown;
   };
   status?: ('prepare' | 'active' | 'inactive' | 'restart' | 'error') | null;
@@ -265,6 +306,7 @@ export interface McpServer {
   name: string;
   url: string;
   apiKey?: string | null;
+  hasApiKey?: boolean | null;
   disabled?: boolean | null;
   updatedAt: string;
   createdAt: string;
@@ -359,6 +401,7 @@ export interface UsersSelect<T extends boolean = true> {
   resetPasswordExpiration?: T;
   salt?: T;
   hash?: T;
+  resetPasswordRequestedAt?: T;
   loginAttempts?: T;
   lockUntil?: T;
   sessions?:
@@ -376,6 +419,8 @@ export interface UsersSelect<T extends boolean = true> {
 export interface ServicesSelect<T extends boolean = true> {
   name?: T;
   type?: T;
+  instanceId?: T;
+  label?: T;
   models?: T;
   port?: T;
   metadata?: T;
@@ -395,6 +440,7 @@ export interface McpServersSelect<T extends boolean = true> {
   name?: T;
   url?: T;
   apiKey?: T;
+  hasApiKey?: T;
   disabled?: T;
   updatedAt?: T;
   createdAt?: T;
@@ -454,6 +500,20 @@ export interface AppSetting {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "sample-settings".
+ */
+export interface SampleSetting {
+  id: number;
+  instances?: {
+    [k: string]: {
+      [k: string]: number;
+    };
+  };
+  updatedAt?: string | null;
+  createdAt?: string | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "app-settings_select".
  */
 export interface AppSettingsSelect<T extends boolean = true> {
@@ -461,6 +521,16 @@ export interface AppSettingsSelect<T extends boolean = true> {
   startupTimeout?: T;
   theme?: T;
   proxyTimeout?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  globalType?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "sample-settings_select".
+ */
+export interface SampleSettingsSelect<T extends boolean = true> {
+  instances?: T;
   updatedAt?: T;
   createdAt?: T;
   globalType?: T;

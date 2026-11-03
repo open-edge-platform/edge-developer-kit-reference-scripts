@@ -1,0 +1,30 @@
+[project]
+name = "multiserve"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "worker-common",
+    "model-downloader",
+    "fastapi>=0.120.3,<0.137.0",
+    "huggingface-hub>=1.0.1",
+    "modelscope>=1.35.3",
+    "openai>=2.6.1",
+    "openvino-genai==2026.2.1.0",
+    "pandas>=2.3.3",
+    "pillow>=13.0.0",
+    "pydantic>=2.12.3",
+    "pyinstaller>=6.16.0 ; sys_platform == 'win32'",
+    "pystray>=0.19.5",
+    "python-multipart>=0.0.20",
+    "pyyaml>=6.0.3",
+    "requests>=2.32.5",
+    "tiktoken>=0.12.0",
+    "urllib3>=2.6.3",
+    "uvicorn>=0.38.0",
+]
+
+[tool.uv.sources]
+worker-common = { workspace = true }
+model-downloader = { workspace = true }

@@ -7,8 +7,11 @@ import {
   useQueryClient,
   type UseMutationOptions,
 } from '@tanstack/react-query'
+import { requireApiBase } from '@/lib/browser/api-base'
+import { fetchJson } from '@/lib/browser/fetch-json'
+import { fetchWork } from '@/services/common/metrics/work'
 
-// ── Types (mirror workers/face-recognition responses) ───────────────────────
+// Types mirror the face-recognition worker's responses.
 
 export interface FaceSimilarity {
   person_id: string
@@ -70,109 +73,125 @@ export interface EnrollResponse {
   files: EnrollFileStatus[]
 }
 
-// ── Fetchers ────────────────────────────────────────────────────────────────
+// `apiBase` is `/api/<type>@<instanceId>`.
 
-const BASE = '/api/face-recognition'
-
-async function parseOrThrow<T>(res: Response, fallback: string): Promise<T> {
-  const data = (await res.json()) as T & { detail?: string; error?: string }
-  if (!res.ok) {
-    throw new Error(data.detail ?? data.error ?? fallback)
-  }
-  return data
+function fetchGallery(apiBase: string): Promise<GalleryResponse> {
+  return fetchJson(`${apiBase}/gallery`, {
+    errorMessage: 'Failed to load gallery',
+  })
 }
 
-export async function fetchGallery(): Promise<GalleryResponse> {
-  const url = new URL(`${BASE}/gallery`, window.location.origin)
-  const res = await fetch(url)
-  return parseOrThrow(res, 'Failed to load gallery')
-}
-
-export async function enrollPerson(
+function enrollPerson(
+  apiBase: string,
   req: EnrollRequest,
 ): Promise<EnrollResponse> {
   const formData = new FormData()
   formData.append('name', req.name)
   for (const file of req.files) formData.append('files', file)
-  const url = new URL(`${BASE}/gallery`, window.location.origin)
-  const res = await fetch(url, { method: 'POST', body: formData })
-  return parseOrThrow(res, 'Failed to enroll person')
-}
-
-export async function deletePerson(personId: string): Promise<GalleryResponse> {
-  const url = new URL(`${BASE}/gallery/${personId}`, window.location.origin)
-  const res = await fetch(url, { method: 'DELETE' })
-  return parseOrThrow(res, 'Failed to delete person')
-}
-
-export async function clearGallery(): Promise<GalleryResponse> {
-  const url = new URL(`${BASE}/gallery`, window.location.origin)
-  const res = await fetch(url, { method: 'DELETE' })
-  return parseOrThrow(res, 'Failed to clear gallery')
-}
-
-export async function recognizeImage(file: File): Promise<RecognizeResult> {
-  const formData = new FormData()
-  formData.append('file', file)
-  const url = new URL(`${BASE}/recognize`, window.location.origin)
-  const res = await fetch(url, {
+  return fetchJson(`${apiBase}/gallery`, {
     method: 'POST',
     body: formData,
+    errorMessage: 'Failed to enroll person',
   })
-  return parseOrThrow(res, 'Recognition request failed')
 }
 
-// ── Hooks ───────────────────────────────────────────────────────────────────
+function deletePerson(
+  apiBase: string,
+  personId: string,
+): Promise<GalleryResponse> {
+  return fetchJson(`${apiBase}/gallery/${encodeURIComponent(personId)}`, {
+    method: 'DELETE',
+    errorMessage: 'Failed to delete person',
+  })
+}
 
-const GALLERY_KEY = ['face-recognition', 'gallery']
+function clearGallery(apiBase: string): Promise<GalleryResponse> {
+  return fetchJson(`${apiBase}/gallery`, {
+    method: 'DELETE',
+    errorMessage: 'Failed to clear gallery',
+  })
+}
 
-export function useGallery(enabled = true) {
+function recognizeImage(apiBase: string, file: File): Promise<RecognizeResult> {
+  const formData = new FormData()
+  formData.append('file', file)
+  // One frame per call; enrolling faces in the gallery is not the benchmark.
+  return fetchWork(
+    apiBase,
+    '/recognize',
+    {
+      method: 'POST',
+      body: formData,
+      errorMessage: 'Recognition request failed',
+    },
+    () => ({ items: 1 }),
+  )
+}
+
+const galleryKey = (apiBase: string | undefined) =>
+  ['face-recognition', 'gallery', apiBase] as const
+
+export function useGallery(apiBase: string | undefined) {
   return useQuery<GalleryResponse, Error>({
-    queryKey: GALLERY_KEY,
-    queryFn: fetchGallery,
-    enabled,
+    queryKey: galleryKey(apiBase),
+    queryFn: () => {
+      requireApiBase(apiBase, 'Face Recognition')
+      return fetchGallery(apiBase)
+    },
+    enabled: Boolean(apiBase),
   })
 }
 
 /** Invalidates the gallery query after any gallery mutation settles. */
 function useGalleryMutation<TData, TVariables>(
-  mutationFn: (variables: TVariables) => Promise<TData>,
+  apiBase: string | undefined,
+  mutationFn: (apiBase: string, variables: TVariables) => Promise<TData>,
   options?: UseMutationOptions<TData, Error, TVariables>,
 ) {
   const queryClient = useQueryClient()
   return useMutation<TData, Error, TVariables>({
-    mutationFn,
+    mutationFn: (variables) => {
+      requireApiBase(apiBase, 'Face Recognition')
+      return mutationFn(apiBase, variables)
+    },
     ...options,
     onSettled: (...args) => {
-      queryClient.invalidateQueries({ queryKey: GALLERY_KEY })
+      queryClient.invalidateQueries({ queryKey: galleryKey(apiBase) })
       options?.onSettled?.(...args)
     },
   })
 }
 
 export function useEnroll(
+  apiBase: string | undefined,
   options?: UseMutationOptions<EnrollResponse, Error, EnrollRequest>,
 ) {
-  return useGalleryMutation(enrollPerson, options)
+  return useGalleryMutation(apiBase, enrollPerson, options)
 }
 
 export function useDeletePerson(
+  apiBase: string | undefined,
   options?: UseMutationOptions<GalleryResponse, Error, string>,
 ) {
-  return useGalleryMutation(deletePerson, options)
+  return useGalleryMutation(apiBase, deletePerson, options)
 }
 
 export function useClearGallery(
+  apiBase: string | undefined,
   options?: UseMutationOptions<GalleryResponse, Error, void>,
 ) {
-  return useGalleryMutation(() => clearGallery(), options)
+  return useGalleryMutation(apiBase, (base) => clearGallery(base), options)
 }
 
 export function useRecognize(
+  apiBase: string | undefined,
   options?: UseMutationOptions<RecognizeResult, Error, File>,
 ) {
   return useMutation<RecognizeResult, Error, File>({
-    mutationFn: recognizeImage,
+    mutationFn: (file) => {
+      requireApiBase(apiBase, 'Face Recognition')
+      return recognizeImage(apiBase, file)
+    },
     ...options,
   })
 }

@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-import { Cable } from 'lucide-react'
+import { Cable, Server } from 'lucide-react'
 import type { ServiceMeta } from '@/services/types'
 
 export const service: ServiceMeta = {
@@ -15,4 +15,5 @@ export const service: ServiceMeta = {
   supportedOS: ['linux', 'windows'],
   execution: { mode: 'none' },
   logSources: [],
+  demoTab: { label: 'Servers', icon: Server },
 }

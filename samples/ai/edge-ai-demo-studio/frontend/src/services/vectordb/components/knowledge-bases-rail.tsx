@@ -3,12 +3,24 @@
 
 'use client'
 
-import { Database, Loader2, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { Database, Loader, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { useState } from 'react'
+import { ConfirmDialog } from '@/components/common/confirm-dialog'
+import { InlineNotice } from '@/components/common/inline-notice'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { plural } from '@/lib/browser/format'
+import { getErrorMessage } from '@/lib/errors'
 import { cn } from '@/lib/utils'
 import type { KnowledgeBase } from '../types'
-import { PanelCard } from './panel-card'
 
 interface KnowledgeBasesRailProps {
   knowledgeBases: KnowledgeBase[]
@@ -20,14 +32,13 @@ interface KnowledgeBasesRailProps {
   onRefresh: () => void
   isFetching: boolean
   isLoading: boolean
+  loadError?: Error | null
   onSelect: (kb: KnowledgeBase) => void
-  onDelete: (id: number) => void
+  /** Deletes a knowledge base, once confirmed; rejects with the reason. */
+  onDelete: (id: number) => Promise<void>
 }
 
-/**
- * Left rail listing knowledge bases with inline create, refresh and delete.
- * Selecting a row drives the workspace on the right.
- */
+/** Knowledge bases with create, refresh and delete; selecting one drives the workspace. */
 export function KnowledgeBasesRail({
   knowledgeBases,
   selectedKb,
@@ -38,77 +49,48 @@ export function KnowledgeBasesRail({
   onRefresh,
   isFetching,
   isLoading,
+  loadError,
   onSelect,
   onDelete,
 }: KnowledgeBasesRailProps) {
-  const countLabel = `${knowledgeBases.length} ${
-    knowledgeBases.length === 1 ? 'base' : 'bases'
-  }`
+  const [kbToDelete, setKbToDelete] = useState<KnowledgeBase | null>(null)
 
-  const refreshAction = (
-    <Button
-      onClick={onRefresh}
-      disabled={isFetching}
-      variant="outline"
-      size="icon"
-      className="h-8 w-8"
-      title="Refresh list"
-    >
-      <RefreshCw className={cn('h-3.5 w-3.5', isFetching && 'animate-spin')} />
-    </Button>
-  )
-
-  return (
-    <PanelCard
-      icon={Database}
-      title="Knowledge Bases"
-      action={refreshAction}
-      bodyClassName="p-0"
-    >
-      <div className="border-border border-t p-4">
-        <div className="flex gap-2">
-          <Input
-            value={kbName}
-            onChange={(e) => onKbNameChange(e.target.value)}
-            placeholder="New knowledge base name..."
-            className="bg-muted/30 text-sm"
-            onKeyDown={(e) => e.key === 'Enter' && onCreate()}
-          />
-          <Button
-            onClick={onCreate}
-            disabled={isCreating || !kbName.trim()}
-            size="icon"
-            className="bg-primary hover:bg-primary-light shrink-0 text-white"
-            title="Create knowledge base"
-          >
-            {isCreating ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Plus className="h-4 w-4" />
-            )}
-          </Button>
-        </div>
-      </div>
-
-      <div className="border-border max-h-[480px] space-y-1.5 overflow-y-auto border-t p-3">
-        <div className="text-muted-foreground px-2 pb-1 text-[11px] font-semibold tracking-wide uppercase">
-          {countLabel}
-        </div>
-
-        {knowledgeBases.length === 0 ? (
-          <div className="text-muted-foreground py-6 text-center text-xs">
-            {isLoading
-              ? 'Loading knowledge bases…'
-              : 'No knowledge bases yet. Create one above.'}
-          </div>
-        ) : (
-          knowledgeBases.map((kb) => {
-            const selected = selectedKb?.id === kb.id
-            return (
+  const listBody = (() => {
+    if (loadError && knowledgeBases.length === 0) {
+      return (
+        <InlineNotice tone="destructive" size="sm">
+          Could not load the knowledge bases:{' '}
+          {getErrorMessage(loadError, 'the worker did not answer')}.
+        </InlineNotice>
+      )
+    }
+    if (knowledgeBases.length === 0) {
+      return (
+        <p className="text-muted-foreground py-6 text-center text-xs">
+          {isLoading
+            ? 'Loading knowledge bases…'
+            : 'No knowledge bases yet. Create one above.'}
+        </p>
+      )
+    }
+    return (
+      <ul className="space-y-1.5">
+        {knowledgeBases.map((kb) => {
+          const selected = selectedKb?.id === kb.id
+          return (
+            <li
+              key={kb.id}
+              className={cn(
+                'flex items-center gap-1 rounded-lg border pr-1.5 text-sm transition-colors',
+                selected
+                  ? 'border-primary bg-primary/5'
+                  : 'border-border hover:bg-muted/40',
+              )}
+            >
               <div
                 role="button"
                 tabIndex={0}
-                key={kb.id}
+                aria-pressed={selected}
                 onClick={() => onSelect(kb)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
@@ -116,14 +98,10 @@ export function KnowledgeBasesRail({
                     onSelect(kb)
                   }
                 }}
-                className={cn(
-                  'flex cursor-pointer items-center gap-2.5 rounded-lg border p-2.5 text-left text-sm transition-colors',
-                  selected
-                    ? 'border-primary bg-primary/5'
-                    : 'border-border hover:bg-muted/40',
-                )}
+                className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-lg p-2.5 text-left"
               >
                 <Database
+                  aria-hidden="true"
                   className={cn(
                     'h-4 w-4 shrink-0',
                     selected ? 'text-primary' : 'text-muted-foreground',
@@ -134,28 +112,109 @@ export function KnowledgeBasesRail({
                     'min-w-0 flex-1 truncate',
                     selected ? 'font-semibold' : 'font-medium',
                   )}
+                  title={kb.name}
                 >
                   {kb.name}
                 </span>
-                <span className="rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] font-bold text-violet-600 dark:text-violet-400">
-                  ID: {kb.id}
-                </span>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onDelete(kb.id)
-                  }}
-                  className="text-muted-foreground hover:text-destructive shrink-0 p-0.5"
-                  title="Delete knowledge base"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
+                {selected ? (
+                  <Badge tone="primary" className="text-xs font-bold">
+                    Active
+                  </Badge>
+                ) : (
+                  <span className="text-muted-foreground text-xs tabular-nums">
+                    ID {kb.id}
+                  </span>
+                )}
               </div>
-            )
-          })
-        )}
-      </div>
-    </PanelCard>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="text-muted-foreground hover:text-destructive shrink-0"
+                aria-label={`Delete knowledge base ${kb.name}`}
+                onClick={() => setKbToDelete(kb)}
+              >
+                <Trash2 aria-hidden="true" />
+              </Button>
+            </li>
+          )
+        })}
+      </ul>
+    )
+  })()
+
+  return (
+    <Card className="gap-0 overflow-hidden py-0">
+      <CardHeader className="px-5 pt-5 pb-3.5">
+        <CardTitle className="flex items-center gap-2.5 text-sm">
+          <Database aria-hidden="true" className="text-primary h-4 w-4" />
+          Knowledge bases
+        </CardTitle>
+        <CardAction>
+          <Button
+            onClick={onRefresh}
+            disabled={isFetching}
+            variant="outline"
+            size="icon"
+            className="h-8 w-8"
+            aria-label="Refresh list"
+            title="Refresh list"
+          >
+            <RefreshCw
+              aria-hidden="true"
+              className={cn('h-3.5 w-3.5', isFetching && 'animate-spin')}
+            />
+          </Button>
+        </CardAction>
+      </CardHeader>
+
+      <CardContent className="border-border border-t p-4">
+        <div className="flex gap-2">
+          <Input
+            value={kbName}
+            onChange={(e) => onKbNameChange(e.target.value)}
+            placeholder="New knowledge base name..."
+            aria-label="New knowledge base name"
+            className="bg-muted/30 text-sm"
+            onKeyDown={(e) => e.key === 'Enter' && onCreate()}
+          />
+          <Button
+            onClick={onCreate}
+            disabled={isCreating || !kbName.trim()}
+            size="icon"
+            className="shrink-0"
+            aria-label="Create knowledge base"
+            title="Create knowledge base"
+          >
+            {isCreating ? (
+              <Loader aria-hidden="true" className="h-4 w-4 animate-spin" />
+            ) : (
+              <Plus aria-hidden="true" className="h-4 w-4" />
+            )}
+          </Button>
+        </div>
+      </CardContent>
+
+      <CardContent className="border-border max-h-[480px] space-y-1.5 overflow-y-auto border-t p-3">
+        <p className="text-muted-foreground px-2 pb-1 text-xs font-semibold tracking-wide uppercase">
+          {plural(knowledgeBases.length, 'base')}
+        </p>
+        {listBody}
+      </CardContent>
+
+      <ConfirmDialog
+        open={kbToDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setKbToDelete(null)
+        }}
+        variant="destructive"
+        title={`Delete “${kbToDelete?.name ?? ''}”?`}
+        description="The knowledge base, its documents and every chunk embedded from them are deleted. This can’t be undone."
+        confirmLabel="Delete"
+        pendingLabel="Deleting…"
+        onConfirm={async () => {
+          if (kbToDelete) await onDelete(kbToDelete.id)
+        }}
+      />
+    </Card>
   )
 }

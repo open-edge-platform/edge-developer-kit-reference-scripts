@@ -11,46 +11,40 @@ param(
     [switch]$AutoYes
 )
 
-# Helper: Cleanup processes
 function Cleanup {
     Write-ColorOutput "`nCleaning up jobs..." "Yellow"
     Get-Job | Stop-Job -ErrorAction SilentlyContinue
     Get-Job | Remove-Job -ErrorAction SilentlyContinue
     
-    # Restore original directory
     try { Pop-Location -ErrorAction SilentlyContinue } catch { }
     
     Write-ColorOutput "Cleanup completed." "Green"
 }
 Register-EngineEvent PowerShell.Exiting -Action { Cleanup }
 
-# Set error action preference
 $ErrorActionPreference = "Stop"
 
 # Set console output encoding to UTF-8 for proper emoji display
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
-# Define paths relative to project root
 $SCRIPT_DIR = $PSScriptRoot
 $PROJECT_ROOT = Split-Path (Split-Path $SCRIPT_DIR -Parent) -Parent
 $LOG_DIR = Join-Path $PROJECT_ROOT "logs\setup"
 $TIMESTAMP = Get-Date -Format "yyyyMMdd_HHmmss"
+# workers\setup.ps1 reuses it, which tells it not to clean up this run's logs.
+$env:EADS_SETUP_TIMESTAMP = $TIMESTAMP
 
-# Change to project root directory
 Push-Location $PROJECT_ROOT
 
-# Function to write colored output
 function Write-ColorOutput {
     param([string]$Message, [string]$Color = "White")
     Write-Host $Message -ForegroundColor $Color
 }
 
-# Function to cleanup old logs
 function Cleanup-OldLogs {
     if (Test-Path $LOG_DIR) {
         Write-ColorOutput "Cleaning up old setup logs..." "Yellow"
-        # Remove all log files recursively from subdirectories
         Get-ChildItem -Path $LOG_DIR -Include "*.log","*.log.*" -Recurse -File | Remove-Item -Force -ErrorAction SilentlyContinue
         # Remove empty subdirectories
         Get-ChildItem -Path $LOG_DIR -Directory -Recurse | Where-Object { @(Get-ChildItem -Path $_.FullName -Force).Count -eq 0 } | Remove-Item -Force -ErrorAction SilentlyContinue
@@ -58,7 +52,6 @@ function Cleanup-OldLogs {
     }
 }
 
-# Function to setup logging
 function Setup-Logging {
     if (-not (Test-Path $LOG_DIR)) {
         New-Item -ItemType Directory -Path $LOG_DIR -Force | Out-Null
@@ -67,7 +60,6 @@ function Setup-Logging {
     if (-not $Verbose) {
         Cleanup-OldLogs
         
-        # Initialize main log file for parent script operations
         $script:MainLogFile = Get-MainLog
         "=== Digital Avatar Services Setup Log - $(Get-Date) ===" | Out-File -FilePath $script:MainLogFile -Encoding utf8
         "" | Out-File -FilePath $script:MainLogFile -Append -Encoding utf8
@@ -79,7 +71,6 @@ function Setup-Logging {
     }
 }
 
-# Function to get service-specific log file
 function Get-ServiceLog {
     param([string]$ServiceName)
     $serviceLogDir = Join-Path $LOG_DIR $ServiceName
@@ -89,24 +80,20 @@ function Get-ServiceLog {
     return Join-Path $serviceLogDir "${ServiceName}_${TIMESTAMP}.log"
 }
 
-# Function to get main setup log file
 function Get-MainLog {
     return Join-Path $LOG_DIR "Setup_${TIMESTAMP}.log"
 }
 
-# Function to write output that respects verbose mode
 function Write-Output-With-Logging {
     param([string]$Message, [string]$Color = "White")
     
     Write-ColorOutput $Message $Color
     
-    # Also write to main log file in non-verbose mode
     if (-not $Verbose -and $script:MainLogFile) {
         $Message | Out-File -FilePath $script:MainLogFile -Append -Encoding utf8
     }
 }
 
-# Function to check for Intel GPU driver
 function Test-IntelGPU {
     try {
         $intelGpu = Get-CimInstance -ClassName Win32_VideoController -ErrorAction Stop | Where-Object { $_.Name -like "*Intel*" }
@@ -152,13 +139,12 @@ function Test-IntelGPU {
 
 function Test-IntelNPU {
     try {
-        # Step 1: Check if CPU SKU has NPU (contains Ultra keyword)
+        # Only Core Ultra CPUs have an NPU.
         $intelCPU = (Get-CimInstance -ClassName Win32_Processor).Name
         
         if ($intelCPU -like "*Intel(R) Core(TM) Ultra*") {
             Write-Output-With-Logging "✅ Intel Core Ultra CPU detected: $intelCPU" "Green"
             
-            # Step 2: Check if NPU driver is discovered
             $npuDevice = Get-CimInstance -ClassName Win32_PnPEntity | Where-Object { 
                 $_.ClassGuid -ne $null -and 
                 ($_.PNPClass -eq "ComputeAccelerator" -or $_.FriendlyName -like "*NPU*") 
@@ -173,7 +159,6 @@ function Test-IntelNPU {
                 }
                 return $true
             } else {
-                # Step 3: NPU not discovered even though CPU has NPU capability
                 Write-Output-With-Logging "⚠️  WARNING: Intel NPU driver not detected!" "Yellow"
                 Write-Output-With-Logging "" "White"
                 Write-Output-With-Logging "   Your CPU supports NPU, but the driver is not installed or detected." "Yellow"
@@ -211,13 +196,11 @@ function Test-IntelNPU {
 }
 
 
-# Function to run setup for a service
 function Invoke-ServiceSetup {
     param([string]$ServicePath, [string]$ServiceName)
     
     Write-ColorOutput "Setting up $ServiceName at $($ServicePath -replace [regex]::Escape($SCRIPT_DIR) + '\\', '')" "Yellow"
     
-    # Check if setup.ps1 exists
     $setupScript = Join-Path $ServicePath "setup.ps1"
     if (-not (Test-Path $setupScript)) {
         Write-ColorOutput "Warning: setup.ps1 not found in $ServicePath" "Yellow"
@@ -229,33 +212,32 @@ function Invoke-ServiceSetup {
     }
     
     try {
-        # Build arguments for the setup script
         $scriptArgs = @(
             "-NoProfile",
             "-ExecutionPolicy", "Bypass",
-            "-File", $setupScript
+            # Quoted: Start-Process joins -ArgumentList with bare spaces.
+            "-File", "`"$setupScript`""
         )
         
-        # Always add -Verbose to child scripts for detailed logs
-        # In non-verbose mode, this ensures logs are detailed while console stays clean
+        # Child scripts always run verbose; their output goes to the log, keeping the console clean.
         $scriptArgs += "-Verbose"
         
-        # Add skip parameters for workers setup
         if ($ServiceName -eq "Workers") {
             if ($ContinueOnError) { $scriptArgs += "-ContinueOnError" }
-            # Ensure the child workers/setup.ps1 runs its internal worker discovery
+            # Create the shared worker environment; service setup is deferred.
             $scriptArgs += "-SetupWorkers"
         }
         
-        # Create service-specific log file
+        # Use the same PowerShell executable that is running this script (pwsh vs powershell.exe)
+        $psExe = [System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
+
         $serviceLogFile = Get-ServiceLog -ServiceName $ServiceName
         
         if ($Verbose) {
-            # In verbose mode, show output directly in the console (and also log to file)
+            # Verbose: echo the child's log to the console once it exits.
             Write-ColorOutput "Output is being logged to: $serviceLogFile" "White"
             
-            # Redirect output to both console and log file
-            $setupProcess = Start-Process -FilePath "powershell.exe" `
+            $setupProcess = Start-Process -FilePath $psExe `
                 -ArgumentList $scriptArgs `
                 -WorkingDirectory $ServicePath `
                 -PassThru `
@@ -264,7 +246,6 @@ function Invoke-ServiceSetup {
                 -RedirectStandardOutput $serviceLogFile `
                 -RedirectStandardError "${serviceLogFile}.err"
             
-            # Display the log content to console
             if (Test-Path $serviceLogFile) {
                 Get-Content $serviceLogFile | Write-Host
             }
@@ -272,7 +253,6 @@ function Invoke-ServiceSetup {
                 Get-Content "${serviceLogFile}.err" | Write-Host
             }
             
-            # Check the exit code
             if ($setupProcess.ExitCode -eq 0) {
                 Write-ColorOutput "✅ $ServiceName setup completed successfully!" "Green"
                 return [PSCustomObject]@{ 
@@ -290,7 +270,6 @@ function Invoke-ServiceSetup {
                 }
             }
         } else {
-            # In non-verbose mode
             "=== $ServiceName Setup Log - $(Get-Date) ===" | Out-File -FilePath $serviceLogFile -Encoding utf8
             "" | Out-File -FilePath $serviceLogFile -Append -Encoding utf8
             
@@ -299,9 +278,8 @@ function Invoke-ServiceSetup {
                 Write-ColorOutput "Setting up Workers (logging verbose output to: $serviceLogFile)..." "Yellow"
                 Write-Host ""
                 
-                # Run with output redirection to capture verbose details in log
                 $errorLogFile = "${serviceLogFile}.err"
-                $setupProcess = Start-Process -FilePath "powershell.exe" `
+                $setupProcess = Start-Process -FilePath $psExe `
                     -ArgumentList $scriptArgs `
                     -WorkingDirectory $ServicePath `
                     -PassThru `
@@ -314,7 +292,6 @@ function Invoke-ServiceSetup {
                 if (Test-Path $serviceLogFile) {
                     $logContent = Get-Content $serviceLogFile -Raw -Encoding UTF8
                     
-                    # Display the summary section
                     $matchResult = $logContent -match "(?s)(===\s+(?:Partial\s+)?Setup Summary\s+===.*?)(===================)"
                     if ($matchResult) {
                         Write-ColorOutput "Workers Setup Results:" "Cyan"
@@ -334,7 +311,6 @@ function Invoke-ServiceSetup {
                     }
                 }
                 
-                # Check the exit code
                 if ($setupProcess.ExitCode -eq 0) {
                     $returnObj = [PSCustomObject]@{ 
                         Success = $true
@@ -359,12 +335,11 @@ function Invoke-ServiceSetup {
                     }
                 }
             } else {
-                # For other services, capture verbose output to log, show clean console output
+                # Other services: output to the log only.
                 Write-ColorOutput "Setting up $ServiceName (logging verbose output to: $serviceLogFile)..." "Yellow"
                 
-                # Run with output redirection to capture verbose details in log
                 $errorLogFile = "${serviceLogFile}.err"
-                $setupProcess = Start-Process -FilePath "powershell.exe" `
+                $setupProcess = Start-Process -FilePath $psExe `
                     -ArgumentList $scriptArgs `
                     -WorkingDirectory $ServicePath `
                     -PassThru `
@@ -373,7 +348,6 @@ function Invoke-ServiceSetup {
                     -RedirectStandardOutput $serviceLogFile `
                     -RedirectStandardError $errorLogFile
                 
-                # Check the exit code
                 if ($setupProcess.ExitCode -eq 0) {
                     Write-ColorOutput "✅ $ServiceName setup completed successfully!" "Green"
                     Write-ColorOutput "📋 Verbose log available at: $serviceLogFile" "DarkGray"
@@ -409,15 +383,13 @@ function Invoke-ServiceSetup {
     }
 }
 
-# Define service configuration
-# Note: Electron is skipped by default unless -EnableElectron is specified
+# Electron is skipped unless -EnableElectron is given.
 $services = @(
     @{Name = "Workers"; Path = "workers"; Skip = $SkipWorkers},
     @{Name = "Frontend"; Path = "frontend"; Skip = $SkipFrontend},
     @{Name = "Electron"; Path = "electron"; Skip = (-not $EnableElectron)}
 )
 
-# Main script
 Write-ColorOutput "=== Digital Avatar Services Setup ===" "Cyan"
 foreach ($service in $services) {
     if ($service.Name -eq "Electron" -and $service.Skip) {
@@ -428,24 +400,21 @@ foreach ($service in $services) {
 }
 Write-ColorOutput "==========================================" "Cyan"
 
-# Track setup results
 $setupResults = @()
 $successfulSetups = @()
 $failedSetups = @()
 
 try {
-    # Setup logging
     Setup-Logging
     
-    # Check for Intel GPU driver
     Write-Output-With-Logging "=== Checking system requirements ===" "Cyan"
     $hasIntelGPU = Test-IntelGPU
     $hasIntelNPU = Test-IntelNPU
     Write-Output-With-Logging "" "White"
 
     if (-not $SkipFrontend) {
-        # Install Visual C++ Redistributable (required by libsql)
-        Write-Output-With-Logging "Checking Visual C++ Redistributable..." "Yellow"
+        # Install Visual C++ Redistributable (runtime support for native libraries)
+        Write-Output-With-Logging "Checking Visual C++ Redistributable runtime..." "Yellow"
         $vcRedistScript = Join-Path $SCRIPT_DIR "install_visual_cpp_redistributable.ps1"
         $vcProcess = Start-Process -FilePath "powershell.exe" `
             -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$vcRedistScript`"" `
@@ -456,13 +425,13 @@ try {
                 throw "Visual C++ Redistributable installation/check failed with exit code $($vcProcess.ExitCode)"
             }
         } else {
-            Write-Output-With-Logging "✅ Visual C++ Redistributable check completed." "Green"
+            Write-Output-With-Logging "✅ Visual C++ Redistributable runtime check completed." "Green"
         }
         if (-not $Verbose -and $script:MainLogFile) {
             "Visual C++ Redistributable check exit code: $($vcProcess.ExitCode)" | Out-File -FilePath $script:MainLogFile -Append -Encoding utf8
         }
     }
-    
+
     # Install Node.js first using shared setup_thirdparty.ps1 function
     Write-Output-With-Logging "=== Setting up thirdparty dependencies ===" "Cyan"
     $thirdPartyScript = Join-Path $PROJECT_ROOT 'scripts\win\setup_thirdparty.ps1'
@@ -576,7 +545,6 @@ try {
         }
     }
     
-    # Display summary
     Write-Output-With-Logging "`n=== Setup Summary ===" "Cyan"
     
     if ($successfulSetups.Count -gt 0) {
@@ -593,7 +561,7 @@ try {
         }
     }
     
-    $skippedCount = ($setupResults | Where-Object { $_.Success -eq $null }).Count
+    $skippedCount = @($setupResults | Where-Object { $_.Success -eq $null }).Count
     if ($skippedCount -gt 0) {
         Write-Output-With-Logging "⏭️  Skipped setups ($skippedCount):" "Yellow"
         foreach ($result in ($setupResults | Where-Object { $_.Success -eq $null })) {
@@ -603,7 +571,6 @@ try {
     
     Write-Output-With-Logging "===================" "Cyan"
     
-    # Final status
     if ($failedSetups.Count -eq 0) {
         Write-Output-With-Logging "All setup processes completed successfully!" "Green"
         if (-not $Verbose -and $script:MainLogFile) {
@@ -634,7 +601,6 @@ try {
         Write-ColorOutput "Stack trace: $($_.ScriptStackTrace)" "Red"
     }
     
-    # Display partial summary if any setups were completed
     if ($setupResults.Count -gt 0) {
         Write-Output-With-Logging "`n=== Partial Setup Summary ===" "Cyan"
         foreach ($result in $setupResults) {
@@ -657,6 +623,5 @@ try {
 } finally {
     Cleanup
     
-    # Restore original directory
     Pop-Location
 }

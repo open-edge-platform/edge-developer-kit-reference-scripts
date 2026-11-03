@@ -1,7 +1,9 @@
 // Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-import type { CollectionConfig } from 'payload'
+import type { CollectionConfig, JSONField } from 'payload'
+import { MODEL_SOURCES } from '@/lib/deployment/deployment-schema'
+import { metadataFieldsFor } from '@/lib/instances/service-metadata'
 import {
   getEngineOptionsMap,
   getServiceNamesMap,
@@ -9,10 +11,37 @@ import {
 import {
   afterServiceChange,
   deleteServiceAfterDelete,
+  validateInstanceFields,
 } from './hooks/service-hooks'
+
+type JSONSchema = NonNullable<JSONField['jsonSchema']>['schema']
+
+// A model entry of `models`: the default one also names its backend and
+// type; any other entry only its own name, source, quant, device and params.
+const modelProperties: Record<string, JSONSchema> = {
+  name: { type: 'string' },
+  source: { type: 'string', enum: [...MODEL_SOURCES] },
+  quant: { type: 'string' },
+  device: { type: 'string' },
+  params: { type: 'string' },
+}
+const modelEntrySchema = (
+  properties: Record<string, JSONSchema>,
+): JSONSchema => ({
+  type: 'object',
+  required: ['name', 'device'],
+  additionalProperties: false,
+  properties,
+})
+
+/** The editor-only id of a field's JSON Schema; each must be distinct. */
+const schemaUri = (name: string) => `a://services/${name}.json`
 
 export const Services: CollectionConfig = {
   slug: 'services',
+  // validateInstanceFields explains a clash; this keeps two racing writes
+  // from both getting through.
+  indexes: [{ fields: ['type', 'instanceId'], unique: true }],
   fields: [
     {
       name: 'name',
@@ -26,50 +55,37 @@ export const Services: CollectionConfig = {
       required: true,
     },
     {
+      // Addressed as `/api/<type>@<instanceId>`. Derived from the name when omitted at creation
+      // and fixed from then on: renaming changes only `label`.
+      name: 'instanceId',
+      type: 'text',
+      required: true,
+      index: true,
+    },
+    {
+      name: 'label',
+      type: 'text',
+      required: false,
+    },
+    {
       name: 'models',
       type: 'json',
       required: true,
       jsonSchema: {
-        uri: 'a://b/foo.json', // required
-        fileMatch: ['a://b/foo.json'], // required
+        uri: schemaUri('models'),
+        fileMatch: [schemaUri('models')],
         schema: {
           type: 'object',
           required: ['default'],
           properties: {
-            default: {
-              type: 'object',
-              required: ['name', 'device'],
-              additionalProperties: false,
-              properties: {
-                name: { type: 'string' },
-                source: {
-                  type: 'string',
-                  enum: ['huggingface', 'modelscope', 'custom'],
-                },
-                quant: { type: 'string' },
-                device: { type: 'string' },
-                params: { type: 'string' },
-                backend: { type: 'string' },
-                type: { type: 'string' },
-              },
-            },
+            default: modelEntrySchema({
+              ...modelProperties,
+              backend: { type: 'string' },
+              type: { type: 'string' },
+            }),
           },
           patternProperties: {
-            '^(?!default$).*': {
-              type: 'object',
-              required: ['name', 'device'],
-              additionalProperties: false,
-              properties: {
-                name: { type: 'string' },
-                source: {
-                  type: 'string',
-                  enum: ['huggingface', 'modelscope', 'custom'],
-                },
-                quant: { type: 'string' },
-                device: { type: 'string' },
-                params: { type: 'string' },
-              },
-            },
+            '^(?!default$).*': modelEntrySchema(modelProperties),
           },
         },
       },
@@ -85,45 +101,11 @@ export const Services: CollectionConfig = {
       type: 'json',
       required: false,
       jsonSchema: {
-        uri: 'a://b/foo.json', // required
-        fileMatch: ['a://b/foo.json'], // required
+        uri: schemaUri('metadata'),
+        fileMatch: [schemaUri('metadata')],
         schema: {
           type: 'object',
-          properties: {
-            clientIceServerUrl: {
-              type: 'string',
-              description: 'Client-side ICE server URL (default: STUN)',
-            },
-            serverIceServerUrl: {
-              type: 'string',
-              description: 'Server-side ICE server URL (default: TURN)',
-            },
-            turnServerIp: {
-              type: 'string',
-              description:
-                'Deprecated: Use clientIceServerUrl / serverIceServerUrl instead',
-            },
-            languageCode: {
-              type: 'string',
-              description: 'Language Code for TTS',
-            },
-            vadThreshold: {
-              type: 'number',
-              default: 0.2,
-              description: 'VAD Threshold for Wake Word Detection',
-            },
-            cpuAffinity: {
-              type: 'string',
-              description:
-                'CPU cores to pin this service to (numactl -C format, e.g. "0-7" or "0,2,4"). Empty / missing = all cores. Linux only.',
-            },
-            frameGeneration: {
-              type: 'boolean',
-              default: true,
-              description:
-                'Allow lipsync frame generation (interpolation). Only activates when the accelerator cannot infer enough frames per second on its own.',
-            },
-          },
+          properties: metadataFieldsFor(),
         },
       },
     },
@@ -149,8 +131,8 @@ export const Services: CollectionConfig = {
       type: 'json',
       required: false,
       jsonSchema: {
-        uri: 'a://b/foo.json', // required
-        fileMatch: ['a://b/foo.json'], // required
+        uri: schemaUri('health-check'),
+        fileMatch: [schemaUri('health-check')],
         schema: {
           type: 'object',
           properties: {
@@ -190,6 +172,7 @@ export const Services: CollectionConfig = {
     delete: () => true,
   },
   hooks: {
+    beforeValidate: [validateInstanceFields],
     afterDelete: [deleteServiceAfterDelete],
     afterChange: [afterServiceChange],
   },

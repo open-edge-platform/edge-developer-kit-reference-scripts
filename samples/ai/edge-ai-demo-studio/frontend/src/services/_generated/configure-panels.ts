@@ -8,11 +8,15 @@
 import type { ComponentType } from 'react'
 import type { Service } from '../types'
 
+import { EmbeddingsConfigurePanel } from '../embeddings/components/configure-panel'
 import { IbvsConfigurePanel } from '../suites/metro-ai-suite/image-based-video-search/components/configure-panel'
 import { LipsyncConfigurePanel } from '../lipsync/components/configure-panel'
 import { LpConfigurePanel } from '../suites/retail-ai-suite/loss-prevention/components/configure-panel'
 import { PddConfigurePanel } from '../suites/manufacturing-ai-suite/pallet-defect-detection/components/configure-panel'
+import { SttConfigurePanel } from '../speech-to-text/components/configure-panel'
 import { TtsConfigurePanel } from '../text-to-speech/components/configure-panel'
+import { VectorDbConfigurePanel } from '../vectordb/components/configure-panel'
+import { WakeWordDetectionConfigurePanel } from '../wake-word-detection/components/configure-panel'
 
 export type ServiceConfigurePanelComponent = ComponentType<{
   service: Service
@@ -22,9 +26,13 @@ export type ServiceConfigurePanelComponent = ComponentType<{
 export const configurePanelRegistry: Partial<
   Record<string, ServiceConfigurePanelComponent>
 > = {
+  embeddings: EmbeddingsConfigurePanel,
   'image-based-video-search': IbvsConfigurePanel,
   lipsync: LipsyncConfigurePanel,
   'loss-prevention': LpConfigurePanel,
   'pallet-defect-detection': PddConfigurePanel,
+  'speech-to-text': SttConfigurePanel,
   'text-to-speech': TtsConfigurePanel,
+  vectordb: VectorDbConfigurePanel,
+  'wake-word-detection': WakeWordDetectionConfigurePanel,
 }

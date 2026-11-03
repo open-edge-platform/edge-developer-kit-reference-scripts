@@ -36,7 +36,6 @@ import { service as wakeWordDetectionMeta } from '../wake-word-detection/data'
 import { DiarizationDemo } from '../diarization/demo'
 import { EmbeddingDemo } from '../embeddings/demo'
 import { FaceRecognitionDemo } from '../face-recognition/demo'
-import { FileWatcherDemo } from '../file-watcher/demo'
 import { FrameGenerationDemo } from '../frame-generation/demo'
 import { ImageGenerationDemo } from '../image-generation/demo'
 import { LipsyncDemo } from '../lipsync/demo'
@@ -71,7 +70,6 @@ export const serviceMap: Record<ServiceType['type'], Service> = {
   'file-watcher': {
     ...fileWatcherMeta,
     status: 'offline',
-    demo: FileWatcherDemo,
   },
   'frame-generation': {
     ...frameGenerationMeta,

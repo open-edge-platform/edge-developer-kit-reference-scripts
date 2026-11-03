@@ -3,79 +3,71 @@
 
 'use client'
 
-import { ServerOff } from 'lucide-react'
-import { useEffect, useState } from 'react'
-import { useServiceLiveStatus } from '@/context/service-status-context'
-import { useWebcamStream } from '@/hooks/use-webcam-stream'
+import { Info } from 'lucide-react'
+import { InlineNotice } from '@/components/common/inline-notice'
+import { useImageSource } from '@/hooks/use-image-source'
 import type { Service } from '@/services/types'
 import { FaceGalleryPanel } from './components/face-gallery-panel'
-import {
-  FaceInputPanel,
-  type FaceInputMode,
-  type FaceSource,
-} from './components/face-input-panel'
+import { FaceInputPanel } from './components/face-input-panel'
 import { FaceResultsPanel } from './components/face-results-panel'
-import { useRecognize } from './hooks'
+import { useGallery, useRecognize } from './hooks'
 
-export function FaceRecognitionDemo(_props: { service: Service }) {
-  const status = useServiceLiveStatus('face-recognition')
-  const isOnline = status === 'online'
-
-  const webcam = useWebcamStream()
-  const recognize = useRecognize()
-
-  const [inputMode, setInputMode] = useState<FaceInputMode>('upload')
-  const [source, setSource] = useState<FaceSource | null>(null)
-
-  // Revoke the previous object URL when the source changes or the demo
-  // unmounts, so repeated uploads/captures don't leak blob: URLs.
-  useEffect(() => {
-    const url = source?.url
-    return () => {
-      if (url) URL.revokeObjectURL(url)
-    }
-  }, [source])
-
-  const handleSource = (next: FaceSource | null) => {
-    setSource(next)
-    recognize.reset()
-  }
+/** Step 1 enrolls people; step 2 recognizes a probe image's faces (unnamed without step 1). */
+export function FaceRecognitionDemo({ service }: { service: Service }) {
+  const recognize = useRecognize(service.apiBase)
+  // Same query as the gallery panel: is anyone enrolled?
+  const gallery = useGallery(service.apiBase)
+  const galleryEmpty = gallery.data?.persons.length === 0
+  // A new probe image (or none) drops the last result.
+  const image = useImageSource({ onSourceChange: () => recognize.reset() })
 
   const run = () => {
-    if (!source) return
-    recognize.mutate(source.file)
-  }
-
-  // ── Service offline gate ───────────────────────────────────────────────────
-  if (!isOnline) {
-    return (
-      <div className="p-6">
-        <div className="text-muted-foreground flex min-h-[360px] flex-col items-center justify-center rounded-xl border border-dashed p-8 text-center">
-          <div className="bg-muted mb-3 flex h-16 w-16 items-center justify-center rounded-full">
-            <ServerOff className="h-8 w-8" />
-          </div>
-          <h2 className="text-foreground text-base font-semibold">
-            Face recognition service offline
-          </h2>
-          <p className="text-sm">
-            Start the face-recognition worker to enroll and identify faces.
-          </p>
-        </div>
-      </div>
-    )
+    if (image.source) recognize.mutate(image.source.file)
   }
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6">
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-        <FaceGalleryPanel isOnline={isOnline} />
-        <div className="min-w-0 space-y-6">
+        <FaceGalleryPanel apiBase={service.apiBase} />
+        <section
+          aria-labelledby="face-step-recognize"
+          className="min-w-0 space-y-4"
+        >
+          <div className="space-y-1">
+            <h3
+              id="face-step-recognize"
+              className="flex items-center gap-2 text-base font-semibold"
+            >
+              <span
+                aria-hidden="true"
+                className="bg-primary text-primary-foreground flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs"
+              >
+                2
+              </span>
+              <span>
+                <span className="sr-only">Step 2: </span>
+                Recognize faces
+              </span>
+            </h3>
+            <p className="text-muted-foreground text-xs">
+              Upload or capture a photo. Every face in it is found and compared
+              with the people enrolled in step 1.
+            </p>
+          </div>
+          {galleryEmpty && (
+            <InlineNotice
+              tone="info"
+              size="sm"
+              role="note"
+              data-testid="face-gallery-empty-notice"
+              icon={<Info aria-hidden="true" className="h-4 w-4 shrink-0" />}
+            >
+              No one is enrolled yet. Recognition still detects faces, but every
+              face comes back as Unknown. Enroll people in step 1 to get names.
+            </InlineNotice>
+          )}
           <FaceInputPanel
-            inputMode={inputMode}
-            onInputModeChange={setInputMode}
-            source={source}
-            onSource={handleSource}
-            webcam={webcam}
+            image={image}
             faces={recognize.data?.faces ?? []}
             onRun={run}
             isRunning={recognize.isPending}
@@ -85,7 +77,7 @@ export function FaceRecognitionDemo(_props: { service: Service }) {
             isRunning={recognize.isPending}
             error={recognize.error}
           />
-        </div>
+        </section>
       </div>
     </div>
   )

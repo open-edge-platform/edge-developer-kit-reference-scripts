@@ -3,16 +3,47 @@
 
 'use client'
 
-import { Loader2, Users } from 'lucide-react'
+import { Ban, Check, ChevronDown, Copy, Download, Users } from 'lucide-react'
+import { EmptyState } from '@/components/common/empty-state'
+import { InlineNotice } from '@/components/common/inline-notice'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
+import { downloadBlob } from '@/lib/browser/download'
+import { plural } from '@/lib/browser/format'
 import { cn } from '@/lib/utils'
-import { formatTime, getSpeakerColorIndex, SPEAKER_COLORS } from './shared'
+import { JobProgress } from '@/services/common/jobs/job-progress'
+import type { DiarizeJobStatus, DiarizeSegment, DiarizeStage } from '../hooks'
+import {
+  type SegmentsFormat,
+  segmentsFile,
+  segmentsText,
+} from '../lib/segments-export'
+import {
+  formatSegmentTime,
+  getSpeakerColorIndex,
+  SPEAKER_COLORS,
+} from '../lib/speakers'
 
-interface Segment {
-  speaker: string
-  start: number
-  end: number
+const STAGE_LABELS: Record<Exclude<DiarizeStage, 'queued'>, string> = {
+  decoding: 'Decoding audio',
+  segmentation: 'Detecting speech',
+  embeddings: 'Extracting voice prints',
+  clustering: 'Grouping speakers',
+  matching: 'Matching enrolled speakers',
+}
+
+function stageLabel(status: DiarizeJobStatus | null): string {
+  return status?.stage && status.stage !== 'queued'
+    ? STAGE_LABELS[status.stage]
+    : 'Diarizing audio'
 }
 
 function TimelineBar({
@@ -20,7 +51,7 @@ function TimelineBar({
   totalDuration,
   speakerMap,
 }: {
-  segments: Segment[]
+  segments: DiarizeSegment[]
   totalDuration: number
   speakerMap: Map<string, number>
 }) {
@@ -32,7 +63,7 @@ function TimelineBar({
           return (
             <div
               key={`${seg.speaker}-${seg.start}-${i}`}
-              title={`${seg.speaker}: ${formatTime(seg.start)} – ${formatTime(seg.end)}`}
+              title={`${seg.speaker}: ${formatSegmentTime(seg.start)} – ${formatSegmentTime(seg.end)}`}
               className={cn(
                 'absolute top-0 h-full opacity-80',
                 SPEAKER_COLORS[colorIdx],
@@ -45,9 +76,9 @@ function TimelineBar({
           )
         })}
       </div>
-      <div className="text-muted-foreground mt-1 flex justify-between text-[10px] tabular-nums">
+      <div className="text-muted-foreground mt-1 flex justify-between text-xs tabular-nums">
         <span>0:00.0</span>
-        <span>{formatTime(totalDuration)}</span>
+        <span>{formatSegmentTime(totalDuration)}</span>
       </div>
     </div>
   )
@@ -70,6 +101,7 @@ function SpeakerLegend({
             className="text-foreground flex items-center gap-1.5 text-xs"
           >
             <div
+              aria-hidden="true"
               className={cn(
                 'h-2.5 w-2.5 rounded-full',
                 SPEAKER_COLORS[colorIdx],
@@ -87,7 +119,7 @@ function SegmentList({
   segments,
   speakerMap,
 }: {
-  segments: Segment[]
+  segments: DiarizeSegment[]
   speakerMap: Map<string, number>
 }) {
   return (
@@ -101,10 +133,11 @@ function SegmentList({
               className="hover:bg-muted/20 flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors"
             >
               <span className="text-muted-foreground w-28 shrink-0 font-mono text-xs tabular-nums">
-                {formatTime(seg.start)} – {formatTime(seg.end)}
+                {formatSegmentTime(seg.start)} – {formatSegmentTime(seg.end)}
               </span>
               <div className="flex min-w-0 flex-1 items-center gap-1.5">
                 <div
+                  aria-hidden="true"
                   className={cn(
                     'h-2 w-2 shrink-0 rounded-full',
                     SPEAKER_COLORS[colorIdx],
@@ -125,82 +158,164 @@ function SegmentList({
   )
 }
 
-export function DiarizationResults({
+/** Copy the speaker turns as text, or save them as CSV, JSON or text named after the recording. */
+function SegmentsExport({
   segments,
-  speakerMap,
-  uniqueSpeakers,
-  totalDuration,
-  isPending,
-  isError,
-  errorMessage,
+  recordingName,
 }: {
-  segments: Segment[] | undefined
-  speakerMap: Map<string, number>
-  uniqueSpeakers: string[]
-  totalDuration: number
-  isPending: boolean
-  isError: boolean
-  errorMessage?: string
+  segments: DiarizeSegment[]
+  recordingName: string | undefined
 }) {
+  const { copied, copy } = useCopyToClipboard()
+  const save = (format: SegmentsFormat) => {
+    const { blob, fileName } = segmentsFile(format, segments, recordingName)
+    downloadBlob(blob, fileName)
+  }
+  return (
+    <div className="flex flex-wrap gap-2" data-testid="diarization-export">
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => void copy(segmentsText(segments))}
+        data-testid="diarization-copy"
+      >
+        {copied ? (
+          <Check aria-hidden="true" className="h-3.5 w-3.5" />
+        ) : (
+          <Copy aria-hidden="true" className="h-3.5 w-3.5" />
+        )}
+        {copied ? 'Copied' : 'Copy'}
+      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            data-testid="diarization-download"
+          >
+            <Download aria-hidden="true" className="h-3.5 w-3.5" />
+            Download
+            <ChevronDown aria-hidden="true" className="h-3.5 w-3.5" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onSelect={() => save('csv')}>
+            Spreadsheet (.csv)
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => save('json')}>
+            JSON (.json)
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => save('txt')}>
+            Text (.txt)
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  )
+}
+
+/** Where the diarization is: running, how it ended, or its segments. */
+export type DiarizationView =
+  | { state: 'idle' }
+  | {
+      state: 'running'
+      queued: boolean
+      status: DiarizeJobStatus | null
+      cancelling: boolean
+      onCancel: () => void
+    }
+  | { state: 'cancelled' }
+  | { state: 'failed'; message: string }
+  | { state: 'done'; segments: DiarizeSegment[] }
+
+export function DiarizationResults({
+  view,
+  speakerMap,
+  recordingName,
+}: {
+  view: DiarizationView
+  /** Colour index of each speaker, enrolled ones first. */
+  speakerMap: Map<string, number>
+  /** The recording's file name, to name the downloads after. */
+  recordingName?: string
+}) {
+  const segments = view.state === 'done' ? view.segments : []
+  const uniqueSpeakers = [...new Set(segments.map((s) => s.speaker))]
+  const totalDuration =
+    segments.length > 0 ? Math.max(...segments.map((s) => s.end)) : 0
+
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <p className="text-foreground text-sm font-medium">
-          Diarization Results
-        </p>
-        {segments && segments.length > 0 && (
-          <Badge variant="secondary" className="text-[10px]">
-            {uniqueSpeakers.length} speaker
-            {uniqueSpeakers.length !== 1 ? 's' : ''}
-          </Badge>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <h3 className="text-foreground text-sm font-medium">Speakers</h3>
+          {segments.length > 0 && (
+            <Badge variant="secondary" className="text-xs">
+              {plural(uniqueSpeakers.length, 'speaker')} ·{' '}
+              {plural(segments.length, 'turn')}
+            </Badge>
+          )}
+        </div>
+        {segments.length > 0 && (
+          <SegmentsExport segments={segments} recordingName={recordingName} />
         )}
       </div>
 
-      <div
-        className={cn(
-          'border-border h-[480px] overflow-hidden rounded-xl border',
-          !segments && !isPending && !isError ? 'border-dashed' : '',
+      <div className="border-border h-[480px] overflow-hidden rounded-xl border">
+        {view.state === 'idle' && (
+          <EmptyState
+            icon={Users}
+            size="sm"
+            title="No speakers identified yet"
+            description="Upload a recording with several people talking, then identify speakers to see who spoke when."
+            className="h-full py-16"
+          />
         )}
-      >
-        {/* Idle state */}
-        {!isPending && !isError && !segments && (
-          <div className="bg-muted/5 flex h-full flex-col items-center justify-center gap-2 py-16">
-            <Users className="text-muted-foreground h-6 w-6" />
-            <p className="text-muted-foreground text-sm font-medium">
-              No diarization results
-            </p>
-            <p className="text-muted-foreground/70 text-xs">
-              Upload multi-speaker audio to see speaker segments.
-            </p>
+
+        {view.state === 'running' && (
+          <div className="flex h-full items-center justify-center px-6">
+            <JobProgress
+              label={stageLabel(view.status)}
+              queued={view.queued}
+              position={view.status?.position}
+              percent={
+                view.status?.status === 'running'
+                  ? (view.status.progress ?? 0) * 100
+                  : undefined
+              }
+              cancelling={view.cancelling}
+              onCancel={view.onCancel}
+            />
           </div>
         )}
 
-        {/* Loading state */}
-        {isPending && (
-          <div className="flex h-full flex-col items-center justify-center gap-2">
-            <Loader2 className="text-muted-foreground h-5 w-5 animate-spin" />
-            <p className="text-muted-foreground text-sm">Diarizing audio…</p>
-          </div>
+        {view.state === 'cancelled' && (
+          <EmptyState
+            icon={Ban}
+            size="sm"
+            description="Diarization cancelled."
+            className="h-full"
+          />
         )}
 
-        {/* Error state */}
-        {isError && !isPending && (
+        {view.state === 'failed' && (
           <div className="flex h-full items-center justify-center p-4">
-            <p className="text-destructive text-sm">Error: {errorMessage}</p>
+            <InlineNotice tone="destructive" size="sm">
+              Error: {view.message}
+            </InlineNotice>
           </div>
         )}
 
-        {/* Empty results */}
-        {!isPending && segments && segments.length === 0 && (
-          <div className="flex h-full items-center justify-center">
-            <p className="text-muted-foreground text-sm">
-              No speaker segments detected.
-            </p>
-          </div>
+        {view.state === 'done' && segments.length === 0 && (
+          <EmptyState
+            icon={Users}
+            size="sm"
+            description="No speaker segments detected."
+            className="h-full"
+          />
         )}
 
-        {/* Success state */}
-        {!isPending && segments && segments.length > 0 && (
+        {segments.length > 0 && (
           <div className="flex h-full flex-col p-4">
             {totalDuration > 0 && (
               <TimelineBar

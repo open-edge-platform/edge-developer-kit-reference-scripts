@@ -1,0 +1,55 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+#
+# The optimum-cli environment `ovms --pull` converts Qwen/Qwen3-ASR-* with (EXPORT_PROFILES in
+# model_downloader/ovms/env.py). Only the openvino-dev-samples/optimum-intel fork exports it, and it
+# needs transformers 5.13, which common/ovms-export's optimum-intel 2.1.0 caps below 5.6: hence a
+# second environment, provisioned on demand by the worker that serves such a model.
+#
+# The fork is vendored at a pinned commit through workers/oep-services.json into
+# ./thirdparty/optimum-intel and taken by path. optimum-intel-version.patch fixes its version:
+# upstream's setup.py appends `git rev-parse HEAD` of the enclosing repository, i.e. this one's.
+#
+# Outside the workspace and pinned to ovms-export's heavy builds, so uv hard-links those wheels;
+# diffusers and sentence-transformers are left out, as this only exports Qwen3-ASR.
+
+[project]
+name = "ovms-export-qwen3-asr"
+version = "0.1.0"
+description = "optimum-cli environment used by OpenVINO Model Server to convert Qwen3-ASR during ovms --pull"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "openvino==2026.2.1",
+    "openvino-tokenizers==2026.2.1.0",
+    "nncf==3.2.0",
+    # The vendored fork (2.1.0.dev0 at the pinned commit); it requires
+    # optimum~=2.2.0 and transformers>=4.45,<5.14.
+    "optimum-intel[openvino]",
+    # First release with the HF-native Qwen3-ASR architecture, and the fork's ceiling.
+    "transformers>=5.13.1,<5.14",
+    "safetensors>=0.8.0",
+    "torch==2.13.0",
+    "torchvision==0.28.0",
+    "numpy==2.4.6",
+    "accelerate",
+    "einops",
+    "pillow>=13.0.0",
+    "requests",
+    "sentencepiece",
+]
+
+[tool.uv]
+environments = [
+    "sys_platform == 'win32'",
+    "sys_platform == 'linux'",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+optimum-intel = { path = "thirdparty/optimum-intel" }
+torch = { index = "pytorch-cpu" }
+torchvision = { index = "pytorch-cpu" }

@@ -3,123 +3,141 @@
 
 'use client'
 
-import { Loader2, Pause, Play, Volume2 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  AlertCircle,
+  AudioLines,
+  Download,
+  Loader,
+  Volume2,
+} from 'lucide-react'
+import { EmptyState } from '@/components/common/empty-state'
+import { InlineNotice } from '@/components/common/inline-notice'
 import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
+import { Progress } from '@/components/ui/progress'
 import { Textarea } from '@/components/ui/textarea'
-import { cn } from '@/lib/utils'
+import { DemoLayout } from '@/services/common/demo/components/demo-layout'
 import { DemoParameterSidebar } from '@/services/common/demo/components/demo-parameter-sidebar'
+import { useDemoRuntime } from '@/services/common/demo/demo-runtime'
+import {
+  demoSessionKey,
+  demoStateKey,
+} from '@/services/common/demo/demo-session'
+import {
+  useSessionLeaveNotice,
+  useSessionState,
+} from '@/services/common/demo/session-store'
 import type { Service } from '@/services/types'
-import { useSynthesizeSpeech } from './hooks/use-synthesize-speech'
-import { useTtsParams } from './hooks/use-params'
+import type { DemoParam } from '@/types/demo-params'
+import { getEffectiveModel } from '@/types/service'
+import { SpeechPlayer } from './components/speech-player'
+import { DEFAULT_TTS_MODEL } from './config'
+import { getVoicesForModel } from './lib/tts-models'
+import { useTtsDemoParams } from './hooks/use-params'
+import { useStreamedSpeech } from './hooks/use-streamed-speech'
 import { useTtsVoiceStatus } from './hooks/use-voice-status'
 
 const DEFAULT_TEXT =
-  'Welcome to the Edge AI Demo Studio. This text is being converted to natural sounding speech using the Kokoro text to speech model.'
+  'Welcome to the Edge AI Demo Studio. This text is being converted to natural sounding speech by the selected text to speech model.'
+
+/** Shown with the text before Synthesize; the rest stay in the parameter column. */
+const VOICE_PARAM_IDS = new Set(['language', 'voice'])
+
+/** Drops the select's "not cached" hint: the demo shows its own notice. */
+function withoutHint(param: DemoParam): DemoParam {
+  return param.type === 'select' ? { ...param, hint: undefined } : param
+}
 
 export function TextToSpeechDemo({ service }: { service: Service }) {
-  const currentModel =
-    service.currentModel ?? service.defaultModel?.name ?? 'kokoro'
-  const [input, setInput] = useState(DEFAULT_TEXT)
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [audioUrl, setAudioUrl] = useState<string | null>(null)
-  const [duration, setDuration] = useState(0)
-  const [currentTime, setCurrentTime] = useState(0)
-
-  const audioRef = useRef<HTMLAudioElement | null>(null)
-  const animFrameRef = useRef<number | null>(null)
-
-  const synthesizeMutation = useSynthesizeSpeech()
-
-  const { voiceMap } = useTtsVoiceStatus()
-  const { values: ttsValues, params } = useTtsParams(currentModel, voiceMap)
-
-  const waveformBars = useMemo(
-    () =>
-      Array.from({ length: 60 }, (_, i) => ({
-        id: `wave-${i}`,
-        height:
-          Math.sin(i * 0.3) * 20 +
-          ((((i * 1103515245 + 12345) & 0x7fffffff) % 100) / 100) * 15 +
-          10,
-      })),
-    [],
+  const currentModel = getEffectiveModel(service).name || DEFAULT_TTS_MODEL
+  const { available } = useDemoRuntime()
+  const [input, setInput] = useSessionState(
+    demoStateKey(service, 'tts:input'),
+    DEFAULT_TEXT,
   )
 
-  const handleSynthesize = () => {
-    if (!input.trim()) return
-    setAudioUrl(null)
-    setCurrentTime(0)
-    setDuration(0)
+  // WAV plays while synthesized, then the finished file takes over. Kept per instance.
+  const speech = useStreamedSpeech(service.apiBase, {
+    model: currentModel,
+    session: service,
+  })
+  const { pending, result, failure } = speech
+  const live = speech.playback !== 'idle'
 
-    synthesizeMutation.mutate(
-      {
+  const { voiceMap, markDownloaded } = useTtsVoiceStatus(service.apiBase, {
+    model: currentModel,
+    enabled: available,
+  })
+  const { values: ttsValues, params } = useTtsDemoParams(
+    currentModel,
+    voiceMap,
+    { sessionKey: demoStateKey(service, 'tts:params') },
+  )
+
+  // Speech cannot keep playing for an instance that is not shown.
+  useSessionLeaveNotice(
+    demoSessionKey(service),
+    pending
+      ? 'Switching instances stops the speech being synthesized.'
+      : live
+        ? 'Switching instances stops the speech playing.'
+        : null,
+  )
+
+  const voiceParams = params
+    .filter((p) => VOICE_PARAM_IDS.has(p.id))
+    .map(withoutHint)
+  const outputParams = params.filter((p) => !VOICE_PARAM_IDS.has(p.id))
+
+  /** Not downloaded yet: its first synthesis waits for the download. */
+  const isCold = (voice: string) =>
+    Boolean(voice) && voiceMap?.[voice] === false
+  const voiceLabel = (voice: string) =>
+    getVoicesForModel(currentModel).find((v) => v.id === voice)?.label ?? voice
+
+  const handleSynthesize = () => {
+    if (!input.trim() || !available) return
+    const voice = ttsValues.voice
+    speech
+      .synthesize({
         input: input.trim(),
-        voice: ttsValues.voice,
+        voice,
         speed: ttsValues.speed,
         responseFormat: ttsValues.format,
         volumeMultiplier: ttsValues.volume,
-      },
-      {
-        onSuccess: (blob) => {
-          const url = URL.createObjectURL(blob)
-          if (audioUrl) URL.revokeObjectURL(audioUrl)
-          setAudioUrl(url)
-        },
-      },
-    )
+      })
+      .then((file) => {
+        // It has spoken, so it is downloaded now.
+        if (file && voice) markDownloaded(voice)
+      })
   }
 
-  const handlePlayPause = () => {
-    const audio = audioRef.current
-    if (!audio) return
-
-    if (isPlaying) {
-      audio.pause()
-      setIsPlaying(false)
-    } else {
-      audio.play()
-      setIsPlaying(true)
-    }
-  }
-
-  useEffect(() => {
-    if (!isPlaying) return
-    const tick = () => {
-      const audio = audioRef.current
-      if (audio) {
-        setCurrentTime(audio.currentTime)
-      }
-      animFrameRef.current = requestAnimationFrame(tick)
-    }
-    animFrameRef.current = requestAnimationFrame(tick)
-    return () => {
-      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current)
-    }
-  }, [isPlaying])
-
-  // Clean up audio URL on unmount
-  useEffect(() => {
-    return () => {
-      if (audioUrl) URL.revokeObjectURL(audioUrl)
-    }
-  }, [audioUrl])
-
-  const progress = duration > 0 ? (currentTime / duration) * 100 : 0
-
-  const formatTime = (seconds: number) => {
-    const m = Math.floor(seconds / 60)
-    const s = Math.floor(seconds % 60)
-    return `${m}:${s.toString().padStart(2, '0')}`
-  }
+  // Live playback always belongs to `latest`, and can outlast the request.
+  const latest = pending ?? (failure ? null : result)
+  // The last file, kept while a newer synthesis runs or after it failed.
+  const previous = result && result !== latest ? result : null
+  // Waiting for the voice to download, before any audio.
+  const preparing = Boolean(pending && !live && isCold(pending.params.voice))
 
   return (
-    <div className="flex flex-col gap-6 xl:flex-row">
-      <div className="min-w-0 flex-1 space-y-6">
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <div className="space-y-3">
-            <p className="text-foreground text-sm font-medium">Text Input</p>
+    <DemoLayout
+      sidebar={
+        outputParams.length > 0 && (
+          <DemoParameterSidebar params={outputParams} />
+        )
+      }
+    >
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <div className="min-w-0 space-y-4">
+          <div className="space-y-2">
+            <Label
+              htmlFor="tts-text-input"
+              className="text-foreground text-sm font-medium"
+            >
+              Text Input
+            </Label>
             <Textarea
+              id="tts-text-input"
               data-testid="tts-text-input"
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -127,129 +145,191 @@ export function TextToSpeechDemo({ service }: { service: Service }) {
               rows={6}
               className="bg-muted/30 resize-none"
             />
-            <div className="text-muted-foreground flex items-center justify-between text-xs">
-              <span>{input.length} characters</span>
+            <p className="text-muted-foreground text-xs">
+              {input.length} characters
+            </p>
+          </div>
+
+          {voiceParams.length > 0 && (
+            <div data-testid="tts-voice-settings">
+              <DemoParameterSidebar params={voiceParams} variant="plain" />
             </div>
-            <Button
-              data-testid="tts-synthesize-button"
-              onClick={handleSynthesize}
-              disabled={synthesizeMutation.isPending || !input.trim()}
-              className="w-full gap-2"
+          )}
+
+          {isCold(ttsValues.voice) && !preparing && (
+            <InlineNotice
+              tone="info"
+              size="sm"
+              role="note"
+              data-testid="tts-voice-cold"
+              icon={<Download aria-hidden className="h-4 w-4 shrink-0" />}
             >
-              {synthesizeMutation.isPending ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Synthesizing...
-                </>
-              ) : (
-                <>
-                  <Volume2 className="h-4 w-4" />
-                  Synthesize Speech
-                </>
-              )}
-            </Button>
-          </div>
+              {voiceLabel(ttsValues.voice)} is not downloaded yet. The first
+              synthesis with it downloads the voice before speaking, which can
+              take a minute.
+            </InlineNotice>
+          )}
 
-          <div className="space-y-3">
-            <p className="text-foreground text-sm font-medium">Audio Output</p>
-            <div className="border-border bg-muted/20 flex min-h-[200px] flex-col rounded-xl border p-4">
-              {!audioUrl &&
-                !synthesizeMutation.isPending &&
-                !synthesizeMutation.isError && (
-                  <div className="text-muted-foreground flex flex-1 items-center justify-center text-sm">
-                    Synthesized audio will appear here...
-                  </div>
-                )}
-
-              {synthesizeMutation.isPending && (
-                <div className="flex flex-1 flex-col items-center justify-center gap-3">
-                  <Loader2 className="text-primary h-8 w-8 animate-spin" />
-                  <p className="text-muted-foreground text-sm">
-                    Generating audio...
-                  </p>
-                  <div className="bg-muted h-1.5 w-full overflow-hidden rounded-full">
-                    <div className="bg-primary h-full w-2/3 animate-pulse rounded-full" />
-                  </div>
-                </div>
-              )}
-
-              {synthesizeMutation.isError && (
-                <div className="text-destructive flex flex-1 items-center justify-center text-sm">
-                  {synthesizeMutation.error.message}
-                </div>
-              )}
-
-              {audioUrl && !synthesizeMutation.isPending && (
-                <div
-                  className="flex flex-1 flex-col gap-4"
-                  data-testid="tts-audio-output"
-                >
-                  <audio
-                    ref={audioRef}
-                    src={audioUrl}
-                    onLoadedMetadata={(e) =>
-                      setDuration(e.currentTarget.duration)
-                    }
-                    onEnded={() => {
-                      setIsPlaying(false)
-                      setCurrentTime(0)
-                    }}
-                  />
-
-                  <div className="flex h-16 items-end gap-[2px] px-2">
-                    {waveformBars.map((bar, i) => {
-                      const playedPercent =
-                        (progress / 100) * waveformBars.length
-                      return (
-                        <div
-                          key={bar.id}
-                          className={cn(
-                            'flex-1 rounded-sm transition-colors duration-100',
-                            i < playedPercent
-                              ? 'bg-primary'
-                              : 'bg-muted-foreground/20',
-                          )}
-                          style={{ height: `${bar.height}%` }}
-                        />
-                      )
-                    })}
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <Button
-                      size="icon"
-                      variant="outline"
-                      className="h-10 w-10 rounded-full"
-                      onClick={handlePlayPause}
-                    >
-                      {isPlaying ? (
-                        <Pause className="h-4 w-4" />
-                      ) : (
-                        <Play className="ml-0.5 h-4 w-4" />
-                      )}
-                    </Button>
-                    <div className="flex-1">
-                      <div className="bg-muted h-1.5 overflow-hidden rounded-full">
-                        <div
-                          className="bg-primary h-full rounded-full transition-all duration-100"
-                          style={{ width: `${progress}%` }}
-                        />
-                      </div>
-                    </div>
-                    <span className="text-muted-foreground min-w-[70px] text-right font-mono text-xs">
-                      {formatTime(currentTime)} / {formatTime(duration)}
-                    </span>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
+          <Button
+            data-testid="tts-synthesize-button"
+            onClick={handleSynthesize}
+            disabled={!available || speech.isPending || !input.trim()}
+            className="w-full gap-2"
+          >
+            {speech.isPending ? (
+              <>
+                <Loader aria-hidden className="h-4 w-4 animate-spin" />
+                {preparing ? 'Preparing voice...' : 'Synthesizing...'}
+              </>
+            ) : (
+              <>
+                <Volume2 aria-hidden className="h-4 w-4" />
+                Synthesize Speech
+              </>
+            )}
+          </Button>
         </div>
-      </div>
 
-      <div className="shrink-0 space-y-4 xl:w-72">
-        <DemoParameterSidebar params={params} />
+        <section aria-labelledby="tts-output-heading" className="space-y-3">
+          <h3
+            id="tts-output-heading"
+            className="text-foreground text-sm font-medium"
+          >
+            Audio Output
+          </h3>
+          <div className="border-border bg-muted/20 flex min-h-[200px] flex-col gap-3 rounded-xl border p-4">
+            {!latest && !previous && !failure && (
+              <EmptyState
+                icon={AudioLines}
+                size="sm"
+                description="Synthesized audio will appear here..."
+                className="flex-1 py-6"
+              />
+            )}
+
+            {preparing && (
+              <div
+                role="status"
+                data-testid="tts-preparing-voice"
+                className="border-info/30 bg-info/5 flex items-start gap-2 rounded-lg border p-3"
+              >
+                <Download
+                  aria-hidden="true"
+                  className="text-info mt-0.5 h-4 w-4 shrink-0 animate-pulse"
+                />
+                <div className="min-w-0 space-y-0.5">
+                  <p className="text-foreground text-sm font-medium">
+                    Preparing voice{' '}
+                    {pending && voiceLabel(pending.params.voice)}
+                  </p>
+                  <p className="text-muted-foreground text-xs">
+                    Downloading it for first use. Synthesis starts once it is
+                    ready; later requests with this voice skip this step.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {pending && !live && !previous && !preparing && (
+              <div
+                role="status"
+                className="flex flex-1 flex-col items-center justify-center gap-3"
+              >
+                <Loader
+                  aria-hidden
+                  className="text-primary h-8 w-8 animate-spin"
+                />
+                <p className="text-muted-foreground text-sm">
+                  Generating audio...
+                </p>
+                <Progress
+                  value={null}
+                  aria-label="Generating audio"
+                  className="h-1.5"
+                />
+              </div>
+            )}
+
+            {pending && !live && previous && !preparing && (
+              <p
+                role="status"
+                className="text-foreground flex items-center gap-2 text-xs font-medium"
+              >
+                <Loader aria-hidden="true" className="h-3 w-3 animate-spin" />
+                Synthesizing new speech...
+              </p>
+            )}
+
+            {failure?.kind === 'error' && (
+              <InlineNotice
+                tone="destructive"
+                size="sm"
+                data-testid="tts-error"
+                icon={<AlertCircle aria-hidden className="h-4 w-4 shrink-0" />}
+              >
+                {previous ? 'New speech failed: ' : ''}
+                {failure.error.message}
+              </InlineNotice>
+            )}
+
+            {failure?.kind === 'interrupted' && (
+              <InlineNotice
+                tone="info"
+                size="sm"
+                role="status"
+                data-testid="tts-interrupted"
+                icon={<AlertCircle aria-hidden className="h-4 w-4 shrink-0" />}
+              >
+                The last synthesis was stopped when you switched instances.
+                Synthesize again to hear it.
+              </InlineNotice>
+            )}
+
+            {latest && (!pending || live) && (
+              <SpeechPlayer
+                key={`latest-${latest.id}`}
+                title={pending ? 'New speech' : 'Latest result'}
+                request={latest}
+                file={latest === result ? result.blob : null}
+                live={
+                  live
+                    ? {
+                        playing: speech.playback === 'playing',
+                        pause: speech.pause,
+                        resume: speech.resume,
+                        position: speech.position,
+                      }
+                    : null
+                }
+                testId={
+                  latest === result ? 'tts-audio-output' : 'tts-audio-streaming'
+                }
+              >
+                {live && pending && (
+                  <p className="text-muted-foreground flex items-center gap-2 text-xs">
+                    <Loader
+                      aria-hidden="true"
+                      className="h-3 w-3 animate-spin"
+                    />
+                    Playing while the rest is synthesized...
+                  </p>
+                )}
+              </SpeechPlayer>
+            )}
+
+            {previous && (
+              <SpeechPlayer
+                key={`previous-${previous.id}`}
+                title="Previous result"
+                request={previous}
+                file={previous.blob}
+                live={null}
+                testId="tts-audio-previous"
+              />
+            )}
+          </div>
+        </section>
       </div>
-    </div>
+    </DemoLayout>
   )
 }

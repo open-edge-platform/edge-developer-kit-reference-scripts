@@ -1,0 +1,23 @@
+[project]
+name = "face-recognition"
+version = "0.1.0"
+description = "Face recognition FastAPI worker (Open Model Zoo and OpenCV Zoo pipelines on OpenVINO)"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "worker-common",
+    # OMZ IR pairs and OpenCV Zoo ONNX files come over plain HTTPS
+    # (fetch_omz_ir / fetch_url).
+    "model-downloader",
+    "fastapi>=0.111.0",
+    "uvicorn>=0.29.0",
+    "python-multipart>=0.0.9",
+    # Use opencv-python (not headless) so it works on Windows desktop too.
+    "opencv-python>=4.10",
+    "numpy>=2.1",
+    "openvino==2026.2.1",
+]
+
+[tool.uv.sources]
+worker-common = { workspace = true }
+model-downloader = { workspace = true }

@@ -3,23 +3,28 @@
 
 import { Image } from 'lucide-react'
 import type { Service as PayloadService } from '@/payload-types'
+import { getEffectivePrecision } from '@/services/model-config'
 import type { ServiceMeta, WorkerConfig } from '@/services/types'
 import { serviceConfig } from './config'
 
 export const service: ServiceMeta = {
   id: 'image-generation',
   name: 'Image Generation',
+  multiInstance: true,
+  // Finished images and drafts stay readable while the instance is stopped.
+  keepDemoWhenStopped: true,
+  /** The worker runs its own OVMS on base port + 1. */
+  portBlock: 2,
   description:
     'Generate images from text prompts using diffusion models accelerated with OpenVINO.',
   longDescription:
     'AI image generation using Stable Diffusion models accelerated with OpenVINO Model Server. Supports text-to-image and image-to-image generation via an OpenAI-compatible API. Configurable inference steps, guidance scale, and resolution.',
   icon: Image,
-  port: 8018,
   supportedOS: ['linux', 'windows'],
   execution: { mode: 'worker' },
   defaultModel: {
     name: 'OpenVINO/stable-diffusion-v1-5-int8-ov',
-    device: 'CPU',
+    device: 'AUTO',
   },
   config: serviceConfig,
   logSources: [
@@ -31,6 +36,7 @@ export const service: ServiceMeta = {
 }
 
 export const worker: WorkerConfig = {
+  modelCatalog: 'script',
   buildArgs: (doc: PayloadService) => {
     const args = [
       '--model-id',
@@ -43,8 +49,18 @@ export const worker: WorkerConfig = {
     if (doc.models.default.source) {
       args.push('--source', doc.models.default.source)
     }
+    // Pre-converted IR ignores the precision.
+    const precision = getEffectivePrecision(
+      serviceConfig,
+      doc.models.default.quant,
+    )
+    if (precision) {
+      args.push('--precision', precision)
+    }
     return args
   },
-  workerSubDir: 'image-generation',
+  workerSubDir: 'services/image-generation',
+  // Conversions at other precisions than int8 go under
+  // models/ovms/precision-<precision>.
   modelDirectories: ['models/ovms', 'models/huggingface'],
 }

@@ -4,7 +4,7 @@
 export const palletDefectDetectionSuite = {
   serviceId: 'pallet-defect-detection',
   suiteName: 'Pallet Defect Detection',
-  edgeAiSuitesVersion: '2026.0',
-  edgeAiSuitesVersionTag: 'Edge AI Suites 2026.0',
-  launchUrl: 'https://localhost/',
+  edgeAiSuitesVersion: '2026.2.1',
+  edgeAiSuitesVersionTag: 'Edge AI Suites 2026.2.1',
+  launchUrl: 'https://127.0.0.1/',
 } as const

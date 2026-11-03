@@ -12,6 +12,8 @@ export const serviceConfig: ServiceConfig = {
       value: 'pyannote/speaker-diarization-community-1',
       label: 'pyannote Speaker Diarization Community-1',
       availableDevices: DIARIZATION_DEVICES,
+      // PyTorch weights, run as they are.
+      availableWeightFormats: ['fp32'],
       backend: 'pytorch',
       gated: ['huggingface'],
     },

@@ -6,14 +6,16 @@
 import {
   AlertCircle,
   CheckCircle2,
-  File,
   FileArchive,
-  Loader2,
+  File as FileGlyph,
+  Loader,
   Upload,
+  X,
 } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
-import { Button } from '@/components/ui/button'
+import { useId, useState } from 'react'
 import { FileDropZone } from '@/components/common/file-drop-zone'
+import { InlineNotice } from '@/components/common/inline-notice'
+import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogClose,
@@ -25,8 +27,11 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Progress } from '@/components/ui/progress'
 import type { BackendId } from '@/engines/multiserve/types'
-import { validateModelName } from '@/engines/multiserve/validation'
+import type { UploadProgress } from '@/engines/multiserve/upload'
+import { validateUploadModelName } from '@/engines/multiserve/validation'
+import { formatBytes } from '@/lib/browser/format'
 
 function acceptedExtensions(backend: BackendId): string {
   return backend === 'llamacpp' ? '.gguf' : '.zip'
@@ -38,10 +43,13 @@ function acceptedMimeTypes(backend: BackendId): string {
     : '.zip,application/zip'
 }
 
+function percentOf(sent: number, total: number): number {
+  return total > 0 ? Math.min(100, Math.round((sent / total) * 100)) : 100
+}
+
 interface UploadModelDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  serviceId: string
   backend: BackendId
   taskType: string
   onUpload: (params: {
@@ -50,49 +58,53 @@ interface UploadModelDialogProps {
     task: string
     files: File[]
   }) => void
+  /** Stops the upload in flight between two chunks. */
+  onCancelUpload: () => void
   isUploading: boolean
+  /** Bytes the engine has accepted so far; null before the first report. */
+  uploadProgress: UploadProgress | null
   isUploadSuccess: boolean
   uploadError: Error | null
+  /** Shown under the file while `isUploading` has no progress yet (e.g. "Starting engine…"). */
+  pendingMessage?: string
 }
 
+/** Uploads a local model (`.gguf` for llama.cpp, else a zipped OpenVINO folder) under a name. */
 export function UploadModelDialog({
   open,
   onOpenChange,
   backend,
   taskType,
   onUpload,
+  onCancelUpload,
   isUploading,
+  uploadProgress,
   isUploadSuccess,
   uploadError,
+  pendingMessage,
 }: UploadModelDialogProps) {
   const [modelName, setModelName] = useState('')
-  const [selectedFile, setSelectedFile] = useState<globalThis.File | null>(null)
+  const hintId = useId()
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
 
-  const nameError = useMemo(() => {
-    if (!modelName.trim()) return ''
-    if (!validateModelName(modelName, backend)) {
-      return backend === 'llamacpp'
-        ? 'Must contain "GGUF" and follow org/model format.'
+  const nameError =
+    modelName.trim() && !validateUploadModelName(modelName, backend)
+      ? backend === 'llamacpp'
+        ? 'Must contain "GGUF" and follow org/model or org/model:QUANT format.'
         : 'Must follow org/model format (e.g. OpenVINO/model-name).'
-    }
-    return ''
-  }, [modelName, backend])
+      : ''
 
-  const validateModelFile = useCallback(
-    (file: File) => {
-      const ext = acceptedExtensions(backend)
-      if (!file.name.toLowerCase().endsWith(ext)) {
-        return `Only ${ext} files are accepted for ${backend}.`
-      }
-      return null
-    },
-    [backend],
-  )
+  const validateModelFile = (file: File) => {
+    const ext = acceptedExtensions(backend)
+    return file.name.toLowerCase().endsWith(ext)
+      ? null
+      : `Only ${ext} files are accepted for ${backend}.`
+  }
 
   const isValid =
     modelName.trim().length > 0 && !nameError && selectedFile !== null
 
-  const handleUpload = useCallback(() => {
+  const handleUpload = () => {
     if (!isValid || !selectedFile) return
     onUpload({
       backend,
@@ -100,25 +112,20 @@ export function UploadModelDialog({
       task: taskType,
       files: [selectedFile],
     })
-  }, [isValid, selectedFile, onUpload, backend, modelName, taskType])
+  }
 
-  const handleOpenChange = useCallback(
-    (nextOpen: boolean) => {
-      if (!nextOpen && !isUploading) {
-        setModelName('')
-        setSelectedFile(null)
-      }
-      onOpenChange(nextOpen)
-    },
-    [isUploading, onOpenChange],
-  )
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen && !isUploading) {
+      setModelName('')
+      setSelectedFile(null)
+    }
+    onOpenChange(nextOpen)
+  }
 
   const placeholder =
-    backend === 'llamacpp'
-      ? 'Qwen/Qwen3-4B-GGUF:Q5_0'
-      : 'my-org/my-custom-model'
+    backend === 'llamacpp' ? 'Qwen/Qwen3-4B-GGUF' : 'my-org/my-custom-model'
 
-  const FileIcon = backend === 'llamacpp' ? File : FileArchive
+  const FileIcon = backend === 'llamacpp' ? FileGlyph : FileArchive
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -146,17 +153,24 @@ export function UploadModelDialog({
               placeholder={placeholder}
               value={modelName}
               onChange={(e) => setModelName(e.target.value)}
-              className={`h-9 text-xs ${nameError ? 'border-red-500' : ''}`}
+              className="h-9 text-xs"
+              aria-invalid={nameError ? true : undefined}
+              aria-describedby={hintId}
               disabled={isUploading}
             />
             {nameError ? (
-              <p className="flex items-center gap-1 text-[11px] text-red-500">
-                <AlertCircle className="h-3 w-3 shrink-0" />
+              <p
+                id={hintId}
+                className="text-destructive flex items-center gap-1 text-[11px]"
+              >
+                <AlertCircle aria-hidden="true" className="h-3 w-3 shrink-0" />
                 {nameError}
               </p>
             ) : (
-              <p className="text-muted-foreground text-[11px]">
-                org/model-name format (e.g. {placeholder})
+              <p id={hintId} className="text-muted-foreground text-[11px]">
+                {backend === 'llamacpp'
+                  ? `org/model-name format (e.g. ${placeholder}). The quantization comes from the file name (model-Q4_K_M.gguf) unless you add it as :QUANT.`
+                  : `org/model-name format (e.g. ${placeholder})`}
               </p>
             )}
           </div>
@@ -181,53 +195,115 @@ export function UploadModelDialog({
             </div>
           )}
 
-          {isUploading && selectedFile && (
-            <div className="bg-card space-y-2 rounded-md border p-2.5">
-              <div className="flex items-center gap-2">
-                <div className="bg-muted/50 flex h-8 w-8 shrink-0 items-center justify-center rounded">
-                  <FileIcon className="text-muted-foreground h-4 w-4" />
+          {isUploading &&
+            (uploadProgress?.files ?? []).map((file, index) => {
+              const percent = percentOf(file.sentBytes, file.totalBytes)
+              const isCurrent = index === uploadProgress?.currentFile
+              const retry = isCurrent ? uploadProgress?.retry : undefined
+              return (
+                <div
+                  key={`${index}-${file.name}`}
+                  data-testid="upload-model-progress"
+                  className="bg-card space-y-2 rounded-md border p-2.5"
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="bg-muted/50 flex h-8 w-8 shrink-0 items-center justify-center rounded">
+                      <FileIcon className="text-muted-foreground h-4 w-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-medium">
+                        {file.name}
+                      </p>
+                      <p className="text-muted-foreground text-[11px] tabular-nums">
+                        {retry
+                          ? `Connection lost \u2014 retrying (attempt ${retry.attempt} of ${retry.of})\u2026`
+                          : `${formatBytes(file.sentBytes)} of ${formatBytes(file.totalBytes)} (${percent}%)`}
+                      </p>
+                    </div>
+                    {isCurrent && (
+                      <Loader className="text-primary h-3.5 w-3.5 shrink-0 animate-spin" />
+                    )}
+                  </div>
+                  <Progress
+                    value={percent}
+                    aria-label={`Uploading ${file.name}`}
+                    className="h-1.5"
+                  />
                 </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-medium">
-                    {selectedFile.name}
+              )
+            })}
+
+          {isUploading && !uploadProgress && selectedFile && (
+            <div className="bg-card flex items-center gap-2 rounded-md border p-2.5">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-xs font-medium">
+                  {selectedFile.name}
+                </p>
+                {pendingMessage && (
+                  <p
+                    data-testid="upload-model-pending"
+                    className="text-muted-foreground text-[11px]"
+                  >
+                    {pendingMessage}
                   </p>
-                  <p className="text-muted-foreground text-[11px]">
-                    Uploading&hellip;
-                  </p>
-                </div>
-                <Loader2 className="text-primary h-3.5 w-3.5 shrink-0 animate-spin" />
+                )}
               </div>
-              <div className="bg-muted h-1.5 w-full overflow-hidden rounded-full">
-                <div className="bg-primary h-full w-2/3 animate-pulse rounded-full" />
-              </div>
+              <Loader className="text-primary h-3.5 w-3.5 shrink-0 animate-spin" />
             </div>
           )}
 
           {uploadError && (
-            <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-2.5 dark:border-red-900 dark:bg-red-950">
-              <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-600 dark:text-red-400" />
-              <p className="text-xs text-red-700 dark:text-red-300">
-                {uploadError.message}
-              </p>
-            </div>
+            <InlineNotice
+              tone="destructive"
+              size="sm"
+              className="items-start"
+              icon={
+                <AlertCircle
+                  aria-hidden="true"
+                  className="mt-0.5 h-3.5 w-3.5 shrink-0"
+                />
+              }
+            >
+              {uploadError.message}
+            </InlineNotice>
           )}
 
           {isUploadSuccess && (
-            <div className="flex items-start gap-2 rounded-md border border-green-200 bg-green-50 p-2.5 dark:border-green-900 dark:bg-green-950">
-              <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-green-600 dark:text-green-400" />
-              <p className="text-xs text-green-700 dark:text-green-300">
-                Model uploaded successfully.
-              </p>
-            </div>
+            <InlineNotice
+              tone="success"
+              size="sm"
+              role="status"
+              className="items-start"
+              icon={
+                <CheckCircle2
+                  aria-hidden="true"
+                  className="mt-0.5 h-3.5 w-3.5 shrink-0"
+                />
+              }
+            >
+              Model uploaded successfully.
+            </InlineNotice>
           )}
         </div>
 
         <DialogFooter>
-          <DialogClose asChild>
-            <Button variant="outline" size="sm" disabled={isUploading}>
-              Cancel
+          {isUploading ? (
+            <Button
+              data-testid="upload-model-cancel"
+              variant="outline"
+              size="sm"
+              onClick={onCancelUpload}
+            >
+              <X className="h-3.5 w-3.5" />
+              Cancel upload
             </Button>
-          </DialogClose>
+          ) : (
+            <DialogClose asChild>
+              <Button variant="outline" size="sm">
+                Cancel
+              </Button>
+            </DialogClose>
+          )}
           <Button
             data-testid="upload-model-submit"
             size="sm"
@@ -235,7 +311,7 @@ export function UploadModelDialog({
             disabled={!isValid || isUploading}
           >
             {isUploading ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              <Loader className="h-3.5 w-3.5 animate-spin" />
             ) : (
               <Upload className="h-3.5 w-3.5" />
             )}

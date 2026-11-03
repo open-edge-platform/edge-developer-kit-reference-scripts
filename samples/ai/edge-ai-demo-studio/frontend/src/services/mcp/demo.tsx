@@ -3,60 +3,99 @@
 
 'use client'
 
-import {
-  ChevronDown,
-  ChevronRight,
-  CircleAlert,
-  Edit,
-  Loader2,
-  Plus,
-  Trash2,
-  Wrench,
-} from 'lucide-react'
-import { getFirstSentence } from '@/lib/utils'
+import { Loader, Plus, RefreshCw, X } from 'lucide-react'
 import { useState } from 'react'
-import { Badge } from '@/components/ui/badge'
+import { ConfirmDialog } from '@/components/common/confirm-dialog'
+import { EmptyState } from '@/components/common/empty-state'
+import { InlineNotice } from '@/components/common/inline-notice'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Switch } from '@/components/ui/switch'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
+import { getErrorMessage } from '@/lib/errors'
 import type { McpServer } from '@/payload-types'
 import type { Service } from '@/services/types'
-import { cn } from '@/lib/utils'
-import { toast } from 'sonner'
 import { AddServerDialog } from './components/add-server-dialog'
-import {
-  type McpProbeResult,
-  useCreateMcpServer,
-  useDeleteMcpServer,
-  useMcpServers,
-  useMcpServersProbe,
-  useUpdateMcpServer,
-} from './hooks'
+import { ConnectionOutcome } from './components/connection-outcome'
+import { ServerCard } from './components/server-card'
+import { ServerRow } from './components/server-row'
+import { ServerTable, ServerTableSkeleton } from './components/server-table'
+import { type McpProbeResult, useMcpServers, useMcpServersProbe } from './hooks'
+import { useMcpServerActions } from './hooks/use-mcp-server-actions'
+
+type DialogTarget = { mode: 'add' } | { mode: 'edit'; server: McpServer }
+
+/** The just-saved server's connection outcome, checked once the list reloads. */
+function SavedNotice({
+  server,
+  probe,
+  onDismiss,
+}: {
+  server: McpServer
+  probe: McpProbeResult | undefined
+  onDismiss: () => void
+}) {
+  const dismiss = (
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      aria-label="Dismiss"
+      className="shrink-0"
+      onClick={onDismiss}
+    >
+      <X aria-hidden="true" className="h-3.5 w-3.5" />
+    </Button>
+  )
+  return (
+    <div
+      className="bg-muted/30 flex items-start gap-2 rounded-md border p-3"
+      data-testid="mcp-saved-notice"
+    >
+      <div className="min-w-0 flex-1 space-y-1.5 text-xs">
+        <p className="text-foreground font-medium">Saved “{server.name}”.</p>
+        {server.disabled ? (
+          <p className="text-muted-foreground">
+            It is disabled, so it is not connected to and chats do not offer its
+            tools.
+          </p>
+        ) : probe ? (
+          <ConnectionOutcome result={probe} />
+        ) : (
+          <p
+            role="status"
+            className="text-muted-foreground flex items-center gap-1.5"
+          >
+            <Loader aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+            Checking the connection…
+          </p>
+        )}
+      </div>
+      {dismiss}
+    </div>
+  )
+}
 
 export function McpDemo(_props: { service: Service }) {
-  const [showAddDialog, setShowAddDialog] = useState(false)
-  const [editingServer, setEditingServer] = useState<McpServer | undefined>()
-  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set())
+  const [dialog, setDialog] = useState<DialogTarget | null>(null)
+  const [serverToDelete, setServerToDelete] = useState<McpServer | null>(null)
+  const [expandedIds, setExpandedIds] = useState<ReadonlySet<number>>(new Set())
+  /** The server saved last (as saved), while its outcome is shown. */
+  const [saved, setSaved] = useState<Pick<
+    McpServer,
+    'id' | 'updatedAt'
+  > | null>(null)
 
-  const { data: servers = [], isLoading } = useMcpServers()
-  const { data: probeResults = {} } = useMcpServersProbe(servers)
-  const createMutation = useCreateMcpServer()
-  const updateMutation = useUpdateMcpServer()
-  const deleteMutation = useDeleteMcpServer()
+  const serversQuery = useMcpServers()
+  const servers = serversQuery.data ?? []
+  const probes = useMcpServersProbe(servers)
+  const actions = useMcpServerActions()
+  const savedServer = servers.find((s) => s.id === saved?.id)
+  // Until the list shows the saved version, its probe is of the old one. A
+  // later version (the Enabled switch, another tab) is probed in its turn.
+  const savedProbe =
+    savedServer &&
+    saved &&
+    Date.parse(savedServer.updatedAt) >= Date.parse(saved.updatedAt)
+      ? probes[savedServer.id]
+      : undefined
 
   const toggleExpanded = (id: number) => {
     setExpandedIds((prev) => {
@@ -67,64 +106,81 @@ export function McpDemo(_props: { service: Service }) {
     })
   }
 
-  const handleAddServer = (
-    serverData: Omit<McpServer, 'id' | 'updatedAt' | 'createdAt'>,
-  ) => {
-    createMutation.mutate(serverData, {
-      onSuccess: () => toast.success('MCP server added successfully'),
-      onError: (err) =>
-        toast.error(
-          'Failed to add MCP server' +
-            (err instanceof Error ? `: ${err.message}` : ''),
-        ),
-    })
-  }
+  const openAdd = () => setDialog({ mode: 'add' })
+  const editingServer = dialog?.mode === 'edit' ? dialog.server : undefined
 
-  const handleEditServer = (
-    serverData: Omit<McpServer, 'id' | 'updatedAt' | 'createdAt'>,
-  ) => {
-    if (!editingServer) return
-    updateMutation.mutate(
-      { id: editingServer.id, data: serverData },
-      {
-        onSuccess: () => {
-          toast.success('MCP server updated successfully')
-          setEditingServer(undefined)
-        },
-        onError: () => toast.error('Failed to update MCP server'),
-      },
+  const rowProps = (server: McpServer) => ({
+    server,
+    probe: probes[server.id],
+    isExpanded: expandedIds.has(server.id),
+    onToggleExpand: () => toggleExpanded(server.id),
+    onToggleDisabled: () => actions.toggleDisabled(server),
+    onEdit: () => setDialog({ mode: 'edit', server }),
+    onDelete: () => setServerToDelete(server),
+  })
+
+  const list = (() => {
+    if (serversQuery.isLoading) return <ServerTableSkeleton />
+    if (serversQuery.isError) {
+      return (
+        <InlineNotice tone="destructive" size="sm">
+          Could not load the MCP servers:{' '}
+          {getErrorMessage(serversQuery.error, 'the request failed')}.{' '}
+          <Button
+            variant="link"
+            size="xs"
+            className="h-auto p-0"
+            onClick={() => void serversQuery.refetch()}
+            disabled={serversQuery.isFetching}
+          >
+            <RefreshCw aria-hidden="true" />
+            Retry
+          </Button>
+        </InlineNotice>
+      )
+    }
+    if (servers.length === 0) {
+      return (
+        <EmptyState
+          icon={Plus}
+          title="No MCP servers"
+          description="Add an MCP server so chats can call its tools."
+          className="py-8"
+        >
+          <Button className="mt-4" onClick={openAdd}>
+            <Plus aria-hidden="true" className="h-4 w-4" />
+            Add Your First Server
+          </Button>
+        </EmptyState>
+      )
+    }
+    return (
+      <>
+        <div className="hidden md:block">
+          <ServerTable>
+            {servers.map((server) => (
+              <ServerRow key={server.id} {...rowProps(server)} />
+            ))}
+          </ServerTable>
+        </div>
+        <ul
+          className="space-y-3 md:hidden"
+          aria-label="MCP servers"
+          data-testid="mcp-server-cards"
+        >
+          {servers.map((server) => (
+            <ServerCard key={server.id} {...rowProps(server)} />
+          ))}
+        </ul>
+      </>
     )
-  }
-
-  const handleDeleteServer = (serverId: number) => {
-    deleteMutation.mutate(serverId, {
-      onSuccess: () => toast.success('MCP server deleted successfully'),
-      onError: (err) =>
-        toast.error(
-          'Failed to delete MCP server' +
-            (err instanceof Error ? `: ${err.message}` : ''),
-        ),
-    })
-  }
-
-  const handleToggleDisabled = (server: McpServer) => {
-    updateMutation.mutate(
-      { id: server.id, data: { disabled: !server.disabled } },
-      {
-        onSuccess: () =>
-          toast.success(
-            `MCP server ${server.disabled ? 'enabled' : 'disabled'}`,
-          ),
-        onError: () => toast.error('Failed to toggle server status'),
-      },
-    )
-  }
+  })()
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center justify-between gap-2">
-          <div>
+        <CardTitle className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
             <h3 className="text-lg font-semibold">MCP Servers</h3>
             <div className="text-muted-foreground text-sm font-normal">
               Manage your Model Context Protocol servers and their
@@ -132,265 +188,55 @@ export function McpDemo(_props: { service: Service }) {
             </div>
           </div>
 
-          <Button
-            onClick={() => {
-              setEditingServer(undefined)
-              setShowAddDialog(true)
-            }}
-            className="flex items-center gap-2"
-          >
-            <Plus className="h-4 w-4" />
+          <Button onClick={openAdd} className="flex items-center gap-2">
+            <Plus aria-hidden="true" className="h-4 w-4" />
             Add Server
           </Button>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {isLoading ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-8 w-8 animate-spin" />
-          </div>
-        ) : servers.length === 0 ? (
-          <div className="border-muted rounded-lg border-2 border-dashed p-8 text-center">
-            <div className="bg-muted mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full">
-              <Plus className="text-muted-foreground h-6 w-6" />
-            </div>
-            <h3 className="mb-2 text-lg font-semibold">No MCP servers</h3>
-            <p className="text-muted-foreground mx-auto mb-4 max-w-sm">
-              Get started by adding your first MCP server to extend your AI
-              capabilities.
-            </p>
-            <Button
-              onClick={() => {
-                setEditingServer(undefined)
-                setShowAddDialog(true)
-              }}
-            >
-              <Plus className="mr-2 h-4 w-4" />
-              Add Your First Server
-            </Button>
-          </div>
-        ) : (
-          <div className="rounded-lg border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-8" />
-                  <TableHead>Name</TableHead>
-                  <TableHead>URL</TableHead>
-                  <TableHead>Availability</TableHead>
-                  <TableHead>Tools</TableHead>
-                  <TableHead>Enabled</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {servers.map((server) => {
-                  const probe = probeResults[server.id]
-                  const isExpanded = expandedIds.has(server.id)
-                  return (
-                    <ServerRow
-                      key={server.id}
-                      server={server}
-                      probe={probe}
-                      isExpanded={isExpanded}
-                      onToggleExpand={() => toggleExpanded(server.id)}
-                      onToggleDisabled={() => handleToggleDisabled(server)}
-                      onEdit={() => {
-                        setEditingServer(server)
-                        setShowAddDialog(true)
-                      }}
-                      onDelete={() => handleDeleteServer(server.id)}
-                    />
-                  )
-                })}
-              </TableBody>
-            </Table>
-          </div>
+        {savedServer && (
+          <SavedNotice
+            server={savedServer}
+            probe={savedProbe}
+            onDismiss={() => setSaved(null)}
+          />
         )}
 
+        {list}
+
         <AddServerDialog
-          open={showAddDialog}
+          open={dialog !== null}
           onOpenChange={(open) => {
-            setShowAddDialog(open)
-            if (!open) {
-              setEditingServer(undefined)
-            }
+            if (!open) setDialog(null)
           }}
-          onSave={editingServer ? handleEditServer : handleAddServer}
+          onSave={async (data) => {
+            const record = editingServer
+              ? await actions.update(editingServer.id, data)
+              : await actions.add(data)
+            setSaved({ id: record.id, updatedAt: record.updatedAt })
+          }}
           editingServer={editingServer}
+        />
+
+        <ConfirmDialog
+          open={serverToDelete !== null}
+          onOpenChange={(open) => {
+            if (!open) setServerToDelete(null)
+          }}
+          variant="destructive"
+          title={`Delete ${serverToDelete?.name ?? 'this server'}?`}
+          description="The server is removed from the MCP Manager, and chats stop offering its tools. This cannot be undone."
+          confirmLabel="Delete"
+          pendingLabel="Deleting…"
+          onConfirm={async () => {
+            if (!serverToDelete) return
+            await actions.remove(serverToDelete)
+            if (serverToDelete.id === saved?.id) setSaved(null)
+          }}
+          confirmTestId="mcp-delete-confirm"
         />
       </CardContent>
     </Card>
-  )
-}
-
-function ServerRow({
-  server,
-  probe,
-  isExpanded,
-  onToggleExpand,
-  onToggleDisabled,
-  onEdit,
-  onDelete,
-}: {
-  server: McpServer
-  probe: McpProbeResult | undefined
-  isExpanded: boolean
-  onToggleExpand: () => void
-  onToggleDisabled: () => void
-  onEdit: () => void
-  onDelete: () => void
-}) {
-  const isDisabled = server.disabled
-  const isProbing = !isDisabled && !probe
-  const isOnline = probe?.online ?? false
-  const tools = probe?.tools ?? []
-  const hasTools = tools.length > 0
-
-  return (
-    <>
-      <TableRow
-        className={cn('cursor-pointer', isExpanded && 'border-b-0')}
-        onClick={() => {
-          if (hasTools) onToggleExpand()
-        }}
-      >
-        <TableCell className="w-8 px-2">
-          {hasTools ? (
-            isExpanded ? (
-              <ChevronDown className="text-muted-foreground h-4 w-4" />
-            ) : (
-              <ChevronRight className="text-muted-foreground h-4 w-4" />
-            )
-          ) : null}
-        </TableCell>
-        <TableCell className="font-medium">
-          <div>
-            {server.name}
-            {probe?.serverInfo?.name && (
-              <span className="text-muted-foreground ml-2 text-xs">
-                ({probe.serverInfo.name}
-                {probe.serverInfo.version
-                  ? ` v${probe.serverInfo.version}`
-                  : ''}
-                )
-              </span>
-            )}
-          </div>
-        </TableCell>
-        <TableCell className="font-mono text-sm">{server.url}</TableCell>
-        <TableCell>
-          {isDisabled ? (
-            <Badge variant="secondary">Disabled</Badge>
-          ) : isProbing ? (
-            <Badge variant="outline" className="gap-1">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              Checking
-            </Badge>
-          ) : isOnline ? (
-            <Badge className="border-green-500/20 bg-green-500/15 text-green-600 dark:text-green-400">
-              Online
-            </Badge>
-          ) : (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Badge variant="destructive" className="gap-1">
-                    <CircleAlert className="h-3 w-3" />
-                    Offline
-                  </Badge>
-                </TooltipTrigger>
-                {probe?.error && (
-                  <TooltipContent>
-                    <p className="max-w-xs text-xs">{probe.error}</p>
-                  </TooltipContent>
-                )}
-              </Tooltip>
-            </TooltipProvider>
-          )}
-        </TableCell>
-        <TableCell>
-          {isDisabled ? (
-            <span className="text-muted-foreground text-sm">—</span>
-          ) : isProbing ? (
-            <span className="text-muted-foreground text-sm">…</span>
-          ) : (
-            <Badge variant="outline" className="gap-1">
-              <Wrench className="h-3 w-3" />
-              {tools.length}
-            </Badge>
-          )}
-        </TableCell>
-        <TableCell onClick={(e) => e.stopPropagation()}>
-          <Switch
-            checked={!server.disabled}
-            onCheckedChange={onToggleDisabled}
-            className="data-[state=checked]:bg-green-500"
-          />
-        </TableCell>
-        <TableCell onClick={(e) => e.stopPropagation()}>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={onEdit}>
-              <Edit className="h-4 w-4" />
-            </Button>
-            <Button variant="destructive" size="sm" onClick={onDelete}>
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </div>
-        </TableCell>
-      </TableRow>
-      {isExpanded && hasTools && (
-        <TableRow className="hover:bg-transparent">
-          <TableCell colSpan={7} className="bg-muted/30 px-6 py-3">
-            <div className="space-y-2">
-              <h4 className="text-muted-foreground text-xs font-semibold tracking-wider uppercase">
-                Available Tools ({tools.length})
-              </h4>
-              <div className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-3">
-                {tools.map((tool) => {
-                  const summary = tool.description
-                    ? getFirstSentence(tool.description)
-                    : undefined
-                  return (
-                    <TooltipProvider key={tool.name}>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <div className="bg-background hover:border-primary/30 group min-w-0 overflow-hidden rounded-md border px-3 py-2 transition-colors">
-                            <div className="flex items-center gap-2">
-                              <div className="bg-primary/10 flex h-5 w-5 shrink-0 items-center justify-center rounded">
-                                <Wrench className="text-primary h-3 w-3" />
-                              </div>
-                              <span className="truncate text-sm font-medium">
-                                {tool.name}
-                              </span>
-                            </div>
-                            {summary && (
-                              <p className="text-muted-foreground mt-1 line-clamp-2 text-xs leading-relaxed">
-                                {summary}
-                              </p>
-                            )}
-                          </div>
-                        </TooltipTrigger>
-                        {tool.description && (
-                          <TooltipContent
-                            side="bottom"
-                            className="max-w-xs text-xs"
-                          >
-                            <p className="font-medium">{tool.name}</p>
-                            <p className="text-muted-foreground mt-1 whitespace-pre-line">
-                              {tool.description}
-                            </p>
-                          </TooltipContent>
-                        )}
-                      </Tooltip>
-                    </TooltipProvider>
-                  )
-                })}
-              </div>
-            </div>
-          </TableCell>
-        </TableRow>
-      )}
-    </>
   )
 }

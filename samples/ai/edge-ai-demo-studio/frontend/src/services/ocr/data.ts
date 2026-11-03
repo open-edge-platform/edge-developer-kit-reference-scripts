@@ -3,16 +3,15 @@
 
 import { ScanText } from 'lucide-react'
 import type { Service as PayloadService } from '@/payload-types'
+import { getEffectivePrecision } from '@/services/model-config'
 import type { ServiceMeta, WorkerConfig } from '@/services/types'
-import { serviceConfig } from './config'
+import { describeOcrModel, serviceConfig } from './config'
 
-// `ocr` is multi-backend: each engine lives in workers/ocr/<backend> and the
-// active one is derived from the selected model key (PaddleOCR today; a
-// `tesseract-*` key would route to workers/ocr/tesseract in future).
+// Each engine lives in workers/services/ocr/<backend>, picked from the model key.
 type OcrBackend = 'paddleocr' | 'tesseract'
 
 const DEFAULT_MODEL = 'ppocrv5'
-const DEFAULT_DEVICE = 'CPU'
+const DEFAULT_DEVICE = 'AUTO'
 
 function backendForModel(modelName: string | undefined): OcrBackend {
   return modelName?.startsWith('tesseract') ? 'tesseract' : 'paddleocr'
@@ -21,12 +20,12 @@ function backendForModel(modelName: string | undefined): OcrBackend {
 export const service: ServiceMeta = {
   id: 'ocr',
   name: 'OCR',
+  multiInstance: true,
   description:
     'Optical character recognition — extract text and its location from images using OCR models on OpenVINO.',
   longDescription:
-    'Optical Character Recognition service running PP-OCR detection + recognition pipelines and the PaddleOCR-VL vision-language model on OpenVINO. Detects text regions, returns recognised text with per-region bounding boxes and confidence, and is structured to host additional OCR engines (e.g. Tesseract) under workers/ocr. Accepts single images, client-pushed camera frames over WebSocket, and a server-side camera stream.',
+    'Optical Character Recognition service running PP-OCR detection + recognition pipelines and the PaddleOCR-VL vision-language model on OpenVINO. Detects text regions, returns recognised text with per-region bounding boxes and confidence, and is structured to host additional OCR engines (e.g. Tesseract) under workers/services/ocr. Accepts single images, client-pushed camera frames over WebSocket, and a server-side camera stream.',
   icon: ScanText,
-  port: 8029,
   supportedOS: ['linux', 'windows'],
   execution: { mode: 'worker' },
   defaultModel: {
@@ -41,12 +40,27 @@ export const service: ServiceMeta = {
 }
 
 export const worker: WorkerConfig = {
-  modelDirectories: ['models/ocr', 'models/huggingface', 'models/modelscope'],
+  modelCatalog: 'script',
+  // Its Hugging Face downloads go to plain folders under models/ocr, not the
+  // shared Hugging Face cache.
+  modelDirectories: ['models/ocr', 'models/modelscope'],
   workerSubDir: (doc: PayloadService) =>
-    `ocr/${backendForModel(doc.models?.default?.name)}`,
+    `services/ocr/${backendForModel(doc.models?.default?.name)}`,
   buildArgs: (doc: PayloadService) => {
     const model = doc.models?.default?.name ?? DEFAULT_MODEL
     const device = doc.models?.default?.device ?? DEFAULT_DEVICE
-    return ['--port', String(doc.port), '--model', model, '--device', device]
+    const precision =
+      describeOcrModel(model).kind === 'vl'
+        ? getEffectivePrecision(serviceConfig, doc.models?.default?.quant)
+        : undefined
+    return [
+      '--port',
+      String(doc.port),
+      '--model',
+      model,
+      '--device',
+      device,
+      ...(precision ? ['--precision', precision] : []),
+    ]
   },
 }

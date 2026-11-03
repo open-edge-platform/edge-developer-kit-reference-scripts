@@ -4,8 +4,20 @@
 import type { ServiceDocsData } from '@/services/types'
 
 export const getDocsData = ({ host }: { host: string }): ServiceDocsData => ({
+  quickStart: {
+    steps: [
+      'Point the database at an embedding service with `POST /v1/configure`. The Demo tab does this with your Text Embedding instance.',
+      'Create a knowledge base with `POST /v1/kb`, upload files to `POST /v1/kb/{id}/files` and embed them with `POST /v1/kb/{id}/create`.',
+      'Search it with `POST /v1/kb/{id}/search` and a `query`.',
+    ],
+    request: {
+      language: 'cURL',
+      languageCode: 'bash',
+      code: `curl ${host}/v1/kb`,
+    },
+  },
   serviceDescription:
-    'The Vector Database service provides FAISS-based vector storage for knowledge base management, document ingestion, and semantic search. It supports both text-based embedding (via external services) and direct pre-computed vector storage for maximum flexibility.',
+    'The Vector Database service provides vector storage for knowledge base management, document ingestion, and semantic search, backed by FAISS (default) or PostgreSQL + pgvector (embedded or external, selected in the Configure panel). It supports both text-based embedding (via external services) and direct pre-computed vector storage for maximum flexibility. The API is the same for both backends.',
   overview:
     'RESTful API for managing knowledge bases with vector storage. Supports CRUD operations on knowledge bases, document file upload and chunking, text chunk management, similarity search by query text or raw embedding vectors, and runtime configuration of external embedding/reranker services.',
   endpoints: [
@@ -19,7 +31,7 @@ export const getDocsData = ({ host }: { host: string }): ServiceDocsData => ({
           name: 'embedding_url',
           type: 'string',
           required: true,
-          desc: 'Base URL of the external embedding service (e.g. http://localhost:8001/v1)',
+          desc: 'Base URL of the external embedding service (e.g. http://127.0.0.1:8001/v1)',
         },
         {
           name: 'embedding_model',
@@ -45,10 +57,10 @@ export const getDocsData = ({ host }: { host: string }): ServiceDocsData => ({
       method: 'GET',
       path: '/v1/config',
       description:
-        'Get the current embedding/reranker configuration currently in effect.',
+        'Get the embedding/reranker configuration currently in effect and the active storage backend (`backend.backend` is `faiss` or `pgvector`; for pgvector, `backend.mode` tells whether the embedded or an external PostgreSQL is in use).',
     },
 
-    // ── Knowledge bases ─────────────────────────────────────
+    // Knowledge bases
     {
       method: 'GET',
       path: '/v1/kb',
@@ -95,7 +107,7 @@ export const getDocsData = ({ host }: { host: string }): ServiceDocsData => ({
       ],
     },
 
-    // ── Documents (file upload) ─────────────────────────────
+    // Documents (file upload)
     {
       method: 'GET',
       path: '/v1/kb/{id}/files',
@@ -137,12 +149,12 @@ export const getDocsData = ({ host }: { host: string }): ServiceDocsData => ({
       ],
     },
 
-    // ── Embedding generation ────────────────────────────────
+    // Embedding generation
     {
       method: 'POST',
       path: '/v1/kb/{id}/create',
       description:
-        'Chunk and embed all uploaded documents in the knowledge base into the FAISS vector store (requires embedding service configured).',
+        'Chunk and embed all uploaded documents in the knowledge base into the vector store (requires embedding service configured). Send `Accept: text/event-stream` (or `?stream=true`) to receive progress as Server-Sent Events: `file_start`, `loading`, `splitting` (`{chunks}`), `embedding` (`{batch, batches, done, total}`), `storing` and `file_done` (`{chunks_created}`) per file, each carrying `file`, `index` and `files`; `queued` (`{ahead}`) when other operations on the knowledge base run first; then `done` with the usual JSON body, or `error` (`{detail, status_code}`).',
       params: [
         {
           name: 'splitter_name',
@@ -168,7 +180,7 @@ export const getDocsData = ({ host }: { host: string }): ServiceDocsData => ({
       method: 'POST',
       path: '/v1/kb/{id}/files/embed',
       description:
-        'Chunk and embed a single uploaded file into the vector store (requires embedding service configured).',
+        'Chunk and embed a single uploaded file into the vector store (requires embedding service configured). Send `Accept: text/event-stream` (or `?stream=true`) to receive progress as Server-Sent Events: `queued` (`{ahead}`), `loading`, `splitting` (`{chunks}`), `embedding` (`{batch, batches, done, total}`, before the first batch and after each), `storing` (`{chunks}`), then `done` with the usual JSON body, or `error` (`{detail, status_code}`). Unknown files or knowledge bases and invalid options are plain HTTP errors.',
       params: [
         {
           name: 'filename',
@@ -197,7 +209,7 @@ export const getDocsData = ({ host }: { host: string }): ServiceDocsData => ({
       ],
     },
 
-    // ── Chunks ──────────────────────────────────────────────
+    // Chunks
     {
       method: 'GET',
       path: '/v1/kb/{id}/chunks',
@@ -260,7 +272,7 @@ export const getDocsData = ({ host }: { host: string }): ServiceDocsData => ({
       ],
     },
 
-    // ── Vectors (pre-computed) ──────────────────────────────
+    // Vectors (pre-computed)
     {
       method: 'POST',
       path: '/v1/kb/{id}/vectors',
@@ -276,7 +288,7 @@ export const getDocsData = ({ host }: { host: string }): ServiceDocsData => ({
       ],
     },
 
-    // ── Search ──────────────────────────────────────────────
+    // Search
     {
       method: 'POST',
       path: '/v1/kb/{id}/search',
@@ -373,7 +385,7 @@ export const getDocsData = ({ host }: { host: string }): ServiceDocsData => ({
 requests.post(
     "${host}/v1/configure",
     json={
-        "embedding_url": "http://localhost:8001/v1",
+        "embedding_url": "http://127.0.0.1:8001/v1",
         "embedding_model": "BAAI/bge-small-en-v1.5",
     },
 )
@@ -422,6 +434,12 @@ curl -X POST ${host}/v1/kb/1/files \\
 curl -X POST ${host}/v1/kb/1/create \\
   -H "Content-Type: application/json" \\
   -d '{"chunk_size": 512, "chunk_overlap": 200}'
+
+# Embed one file, following its progress as Server-Sent Events
+curl -N -X POST ${host}/v1/kb/1/files/embed \\
+  -H "Accept: text/event-stream" \\
+  -H "Content-Type: application/json" \\
+  -d '{"filename": "handbook.pdf"}'
 
 # Add pre-computed vectors (no embedding service needed)
 curl -X POST ${host}/v1/kb/1/vectors \\

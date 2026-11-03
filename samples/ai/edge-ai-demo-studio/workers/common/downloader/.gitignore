@@ -1,0 +1,4 @@
+/thirdparty
+.venv/
+__pycache__/
+*.pyc

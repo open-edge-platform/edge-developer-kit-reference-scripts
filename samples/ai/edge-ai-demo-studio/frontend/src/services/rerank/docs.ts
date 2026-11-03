@@ -13,6 +13,26 @@ export const getDocsData = ({
   const inferModel = model || 'openvino:OpenVINO/bge-reranker-base-int8-ov'
 
   return {
+    quickStart: {
+      steps: [
+        `Send a query and the candidate documents to \`POST /v1/rerank\` with the model \`${inferModel}\`.`,
+        'Each result names a document by its `index` in your list, with its `relevance_score`, most relevant first. Set `top_n` to keep only the best few.',
+      ],
+      request: {
+        language: 'cURL',
+        languageCode: 'bash',
+        code: `curl ${host}/v1/rerank \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "${inferModel}",
+    "query": "What is edge AI?",
+    "documents": [
+      "Edge AI runs models on local devices.",
+      "A recipe for chocolate cake."
+    ]
+  }'`,
+      },
+    },
     serviceDescription:
       'The Reranker service leverages the OpenVINO Model Server to rescore candidate documents against a query for precise relevance ordering. It exposes a Cohere-compatible rerank endpoint, enabling seamless use with existing Cohere client libraries or direct HTTP calls — without requiring an Internet connection.',
     overview:

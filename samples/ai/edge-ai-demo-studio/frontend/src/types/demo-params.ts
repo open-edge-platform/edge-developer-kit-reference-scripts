@@ -3,7 +3,12 @@
 
 import type { ReactNode } from 'react'
 
-export interface ParamSlider {
+interface ParamCommon {
+  /** Less-used: `DemoParameterSidebar` lists it under a collapsed "Advanced" section. */
+  advanced?: boolean
+}
+
+export interface ParamSlider extends ParamCommon {
   type: 'slider'
   id: string
   label: string
@@ -14,15 +19,17 @@ export interface ParamSlider {
   step: number
   onChange: (value: number) => void
   /**
-   * When true the param is untouched and the backend default is used — the
-   * control shows an "Auto" state instead of the seeded value.
+   * Set for a param that may be left to the backend, adding a Default / Custom choice. `true` means
+   * untouched (the request omits it); switching to Custom calls `onChange` with the seeded value.
    */
   unset?: boolean
   /** Reverts the param to its untouched/default state; renders a reset affordance. */
   onReset?: () => void
+  /** Unit shown after the value, e.g. "tokens". */
+  unit?: string
 }
 
-export interface ParamSelect {
+export interface ParamSelect extends ParamCommon {
   type: 'select'
   id: string
   label: string
@@ -32,13 +39,14 @@ export interface ParamSelect {
   onChange: (value: string) => void
   /** Hint text shown below the select (e.g. download disclaimer). */
   hint?: string
-  /** Optional callback to refresh the options list (e.g. re-fetch devices). */
+  /** Refreshes the options, e.g. re-fetches devices. */
   onRefresh?: () => void
-  /** Whether a refresh is currently in progress. */
   isRefreshing?: boolean
+  /** Shown but not changeable for now (the caller says why). */
+  disabled?: boolean
 }
 
-export interface ParamCheckboxGroup {
+export interface ParamCheckboxGroup extends ParamCommon {
   type: 'checkbox-group'
   id: string
   label: string
@@ -46,7 +54,7 @@ export interface ParamCheckboxGroup {
   onChange: (value: string, checked: boolean) => void
 }
 
-export interface ParamInfoList {
+export interface ParamInfoList extends ParamCommon {
   type: 'info-list'
   id: string
   label: string
@@ -54,7 +62,7 @@ export interface ParamInfoList {
   emptyText?: string
 }
 
-export interface ParamTextarea {
+export interface ParamTextarea extends ParamCommon {
   type: 'textarea'
   id: string
   label: string
@@ -65,7 +73,7 @@ export interface ParamTextarea {
   onChange: (value: string) => void
 }
 
-export interface ParamToggle {
+export interface ParamToggle extends ParamCommon {
   type: 'toggle'
   id: string
   label: string
@@ -93,4 +101,9 @@ export interface ServiceParamGroup {
   enabled?: boolean
   onToggle?: (enabled: boolean) => void
   children?: ReactNode
+  /**
+   * Service types a sample may pick instances of for this group (RAG: vectordb and embeddings).
+   * Defaults to `[serviceId]`.
+   */
+  instanceTypes?: string[]
 }

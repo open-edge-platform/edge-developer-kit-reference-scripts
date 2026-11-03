@@ -3,15 +3,11 @@
 
 'use client'
 
-import { useState } from 'react'
-import { useServiceLiveStatus } from '@/context/service-status-context'
+import { useOptionalServiceGroup } from '@/hooks/use-optional-service-group'
 import {
   type TextGenParamValues,
   useTextGenParams,
 } from '@/services/text-generation/hooks/use-params'
-import { ServiceParamGroup } from '../components/demo-config-sheet'
-
-export type { TextGenParamValues as TextGenerationParams }
 
 interface UseTextGenerationParamsOptions {
   initial?: Partial<TextGenParamValues>
@@ -26,23 +22,13 @@ export function useTextGenerationParams(
   const { values, requestParams, params } = useTextGenParams(initial, {
     systemPromptTooltip,
   })
-  const [enabled, setEnabled] = useState(true)
 
-  const online = useServiceLiveStatus('text-generation') === 'online'
-
-  const group: ServiceParamGroup = {
-    serviceLabel: 'Text Generation',
+  const { group } = useOptionalServiceGroup({
     serviceId: 'text-generation',
-    online,
+    serviceLabel: 'Text Generation',
     optional,
-    ...(optional
-      ? {
-          enabled,
-          onToggle: setEnabled,
-        }
-      : {}),
     params,
-  }
+  })
 
   return { values, requestParams, group }
 }

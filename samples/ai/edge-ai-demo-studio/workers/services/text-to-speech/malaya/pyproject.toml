@@ -1,0 +1,53 @@
+# malaya and malaya_speech are vendored here (workers/oep-services.json "sources") since no PyPI
+# release has the VITS code used here; their dependencies are listed below instead.
+[project]
+name = "malayatts"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "worker-common[audio]",
+    "model-downloader",
+    "fastapi[standard]>=0.120.1",
+    "markupsafe>=2.1.5",
+    "modelscope>=1.34.0",
+    "openvino==2026.2.1",
+    "psutil>=7.1.0",
+    "pysastrawi>=1.2.0",
+    "torch==2.13.0",
+    "torchaudio==2.11.0",
+    "torchvision==0.28.0",
+    # The vendored packages' setup.py requirements, without the dataclasses backport.
+    "dateparser",
+    "ftfy",
+    "herpetologist",
+    "librosa",
+    "malaya-boilerplate>=0.0.25",
+    "networkx",
+    "num2words",
+    "numpy",
+    "python-speech-features",
+    "regex",
+    "requests",
+    "scikit-learn>=1.2",
+    "scipy>=1.5.4",
+    "sentencepiece",
+    "soundfile",
+    "tornado",
+    "tqdm",
+    "transformers",
+    "unidecode",
+]
+
+[tool.uv.sources]
+worker-common = { workspace = true }
+model-downloader = { workspace = true }
+torch = { index = "pytorch" }
+torchaudio = { index = "pytorch" }
+torchvision = { index = "pytorch" }
+
+[[tool.uv.index]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/xpu"
+explicit = true

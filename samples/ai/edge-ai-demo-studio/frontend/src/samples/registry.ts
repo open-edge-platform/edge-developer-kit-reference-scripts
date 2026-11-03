@@ -1,31 +1,15 @@
 // Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-export type {
-  DependencyRole,
-  PipelineStep,
-  ReadinessStatus,
-  Sample,
-  SampleCategory,
-  SampleDemo,
-  SampleDemoType,
-  ServiceDependency,
-} from './types'
-
-export {
-  categories,
-  getCategoryLabels,
-  hasCategory,
-  getReadinessLabel,
-} from './types'
+export { categories, getCategoryLabels, hasCategory } from './types'
 
 import { getServiceById } from '@/services/registry'
 import type { Service } from '@/services/types'
-import type { OS } from '@/types/common'
-import { getDeviceFamily } from '@/lib/utils'
+import type { HostOS, OS } from '@/types/common'
+import { getDeviceFamily } from '@/lib/devices'
 import { sampleMap } from './_generated/samples'
 import type { Sample } from './types'
-import { getOptionalDeps, getRequiredDeps } from './types'
+import { getRequiredDeps } from './types'
 
 export const samples: Sample[] = Object.values(sampleMap)
 
@@ -33,16 +17,11 @@ export function getSampleById(id: string): Sample | undefined {
   return sampleMap[id]
 }
 
-export function getRequiredServicesForSample(sample: Sample): Service[] {
-  return getRequiredDeps(sample)
-    .map((d) => getServiceById(d.serviceId))
-    .filter(Boolean) as Service[]
-}
-
-export function getOptionalServicesForSample(sample: Sample): Service[] {
-  return getOptionalDeps(sample)
-    .map((d) => getServiceById(d.serviceId))
-    .filter(Boolean) as Service[]
+function getRequiredServicesForSample(sample: Sample): Service[] {
+  return getRequiredDeps(sample).flatMap((d) => {
+    const service = getServiceById(d.serviceId)
+    return service ? [service] : []
+  })
 }
 
 export function getSampleSupportedOS(sample: Sample): OS[] {
@@ -56,8 +35,9 @@ export function getSampleSupportedOS(sample: Sample): OS[] {
   )
 }
 
-export function isSampleSupportedOnOS(sample: Sample, os: OS): boolean {
-  return getSampleSupportedOS(sample).includes(os)
+/** Whether the sample runs on `os` — never on a host OS no service supports (macOS). */
+export function isSampleSupportedOnOS(sample: Sample, os: HostOS): boolean {
+  return getSampleSupportedOS(sample).some((supported) => supported === os)
 }
 
 function isDeviceAvailable(
@@ -77,17 +57,6 @@ function isDeviceAvailable(
   }
   const reqLower = required.toLowerCase()
   return availableDevices.some((d) => d.toLowerCase() === reqLower)
-}
-
-export function isSampleSupportedOnDevices(
-  sample: Sample,
-  availableDevices: string[],
-): boolean {
-  if (!sample.requiredDevices || sample.requiredDevices.length === 0)
-    return true
-  return sample.requiredDevices.every((d) =>
-    isDeviceAvailable(d, availableDevices),
-  )
 }
 
 export function getMissingSampleDevices(

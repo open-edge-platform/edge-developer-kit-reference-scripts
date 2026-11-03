@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 $ErrorActionPreference = 'Stop'
 
-# Set UTF-8 encoding for console output
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
@@ -13,7 +12,6 @@ $NODE_PATH = Join-Path $NODE_DIR 'node.exe'
 $SETUP_THIRDPARTY = Join-Path $SCRIPT_DIR 'setup_thirdparty.ps1'
 $EXPORT_SCRIPT = Join-Path $REPO_ROOT 'scripts\export-bundle.mjs'
 
-# Install bundled Node.js if not already present
 if (-not (Test-Path $NODE_PATH)) {
     Write-Host "Bundled Node.js not found. Running thirdparty setup..."
     if (-not (Test-Path $SETUP_THIRDPARTY)) {
@@ -23,10 +21,8 @@ if (-not (Test-Path $NODE_PATH)) {
     & $SETUP_THIRDPARTY
 }
 
-# Prepend bundled node to PATH for this session
 $env:PATH = "$NODE_DIR;$env:PATH"
 
-# Verify node is accessible
 try {
     $null = & $NODE_PATH --version
 } catch {
@@ -34,9 +30,7 @@ try {
     exit 1
 }
 
-# --dry-run/--plan alone should still walk through the interactive prompts
-# (just previewing the plan instead of writing files), so pull it out before
-# deciding whether to forward everything non-interactively.
+# --dry-run/--plan alone still runs the interactive prompts, so set it aside before deciding.
 $dryRunFlag = $null
 $remainingArgs = @()
 foreach ($a in $args) {
@@ -47,17 +41,16 @@ foreach ($a in $args) {
     }
 }
 
-# If other arguments were passed, forward everything directly (non-interactive mode).
+# Any other argument means non-interactive: forward everything.
 if ($remainingArgs.Count -gt 0) {
     & $NODE_PATH $EXPORT_SCRIPT @args
     exit $LASTEXITCODE
 }
 
-# ── Interactive mode ──────────────────────────────────────────────
+# -- Interactive mode ----------------------------------------------
 Write-Host ""
 Write-Host "Discovering available samples and services..."
-# --list prints two sections ("Available samples:" / "Available services:"),
-# each with "  - <id>" entries.
+# --list prints "Available samples:" / "Available services:" sections of "  - <id>" lines.
 $listOutput = & $NODE_PATH $EXPORT_SCRIPT --list
 $samples = @()
 $services = @()

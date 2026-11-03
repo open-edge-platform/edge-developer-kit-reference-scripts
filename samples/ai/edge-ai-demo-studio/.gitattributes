@@ -1,0 +1,4 @@
+# cmd.exe finds goto/call labels unreliably in LF-only batch files. The Windows CI runner's
+# REST API archive checkout applies these attributes too.
+*.bat text eol=crlf
+*.cmd text eol=crlf

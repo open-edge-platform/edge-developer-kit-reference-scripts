@@ -8,6 +8,10 @@ const MODEL_NAME_RE = /^[a-zA-Z0-9_-]+\/[a-zA-Z0-9._-]+$/
 const OPENVINO_SUFFIX_RE = /-(ov|ovz)$/i
 const GGUF_RE = /gguf/i
 const LLAMACPP_NAME_RE = /^[a-zA-Z0-9_-]+\/[a-zA-Z0-9._-]+:[a-zA-Z0-9._]+$/
+// On upload the quant may be left off: the engine then takes it from the
+// file name (`model-Q4_K_M.gguf`), and refuses a quant that disagrees with it.
+const LLAMACPP_UPLOAD_NAME_RE =
+  /^[a-zA-Z0-9_-]+\/[a-zA-Z0-9._-]+(?::[a-zA-Z0-9._-]+)?$/
 const VLM_PIPELINE_TYPES = new Set(['VLM', 'VLM_CB'])
 
 function isValidNameFormat(name: string): boolean {
@@ -24,7 +28,6 @@ function validateOpenVINOModelName(name: string): boolean {
   return isValidNameFormat(name)
 }
 
-// Validates llama.cpp model name: must contain GGUF and follow org/model:quant format
 function validateLlamaCPPModelName(name: string): boolean {
   if (!name?.trim()) return false
   if (!GGUF_RE.test(name)) return false
@@ -35,6 +38,17 @@ export function validateModelName(name: string, backend: BackendId): boolean {
   return backend === 'llamacpp'
     ? validateLlamaCPPModelName(name)
     : validateOpenVINOModelName(name)
+}
+
+/** Like {@link validateModelName}, with the llama.cpp quant optional. */
+export function validateUploadModelName(
+  name: string,
+  backend: BackendId,
+): boolean {
+  if (backend !== 'llamacpp') return validateOpenVINOModelName(name)
+  if (!name?.trim()) return false
+  if (!GGUF_RE.test(name)) return false
+  return LLAMACPP_UPLOAD_NAME_RE.test(name)
 }
 
 export function isKnownWeightFormat(format: string): boolean {

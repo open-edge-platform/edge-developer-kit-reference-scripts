@@ -9,6 +9,7 @@ import type { Service } from '@/payload-types'
 import type { WorkerConfig } from '../types'
 
 import { worker as diarizationWorker } from '../diarization/data'
+import { worker as embeddingsWorker } from '../embeddings/data'
 import { worker as faceRecognitionWorker } from '../face-recognition/data'
 import { worker as fileWatcherWorker } from '../file-watcher/data'
 import { worker as frameGenerationWorker } from '../frame-generation/data'
@@ -31,6 +32,7 @@ import { worker as wakeWordDetectionWorker } from '../wake-word-detection/data'
 /** Worker configuration registry keyed by Payload service type. */
 const workerRegistry: Partial<Record<Service['type'], WorkerConfig>> = {
   diarization: diarizationWorker,
+  embeddings: embeddingsWorker,
   'face-recognition': faceRecognitionWorker,
   'file-watcher': fileWatcherWorker,
   'frame-generation': frameGenerationWorker,

@@ -3,64 +3,73 @@
 
 'use client'
 
-import { useQuery } from '@tanstack/react-query'
-import {
-  useGetService,
-  useServiceLiveStatus,
-} from '@/context/service-status-context'
-import { getLanguagesForModel, getVoicesForModel } from '../config'
-
-/** Per-language download status derived from individual voice files. */
-export interface LanguageDownloadStatus {
-  code: string
-  label: string
-  downloaded: number
-  total: number
-}
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { fetchJson } from '@/lib/browser/fetch-json'
+import { useTtsModel } from './use-synthesize-speech'
 
 /**
- * Fetches voice download status from the TTS worker and derives
- * per-language download information.
- *
- * Only polls while the TTS service is online.
+ * Normalises `GET /v1/audio/voices`: built-in workers answer `{ voiceId: downloaded }`; OEP answers
+ * model info whose `supported_speakers` are bundled (always available) and matched
+ * case-insensitively upstream, so they are added as sent and lowercased.
  */
-export function useTtsVoiceStatus() {
-  const ttsStatus = useServiceLiveStatus('text-to-speech')
-  const isOnline = ttsStatus === 'online'
-  const ttsService = useGetService('text-to-speech')
-  const currentModel =
-    ttsService?.currentModel ?? ttsService?.defaultModel?.name ?? 'kokoro'
+function toVoiceMap(payload: unknown): Record<string, boolean> {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return {}
+  }
+  const record = payload as Record<string, unknown>
+  if (Array.isArray(record.supported_speakers)) {
+    const map: Record<string, boolean> = {}
+    for (const speaker of record.supported_speakers) {
+      if (typeof speaker !== 'string') continue
+      map[speaker] = true
+      map[speaker.toLowerCase()] = true
+    }
+    return map
+  }
+  const map: Record<string, boolean> = {}
+  for (const [voice, downloaded] of Object.entries(record)) {
+    if (typeof downloaded === 'boolean') map[voice] = downloaded
+  }
+  return map
+}
+
+interface UseTtsVoiceStatusOptions {
+  /** Part of the query key, so an instance restarted with another model is asked again. */
+  model?: string
+  /** False pauses polling (the instance is stopped). */
+  enabled?: boolean
+}
+
+/** Voices the worker at `apiBase` has downloaded; keeps the last answer while not polling. */
+export function useTtsVoiceStatus(
+  apiBase: string | undefined,
+  options?: UseTtsVoiceStatusOptions,
+) {
+  const typeModel = useTtsModel()
+  const model = options?.model ?? typeModel
+  const queryClient = useQueryClient()
+  const queryKey = ['tts-voice-status', apiBase, model]
 
   const { data: voiceMap } = useQuery<Record<string, boolean>>({
-    queryKey: ['tts-voice-status', currentModel],
+    queryKey,
     queryFn: async () => {
-      const res = await fetch('/api/text-to-speech/v1/audio/voices')
-      if (!res.ok) throw new Error('Failed to fetch voice status')
-      return res.json()
+      const data = await fetchJson<unknown>(`${apiBase}/v1/audio/voices`, {
+        errorMessage: 'Failed to fetch voice status',
+      })
+      return toVoiceMap(data)
     },
-    enabled: isOnline,
+    enabled: Boolean(apiBase) && options?.enabled !== false,
     refetchInterval: 30_000,
     staleTime: 10_000,
   })
 
-  if (!voiceMap) {
-    return { voiceMap: null, languages: null, isVoiceDownloaded: () => false }
+  return {
+    voiceMap: voiceMap ?? null,
+    isVoiceDownloaded: (voiceId: string) => voiceMap?.[voiceId] === true,
+    /** Marks a voice that just spoke as downloaded without waiting for the next poll. */
+    markDownloaded: (voiceId: string) =>
+      queryClient.setQueryData<Record<string, boolean>>(queryKey, (prev) =>
+        prev ? { ...prev, [voiceId]: true } : prev,
+      ),
   }
-
-  const modelLanguages = getLanguagesForModel(currentModel)
-  const modelVoices = getVoicesForModel(currentModel)
-  const languages: LanguageDownloadStatus[] = modelLanguages.map((lang) => {
-    const langVoices = modelVoices.filter((v) => v.language === lang.label)
-    const downloaded = langVoices.filter((v) => voiceMap[v.id] === true).length
-    return {
-      code: lang.value,
-      label: lang.label,
-      downloaded,
-      total: langVoices.length,
-    }
-  })
-
-  const isVoiceDownloaded = (voiceId: string) => voiceMap[voiceId] === true
-
-  return { voiceMap, languages, isVoiceDownloaded }
 }

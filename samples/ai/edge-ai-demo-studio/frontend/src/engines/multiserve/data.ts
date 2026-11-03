@@ -1,27 +1,13 @@
 // Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-import path from 'node:path'
 import type { Service } from '@/payload-types'
-import { LOGS_DIR, MODELS_DIR, WORKER_DIR } from '../../lib/constants'
 import type { Engine } from '../types'
 import { supportedBackends } from './backends'
+import { MULTISERVE_HEALTH_URL } from './health'
 
-const MULTISERVE_MODELS_DIR = path.join(MODELS_DIR, 'multiserve')
-export const MULTISERVE_REPO_PATH = path.join(WORKER_DIR, 'engine/multiserve')
-const MULTISERVE_LOGS_DIR = path.join(LOGS_DIR, 'multiserve')
-
-const getModelsDir = (type?: Service['type']): string => {
-  if (!type) {
-    return MULTISERVE_MODELS_DIR
-  }
-  return path.join(MULTISERVE_MODELS_DIR, type)
-}
-
-const getLogsDir = (type?: Service['type']): string => {
-  if (!type) return MULTISERVE_LOGS_DIR
-  return path.join(MULTISERVE_LOGS_DIR, type)
-}
+// Client-safe: the browser reads this through `@/engines/registry`. Paths,
+// processes and probes live in `./server.ts`.
 
 const getModelName = (
   modelConfig: Service['models']['default'],
@@ -44,17 +30,15 @@ export const engine: Engine = {
   name: 'Multiserve',
   value: 'multiserve',
   description:
-    'This is a custom that engine that helps to run models on OpenVINO or llama.cpp backend',
+    'A custom engine that runs models on the OpenVINO or llama.cpp backend',
   supportedBackends,
-  getSubPorts: (port) => [port + 1, port + 2, port + 3, port + 4], //ovms needs +1, llama.cpp needs +2, +3  and +4
+  // One port per instance: the model servers the engine starts pick free loopback ports outside
+  // the instance range, and the engine proxies them (`/v1/status` lists their URLs).
   getModelName,
-  getLogsDir,
-  getModelsDir,
-  getLogs: (type) => [
-    {
-      type: 'api',
-      label: 'multiserve',
-      target: `/v1/logs?name=${type.replace(/-/g, '_')}`,
-    },
+  healthUrl: MULTISERVE_HEALTH_URL,
+  // The model server's log, which `/api/logs` reads from disk: the engine
+  // is stopped when its model fails, and its `/v1/logs` with it.
+  getLogs: () => [
+    { type: 'engine', label: 'multiserve', target: 'multiserve' },
   ],
 }

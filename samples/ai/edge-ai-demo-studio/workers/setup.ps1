@@ -1,7 +1,6 @@
 ﻿# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
-# Parameters for switches and options
 param(
     [switch]$SkipSTT,
     [switch]$SkipEmbedding,
@@ -9,36 +8,36 @@ param(
     [switch]$SkipTTS,
     [switch]$Verbose,
     [switch]$ContinueOnError, # Continue setup for remaining workers even if one fails
-    [switch]$SetupWorkers    # Run child worker setup when provided
+    [switch]$SetupWorkers    # Create the shared worker environment
 )
 
-# Set UTF-8 encoding for console output
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
-# Set error action preference
 $ErrorActionPreference = "Stop"
 
-# Define logging paths
+# Windows PowerShell 5.1 redraws the progress bar per chunk, which makes
+# Invoke-WebRequest and Expand-Archive many times slower, and may default to
+# TLS 1.0, which GitHub refuses.
+$ProgressPreference = 'SilentlyContinue'
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+
 $SCRIPT_DIR = $PSScriptRoot
 $LOG_DIR = Join-Path (Split-Path $SCRIPT_DIR -Parent) "logs\setup"
-$TIMESTAMP = Get-Date -Format "yyyyMMdd_HHmmss"
+# Shared with scripts\win\setup.ps1 when it runs this, so Cleanup-OldLogs
+# finds the parent's logs and leaves them alone.
+$TIMESTAMP = if ($env:EADS_SETUP_TIMESTAMP) { $env:EADS_SETUP_TIMESTAMP } else { Get-Date -Format "yyyyMMdd_HHmmss" }
 
-# Function to write colored output
 function Write-ColorOutput {
     param([string]$Message, [string]$Color = "White")
     Write-Host $Message -ForegroundColor $Color
 }
 
-# Function to cleanup old logs
 function Cleanup-OldLogs {
     if (Test-Path $LOG_DIR) {
-        # Check if there are any logs with current timestamp (means we're called from parent setup)
-        # In that case, don't cleanup as it would delete the parent's log file
         $currentTimestampLogs = Get-ChildItem -Path $LOG_DIR -Include "*_${TIMESTAMP}.log" -Recurse -File -ErrorAction SilentlyContinue
         if ($currentTimestampLogs.Count -eq 0) {
             Write-ColorOutput "Cleaning up old setup logs..." "Yellow"
-            # Remove all log files recursively from subdirectories
             Get-ChildItem -Path $LOG_DIR -Include "*.log","*.log.*" -Recurse -File | Remove-Item -Force -ErrorAction SilentlyContinue
             # Remove empty subdirectories
             Get-ChildItem -Path $LOG_DIR -Directory -Recurse | Where-Object { @(Get-ChildItem -Path $_.FullName -Force).Count -eq 0 } | Remove-Item -Force -ErrorAction SilentlyContinue
@@ -49,7 +48,6 @@ function Cleanup-OldLogs {
     }
 }
 
-# Function to setup logging
 function Setup-Logging {
     if (-not (Test-Path $LOG_DIR)) {
         New-Item -ItemType Directory -Path $LOG_DIR -Force | Out-Null
@@ -60,7 +58,6 @@ function Setup-Logging {
     }
 }
 
-# Function to get service-specific log file
 function Get-ServiceLog {
     param([string]$ServiceName)
     $serviceLogDir = Join-Path $LOG_DIR $ServiceName
@@ -70,10 +67,10 @@ function Get-ServiceLog {
     return Join-Path $serviceLogDir "${ServiceName}_${TIMESTAMP}.log"
 }
 
-$thirdpartyDir = Join-Path $PWD "thirdparty"
-$rootThirdpartyDir = Join-Path (Split-Path $PWD -Parent) "thirdparty"
+$thirdpartyDir = Join-Path $SCRIPT_DIR "thirdparty"
+$rootThirdpartyDir = Join-Path (Split-Path $SCRIPT_DIR -Parent) "thirdparty"
 $uvZipPath = Join-Path $thirdpartyDir "uv.zip"
-$uvZipUrl = "https://releases.astral.sh/github/uv/releases/download/0.11.22/uv-x86_64-pc-windows-msvc.zip"
+$uvZipUrl = "https://releases.astral.sh/github/uv/releases/download/0.13.3/uv-x86_64-pc-windows-msvc.zip"
 $uvDir = Join-Path $thirdpartyDir "uv"
 $uvPath = Join-Path $uvDir "uv.exe"
 
@@ -82,67 +79,61 @@ $ovmsZipUrl = 'https://github.com/openvinotoolkit/model_server/releases/download
 $ovmsDir = Join-Path $thirdpartyDir "ovms"
 $ovmsPath = Join-Path $ovmsDir "ovms.exe"
 
-# FFmpeg is installed at project root thirdparty directory
 $ffmpegDir = Join-Path $rootThirdpartyDir "ffmpeg"
 $ffmpegPath = Join-Path $ffmpegDir "bin\ffmpeg.exe"
 
-# Function to check if uv is installed
 function Test-UvInstalled {
     Write-ColorOutput "Checking if uv is installed..." "Yellow"
-    
-    # Check if uv exists in thirdparty folder (local to workers directory)
+    # Another uv release writes uv.lock differently when it re-locks, so replace a copy that isn't the pinned one.
+    $pinnedUv = ($uvZipUrl -split '/download/')[1].Split('/')[0]
+
     if (Test-Path $uvPath) {
-        Write-ColorOutput "✅ uv found in thirdparty folder." "Green"
-        # Test uv directly without adding to PATH
+        $installedUv = ""
         try {
-            & $uvPath --version | Out-Null
-            if ($LASTEXITCODE -ne 0) {
-                Write-ColorOutput "❌ ERROR: uv binary found but not working properly" "Red"
-                exit 1
-            }
+            $versionLine = & $uvPath --version 2>$null
+            if ($LASTEXITCODE -eq 0) { $installedUv = ("$versionLine" -split ' ')[1] }
+        } catch { $installedUv = "" }
+        if ($installedUv -eq $pinnedUv) {
+            Write-ColorOutput "✅ uv found in thirdparty folder." "Green"
             return $uvPath
-        } catch {
-            Write-ColorOutput "❌ ERROR: uv binary found but not working properly" "Red"
-            exit 1
         }
+        if ($installedUv) {
+            Write-ColorOutput "uv $installedUv in thirdparty folder is not the pinned $pinnedUv. Downloading $pinnedUv..." "Yellow"
+        } else {
+            # Usually a download or extract that was cut short.
+            Write-ColorOutput "uv binary in thirdparty folder is not working. Downloading it again..." "Yellow"
+        }
+        Remove-Item $uvDir -Recurse -Force -ErrorAction SilentlyContinue
+    } else {
+        Write-ColorOutput "uv is not installed. Downloading uv binary..." "Yellow"
     }
-    
-    # uv not found in thirdparty, download it
-    Write-ColorOutput "uv is not installed. Downloading uv binary..." "Yellow"
     
     $uvLogFile = Get-ServiceLog -ServiceName "uv"
     "=== UV Setup Log - $(Get-Date) ===" | Out-File -FilePath $uvLogFile -Encoding utf8
     
     try {
-        # Create thirdparty directory in workers folder if it doesn't exist
         if (-not (Test-Path $thirdpartyDir)) {
             New-Item -ItemType Directory -Path $thirdpartyDir -ErrorAction Stop | Out-Null
         }
         
-        # Create uv subdirectory
         if (-not (Test-Path $uvDir)) {
             New-Item -ItemType Directory -Path $uvDir -ErrorAction Stop | Out-Null
         }
         
-        # Download uv zip file        
         Write-ColorOutput "Downloading uv from $uvZipUrl..." "White"
         Invoke-WebRequest -Uri $uvZipUrl -OutFile $uvZipPath -ErrorAction Stop
         
-        # Extract the zip file to uv subdirectory
         Write-ColorOutput "Extracting uv binary..." "White"
         Expand-Archive -Path $uvZipPath -DestinationPath $uvDir -Force -ErrorAction Stop
         
-        # Remove the zip file
         Remove-Item $uvZipPath -Force -ErrorAction SilentlyContinue
         
-        # Verify installation
         if (-not (Test-Path $uvPath)) {
             Write-ColorOutput "❌ ERROR: uv executable not found at $uvPath after extraction" "Red"
             "UV setup failed at $(Get-Date)" | Out-File -FilePath $uvLogFile -Append -Encoding utf8
             exit 1
         }
         
-        # Test if uv works directly
         & $uvPath --version | Out-Null
         if ($LASTEXITCODE -ne 0) {
             Write-ColorOutput "❌ ERROR: uv installation verification failed" "Red"
@@ -164,7 +155,18 @@ function Test-UvInstalled {
     }
 }
 
-# Function to download third-party dependencies
+# The version setup recorded when it installed OVMS, else the one the package
+# reports in its metadata ("2026.2.0.5e9dcfc46"); $null when neither exists.
+function Get-InstalledOvmsVersion {
+    $marker = Join-Path $ovmsDir ".installed-version"
+    if (Test-Path $marker) { return (Get-Content $marker -Raw).Trim() }
+    $metadata = Join-Path $ovmsDir "metadata.json"
+    if (Test-Path $metadata) {
+        try { return (Get-Content $metadata -Raw | ConvertFrom-Json).PROJECT_VERSION } catch { return $null }
+    }
+    return $null
+}
+
 function Get-ThirdPartyDependencies {
     Write-ColorOutput "Creating thirdparty directory..." "Yellow"
     
@@ -179,27 +181,49 @@ function Get-ThirdPartyDependencies {
 
     Set-Location $thirdpartyDir
 
-    # Install OVMS
-    if (Test-Path "ovms") {
-        Write-ColorOutput "✅ OVMS directory already exists. Skipping download." "Green"
+    # The OVMS URL pins the wanted version; an install of any other version is replaced.
+    $ovmsWanted = if ($ovmsZipUrl -match '_(\d+\.\d+\.\d+)_python') { $Matches[1] } else { $null }
+    $ovmsInstalled = if (Test-Path $ovmsDir) { Get-InstalledOvmsVersion } else { $null }
+    if ($ovmsInstalled -and ($ovmsInstalled -eq $ovmsWanted -or $ovmsInstalled.StartsWith("$ovmsWanted."))) {
+        Write-ColorOutput "✅ OVMS $ovmsInstalled already installed. Skipping download." "Green"
     } else {
-        Write-ColorOutput "Downloading OpenVINO Model Server for Windows..." "Yellow"
-        
+        if (Test-Path $ovmsDir) {
+            $ovmsFrom = if ($ovmsInstalled) { $ovmsInstalled } else { '(unknown version)' }
+            Write-ColorOutput "Replacing OVMS $ovmsFrom with $ovmsWanted..." "Yellow"
+        } else {
+            Write-ColorOutput "Downloading OpenVINO Model Server for Windows..." "Yellow"
+        }
+
         $ovmsLogFile = Get-ServiceLog -ServiceName "ovms"
         "=== OVMS Setup Log - $(Get-Date) ===" | Out-File -FilePath $ovmsLogFile -Encoding utf8
-        
+
+        # Extract beside the current install so a failure leaves it usable.
+        $ovmsStaging = Join-Path $thirdpartyDir "ovms.new"
+        $ovmsOld = Join-Path $thirdpartyDir "ovms.old"
         try {
             Write-ColorOutput "Downloading from $ovmsZipUrl..." "White"
             Invoke-WebRequest -Uri $ovmsZipUrl -OutFile $ovmsZipPath -ErrorAction Stop
-            
+
             Write-ColorOutput "Extracting OVMS..." "White"
-            Expand-Archive -Path $ovmsZipPath -DestinationPath $thirdpartyDir -ErrorAction Stop
+            if (Test-Path $ovmsStaging) { Remove-Item $ovmsStaging -Recurse -Force -ErrorAction Stop }
+            Expand-Archive -Path $ovmsZipPath -DestinationPath $ovmsStaging -ErrorAction Stop
             Remove-Item $ovmsZipPath -Force -ErrorAction SilentlyContinue
-            
-            Write-ColorOutput "✅ OVMS downloaded and extracted successfully." "Green"
+
+            # A rename fails as a whole while ovms.exe is running; a delete
+            # would stop partway and leave a broken install.
+            if (Test-Path $ovmsOld) { Remove-Item $ovmsOld -Recurse -Force -ErrorAction Stop }
+            if (Test-Path $ovmsDir) { Rename-Item $ovmsDir "ovms.old" -ErrorAction Stop }
+            Move-Item (Join-Path $ovmsStaging "ovms") $ovmsDir -ErrorAction Stop
+            Remove-Item $ovmsStaging, $ovmsOld -Recurse -Force -ErrorAction SilentlyContinue
+            Set-Content -Path (Join-Path $ovmsDir ".installed-version") -Value $ovmsWanted -Encoding ascii
+
+            Write-ColorOutput "✅ OVMS $ovmsWanted downloaded and extracted successfully." "Green"
             "OVMS setup completed successfully at $(Get-Date)" | Out-File -FilePath $ovmsLogFile -Append -Encoding utf8
         } catch {
-            Write-ColorOutput "❌ ERROR: Failed to download OVMS" "Red"
+            if (-not (Test-Path $ovmsDir) -and (Test-Path $ovmsOld)) {
+                Rename-Item $ovmsOld "ovms" -ErrorAction SilentlyContinue
+            }
+            Write-ColorOutput "❌ ERROR: Failed to install OVMS (stop Edge AI Studio first if it is running)" "Red"
             Write-ColorOutput "Error: $($_.Exception.Message)" "Red"
             "OVMS setup failed at $(Get-Date): $($_.Exception.Message)" | Out-File -FilePath $ovmsLogFile -Append -Encoding utf8
             Set-Location "..\"
@@ -207,7 +231,6 @@ function Get-ThirdPartyDependencies {
         }
     }
     
-    # Verify FFmpeg is available from project root (installed by main setup.ps1)
     if (-not (Test-Path $ffmpegPath)) {
         Write-ColorOutput "⚠️  WARNING: FFmpeg not found at $ffmpegPath" "Yellow"
         Write-ColorOutput "FFmpeg should be installed by the main setup.ps1 script at the project root." "Yellow"
@@ -219,26 +242,22 @@ function Get-ThirdPartyDependencies {
     Set-Location "..\"
 }
 
-# Function to run setup for a worker service
 function Invoke-WorkerSetup {
     param([string]$WorkerPath, [string]$WorkerName)
     
     Write-ColorOutput "Running setup for $WorkerName..." "Yellow"
     
-    # Check if setup.ps1 exists
     $setupScript = Join-Path $WorkerPath "setup.ps1"
     if (-not (Test-Path $setupScript)) {
         Write-ColorOutput "Warning: setup.ps1 not found in $WorkerPath, skipping..." "Yellow"
         return @{ Success = $false; ErrorMessage = "setup.ps1 not found"; ExitCode = -1 }
     }
     
-    # Create worker-specific log file
     $workerLogFile = Get-ServiceLog -ServiceName $WorkerName
     $workerErrorLogFile = "${workerLogFile}.err"
     "=== $WorkerName Setup Log - $(Get-Date) ===" | Out-File -FilePath $workerLogFile -Encoding utf8
     
     try {
-        # Build arguments for the setup script
         $scriptArgs = @("-File", $setupScript)
 
         # Use the same PowerShell executable that is running this script (pwsh vs powershell.exe)
@@ -246,7 +265,6 @@ function Invoke-WorkerSetup {
         
         Write-ColorOutput "Logging to: $workerLogFile" "DarkGray"
         
-        # Run setup with output redirected to log file
         $setupProcess = Start-Process -FilePath $psExe `
             -ArgumentList $scriptArgs `
             -WorkingDirectory $WorkerPath `
@@ -256,7 +274,6 @@ function Invoke-WorkerSetup {
             -RedirectStandardOutput $workerLogFile `
             -RedirectStandardError $workerErrorLogFile
         
-        # In verbose mode, display the captured log content to console
         if ($Verbose) {
             if (Test-Path $workerLogFile) {
                 Get-Content $workerLogFile | Write-Host
@@ -267,7 +284,6 @@ function Invoke-WorkerSetup {
             }
         }
         
-        # Check the exit code
         if ($setupProcess.ExitCode -eq 0) {
             Write-ColorOutput "✅ $WorkerName setup completed successfully!" "Green"
             Write-ColorOutput "Log: $workerLogFile" "DarkGray"
@@ -292,175 +308,58 @@ function Invoke-WorkerSetup {
     }
 }
 
-# Main script
 Push-Location $SCRIPT_DIR
 Write-ColorOutput "=== Workers Setup ===" "Cyan"
 
-# Setup logging
 Setup-Logging
 
 Test-UvInstalled
 
-# Temporarily add UV_EXE to environment
 $env:UV_PATH = $uvPath
 $env:UV_EXE = $uvPath
 
 Get-ThirdPartyDependencies
+$WorkersRoot = $PSScriptRoot
+$ScriptDir = $PSScriptRoot
+. (Join-Path $WorkersRoot "scripts\worker-common.ps1")
+Initialize-Ovms
 
-# By default do not run child worker setup. Require -SetupWorkers to enable,
-# matching behavior of the POSIX `setup.sh` which uses `--setup-workers`.
 if (-not $SetupWorkers) {
-    Write-ColorOutput "Skipping worker setup (default). Use -SetupWorkers to enable." "Yellow"
+    Write-ColorOutput "Shared third-party tools are ready. Use -SetupWorkers to create the shared environment." "Yellow"
     exit 0
 }
 
-# Discover all subdirectories with setup.ps1 files
-$workerDirectories = Get-ChildItem -Path $PWD -Directory | Where-Object {
-    Test-Path (Join-Path $_.FullName "setup.ps1")
+if ($SkipSTT -or $SkipTTS -or $SkipLLM -or $SkipEmbedding) {
+    Write-ColorOutput "NOTE: -Skip flags have no effect; service dependencies are installed on first start." "Yellow"
 }
 
-if ($workerDirectories.Count -eq 0) {
-    Write-ColorOutput "No worker directories with setup.ps1 found." "Yellow"
-    exit 0
+Write-ColorOutput "Syncing shared worker packages into workers\.venv..." "Yellow"
+$failed = $false
+$wsLog = Get-ServiceLog -ServiceName "workspace"
+# uv logs progress to stderr; under "Stop", PS 5.1 would treat that as a terminating error.
+$prevEAP = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+& $uvPath sync --frozen --inexact --project $PSScriptRoot --package worker-common --package model-downloader --package helper *>&1 | ForEach-Object { "$_" } | Tee-Object -FilePath $wsLog
+$ErrorActionPreference = $prevEAP
+if ($LASTEXITCODE -eq 0) {
+    Write-ColorOutput "Shared worker environment ready: $(Join-Path $PSScriptRoot '.venv')" "Green"
+} else {
+    Write-ColorOutput "FAILED: Shared worker sync (exit $LASTEXITCODE). See $wsLog" "Red"
+    if (-not $ContinueOnError) { exit 1 }
+    $failed = $true
 }
 
-# Create service mapping for skip parameters
-$skipMapping = @{
-    "speech-to-speech" = $SkipSTT
-    "embedding" = $SkipEmbedding
-    "text-generation" = $SkipLLM
-    "text-to-speech" = $SkipTTS
-}
-
-Write-ColorOutput "Found worker directories:" "White"
-foreach ($dir in $workerDirectories) {
-    $shouldSkip = $skipMapping[$dir.Name]
-    $status = if ($shouldSkip) { " (SKIPPED)" } else { "" }
-    Write-ColorOutput "  - $($dir.Name)$status" "White"
-}
-Write-ColorOutput "=================" "Cyan"
-
-# Track setup results
-$setupResults = @()
-$successfulSetups = @()
-$failedSetups = @()
-
-try {    
-    foreach ($workerDir in $workerDirectories) {
-        $shouldSkip = $skipMapping[$workerDir.Name]
-        
-        if (-not $shouldSkip) {
-            Write-ColorOutput "Starting $($workerDir.Name) setup..." "Yellow"
-            
-            $result = Invoke-WorkerSetup -WorkerPath $workerDir.FullName -WorkerName $workerDir.Name
-            $setupResults += @{
-                WorkerName = $workerDir.Name
-                Success = $result.Success
-                ErrorMessage = $result.ErrorMessage
-                ExitCode = $result.ExitCode
-            }
-            
-            if ($result.Success) {
-                $successfulSetups += $workerDir.Name
-            } else {
-                $workerLogFile = Get-ServiceLog -ServiceName $workerDir.Name
-                $failedSetups += @{
-                    Name = $workerDir.Name
-                    Error = $result.ErrorMessage
-                    ExitCode = $result.ExitCode
-                    LogFile = $workerLogFile
-                }
-                
-                if (-not $ContinueOnError) {
-                    Write-ColorOutput "Setup failed for $($workerDir.Name). Use -ContinueOnError to continue with remaining workers." "Red"
-                    throw "Setup failed for $($workerDir.Name): $($result.ErrorMessage)"
-                } else {
-                    Write-ColorOutput "⚠️  Setup failed for $($workerDir.Name), but continuing with remaining workers..." "Yellow"
-                    Write-Host ""
-                }
-            }
-        } else {
-            Write-ColorOutput "Skipping $($workerDir.Name) setup..." "Yellow"
-            $setupResults += @{
-                WorkerName = $workerDir.Name
-                Success = $null  # Indicates skipped
-                ErrorMessage = "Skipped by user"
-                ExitCode = 0
-            }
-        }
-    }
-    
-    # Display summary
-    Write-ColorOutput "`n=== Setup Summary ===" "Cyan"
-    
-    if ($successfulSetups.Count -gt 0) {
-        Write-ColorOutput "✅ Successful setups ($($successfulSetups.Count)):" "Green"
-        foreach ($success in $successfulSetups) {
-            Write-ColorOutput "  - $success" "Green"
-        }
-    }
-    
-    if ($failedSetups.Count -gt 0) {
-        Write-ColorOutput "❌ Failed setups ($($failedSetups.Count)):" "Red"
-        foreach ($failure in $failedSetups) {
-            Write-ColorOutput "  - $($failure.Name): $($failure.Error) (Exit Code: $($failure.ExitCode))" "Red"
-            if ($failure.LogFile -and (Test-Path $failure.LogFile)) {
-                Write-ColorOutput "    Log: $($failure.LogFile)" "Yellow"
-            }
-        }
-    }
-    
-    $skippedCount = ($setupResults | Where-Object { $_.Success -eq $null }).Count
-    if ($skippedCount -gt 0) {
-        Write-ColorOutput "⏭️  Skipped setups ($skippedCount):" "Yellow"
-        foreach ($result in ($setupResults | Where-Object { $_.Success -eq $null })) {
-            Write-ColorOutput "  - $($result.WorkerName)" "Yellow"
-        }
-    }
-    
-    Write-ColorOutput "===================" "Cyan"
-    
-    # Final status
-    if ($failedSetups.Count -eq 0) {
-        Write-ColorOutput "All worker setup processes completed successfully!" "Green"
-        exit 0
-    } else {
-        # Print failed worker names prominently for parent script
-        $failedWorkerNames = ($failedSetups | ForEach-Object { $_.Name }) -join ", "
-        Write-Host ""
-        Write-ColorOutput "╔════════════════════════════════════════════════════════════════╗" "Red"
-        Write-ColorOutput "║  WORKERS SETUP FAILED - The following workers had errors:" "Red"
-        Write-ColorOutput "║  → $failedWorkerNames" "Red"
-        Write-ColorOutput "╚════════════════════════════════════════════════════════════════╝" "Red"
-        Write-Host ""
-        
-        Write-ColorOutput "Some worker setups failed. Check the summary above for details." "Red"
-        Write-ColorOutput "Check individual service logs in $LOG_DIR for detailed error information." "Yellow"
+$engineSetup = Join-Path $PSScriptRoot "engines\setup.ps1"
+if (Test-Path $engineSetup) {
+    $engineLog = Get-ServiceLog -ServiceName "engines"
+    $ErrorActionPreference = "Continue"
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $engineSetup *>&1 | ForEach-Object { "$_" } | Tee-Object -FilePath $engineLog
+    $ErrorActionPreference = $prevEAP
+    if ($LASTEXITCODE -ne 0) {
+        Write-ColorOutput "FAILED: Engine setup (exit $LASTEXITCODE). See $engineLog" "Red"
         exit 1
     }
-    
-} catch {
-    Write-ColorOutput "Error occurred: $($_.Exception.Message)" "Red"
-    if ($Verbose) {
-        Write-ColorOutput "Stack trace: $($_.ScriptStackTrace)" "Red"
-    }
-    
-    # Display partial summary if any setups were completed
-    if ($setupResults.Count -gt 0) {
-        Write-ColorOutput "`n=== Partial Setup Summary ===" "Cyan"
-        foreach ($result in $setupResults) {
-            if ($result.Success -eq $true) {
-                Write-ColorOutput "✅ $($result.WorkerName): Success" "Green"
-            } elseif ($result.Success -eq $false) {
-                Write-ColorOutput "❌ $($result.WorkerName): $($result.ErrorMessage)" "Red"
-            } else {
-                Write-ColorOutput "⏭️  $($result.WorkerName): Skipped" "Yellow"
-            }
-        }
-        Write-ColorOutput "===================" "Cyan"
-    }
-    
-    exit 1
-} finally {
-    Pop-Location
 }
+if ($failed) { exit 1 }
+Write-ColorOutput "Shared third-party tools and worker environment are ready. Service dependencies install on first start." "Green"
+exit 0

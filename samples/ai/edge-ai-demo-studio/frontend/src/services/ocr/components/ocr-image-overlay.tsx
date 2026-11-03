@@ -3,6 +3,7 @@
 
 'use client'
 
+import { RefImage } from '@/components/common/ref-media'
 import { cn } from '@/lib/utils'
 import type { OcrRegion } from '../hooks'
 
@@ -33,8 +34,7 @@ export function OcrImageOverlay({
   return (
     <div className="space-y-2">
       <div className="bg-muted/30 relative overflow-hidden rounded-lg border">
-        {/* eslint-disable-next-line @next/next/no-img-element -- src is an object URL of a user-selected local file; next/image cannot optimize blob: URLs */}
-        <img
+        <RefImage
           src={imageUrl}
           alt="OCR source"
           className="block h-auto max-h-[32rem] w-full object-contain"

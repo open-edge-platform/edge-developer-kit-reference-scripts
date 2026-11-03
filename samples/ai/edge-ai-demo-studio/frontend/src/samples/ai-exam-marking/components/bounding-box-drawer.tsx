@@ -3,12 +3,15 @@
 
 'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useId } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { X } from 'lucide-react'
-import type { BoundingBox } from '@/lib/ai-exam-marking/types'
+import type { BoundingBox } from '@/samples/ai-exam-marking/lib/types'
+
+const BOX_FIELDS = ['x1', 'y1', 'x2', 'y2'] as const
 
 interface BoundingBoxDrawerProps {
   imageUrl: string
@@ -17,12 +20,41 @@ interface BoundingBoxDrawerProps {
   initialBox?: BoundingBox
 }
 
+/** Canvas-space point under a mouse event, scaled for the canvas's CSS size. */
+function toCanvasPoint(
+  e: React.MouseEvent<HTMLCanvasElement>,
+  canvas: HTMLCanvasElement,
+): { x: number; y: number } {
+  const rect = canvas.getBoundingClientRect()
+  return {
+    x: Math.round((e.clientX - rect.left) * (canvas.width / rect.width)),
+    y: Math.round((e.clientY - rect.top) * (canvas.height / rect.height)),
+  }
+}
+
+function drawBox(
+  ctx: CanvasRenderingContext2D,
+  box: BoundingBox,
+  {
+    stroke,
+    width,
+    alpha = 1,
+  }: { stroke: string; width: number; alpha?: number },
+): void {
+  ctx.strokeStyle = stroke
+  ctx.lineWidth = width
+  ctx.globalAlpha = alpha
+  ctx.strokeRect(box.x1, box.y1, box.x2 - box.x1, box.y2 - box.y1)
+  ctx.globalAlpha = 1
+}
+
 export function BoundingBoxDrawer({
   imageUrl,
   onSaveBoundingBox,
   onClose,
   initialBox,
 }: BoundingBoxDrawerProps) {
+  const fieldId = useId()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [isDrawing, setIsDrawing] = useState(false)
   const [startPoint, setStartPoint] = useState<{ x: number; y: number } | null>(
@@ -33,6 +65,7 @@ export function BoundingBoxDrawer({
   )
   const [image, setImage] = useState<HTMLImageElement | null>(null)
 
+  // Memoized by hand: it is a dependency of the redraw effect below.
   const drawImage = useCallback(
     (img: HTMLImageElement) => {
       const canvas = canvasRef.current
@@ -45,39 +78,29 @@ export function BoundingBoxDrawer({
 
       ctx.drawImage(img, 0, 0)
 
-      // Draw existing box if present
       if (currentBox) {
-        ctx.strokeStyle = '#ef4444'
-        ctx.lineWidth = 2
-        ctx.strokeRect(
-          currentBox.x1,
-          currentBox.y1,
-          currentBox.x2 - currentBox.x1,
-          currentBox.y2 - currentBox.y1,
-        )
+        drawBox(ctx, currentBox, { stroke: '#ef4444', width: 2 })
       }
     },
     [currentBox],
   )
 
-  // Load image
   useEffect(() => {
     const img = new Image()
     img.crossOrigin = 'anonymous'
-    img.onload = () => {
-      setImage(img)
-      drawImage(img)
-    }
+    img.onload = () => setImage(img)
     img.src = imageUrl
-  }, [imageUrl, drawImage])
+  }, [imageUrl])
+
+  useEffect(() => {
+    if (image) drawImage(image)
+  }, [image, currentBox, drawImage])
 
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current
     if (!canvas) return
 
-    const rect = canvas.getBoundingClientRect()
-    const x = Math.round((e.clientX - rect.left) * (canvas.width / rect.width))
-    const y = Math.round((e.clientY - rect.top) * (canvas.height / rect.height))
+    const { x, y } = toCanvasPoint(e, canvas)
 
     setIsDrawing(true)
     setStartPoint({ x, y })
@@ -89,27 +112,20 @@ export function BoundingBoxDrawer({
     const canvas = canvasRef.current
     if (!canvas) return
 
-    const rect = canvas.getBoundingClientRect()
-    const x = Math.round((e.clientX - rect.left) * (canvas.width / rect.width))
-    const y = Math.round((e.clientY - rect.top) * (canvas.height / rect.height))
+    const { x, y } = toCanvasPoint(e, canvas)
 
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    // Redraw image and box
     ctx.drawImage(image, 0, 0)
 
-    // Draw preview box
     const x1 = Math.min(startPoint.x, x)
     const y1 = Math.min(startPoint.y, y)
     const x2 = Math.max(startPoint.x, x)
     const y2 = Math.max(startPoint.y, y)
 
-    ctx.strokeStyle = '#3b82f6'
-    ctx.lineWidth = 2
-    ctx.strokeRect(x1, y1, x2 - x1, y2 - y1)
+    drawBox(ctx, { x1, y1, x2, y2 }, { stroke: '#3b82f6', width: 2 })
 
-    // Draw current box if exists
     if (
       currentBox &&
       (currentBox.x1 !== x1 ||
@@ -117,16 +133,7 @@ export function BoundingBoxDrawer({
         currentBox.x2 !== x2 ||
         currentBox.y2 !== y2)
     ) {
-      ctx.strokeStyle = '#ef4444'
-      ctx.lineWidth = 1
-      ctx.globalAlpha = 0.5
-      ctx.strokeRect(
-        currentBox.x1,
-        currentBox.y1,
-        currentBox.x2 - currentBox.x1,
-        currentBox.y2 - currentBox.y1,
-      )
-      ctx.globalAlpha = 1
+      drawBox(ctx, currentBox, { stroke: '#ef4444', width: 1, alpha: 0.5 })
     }
   }
 
@@ -136,9 +143,7 @@ export function BoundingBoxDrawer({
     const canvas = canvasRef.current
     if (!canvas) return
 
-    const rect = canvas.getBoundingClientRect()
-    const x = Math.round((e.clientX - rect.left) * (canvas.width / rect.width))
-    const y = Math.round((e.clientY - rect.top) * (canvas.height / rect.height))
+    const { x, y } = toCanvasPoint(e, canvas)
 
     const x1 = Math.min(startPoint.x, x)
     const y1 = Math.min(startPoint.y, y)
@@ -150,13 +155,10 @@ export function BoundingBoxDrawer({
     setIsDrawing(false)
     setStartPoint(null)
 
-    // Redraw with new box
     const ctx = canvas.getContext('2d')
     if (ctx) {
       ctx.drawImage(image, 0, 0)
-      ctx.strokeStyle = '#ef4444'
-      ctx.lineWidth = 2
-      ctx.strokeRect(x1, y1, x2 - x1, y2 - y1)
+      drawBox(ctx, { x1, y1, x2, y2 }, { stroke: '#ef4444', width: 2 })
     }
   }
 
@@ -178,8 +180,13 @@ export function BoundingBoxDrawer({
     <Card className="w-full p-6">
       <div className="flex items-center justify-between">
         <h3 className="font-semibold">Draw Grading Box</h3>
-        <Button variant="ghost" size="sm" onClick={onClose}>
-          <X className="h-4 w-4" />
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onClose}
+          aria-label="Close the grading box editor"
+        >
+          <X className="h-4 w-4" aria-hidden />
         </Button>
       </div>
 
@@ -202,42 +209,23 @@ export function BoundingBoxDrawer({
 
         {currentBox && (
           <div className="bg-muted grid grid-cols-2 gap-4 rounded-lg p-4 md:grid-cols-4">
-            <div>
-              <label className="text-xs font-medium">X1</label>
-              <Input
-                type="number"
-                value={currentBox.x1}
-                readOnly
-                className="bg-background text-xs"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium">Y1</label>
-              <Input
-                type="number"
-                value={currentBox.y1}
-                readOnly
-                className="bg-background text-xs"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium">X2</label>
-              <Input
-                type="number"
-                value={currentBox.x2}
-                readOnly
-                className="bg-background text-xs"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium">Y2</label>
-              <Input
-                type="number"
-                value={currentBox.y2}
-                readOnly
-                className="bg-background text-xs"
-              />
-            </div>
+            {BOX_FIELDS.map((field) => (
+              <div key={field}>
+                <Label
+                  htmlFor={`${fieldId}-${field}`}
+                  className="text-xs font-medium"
+                >
+                  {field.toUpperCase()}
+                </Label>
+                <Input
+                  id={`${fieldId}-${field}`}
+                  type="number"
+                  value={currentBox[field]}
+                  readOnly
+                  className="bg-background text-xs"
+                />
+              </div>
+            ))}
           </div>
         )}
 

@@ -13,7 +13,6 @@ export const service: ServiceMeta = {
   longDescription:
     'A PowerPoint translation pipeline that uses a local large language model to translate presentation slides while preserving all formatting, fonts, and layout. Supports multiple languages, speaker notes translation, proper noun preservation, and automatic font size adjustment.',
   icon: FileText,
-  port: 8024,
   supportedOS: ['linux', 'windows'],
   execution: { mode: 'worker' },
   logSources: [
@@ -31,5 +30,5 @@ export const service: ServiceMeta = {
 
 export const worker: WorkerConfig = {
   buildArgs: (doc: PayloadService) => ['--port', String(doc.port)],
-  workerSubDir: 'ppt-translator',
+  workerSubDir: 'services/ppt-translator',
 }

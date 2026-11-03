@@ -4,20 +4,17 @@
 'use client'
 
 import type { UIMessage } from 'ai'
-import {
-  BrainCircuit,
-  Check,
-  ChevronRight,
-  Copy,
-  Loader2,
-  Edit,
-} from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Check, Copy, Loader, Edit } from 'lucide-react'
+import { useState } from 'react'
 import { Streamdown } from 'streamdown'
+import { InlineNotice } from '@/components/common/inline-notice'
 import { Button } from '@/components/ui/button'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { cn } from '@/lib/utils'
-import { stripMarkdownFence } from '../utils'
+import { Textarea } from '@/components/ui/textarea'
+import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
+import { ReasoningBlock } from '@/services/text-generation/components/reasoning-block'
+import { extractTextContent } from '@/services/text-generation/lib/chat-helpers'
+import { stripMarkdownFence } from '../lib/soap'
+import { formatTimestamp } from '../lib/timestamps'
 
 interface SoapReportPanelProps {
   message: UIMessage | undefined
@@ -25,64 +22,8 @@ interface SoapReportPanelProps {
   savedReport?: string | null
   onUpdateReport: (report: string) => void
   reportCreatedAt: string
-}
-
-function ReasoningBlock({
-  text,
-  isStreaming,
-}: {
-  text: string
-  isStreaming: boolean
-}) {
-  const [expanded, setExpanded] = useState(false)
-  const showContent = isStreaming || expanded
-  const scrollRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (isStreaming && scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-    }
-  }, [text, isStreaming])
-
-  if (!text.trim() && !isStreaming) return null
-
-  return (
-    <div className="border-border/50 bg-muted/30 overflow-hidden rounded-lg border">
-      <button
-        type="button"
-        onClick={() => !isStreaming && setExpanded(!expanded)}
-        className={cn(
-          'flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors',
-          !isStreaming && 'hover:bg-muted/50 cursor-pointer',
-        )}
-      >
-        <BrainCircuit className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
-        <span className="text-muted-foreground font-medium">
-          {isStreaming ? 'Thinking…' : 'Reasoning'}
-        </span>
-        {isStreaming ? (
-          <Loader2 className="text-muted-foreground ml-auto h-3 w-3 animate-spin" />
-        ) : (
-          <ChevronRight
-            className={cn(
-              'text-muted-foreground/60 ml-auto h-3 w-3 transition-transform',
-              expanded && 'rotate-90',
-            )}
-          />
-        )}
-      </button>
-      {showContent && (
-        <div
-          ref={scrollRef}
-          className="max-h-40 overflow-y-auto border-t px-3 py-2"
-        >
-          <p className="text-muted-foreground text-xs leading-relaxed whitespace-pre-wrap">
-            {text}
-          </p>
-        </div>
-      )}
-    </div>
-  )
+  /** Why the last report for this session failed, if it did. */
+  error?: string | null
 }
 
 export function SoapReportPanel({
@@ -91,19 +32,16 @@ export function SoapReportPanel({
   savedReport,
   onUpdateReport,
   reportCreatedAt,
+  error,
 }: SoapReportPanelProps) {
-  const [copied, setCopied] = useState(false)
+  const { copied, copy } = useCopyToClipboard()
   const [editing, setEditing] = useState(false)
   const [editedReport, setEditedReport] = useState<string | null>(null)
 
-  const liveTextContent = message?.parts
-    .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
-    .map((p) => p.text)
-    .join('')
+  const liveTextContent = message ? extractTextContent(message) : undefined
 
-  // While generating, the live stream is the source of truth. Once generation
-  // finishes, savedReport is authoritative — this ensures edits reflect
-  // immediately even if a stale chat message lingers after generation ends.
+  // The live stream while generating, then savedReport, so edits show even if a stale chat
+  // message lingers.
   const copyText = stripMarkdownFence(
     (isGenerating ? liveTextContent : savedReport) ||
       savedReport ||
@@ -111,56 +49,54 @@ export function SoapReportPanel({
       '',
   )
 
-  const handleCopy = useCallback(async () => {
-    if (!copyText) return
-    try {
-      await navigator.clipboard.writeText(copyText)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    } catch {
-      // Clipboard API not available
-    }
-  }, [copyText])
+  const handleCopy = () => {
+    if (copyText) copy(copyText)
+  }
 
-  const handleEdit = useCallback(() => {
+  const handleEdit = () => {
     setEditing(true)
     setEditedReport(copyText)
-  }, [copyText])
+  }
 
-  const handleCancelEdit = useCallback(() => {
+  const handleCancelEdit = () => {
     setEditing(false)
     setEditedReport(null)
-  }, [])
+  }
 
   const hasContent = message && message.parts.length > 0
 
   return (
-    <div className="flex h-full min-h-0 flex-col border-l">
+    <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center justify-between border-b px-4 py-2">
-        <h3 className="text-sm font-semibold">Clinical Report</h3>
+        <h3 className="text-sm font-semibold">Clinical report</h3>
         <span className="flex items-center gap-2">
           {copyText && !isGenerating && (
             <Button
-              className="h-7 w-7"
-              size="sm"
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8"
               onClick={handleEdit}
               disabled={editing}
+              aria-label="Edit report"
+              title="Edit report"
             >
-              <Edit className="h-3.5 w-3.5" />
+              <Edit className="h-3.5 w-3.5" aria-hidden />
             </Button>
           )}
           {copyText && (
             <Button
               size="icon"
               variant="ghost"
-              className="h-7 w-7"
+              className="h-8 w-8"
               onClick={handleCopy}
               disabled={editing}
+              aria-label={copied ? 'Report copied' : 'Copy report'}
+              title="Copy report"
             >
               {copied ? (
-                <Check className="h-3.5 w-3.5 text-green-500" />
+                <Check className="text-success h-3.5 w-3.5" aria-hidden />
               ) : (
-                <Copy className="h-3.5 w-3.5" />
+                <Copy className="h-3.5 w-3.5" aria-hidden />
               )}
             </Button>
           )}
@@ -168,16 +104,27 @@ export function SoapReportPanel({
       </div>
 
       {editing ? (
-        <textarea
-          className="min-h-0 flex-1 p-4"
+        <Textarea
+          aria-label="Clinical report"
+          className="min-h-0 flex-1 resize-none rounded-none border-0 p-4 shadow-none focus-visible:ring-0"
           value={editedReport ?? copyText}
           onChange={(e) => setEditedReport(e.target.value)}
         />
       ) : (
-        <ScrollArea className="min-h-0 flex-1 p-4">
+        // A native scroller, so a wide table in the note scrolls sideways
+        // within the pane rather than being cut off.
+        <div className="min-h-0 flex-1 overflow-auto p-4">
+          {error && !isGenerating && (
+            <InlineNotice tone="destructive" size="sm" className="mb-4">
+              Report failed: {error}
+            </InlineNotice>
+          )}
           {isGenerating && !hasContent && (
             <div className="flex flex-col items-center gap-2 py-8">
-              <Loader2 className="text-muted-foreground h-6 w-6 animate-spin" />
+              <Loader
+                className="text-muted-foreground h-6 w-6 animate-spin"
+                aria-hidden
+              />
               <p className="text-muted-foreground text-sm">
                 Generating clinical report…
               </p>
@@ -222,20 +169,20 @@ export function SoapReportPanel({
 
           {!isGenerating && !hasContent && !savedReport && (
             <p className="text-muted-foreground py-8 text-center text-sm">
-              Process a recording and click &quot;Generate Report&quot; to
-              create a SOAP note
+              Once a recording is transcribed, choose Generate report to write a
+              SOAP note
             </p>
           )}
-        </ScrollArea>
+        </div>
       )}
 
       {reportCreatedAt && !editing && (
         <div className="text-muted-foreground border-t p-4 text-xs">
-          Updated {reportCreatedAt}
+          Updated {formatTimestamp(reportCreatedAt)}
         </div>
       )}
       {editing && (
-        <div className="ml-2 flex items-center gap-2 border-t p-2">
+        <div className="flex items-center gap-2 border-t p-3">
           <Button
             size="sm"
             onClick={() => {
@@ -244,8 +191,8 @@ export function SoapReportPanel({
               setEditedReport(null)
             }}
           >
-            <Check className="mr-1 h-3.5 w-3.5" />
-            Update
+            <Check className="mr-1 h-3.5 w-3.5" aria-hidden />
+            Save report
           </Button>
           <Button size="sm" variant="outline" onClick={handleCancelEdit}>
             Cancel

@@ -1,7 +1,6 @@
 # Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
-# Save the original location
 $script:originalLocation = Get-Location
 $SCRIPT_DIR = $PSScriptRoot
 $PROJECT_ROOT = Split-Path (Split-Path $SCRIPT_DIR -Parent) -Parent
@@ -9,7 +8,6 @@ $FRONTEND_DIR = Join-Path $PROJECT_ROOT "frontend"
 Push-Location -Path $FRONTEND_DIR
 
 
-# Global variables to track PATH changes
 $script:originalPath = $null
 $script:nodePathAdded = $false
 
@@ -75,7 +73,6 @@ function Test-NodeInstalled {
             & $nodePaths.NodeExecutable --version | Out-Null
             Write-Host "Node.js is ready to use." -ForegroundColor Green
             
-            # Add Node.js to PATH for easier npm usage
             Add-NodeToPath -NodeBinPath $nodePaths.NodeDir | Out-Null
             return $true
         } catch {
@@ -141,13 +138,12 @@ function Wait-FrontendReady {
 function Start-Frontend {
     Write-Host "Starting frontend..." -ForegroundColor Green
 
-    # Ensure Node.js is installed and in PATH
     if (-not (Test-NodeInstalled)) {
         Write-Host "Node.js is not installed. Exiting setup." -ForegroundColor Red
         exit 1
     }
 
-    $frontendUrl = "http://localhost:$(Get-FrontendPort)"
+    $frontendUrl = "http://127.0.0.1:$(Get-FrontendPort)"
     # Probe an API route that calls getPayload() so Payload runs onInit;
     # the root page is statically prerendered and never touches Payload.
     $healthcheckUrl = "$frontendUrl/api/services"
@@ -156,12 +152,13 @@ function Start-Frontend {
     try {
         $proc = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "npm run start" `
             -WorkingDirectory $FRONTEND_DIR -NoNewWindow -PassThru
+        # Without a cached handle, ExitCode reads back empty after the exit.
+        $null = $proc.Handle
     } catch {
         Write-Host "ERROR: Failed to start frontend." -ForegroundColor Red
         throw $_
     }
 
-    # Hit the server once it is up to force Payload to run onInit
     if (Wait-FrontendReady -Process $proc -Url $healthcheckUrl) {
         Write-Host "Frontend start completed. Server is ready at $frontendUrl" -ForegroundColor Green
     }
@@ -173,7 +170,6 @@ function Start-Frontend {
     }
 }
 
-# Main execution
 try {
     Write-Host "Starting setup..." -ForegroundColor Green
     Add-FrontendEnv
@@ -185,9 +181,7 @@ try {
     Read-Host "Press Enter to continue..."
     exit 1
 } finally {
-    # Always restore the original PATH
     Remove-NodeFromPath
-    # Restore the original location
     if ($script:originalLocation) {
         Pop-Location
         Write-Host "Returned to original directory: $script:originalLocation" -ForegroundColor Green

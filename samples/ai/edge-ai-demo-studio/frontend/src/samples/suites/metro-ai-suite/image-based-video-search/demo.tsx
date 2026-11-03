@@ -5,18 +5,15 @@
 
 import { useGetService } from '@/context/service-status-context'
 import { SuiteLaunchPanel } from '@/samples/common/components/suite-launch-panel'
+import { suiteHttpsUrl } from '@/services/suites/ports'
 import { imageBasedVideoSearchSuite } from './config'
 
 export function ImageBasedVideoSearchDemo() {
   const service = useGetService(imageBasedVideoSearchSuite.serviceId)
-  // The suite's nginx reverse proxy maps the service's HTTP port to 80 and
-  // HTTPS port (== port+1) to 443, so the user-facing launch URL is HTTPS on
-  // port+1. Fall back to the configured default when the service has not
-  // been registered yet (e.g. during initial render).
-  const httpsPort = service?.port ? service.port + 1 : undefined
-  const launchUrl = httpsPort
-    ? `https://localhost:${httpsPort}/`
-    : imageBasedVideoSearchSuite.launchUrl
+  // The suite serves its own page over HTTPS; until the instance has a port
+  // (e.g. during the first render) the configured default stands in.
+  const launchUrl =
+    suiteHttpsUrl(service) ?? imageBasedVideoSearchSuite.launchUrl
 
   return (
     <SuiteLaunchPanel {...imageBasedVideoSearchSuite} launchUrl={launchUrl} />

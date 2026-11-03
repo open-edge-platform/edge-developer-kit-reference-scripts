@@ -1,0 +1,38 @@
+{
+  "$schema": "./docs/deployment.schema.json",
+  "services": {
+    "text-generation": [
+      {
+        "label": "Text Generation",
+        "status": "online",
+        "models": {
+          "default": {
+            "name": "OpenVINO/Qwen3.5-4B-int4-ov",
+            "device": "GPU",
+            "backend": "openvino"
+          }
+        }
+      },
+      {
+        "label": "CPU fallback",
+        "status": "offline",
+        "models": {
+          "default": {
+            "device": "CPU"
+          }
+        }
+      }
+    ],
+    "speech-to-text": [
+      {
+        "label": "Speech to Text",
+        "status": "online",
+        "models": {
+          "default": {
+            "device": "NPU"
+          }
+        }
+      }
+    ]
+  }
+}

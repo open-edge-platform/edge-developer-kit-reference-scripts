@@ -3,11 +3,9 @@
 
 'use client'
 
-import type React from 'react'
 import { useState } from 'react'
+import { ImageDropZone } from '@/components/common/image-drop-zone'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import {
   Card,
   CardContent,
@@ -15,10 +13,17 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { Upload, Crop, ArrowRight } from 'lucide-react'
-import type { DataEntry, BoundingBox } from '@/lib/ai-exam-marking/types'
+import { Crop, ArrowRight } from 'lucide-react'
+import { readFileAsDataUrl } from '@/lib/browser/image-utils'
+import { toastError } from '@/lib/browser/toast-error'
+import type {
+  DataEntry,
+  BoundingBox,
+} from '@/samples/ai-exam-marking/lib/types'
+import { resizeImage } from '@/samples/ai-exam-marking/lib/image-utils'
 import Image from 'next/image'
 import { BoundingBoxDrawer } from './bounding-box-drawer'
+import { QuestionHeading } from './question-heading'
 
 type BoundingBoxSetupProps = {
   dataEntries: DataEntry[]
@@ -35,33 +40,18 @@ export function BoundingBoxSetup({
   setReferenceImage,
   onNext,
 }: BoundingBoxSetupProps) {
+  // The question whose box is being drawn; the drawer is open while set.
   const [selectedEntryForBBox, setSelectedEntryForBBox] = useState<
     string | null
   >(null)
-  const [showBBoxDrawer, setShowBBoxDrawer] = useState(false)
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      const reader = new FileReader()
-      reader.onload = (event) => {
-        const dataUrl = event.target?.result as string
-        const img = new globalThis.Image()
-        img.onload = () => {
-          const canvas = document.createElement('canvas')
-          canvas.width = 612
-          canvas.height = 792
-          const ctx = canvas.getContext('2d')
-          if (ctx) {
-            ctx.drawImage(img, 0, 0, 612, 792)
-            setReferenceImage(canvas.toDataURL('image/jpeg', 0.95))
-          } else {
-            setReferenceImage(dataUrl)
-          }
-        }
-        img.src = dataUrl
-      }
-      reader.readAsDataURL(file)
+  const handleImageUpload = async (file: File | null) => {
+    if (!file) return
+    try {
+      const dataUrl = await readFileAsDataUrl(file)
+      setReferenceImage(await resizeImage(dataUrl, 612, 792))
+    } catch (error) {
+      toastError(`Could not read ${file.name}`)(error)
     }
   }
 
@@ -75,13 +65,7 @@ export function BoundingBoxSetup({
         ),
       )
       setSelectedEntryForBBox(null)
-      setShowBBoxDrawer(false)
     }
-  }
-
-  const handleOpenBBoxDrawer = (entryId: string) => {
-    setSelectedEntryForBBox(entryId)
-    setShowBBoxDrawer(true)
   }
 
   const handleClearBoundingBox = (entryId: string) => {
@@ -94,11 +78,11 @@ export function BoundingBoxSetup({
 
   return (
     <div className="space-y-6">
-      {showBBoxDrawer && referenceImage && selectedEntryForBBox && (
+      {referenceImage && selectedEntryForBBox && (
         <BoundingBoxDrawer
           imageUrl={referenceImage}
           onSaveBoundingBox={handleSaveBoundingBox}
-          onClose={() => setShowBBoxDrawer(false)}
+          onClose={() => setSelectedEntryForBBox(null)}
           initialBox={
             dataEntries.find((e) => e.id === selectedEntryForBBox)?.boundingBox
           }
@@ -115,21 +99,12 @@ export function BoundingBoxSetup({
         </CardHeader>
         <CardContent className="space-y-4">
           {!referenceImage ? (
-            <Label className="border-border hover:bg-muted/50 flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-8">
-              <Upload className="text-muted-foreground mb-2 h-8 w-8" />
-              <span className="text-sm font-medium">
-                Click to upload sample image
-              </span>
-              <span className="text-muted-foreground text-xs">
-                PNG, JPG, JPEG up to 10MB
-              </span>
-              <Input
-                type="file"
-                accept="image/*"
-                onChange={handleImageUpload}
-                className="hidden"
-              />
-            </Label>
+            <ImageDropZone
+              file={null}
+              onFileChange={(file) => void handleImageUpload(file)}
+              label="Click to upload sample image"
+              hint="PNG, JPG, JPEG up to 10MB"
+            />
           ) : (
             <div className="space-y-4">
               <div className="rounded-lg border p-4">
@@ -173,18 +148,11 @@ export function BoundingBoxSetup({
             <div className="space-y-3 text-xs">
               {dataEntries.map((entry) => (
                 <div key={entry.id} className="bg-card rounded-lg border p-4">
-                  <div className="mb-3 flex items-center gap-3">
-                    <div className="bg-primary text-primary-foreground flex h-8 w-8 shrink-0 items-center justify-center rounded-full font-semibold">
-                      {entry.number}
-                    </div>
-                    <div>
-                      <p className="text-card-foreground font-medium">
-                        Question {entry.number}
-                      </p>
-                      <p className="text-muted-foreground text-xs">
-                        {entry.marks} marks
-                      </p>
-                    </div>
+                  <div className="mb-3">
+                    <QuestionHeading
+                      number={entry.number}
+                      marks={entry.marks}
+                    />
                   </div>
                   <div className="space-y-2">
                     {entry.boundingBox && (
@@ -211,10 +179,10 @@ export function BoundingBoxSetup({
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => handleOpenBBoxDrawer(entry.id)}
+                      onClick={() => setSelectedEntryForBBox(entry.id)}
                       className="w-full text-xs"
                     >
-                      <Crop className="mr-2 h-3 w-3" />
+                      <Crop className="mr-2 h-3 w-3" aria-hidden />
                       {entry.boundingBox ? 'Edit' : 'Draw'} Bounding Box
                     </Button>
                   </div>
@@ -227,7 +195,7 @@ export function BoundingBoxSetup({
 
       <Button onClick={onNext} className="w-full text-xs">
         Continue to Grading
-        <ArrowRight className="ml-2 h-4 w-4" />
+        <ArrowRight className="ml-2 h-4 w-4" aria-hidden />
       </Button>
     </div>
   )

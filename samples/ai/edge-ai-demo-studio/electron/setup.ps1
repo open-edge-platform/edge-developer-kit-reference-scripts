@@ -1,23 +1,17 @@
 # Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
-# Set UTF-8 encoding for console output
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
-# Exit on error
 $ErrorActionPreference = "Stop"
 
-# Get the directory of this script
 $SCRIPT_DIR = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-# Node.js path from thirdparty
 $NODE_PATH = Join-Path $SCRIPT_DIR "..\thirdparty\node"
 
-# Save original PATH for restoration
 $script:originalPath = $env:PATH
 
-# Function to set up Node.js environment
 function Setup-NodeEnv {
     Write-Host "Setting up Node.js environment..."
     
@@ -28,7 +22,6 @@ function Setup-NodeEnv {
     
     $env:PATH = "$NODE_PATH;$env:PATH"
     
-    # Check for node and npm
     if (-Not (Get-Command node -ErrorAction SilentlyContinue)) {
         Write-Host "Error: node is not available in PATH." -ForegroundColor Red
         exit 1
@@ -43,7 +36,6 @@ function Setup-NodeEnv {
     Write-Host "npm version: $(npm -v)"
 }
 
-# Main installation
 function Main {
     Push-Location $SCRIPT_DIR
     try {
@@ -52,11 +44,12 @@ function Main {
         
         Write-Host "Installing npm dependencies..."
         npm install
-        
+        # A failing native command does not throw, even under Stop.
+        if ($LASTEXITCODE -ne 0) { throw "npm install exited with $LASTEXITCODE" }
+
         Write-Host "Electron Builder setup complete!" -ForegroundColor Green
     }
     finally {
-        # Restore original PATH
         if ($script:originalPath) {
             $env:PATH = $script:originalPath
         }

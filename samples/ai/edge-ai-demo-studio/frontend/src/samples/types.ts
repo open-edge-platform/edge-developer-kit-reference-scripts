@@ -20,12 +20,13 @@ export type DependencyRole = 'required' | 'optional'
 export interface RecommendedServiceConfig {
   /** Recommended device string (e.g. 'GPU.0', 'CPU'). */
   device?: string
-  /** Pin a specific model when applying the recommendation. */
   model?: string
   /** Pin a quantization format (e.g. 'int8', 'int4'). */
   quant?: string
   /** Pin an inference backend (e.g. 'openvino', 'llamacpp'). */
   backend?: string
+  /** The pinned model's type when not plain text: `multimodal` marks a vision model. */
+  modelType?: string
 }
 
 export interface ServiceDependency {
@@ -33,7 +34,6 @@ export interface ServiceDependency {
   role: DependencyRole
   capabilityKey?: string
   impactText?: string
-  /** Recommended configuration for the "Use Recommended Config" feature. */
   recommended?: RecommendedServiceConfig
 }
 
@@ -87,11 +87,10 @@ function resolveDevice(
   const reqLower = requested.toLowerCase()
   const reqFamily = reqLower.split(/[.:]/)[0]
 
-  // 1. Exact match (case-insensitive)
   const exactMatch = availableDevices.find((d) => d.toLowerCase() === reqLower)
   if (exactMatch) return { device: exactMatch, fellBack: false }
 
-  // 2. Same-family alternative (e.g. GPU.1 → GPU.0); GPU ↔ XPU are interchangeable
+  // Same family (GPU.1 → GPU.0); GPU and XPU are interchangeable.
   const familyMatch = availableDevices.find((d) => {
     const family = d.split(/[.:]/)[0].toLowerCase()
     if (reqFamily === 'gpu' || reqFamily === 'xpu') {
@@ -107,7 +106,6 @@ function resolveDevice(
     }
   }
 
-  // 3. CPU fallback
   const cpu = availableDevices.find(
     (d) => d.split(/[.:]/)[0].toLowerCase() === 'cpu',
   )
@@ -119,7 +117,6 @@ function resolveDevice(
     }
   }
 
-  // 4. First available
   const first = availableDevices[0]
   if (first) {
     return {
@@ -132,7 +129,7 @@ function resolveDevice(
   return { device: requested, fellBack: false }
 }
 
-// ─── Recommended config helpers ───────────────────────────────────────────────
+// Recommended config helpers
 
 export interface ResolvedRecommendation {
   serviceId: PayloadService['type']
@@ -141,43 +138,40 @@ export interface ResolvedRecommendation {
   model?: string
   quant?: string
   backend?: string
+  modelType?: string
   /** True when the preferred device was unavailable and a fallback was used. */
   fellBack: boolean
   /** Human-readable explanation of the fallback (e.g. "GPU.1 not available — using GPU.0"). */
   fallbackNote?: string
 }
 
-/** Returns true when at least one dependency declares a recommended config. */
 export function hasRecommendedConfig(s: Sample): boolean {
   return s.dependencies.some((d) => d.recommended !== undefined)
 }
 
-/**
- * Resolves the recommended config for every dependency that declares one,
- * applying device fallback logic against `availableDevices`.
- */
+/** Each dependency's recommended config, with device fallback against `availableDevices`. */
 export function resolveRecommendedConfigs(
   s: Sample,
   availableDevices?: string[],
 ): ResolvedRecommendation[] {
-  return s.dependencies
-    .filter((dep) => dep.recommended !== undefined)
-    .map((dep) => {
-      const rec = dep.recommended as RecommendedServiceConfig
-      const rawDevice = rec.device
-      const resolved = rawDevice
-        ? resolveDevice(rawDevice, availableDevices)
-        : undefined
-      return {
-        serviceId: dep.serviceId,
+  return s.dependencies.flatMap(({ serviceId, recommended: rec }) => {
+    if (!rec) return []
+    const resolved = rec.device
+      ? resolveDevice(rec.device, availableDevices)
+      : undefined
+    return [
+      {
+        serviceId,
         device: resolved?.device,
         model: rec.model,
         quant: rec.quant,
         backend: rec.backend,
+        modelType: rec.modelType,
         fellBack: resolved?.fellBack ?? false,
         fallbackNote: resolved?.note,
-      }
-    })
+      },
+    ]
+  })
 }
 
 export function getCategoryLabels(s: Sample): string[] {
@@ -190,18 +184,8 @@ export function hasCategory(s: Sample, category: string): boolean {
   return getCategoryLabels(s).includes(category)
 }
 
+/** Coarse verdict the gallery filters and sorts on; the full model is `samples/common/readiness.ts`. */
 export type ReadinessStatus = 'ready' | 'partial' | 'blocked'
-
-export function getReadinessLabel(status: ReadinessStatus): string {
-  switch (status) {
-    case 'ready':
-      return 'Ready to launch'
-    case 'partial':
-      return 'Ready (limited)'
-    case 'blocked':
-      return 'Setup required'
-  }
-}
 
 export const categories: SampleCategory[] = [
   'Conversational AI',

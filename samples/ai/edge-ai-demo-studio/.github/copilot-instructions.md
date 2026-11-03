@@ -25,7 +25,7 @@ This is **Demo Studio** — an AI demo platform with a Next.js frontend that orc
 - **Service registry** (`src/services/`) — convention-based auto-discovery. Each service lives in `src/services/<name>/` with `data.ts` + `demo.tsx`
 - **Use case registry** (`src/samples/`) — same pattern, `data.ts` with `sample` export
 - **Context providers** (`src/context/`): `ServiceStatusContext` (polls service state), `SettingsContext` (localStorage), `SystemInfoContext` (OS/device detection)
-- **API proxying**: `next.config.ts` rewrites `/api/<service-name>/*` to worker `http://localhost:<port>/*`
+- **API proxying**: `next.config.ts` rewrites `/api/<service-name>/*` to worker `http://127.0.0.1:<port>/*`
 
 ### Workers (`workers/`)
 
@@ -65,8 +65,8 @@ Status flow: `inactive` → `prepare` → `active` (or `error`), with `restart` 
 
 - `src/services/types.ts` — Core `Service`, `ServiceMeta`, `WorkerConfig` types
 - `src/engines/types.ts` — `Engine`, `EngineBackend` types
-- `src/lib/process-handler.ts` — Worker process lifecycle management
-- `src/lib/healthcheck.ts` — Health polling with JSONata evaluation
+- `src/lib/workers/process-handler.ts` — Worker process lifecycle management
+- `src/lib/workers/health/` — Health polling with JSONata evaluation (probes, status, poller)
 - `src/lib/constants.ts` — Paths (`WORKER_DIR`, `MODELS_DIR`, `LOGS_DIR`, `UV_PATH`), allowed ports
 - `src/payload/collections/Services.ts` — Payload CMS service schema and hooks
 - `scripts/generate-registries.mjs` — Auto-discovery codegen script
@@ -97,10 +97,12 @@ npm run lint:fix     # eslint auto-fix
 - Use **Biome** rules: 2-space indentation, organized imports, no `console.*` (use `src/lib/logger.ts` instead)
 - Path aliases: `@/*` maps to `src/*`, `@payload-config` maps to `src/payload.config.ts`
 - Prefer Server Components by default (RSC enabled). Use `"use client"` only when needed for interactivity
-- UI components go in `src/components/ui/` (shadcn primitives) or `src/components/dashboard/` (app-specific)
+- UI components go in `src/components/ui/` (shadcn primitives), `src/components/common/` (generic shared pieces, tones, notices, dialogs), `src/components/configure/` (configure-sheet primitives), or a domain folder: `shell/`, `sidebar/`, `services/` (service management), `samples/` (gallery and sample pages), `dashboard/` (overview widgets)
 - Use `cn()` from `@/lib/utils` for conditional class merging (clsx + tailwind-merge)
 - Service demo components receive `{ service: Service }` prop and use `DemoParameterSidebar` for controls
 - Never import from `_generated/services.ts` in server config contexts — use `_generated/meta.ts` instead (it has no React dependencies)
+- `next.config.ts` is transpiled on its own, without the `@/` alias: it may only import plain generated data (`src/services/_generated/proxied-services.ts`), never the service registry
+- Client components (`'use client'`) must not import Node/Payload/server modules — the `client-boundary/no-server-imports` ESLint rule enforces it
 
 ### API Calls — TanStack Query
 
@@ -153,7 +155,7 @@ Do not hoist code to a broader scope unless it is genuinely needed there.
 
 1. Create `src/services/<name>/data.ts` — export `service: ServiceMeta` (and optionally `worker: WorkerConfig`)
 2. Create `src/services/<name>/demo.tsx` — export a React demo component
-3. Optionally create `docs.ts` and `config.ts`
+3. Optionally create `docs.ts` and `config.ts`; declare `metrics` in `data.ts` only when the model type has a figure people benchmark it with (see "Live metrics" in `docs/DEVELOPMENT.md`)
 4. Create `src/services/<name>/hooks/use-params.ts` — export a params hook (see **Demo Parameter Hooks** below)
 5. Place any hooks or components used only by this service inside `src/services/<name>/`
 6. Run `npm run codegen` to regenerate `_generated/` registries
@@ -258,7 +260,7 @@ Workers do **not** have setup scripts (only `engine` and `helper` do). All prere
 
 ### Database Migrations
 
-Payload CMS auto-generates SQLite migrations in `src/migrations/`. Follow these rules whenever you change the database schema (collections, fields, etc.):
+Payload CMS auto-generates SQLite migrations in `src/payload/migrations/`. Follow these rules whenever you change the database schema (collections, fields, etc.):
 
 - **If a release migration already exists** (i.e., the migration has been shipped/tagged) — do **not** modify it. Create a new migration instead by running `next build` or the Payload migration CLI.
 - **If no release exists yet** (still in development) — you may modify the latest migration file directly rather than stacking a new one.

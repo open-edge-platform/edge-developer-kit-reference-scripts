@@ -1,29 +1,11 @@
 #!/usr/bin/env node
 // Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
-/* eslint-disable no-console */
 
 /**
- * Auto-discovers service, samples, and engine folders and generates
- * _generated/ registries for each.
- * Run: npm run codegen
- *
- * When adding a new service:
- *   1. Create src/services/<folder>/data.ts  — must export `service` (ServiceMeta)
- *   2. Create src/services/<folder>/demo.tsx — must export a single React component
- *   3. For worker-based services: also export `worker` (WorkerConfig) from data.ts
- *   4. Run `npm run codegen`
- *
- * When adding a new sample:
- *   1. Create src/samples/<folder>/data.ts  — must export `sample` (Sample)
- *   2. Run `npm run codegen`
- *
- * When adding a new engine:
- *   1. Create src/engines/<folder>/data.ts            — must export `engine` (Engine)
- *   2. Create src/engines/<folder>/process-handler.ts — must export `start<PascalName>Model`
- *   3. Run `npm run codegen`
- *
- * The folder name is used directly as the key in the generated maps.
+ * Discovers service, sample and engine folders and writes their _generated/ registries, keyed by
+ * folder name. Services and samples need data.ts (exporting `service` / `sample`); engines need a
+ * client-safe data.ts (`engine`) and server.ts (the EngineServer members). Run: npm run codegen
  */
 
 import {
@@ -37,10 +19,17 @@ import {
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+const print = (line) => process.stdout.write(`${line}\n`)
+// Piped into a reader that stopped early (`| head`): nothing left to say.
+process.stdout.on('error', (error) => {
+  if (error.code === 'EPIPE') process.exit(0)
+  throw error
+})
+
 const _dirname = dirname(fileURLToPath(import.meta.url))
 const srcDir = join(_dirname, '..', 'src')
 
-// ─── Common helpers ───────────────────────────────────────────────
+// Common helpers
 
 const SKIP = new Set(['common', '_generated'])
 
@@ -60,7 +49,6 @@ function key(folder) {
   return /[^a-zA-Z0-9_$]/.test(folder) ? `"${folder}"` : folder
 }
 
-/** Convert a folder name to camelCase */
 function toCamel(folder) {
   return folder.replace(/-([a-z])/g, (_, c) => c.toUpperCase())
 }
@@ -75,7 +63,6 @@ function parseDemoExport(filePath) {
   return m[1]
 }
 
-/** Check whether a string is a valid JS identifier (basic heuristic). */
 function isValidIdentifier(name) {
   return typeof name === 'string' && /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)
 }
@@ -113,14 +100,11 @@ function hasExport(filePath, name) {
   while (true) {
     idx = src.indexOf('export', idx)
     if (idx === -1) return false
-    let j = idx + 6 // move past 'export'
-    // skip whitespace
+    let j = idx + 6 // past 'export'
     while (j < src.length && isWhitespace(src[j])) j++
-    // expect 'const'
     if (src.startsWith('const', j)) {
-      j += 5 // move past 'const'
+      j += 5 // past 'const'
       while (j < src.length && isWhitespace(src[j])) j++
-      // parse identifier
       if (j < src.length && isIdentStart(src[j])) {
         let k = j + 1
         while (k < src.length && isIdentPart(src[k])) k++
@@ -128,11 +112,10 @@ function hasExport(filePath, name) {
         if (ident === name) return true
       }
     }
-    idx = idx + 6 // continue search after this 'export'
+    idx = idx + 6
   }
 }
 
-/** Ensure directory exists */
 function ensureDir(dir) {
   mkdirSync(dir, { recursive: true })
 }
@@ -182,9 +165,7 @@ function discoverLeafFolders(parentDir) {
   return found.sort((a, b) => a.key.localeCompare(b.key))
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// ─── Services ─────────────────────────────────────────────────────
-// ═══════════════════════════════════════════════════════════════════
+// Services
 
 const servicesDir = join(srcDir, 'services')
 const servicesGenDir = join(servicesDir, '_generated')
@@ -196,13 +177,13 @@ const workerRegistryPath = join(servicesGenDir, 'workers.ts')
 const docsRegistryPath = join(servicesGenDir, 'docs.ts')
 const configurePanelRegistryPath = join(servicesGenDir, 'configure-panels.ts')
 const featureProviderRegistryPath = join(servicesGenDir, 'feature-providers.ts')
+const metricsRegistryPath = join(servicesGenDir, 'metrics.ts')
+const inUseRegistryPath = join(servicesGenDir, 'in-use.ts')
 
-/** Convert a folder name to a camelCase alias (e.g. "text-generation" → "textGenerationMeta") */
 function toAlias(folder) {
   return `${toCamel(folder)}Meta`
 }
 
-/** Resolve the demo file path — supports both demo.tsx and demo/index.tsx */
 function resolveDemoPath(serviceDir) {
   const flat = join(serviceDir, 'demo.tsx')
   if (existsSync(flat)) return flat
@@ -211,13 +192,6 @@ function resolveDemoPath(serviceDir) {
   return null
 }
 
-/**
- * Resolve an optional service-specific configure panel.
- * Supports:
- *  - <service>/configure-panel.tsx
- *  - <service>/components/configure-panel.tsx
- *  - <service>/demo/components/configure-panel.tsx
- */
 function resolveConfigurePanel(serviceDir, importPath) {
   const flat = join(serviceDir, 'configure-panel.tsx')
   if (existsSync(flat)) {
@@ -251,15 +225,6 @@ function resolveConfigurePanel(serviceDir, importPath) {
   return null
 }
 
-/**
- * Resolve an optional service's "feature provider" — the headless component a
- * sample mounts to integrate this service as an optional feature. Drives the
- * featureProviderRegistry so the integration is prunable at export time
- * (see docs/OPTIONAL-SERVICES.md). Supports:
- *  - <service>/feature-provider.tsx
- *  - <service>/components/feature-provider.tsx
- *  - <service>/demo/components/feature-provider.tsx
- */
 function resolveFeatureProvider(serviceDir, importPath) {
   const candidates = [
     ['feature-provider.tsx'],
@@ -278,7 +243,24 @@ function resolveFeatureProvider(serviceDir, importPath) {
   return null
 }
 
-// Scan for subdirectories that contain data.ts (supports nested suites/* layout)
+function resolveMetricFigures(serviceDir) {
+  const filePath = join(serviceDir, 'metrics.tsx')
+  if (!existsSync(filePath)) return false
+  if (!hasExport(filePath, 'figures')) {
+    throw new Error(`${filePath} must export const figures`)
+  }
+  return true
+}
+
+function resolveInUse(serviceDir) {
+  const filePath = join(serviceDir, 'in-use.ts')
+  if (!existsSync(filePath)) return false
+  if (!/export\s+function\s+useInUse\b/.test(readFileSync(filePath, 'utf8'))) {
+    throw new Error(`${filePath} must export function useInUse`)
+  }
+  return true
+}
+
 const services = discoverLeafFolders(servicesDir).map(
   ({ key: folderKey, importPath, dir: serviceDir }) => {
     const dataPath = join(serviceDir, 'data.ts')
@@ -302,13 +284,15 @@ const services = discoverLeafFolders(servicesDir).map(
       featureProviderImportPath: featureProvider?.importPath ?? null,
       hasWorker: hasExport(dataPath, 'worker'),
       hasDocs: existsSync(join(serviceDir, 'docs.ts')),
+      hasMetrics: resolveMetricFigures(serviceDir),
+      hasInUse: resolveInUse(serviceDir),
     }
   },
 )
 
-// ─── Service code generation ──────────────────────────────────────
+// Service code generation
 
-// --- _generated/meta.ts (no React/JSX deps) ---
+// _generated/meta.ts (no React/JSX deps)
 const metaLines = [
   ...HEADER,
   ...services.map(
@@ -325,7 +309,7 @@ const metaLines = [
 
 writeFileSync(metaOutputPath, metaLines.join('\n'), 'utf8')
 
-// --- _generated/services.ts (includes React demo components) ---
+// _generated/services.ts (includes React demo components)
 const lines = [
   ...HEADER,
   'import type { Service as ServiceType } from "@/payload-types";',
@@ -361,7 +345,7 @@ const lines = [
 
 writeFileSync(outputPath, lines.join('\n'), 'utf8')
 
-// --- _generated/configure-panels.ts (optional service configure panels) ---
+// _generated/configure-panels.ts (optional service configure panels)
 const configurePanelServices = services.filter(
   (s) => s.configurePanelExport && s.configurePanelImportPath,
 )
@@ -396,10 +380,9 @@ writeFileSync(
   'utf8',
 )
 
-// --- _generated/feature-providers.ts (optional-service feature providers) ---
-// Headless components a sample mounts to integrate an optional service. Keyed
-// by service ID; a pruned service folder simply drops out of the map, so the
-// integration disappears with no static import (see docs/OPTIONAL-SERVICES.md).
+// _generated/feature-providers.ts (optional-service feature providers)
+// Headless components a sample mounts for an optional service. A pruned service folder drops out
+// of the map, leaving no static import (see docs/OPTIONAL-SERVICES.md).
 const featureProviderServices = services.filter(
   (s) => s.featureProviderExport && s.featureProviderImportPath,
 )
@@ -424,7 +407,7 @@ const featureProviderLines = [
   'export type FeatureProviderComponent = ComponentType<FeatureProviderProps>;',
   '',
   '/** Optional-service feature provider keyed by service ID. Looked up by',
-  ' *  `useFeatureProviders`; a pruned service folder drops out automatically. */',
+  ' *  `useSampleChatFeatures`; a pruned service folder drops out automatically. */',
   'export const featureProviderRegistry: Partial<Record<string, FeatureProviderComponent>> = {',
   ...featureProviderServices.map(
     ({ key: k, featureProviderExport }) =>
@@ -440,10 +423,103 @@ writeFileSync(
   'utf8',
 )
 
-// --- _generated/workers.ts (worker registry, no React deps) ---
+// _generated/metrics.ts (Live metrics figures)
+// A service's `metrics.tsx` lists the figures its demo's Live metrics panel
+// shows; a service without one shows no panel.
+const metricsServices = services.filter((s) => s.hasMetrics)
+
+function toFiguresAlias(folder) {
+  return `${toCamel(folder)}Figures`
+}
+
+const metricsLines = [
+  ...HEADER,
+  'import type { MetricFigure } from "../common/metrics/types";',
+  '',
+  ...metricsServices.map(
+    ({ key: k, importPath }) =>
+      `import { figures as ${toFiguresAlias(k)} } from "../${importPath}/metrics";`,
+  ),
+  '',
+  "/** Figures of each service's Live metrics panel (`metrics.tsx`), keyed by service ID. */",
+  'export const metricsRegistry: Partial<Record<string, MetricFigure[]>> = {',
+  ...metricsServices.map(({ key: k }) => `  ${key(k)}: ${toFiguresAlias(k)},`),
+  '};',
+  '',
+]
+
+writeFileSync(metricsRegistryPath, metricsLines.join('\n'), 'utf8')
+
+// _generated/in-use.ts (built-in services in use)
+// A built-in service's `in-use.ts` (hook `useInUse`) says when something is set up in it, so the
+// sidebar lists it. One hook calls them all unconditionally; a pruned service simply drops out.
+const inUseServices = services.filter((s) => s.hasInUse)
+
+function toInUseAlias(folder) {
+  const camel = toCamel(folder)
+  return `use${camel[0].toUpperCase()}${camel.slice(1)}InUse`
+}
+
+const inUseLines = [
+  ...HEADER,
+  ...inUseServices.map(
+    ({ key: k, importPath }) =>
+      `import { useInUse as ${toInUseAlias(k)} } from "../${importPath}/in-use";`,
+  ),
+  '',
+  '/** Ids of the built-in services in use (`in-use.ts`), which the sidebar lists. */',
+  'export function useServicesInUse(): string[] {',
+  ...inUseServices.map(
+    ({ key: k }) => `  const ${toCamel(k)} = ${toInUseAlias(k)}();`,
+  ),
+  '  return [',
+  ...inUseServices.map(
+    ({ key: k }) => `    ...(${toCamel(k)} ? ["${k}"] : []),`,
+  ),
+  '  ];',
+  '}',
+  '',
+]
+
+writeFileSync(inUseRegistryPath, inUseLines.join('\n'), 'utf8')
+
+// _generated/proxied-services.ts (plain data for next.config.ts)
+// next.config.ts is transpiled without the `@/` alias, so it can't load the service registry.
+
+/** Execution modes from data.ts: `execution: { mode: 'worker' }` or `mode: ['multiserve', 'worker']`. */
+function parseExecutionModes(dataPath) {
+  const src = readFileSync(dataPath, 'utf8')
+  const match = src.match(
+    /execution\s*:\s*\{[\s\S]*?\bmode\s*:\s*(\[[^\]]*\]|['"][\w-]+['"])/,
+  )
+  if (!match) throw new Error(`${dataPath}: cannot read execution.mode`)
+  return [...match[1].matchAll(/['"]([\w-]+)['"]/g)].map((m) => m[1])
+}
+
+const proxiedServiceKeys = services
+  .filter((s) => !parseExecutionModes(join(s.dir, 'data.ts')).includes('none'))
+  .map((s) => s.key)
+
+const proxiedLines = [
+  ...HEADER,
+  '/** Service types whose worker traffic is proxied through `/api/<type>/*`:',
+  " *  every type whose `execution.mode` is not `'none'`. Plain data, so",
+  ' *  next.config.ts can read it without loading the service registry. */',
+  'export const proxiedServiceTypes: readonly string[] = [',
+  ...proxiedServiceKeys.map((k) => `  ${JSON.stringify(k)},`),
+  '];',
+  '',
+]
+
+writeFileSync(
+  join(servicesGenDir, 'proxied-services.ts'),
+  proxiedLines.join('\n'),
+  'utf8',
+)
+
+// _generated/workers.ts (worker registry, no React deps)
 const workerServices = services.filter((s) => s.hasWorker)
 
-/** Convert folder to a camelCase worker alias (e.g. "speech-to-text" → "speechToTextWorker") */
 function toWorkerAlias(folder) {
   return `${toCamel(folder)}Worker`
 }
@@ -473,19 +549,18 @@ const workerLines = [
 
 writeFileSync(workerRegistryPath, workerLines.join('\n'), 'utf8')
 
-// --- _generated/docs.ts (docs factory registry) ---
+// _generated/docs.ts (docs factory registry)
 const docsServices = services.filter((s) => s.hasDocs)
 
-/** Convert a folder name to a camelCase docs alias (e.g. "speech-to-text" → "speechToTextDocs") */
 function toDocsAlias(folder) {
   return `${toCamel(folder)}Docs`
 }
 
 const docsLines = [
   ...HEADER,
-  'import type { ServiceDocsData } from "../types";',
+  'import type { DocsFactoryOptions, ServiceDocsData } from "../types";',
   '',
-  'export type DocsFactory = (opts: { host: string; model?: string }) => ServiceDocsData;',
+  'export type DocsFactory = (opts: DocsFactoryOptions) => ServiceDocsData;',
   '',
   ...docsServices.map(
     ({ key: k, importPath }) =>
@@ -501,9 +576,7 @@ const docsLines = [
 
 writeFileSync(docsRegistryPath, docsLines.join('\n'), 'utf8')
 
-// ═══════════════════════════════════════════════════════════════════
-// ─── Samples ──────────────────────────────────────────────────────
-// ═══════════════════════════════════════════════════════════════════
+// Samples
 
 const samplesDir = join(srcDir, 'samples')
 const samplesGenDir = join(samplesDir, '_generated')
@@ -511,7 +584,6 @@ ensureDir(samplesGenDir)
 
 const samplesOutputPath = join(samplesGenDir, 'samples.ts')
 
-// Scan for subdirectories that contain data.ts (supports nested suites/* layout)
 const sampleFolders = discoverLeafFolders(samplesDir)
 
 const sampleLines = [
@@ -532,9 +604,7 @@ const sampleLines = [
 
 writeFileSync(samplesOutputPath, sampleLines.join('\n'), 'utf8')
 
-// ═══════════════════════════════════════════════════════════════════
-// ─── Engines ──────────────────────────────────────────────────────
-// ═══════════════════════════════════════════════════════════════════
+// Engines
 
 const engineDir = join(srcDir, 'engines')
 const engineGenDir = join(engineDir, '_generated')
@@ -542,8 +612,11 @@ ensureDir(engineGenDir)
 
 const engineMetaOutputPath = join(engineGenDir, 'meta.ts')
 const enginesOutputPath = join(engineGenDir, 'engines.ts')
+const engineConfigurePanelsOutputPath = join(
+  engineGenDir,
+  'configure-panels.ts',
+)
 
-// Scan for subdirectories that contain data.ts and process-handler.ts
 const engineFolders = readdirSync(engineDir)
   .filter((name) => {
     if (SKIP.has(name)) return false
@@ -551,34 +624,32 @@ const engineFolders = readdirSync(engineDir)
     return (
       statSync(dir).isDirectory() &&
       existsSync(join(dir, 'data.ts')) &&
-      existsSync(join(dir, 'process-handler.ts'))
+      existsSync(join(dir, 'server.ts'))
     )
   })
   .sort()
 
-/**
- * Parse the start handler export name from process-handler.ts.
- * Expects a pattern like: export const start<Name>Model = ...
- */
-function parseStartHandler(filePath) {
-  const src = readFileSync(filePath, 'utf8')
-  const m = src.match(/export\s+const\s+(start\w+Model)\s*=/)
-  if (!m) {
-    throw new Error(`No start*Model export found in ${filePath}`)
-  }
-  return m[1]
+/** The Runtime Settings panel exported from an engine's components/configure-panel/index.ts, or null. */
+function parseEngineConfigurePanel(folder) {
+  const indexPath = join(
+    engineDir,
+    folder,
+    'components',
+    'configure-panel',
+    'index.ts',
+  )
+  if (!existsSync(indexPath)) return null
+  const m = readFileSync(indexPath, 'utf8').match(/\b(\w*ConfigurePanel)\b/)
+  return m ? m[1] : null
 }
 
-const engineEntries = engineFolders.map((folder) => {
-  const handlerPath = join(engineDir, folder, 'process-handler.ts')
-  return {
-    folder,
-    alias: toCamel(folder),
-    startHandler: parseStartHandler(handlerPath),
-  }
-})
+const engineEntries = engineFolders.map((folder) => ({
+  folder,
+  alias: toCamel(folder),
+  configurePanel: parseEngineConfigurePanel(folder),
+}))
 
-// --- _generated/meta.ts (engines only, no handlers) ---
+// _generated/meta.ts (engines only, no handlers)
 const engineMetaLines = [
   ...HEADER,
   'import type { Engine } from "../types";',
@@ -597,41 +668,58 @@ const engineMetaLines = [
 
 writeFileSync(engineMetaOutputPath, engineMetaLines.join('\n'), 'utf8')
 
-// --- _generated/engines.ts (imports meta + handlers) ---
+// _generated/engines.ts (server modules, server-only)
 const engineLines = [
   ...HEADER,
-  'import type { BasePayload } from "payload";',
-  'import type { Service } from "@/payload-types";',
-  '',
-  'import { engines as enginesMeta } from "./meta";',
+  'import type { EngineServer } from "../types";',
   '',
   ...engineEntries.map(
-    ({ folder, startHandler }) =>
-      `import { ${startHandler} } from "../${folder}/process-handler";`,
+    ({ folder, alias }) => `import * as ${alias} from "../${folder}/server";`,
   ),
   '',
-  'export const engines = enginesMeta;',
-  '',
-  '/** Engine start handler signature. */',
-  'export type EngineStartHandler = (',
-  '  service: Service,',
-  '  payload: BasePayload,',
-  ') => Promise<void>;',
-  '',
-  '/** Maps engine identifiers to their start handlers. */',
-  'export const engineHandlers: Record<string, EngineStartHandler> = {',
-  ...engineEntries.map(
-    ({ folder, startHandler }) => `  ${key(folder)}: ${startHandler},`,
-  ),
+  '/**',
+  ' * Auto-discovered engine server modules, by engine id. Imported as',
+  ' * namespaces, so nothing is read from them while modules evaluate: a',
+  ' * start handler sits in an import cycle with the Payload config.',
+  ' */',
+  'export const engineServers: Record<string, EngineServer> = {',
+  ...engineEntries.map(({ folder, alias }) => `  ${key(folder)}: ${alias},`),
   '};',
   '',
 ]
 
 writeFileSync(enginesOutputPath, engineLines.join('\n'), 'utf8')
 
-// ═══════════════════════════════════════════════════════════════════
-// ─── Port allocation summary ──────────────────────────────────────
-// ═══════════════════════════════════════════════════════════════════
+// _generated/configure-panels.ts (client: engine Runtime Settings panels)
+const enginePanelEntries = engineEntries.filter((e) => e.configurePanel)
+const engineConfigurePanelLines = [
+  ...HEADER,
+  'import type { ComponentType } from "react";',
+  'import type { EngineConfigurePanelProps } from "../types";',
+  '',
+  ...enginePanelEntries.map(
+    ({ folder, configurePanel }) =>
+      `import { ${configurePanel} } from "../${folder}/components/configure-panel";`,
+  ),
+  '',
+  "/** Each engine's Runtime Settings panel, by engine id. */",
+  'export const engineConfigurePanels: Partial<',
+  '  Record<string, ComponentType<EngineConfigurePanelProps>>',
+  '> = {',
+  ...enginePanelEntries.map(
+    ({ folder, configurePanel }) => `  ${key(folder)}: ${configurePanel},`,
+  ),
+  '};',
+  '',
+]
+
+writeFileSync(
+  engineConfigurePanelsOutputPath,
+  engineConfigurePanelLines.join('\n'),
+  'utf8',
+)
+
+// Port allocation summary
 
 /** Extract `port: <number>` from a data.ts file */
 function extractPort(filePath) {
@@ -679,7 +767,6 @@ for (const { key: folderKey, dir: sampleDir } of sampleFolders) {
 
 portEntries.sort((a, b) => a.port - b.port)
 
-// Find first duplicate
 const seen = new Map()
 let duplicateWarning = ''
 for (const { port, owner } of portEntries) {
@@ -689,24 +776,23 @@ for (const { port, owner } of portEntries) {
   seen.set(port, owner)
 }
 
-// Compute next available port
 let nextPort = 8001
 while (allPorts.has(nextPort)) nextPort++
 
-// ─── Summary ──────────────────────────────────────────────────────
-console.log(
+// Summary
+print(
   `✓ Generated registries:\n` +
     `  services:  ${services.length} services, ${workerServices.length} workers, ${docsServices.length} docs → src/services/_generated/\n` +
     `  samples:   ${sampleFolders.length} samples → src/samples/_generated/\n` +
     `  engines:   ${engineFolders.length} engines → src/engines/_generated/`,
 )
 
-console.log('\n📡 Port allocation (ascending):')
+print('\n📡 Port allocation (ascending):')
 for (const { port, owner } of portEntries) {
-  console.log(`  ${port}  ${owner}`)
+  print(`  ${port}  ${owner}`)
 }
 if (duplicateWarning) {
-  console.log('\n⚠️  Duplicate port warnings:')
+  print('\n⚠️  Duplicate port warnings:')
   process.stdout.write(duplicateWarning)
 }
-console.log(`\n✅ Next available port: ${nextPort}`)
+print(`\n✅ Next available port: ${nextPort}`)

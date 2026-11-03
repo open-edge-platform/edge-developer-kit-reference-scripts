@@ -1,7 +1,9 @@
 // Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
+import type { HostOS } from '@/types/common'
 import type { EngineBackend } from '../types'
+import type { BackendId } from './types'
 
 export const supportedBackends: EngineBackend[] = [
   {
@@ -16,12 +18,12 @@ export const supportedBackends: EngineBackend[] = [
       'text-generation': [
         {
           name: 'OpenVINO/Qwen3.5-4B-int4-ov',
-          device: 'CPU',
+          device: 'AUTO',
           backend: 'openvino',
         },
         {
           name: 'OpenVINO/InternVL2-2B-int4-ov',
-          device: 'CPU',
+          device: 'AUTO',
           backend: 'openvino',
           type: 'multimodal',
         },
@@ -29,19 +31,19 @@ export const supportedBackends: EngineBackend[] = [
       embeddings: [
         {
           name: 'OpenVINO/Qwen3-Embedding-0.6B-int8-ov',
-          device: 'CPU',
+          device: 'AUTO',
           backend: 'openvino',
         },
       ],
       rerank: [
         {
           name: 'OpenVINO/bge-reranker-base-int8-ov',
-          device: 'CPU',
+          device: 'AUTO',
           backend: 'openvino',
         },
       ],
     },
-    supportedDevices: ['cpu', 'gpu', 'npu'],
+    supportedDevices: ['auto', 'cpu', 'gpu', 'npu'],
     healthcheck: {
       url: '/v1/status',
       responseMapper: {
@@ -109,3 +111,26 @@ export const supportedBackends: EngineBackend[] = [
     },
   },
 ]
+
+export function isBackendId(value: unknown): value is BackendId {
+  return value === 'openvino' || value === 'llamacpp'
+}
+
+export function getBackend(id: string): EngineBackend | undefined {
+  return supportedBackends.find((b) => b.value === id)
+}
+
+/**
+ * The backend a new configuration starts on: the one recommended for `os`
+ * (and supported there), else the first.
+ */
+export function getDefaultBackend(os?: HostOS): BackendId {
+  const recommended = os
+    ? supportedBackends.find(
+        (b) =>
+          b.recommendedOS === os && b.supportedOS.includes(b.recommendedOS),
+      )
+    : undefined
+  const value = (recommended ?? supportedBackends[0])?.value
+  return isBackendId(value) ? value : 'openvino'
+}

@@ -3,219 +3,182 @@
 
 'use client'
 
-import {
-  AlertTriangle,
-  Link2Off,
-  Loader2,
-  Power,
-  RotateCcw,
-  Zap,
-} from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Skeleton } from '@/components/ui/skeleton'
+import { PackagePlus, WifiOff, Zap } from 'lucide-react'
 import { DemoErrorBoundary } from '@/components/common/demo-error-boundary'
+import { EmptyState } from '@/components/common/empty-state'
 import {
   useGetService,
   useGetServices,
+  useServiceActivity,
   useServiceStatus,
 } from '@/context/service-status-context'
+import { hasExecutionMode } from '@/services/execution'
+import { getEffectiveModel } from '@/types/service'
 import type { Service } from '@/services/types'
-import { hasExecutionMode } from '@/services/types'
-import { cn } from '@/lib/utils'
+import { DemoRuntimeProvider } from '../demo-runtime'
+import { demoNoticeKind } from '../demo-notice-kind'
+import { demoStateKey } from '../demo-session'
+import { useSessionState } from '../session-store'
+import { useStartWatch } from '../use-start-watch'
+import { DemoMetricsPanel } from './demo-metrics-panel'
+import { DemoNotice } from './demo-notice'
+import { DemoShellSkeleton } from './demo-shell-skeleton'
+import { DemoStatePanel } from './demo-state-panel'
 import { GatedModelAlert } from './gated-model-alert'
+import { ReadyNotice } from './ready-notice'
 
-export function ServiceDemo({ service }: { service: Service }) {
-  const {
-    startService,
-    stopService,
-    restartService,
-    isActionPending,
-    loading,
-  } = useServiceStatus()
-  const pending = isActionPending(service.id)
+export function ServiceDemo({
+  service,
+  onViewLogs,
+}: {
+  service: Service
+  /** Switches the page to this instance's logs. */
+  onViewLogs?: () => void
+}) {
+  const { loading, connectionError, serviceById } = useServiceStatus()
+  const { getPendingAction } = useServiceActivity()
+  // `service` may be one instance of a multi-instance service; act on it.
+  const serviceKey = service.instanceKey ?? service.id
   const DemoComponent = service.demo
 
-  const selectedService = useGetService(service.id)
+  const selectedService = useGetService(serviceKey)
   const prereqs = selectedService?.prerequisiteServices ?? []
   const prereqMap = useGetServices(prereqs)
+  // Whether the demo was usable this visit: a demo that keeps its results then stays shown when
+  // its instance is stopped or failed.
+  const [opened, setOpened] = useSessionState(
+    demoStateKey(service, 'demo-opened'),
+    false,
+  )
 
-  // Gated model detection — resolve the active model option from config
-  const activeModelName =
-    selectedService?.currentModel ?? service.defaultModel?.name ?? ''
+  // The active model option, for the gated-model alert.
+  const activeModelName = getEffectiveModel(selectedService ?? service).name
   const activeSource = selectedService?.currentSource ?? 'huggingface'
   const activeModel = service.config?.availableModels?.find(
     (m) => m.value === activeModelName,
   )
 
+  // Services with execution mode 'none' always show the demo.
+  const isNoneMode = selectedService
+    ? hasExecutionMode(selectedService.execution, 'none')
+    : false
+  const liveStatus = selectedService?.status
+  const isOffline = liveStatus !== 'online' && !isNoneMode
+  const offlinePrereqs = prereqs.filter(
+    (id) => (prereqMap[id]?.status ?? 'offline') !== 'online',
+  )
+  const pendingAction = getPendingAction(serviceKey)
+  const leaving = pendingAction === 'stop' || pendingAction === 'restart'
+  const runnable =
+    Boolean(selectedService) &&
+    !loading &&
+    !isOffline &&
+    offlinePrereqs.length === 0
+  if (runnable && !opened) setOpened(true)
+
+  const starting =
+    liveStatus === 'starting' ||
+    pendingAction === 'start' ||
+    pendingAction === 'restart'
+  const { elapsedMs, readyNotice, dismissReadyNotice } = useStartWatch({
+    starting,
+    startingSince: selectedService?.startingSince,
+    liveStatus,
+    metricsBase: selectedService?.apiBase,
+  })
+
   if (!selectedService) return null
 
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        <div className="border-border bg-muted/10 flex flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-16 text-center">
-          <Skeleton className="mb-4 h-16 w-16 rounded-full" />
-          <Skeleton className="mb-2 h-6 w-48" />
-          <Skeleton className="h-4 w-64" />
-          <Skeleton className="mt-6 h-10 w-36 rounded-md" />
-        </div>
-      </div>
-    )
-  }
+  if (loading) return <DemoShellSkeleton />
 
   if (!DemoComponent) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-center">
-        <div className="bg-muted/40 mb-3 flex h-12 w-12 items-center justify-center rounded-full">
-          <Zap className="text-muted-foreground h-6 w-6" />
-        </div>
-        <p className="text-muted-foreground text-sm">
-          Demo not available for this service.
-        </p>
-      </div>
+      <EmptyState
+        icon={Zap}
+        size="sm"
+        description="Demo not available for this service."
+      />
     )
   }
 
-  // Services with execution mode 'none' always show the demo.
-  const isNoneMode = hasExecutionMode(selectedService.execution, 'none')
-  const liveStatus = selectedService.status
-  const isOffline = liveStatus !== 'online'
-
-  if (isOffline && !isNoneMode) {
-    const handleClick = () => {
-      if (pending) return
-      if (liveStatus === 'starting') {
-        stopService(service.id)
-      } else if (liveStatus === 'error') {
-        restartService(service.id)
-      } else {
-        startService(service.id)
-      }
-    }
-
+  // A multi-instance service that was never added has no instance to start;
+  // the control bar's Add instance is the way in.
+  const typeView = serviceById.get(service.id)
+  if (isOffline && typeView?.multiInstance && !typeView.added) {
     return (
-      <div className="space-y-6">
+      <DemoStatePanel
+        icon={PackagePlus}
+        title="No instance"
+        description={`Add an instance of ${typeView.name} to use the demo.`}
+      />
+    )
+  }
+
+  // While the instance starts, the notice replaces every demo so all viewers see the same state.
+  // A demo that keeps its results stays mounted under a notice while stopping, stopped or failed;
+  // any other is replaced (releasing a camera or microphone).
+  const keep = Boolean(selectedService.keepDemoWhenStopped)
+  const keptDemo = keep && opened
+  const showDemo = !starting && (runnable || keptDemo)
+  const available = runnable && !leaving
+  const noticeKind = demoNoticeKind({
+    isOffline,
+    stoppingKeptDemo: keptDemo && showDemo && pendingAction === 'stop',
+    pendingAction,
+    starting,
+    liveStatus,
+    waitingForPrerequisites: offlinePrereqs.length > 0,
+  })
+
+  // One shape for every state, so a kept demo is not remounted as notices come and go. Metrics sit
+  // outside the error boundary so a crashed demo still shows them; mode `none` has no worker.
+  return (
+    <div className="space-y-6">
+      <div className="space-y-4">
+        {connectionError && (
+          <DemoStatePanel
+            icon={WifiOff}
+            tone="warning"
+            title="Status unavailable"
+            description="The studio cannot reach its service list right now, so this shows the last known state until it reconnects."
+            testId="demo-state-disconnected"
+          />
+        )}
+        {readyNotice && runnable && !connectionError && (
+          <ReadyNotice
+            service={selectedService}
+            onDismiss={dismissReadyNotice}
+          />
+        )}
+        <DemoNotice
+          kind={noticeKind}
+          service={selectedService}
+          serviceKey={serviceKey}
+          showDemo={showDemo}
+          keptDemo={keptDemo}
+          restarting={pendingAction === 'restart'}
+          elapsedMs={elapsedMs}
+          prerequisiteNames={offlinePrereqs
+            .map((id) => prereqMap[id]?.name ?? id)
+            .join(', ')}
+          onViewLogs={onViewLogs}
+        />
         <GatedModelAlert
           model={activeModel}
           source={activeSource}
           serviceId={selectedService.dbId}
         />
-        <div className="border-border bg-muted/10 flex flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-16 text-center">
-          {liveStatus === 'error' ? (
-            <>
-              <div className="bg-destructive/10 shadow-destructive/5 mb-4 flex h-16 w-16 items-center justify-center rounded-full shadow-sm">
-                <AlertTriangle className="text-destructive h-8 w-8" />
-              </div>
-              <h3 className="text-foreground text-lg font-semibold">
-                Service Error
-              </h3>
-              <p className="text-muted-foreground mt-2 max-w-md text-sm">
-                This service encountered an error and is currently unavailable.
-                Try restarting the service to resolve the issue.
-              </p>
-            </>
-          ) : liveStatus === 'starting' ? (
-            <>
-              <div className="bg-warning/10 mb-4 flex h-16 w-16 items-center justify-center rounded-full">
-                <Loader2 className="text-warning h-8 w-8 animate-spin" />
-              </div>
-              <h3 className="text-foreground text-lg font-semibold">
-                Service is Starting
-              </h3>
-              <p className="text-muted-foreground mt-2 max-w-md text-sm">
-                The service is loading the model and preparing to accept
-                requests. First startup may take several minutes while required
-                packages are installed.
-              </p>
-            </>
-          ) : (
-            <>
-              <div className="bg-muted/40 mb-4 flex h-16 w-16 items-center justify-center rounded-full">
-                <Power className="text-muted-foreground h-8 w-8" />
-              </div>
-              <h3 className="text-foreground text-lg font-semibold">
-                Service is Offline
-              </h3>
-              <p className="text-muted-foreground mt-2 max-w-md text-sm">
-                Start this service to access the interactive demo. The service
-                will load the required model and begin accepting inference
-                requests. First startup may take several minutes while required
-                packages are installed.
-              </p>
-            </>
-          )}
-          {(liveStatus === 'error' || liveStatus === 'offline') && (
-            <Button
-              className={cn(
-                'mt-6 gap-2 px-8',
-                liveStatus === 'offline'
-                  ? 'bg-primary hover:bg-primary-light shadow-primary/20 text-white shadow-sm'
-                  : 'bg-destructive shadow-destructive/20 text-white shadow-sm',
-              )}
-              size="lg"
-              disabled={pending}
-              onClick={handleClick}
-            >
-              {pending ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Processing...
-                </>
-              ) : liveStatus === 'error' ? (
-                <>
-                  <RotateCcw className="h-4 w-4" />
-                  Restart Service
-                </>
-              ) : (
-                <>
-                  <Power className="h-4 w-4" />
-                  Start Service
-                </>
-              )}
-            </Button>
-          )}
-        </div>
+        {showDemo && (
+          <DemoErrorBoundary>
+            <DemoRuntimeProvider value={{ available }}>
+              <DemoComponent service={selectedService} />
+            </DemoRuntimeProvider>
+          </DemoErrorBoundary>
+        )}
       </div>
-    )
-  }
-
-  // ─── Prerequisite check ─────────────────────────────────────────
-  const offlinePrereqs = prereqs.filter(
-    (id) => (prereqMap[id]?.status ?? 'offline') !== 'online',
-  )
-
-  if (offlinePrereqs.length > 0) {
-    const names = offlinePrereqs
-      .map((id) => prereqMap[id]?.name ?? id)
-      .join(', ')
-
-    return (
-      <div className="space-y-6">
-        <div className="border-border bg-muted/10 flex flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-16 text-center">
-          <div className="bg-warning/10 mb-4 flex h-16 w-16 items-center justify-center rounded-full">
-            <Link2Off className="text-warning h-8 w-8" />
-          </div>
-          <h3 className="text-foreground text-lg font-semibold">
-            Prerequisites Not Ready
-          </h3>
-          <p className="text-muted-foreground mt-2 max-w-md text-sm">
-            This demo requires the following service(s) to be running:{' '}
-            <span className="text-foreground font-medium">{names}</span>. Start
-            them first, then return here.
-          </p>
-        </div>
-      </div>
-    )
-  }
-
-  // ─── Online — Specialized Demo ─────────────────────────────────
-  return (
-    <DemoErrorBoundary>
-      <GatedModelAlert
-        model={activeModel}
-        source={activeSource}
-        serviceId={selectedService.dbId}
-      />
-      <DemoComponent service={selectedService} />
-    </DemoErrorBoundary>
+      {runnable && !isNoneMode && (
+        <DemoMetricsPanel service={selectedService} onViewLogs={onViewLogs} />
+      )}
+    </div>
   )
 }

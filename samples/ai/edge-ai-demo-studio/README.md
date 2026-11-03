@@ -10,18 +10,20 @@ Edge AI Demo Studio is a modern toolkit for deploying, managing, and serving AI 
 - **Web-Based Management:** Manage devices, workloads, and users through a modern web interface.
 - **Edge Optimized:** Built for Intel hardware and edge environments.
 - **AI Services:** AI Services that users can use for their applications
-  - **Text Generation** — Generate coherent text using large language models optimized for Intel hardware.
-  - **Text to Speech** — Natural-sounding speech synthesis with multiple voice options powered by Kokoro TTS.
-  - **Speech to Text** — Real-time speech recognition with low-latency transcription using Whisper models optimized for Intel hardware.
+  - **Text Generation** — Generate coherent text using large language models optimized for Intel hardware, served by OpenVINO Model Server or llama.cpp.
+  - **Text to Speech** — Natural-sounding speech synthesis with multiple voice options powered by Kokoro, Piper, Malaya (Malay), Pocket TTS (Indonesian), VieNeu-TTS (Vietnamese), FastSpeech2 HS (Tamil) and SpeechT5 from the Open Edge Platform text-to-speech microservice.
+  - **Speech to Text** — Real-time speech recognition with low-latency transcription using Whisper and Qwen3-ASR models optimized for Intel hardware, including live transcription from the microphone.
   - **Speaker Diarization** — Identify and label speakers in audio recordings using pyannote.audio speaker diarization models.
-  - **Text Embedding** — Generate dense vector embeddings for semantic search and RAG pipelines.
-  - **Reranker** — Rescore and rerank documents by relevance for improved search and RAG pipelines.
-  - **Vector Database** — FAISS-based vector storage for knowledge base management, semantic search, and RAG pipelines.
-  - **Lipsync** — Real-time avatar lip-syncing with Wav2Lip, streamed over WebRTC.
-  - **Image Generation** — Generate images from text prompts using diffusion models accelerated with OpenVINO.
-  - **MCP Manager** — Manage Model Context Protocol servers and their tool integrations.
   - **Wake Word Detection** — Detect custom wake words from microphone input and send webhook notifications on detection events.
+  - **Text Embedding** — Generate dense vector embeddings for semantic search and RAG pipelines, with optional image embeddings through the Open Edge Platform multimodal models.
+  - **Reranker** — Rescore and rerank documents by relevance for improved search and RAG pipelines.
+  - **Vector Database** — Vector storage for knowledge base management, semantic search, and RAG pipelines, backed by FAISS or PostgreSQL + pgvector.
   - **OCR** — Optical character recognition — extract text and its location from images using OCR models on OpenVINO.
+  - **Face Recognition** — Detect and identify faces against a reference gallery using Open Model Zoo or OpenCV Zoo pipelines.
+  - **Image Generation** — Generate images from text prompts using diffusion models accelerated with OpenVINO.
+  - **Lipsync** — Real-time avatar lip-syncing with Wav2Lip or MuseTalk, streamed over WebRTC.
+  - **Frame Generation** — RIFE video frame interpolation: fill in-between frames or raise a video's frame rate. The Digital Avatar sample uses it for smoother lipsync video on slower devices.
+  - **MCP Manager** — Manage Model Context Protocol servers and their tool integrations.
 - **Samples:** Sample use cases that implement the AI services (see [Exporting Samples & Services](#exporting-samples--services) to package a subset for standalone deployment)
   - **Digital Avatar** — Interact with an AI-powered avatar that combines real-time video with intelligent conversation.
   - **Digital Avatar Lite** — A lightweight animated robot avatar that brings conversations to life with responsive movements and expressions.
@@ -30,16 +32,16 @@ Edge AI Demo Studio is a modern toolkit for deploying, managing, and serving AI 
   - **Webcam Capture with VLM** — Demonstrate the integration of webcam capture and Visual Language Model (VLM) for enhanced interaction.
   - **[AI Exam Marking](./frontend/src/samples/ai-exam-marking/README.md)** — AI-powered exam marking using OCR and LLM to automatically grade test papers from images.
   - **PowerPoint Translator** — Translate PowerPoint presentations while preserving formatting using AI.
-  - **[Geti Image Classification](./frontend/src/samples/geti-classifier/README.md)** — Classify images using a local Intel Geti deployment and send feedback for continuous model improvement.
-  - **Synthetic Image Generation** — Generate and edit synthetic images from base images in real-time for dataset augmentation.
-  - **Robotics AI** — A demo showcasing the capabilities of Robotics AI, including real-time object detection and manipulation.
-- **Suites:** Curated industry-specific AI solution packages built on Intel Edge AI Suites
+  - **[Geti Image Classification](./frontend/src/samples/geti-classifier/README.md)** — Classify images using a local Intel Geti deployment and send feedback for continuous model improvement. *Linux only.*
+  - **Synthetic Image Generation** — Generate and edit synthetic images from base images in real-time for dataset augmentation. *Linux only; needs an Intel GPU (XPU), and Arc A770 and lower A-series GPUs are not supported.*
+  - **Robotics AI** — A demo showcasing the capabilities of Robotics AI, including real-time object detection and manipulation. *Linux only.*
+- **Suites:** Curated industry-specific AI solution packages built on Intel Edge AI Suites, run as Docker Compose stacks. *Linux only.*
   - [*Manufacturing AI Suite*](https://github.com/open-edge-platform/edge-ai-suites/tree/main/manufacturing-ai-suite) — A comprehensive toolkit for building, deploying, and scaling AI applications in industrial environments. Enables real-time integration with optimized hardware for production workflow automation, workplace safety, defect detection, and asset tracking.
     - [**Pallet Defect Detection**](https://github.com/open-edge-platform/edge-ai-suites/tree/main/manufacturing-ai-suite/industrial-edge-insights-vision) — Real-time pallet condition monitoring on warehouse video streams using DL Streamer Pipeline Server, OpenVINO inference, and WebRTC streaming.
   - [*Metro AI Suite*](https://github.com/open-edge-platform/edge-ai-suites/tree/main/metro-ai-suite) — Accelerates application development for edge AI video safety, security, and smart city use cases. Includes OpenVINO™ toolkit, Deep Learning Streamer, and Intel® oneAPI Toolkit for media analytics and AI performance optimization.
     - [**Image-Based Video Search**](https://github.com/open-edge-platform/edge-ai-suites/tree/main/metro-ai-suite/image-based-video-search) — Near real-time image-based similarity search over live video streams using YOLOv11 object detection, ResNet-50 feature extraction via DL Streamer, and Milvus vector indexing.
   - [*Retail AI Suite*](https://github.com/open-edge-platform/edge-ai-suites/tree/main/retail-ai-suite) — Accelerates development of edge AI applications for retail environments, enabling intelligent automation for use cases such as self-checkout, loss prevention, and store analytics with optimized Intel hardware and the OpenVINO™ toolkit.
-    - [**Loss Prevention**](https://github.com/intel-retail/loss-prevention/tree/main) — Real-time self-checkout loss prevention using object detection and analytics to identify mis-scans and suspicious activity at the point of sale.
+    - [**Loss Prevention**](https://github.com/intel-retail/loss-prevention/tree/main) — Real-time self-checkout loss prevention: detects and classifies retail products with YOLO11n object detection and EfficientNet-B0 classification to spot mis-scans and suspicious activity at the point of sale.
 
 ## Architecture Diagram
 ![Archictecture Diagram](./docs/Architecture.png)
@@ -62,6 +64,11 @@ Edge AI Demo Studio is a modern toolkit for deploying, managing, and serving AI 
 sudo ./install_dependencies.sh
 ```
 
+This installs the system packages and the GPU/NPU drivers. Both
+llama.cpp backends need nothing more from it: the Intel® oneAPI Toolkit is not
+required for SYCL. Run `sudo ./install_dependencies.sh --help` for all options,
+or see [Unattended setup (CI)](docs/DEVELOPMENT.md#unattended-setup-ci).
+
 ### 2. Set Up Python & Node.js Dependencies
 
 For Linux:
@@ -74,9 +81,46 @@ For Windows (PowerShell/Command Prompt):
 ```
 
 This will:
-- Set up a Python virtual environment
-- Install Python and Node.js dependencies
-- Start the frontend
+- Set up the shared worker Python environment and common helper packages
+- Install frontend dependencies
+- Prepare shared tools such as uv and OVMS
+- On Linux, build [qmassa](https://github.com/ulissesf/qmassa), which reads GPU
+  usage, from source into `thirdparty/qmassa` (about a minute, once; no sudo)
+
+Service and sample dependencies and OEP source files are prepared when you start
+the corresponding item in the UI. The first start can take longer while its
+packages and assets are downloaded.
+
+On Linux it also asks which llama.cpp backend the multiserve LLM engine should
+use — `sycl` (best on Intel Arc / Xe GPUs) or `vulkan` (any Vulkan GPU) — and
+downloads the matching llama.cpp build. For SYCL it also installs the Intel SYCL
+runtime from Python wheels into the shared worker environment (`workers/.venv`,
+about 0.3 GB on top of the libraries PyTorch XPU already put there) instead of
+the multi-GB oneAPI Toolkit. The answer is saved to
+`workers/engines/multiserve/.llamacpp-backend`, and the engine's own
+`start.sh` applies it (for SYCL, putting that runtime on `LD_LIBRARY_PATH`)
+every time the engine is started or restarted.
+
+Re-run `./setup.sh` any time to switch backends; the previously chosen one is
+offered as the default and the llama.cpp build you are switching away from is
+removed. To skip the prompt:
+
+```bash
+./setup.sh --backend sycl     # or: --backend vulkan
+```
+
+Non-interactive runs (CI, Docker) keep the existing selection, or default to
+`vulkan` when there is none. Run `./setup.sh --help` for all options, or see
+[Unattended setup (CI)](docs/DEVELOPMENT.md#unattended-setup-ci).
+
+#### Desktop app
+
+The Electron app asks the same question with a native dialog on first launch,
+before it installs anything. It writes the same selection file the CLI uses, so
+both entry points stay in sync.
+
+To change the backend afterwards, relaunch the app with `--reconfigure`; that
+re-shows the dialog and swaps in the matching llama.cpp build.
 
 ---
 
@@ -90,39 +134,57 @@ For Windows (PowerShell/Command Prompt):
 ./start_win.bat
 ```
 
-Once started, access the web UI at [http://localhost:8080](http://localhost:8080).
+Once started, access the web UI at [http://127.0.0.1:8080](http://127.0.0.1:8080).
 
 ---
 
 ## Preset Services with `deployment.json` (Optional)
 
-By default, every service is created with its built-in defaults and stays stopped until you start it from the web UI. To preset service configuration — e.g. change the model, accelerator (device), or port — and auto-start selected services when the app boots, modify the provided [deployment.json](deployment.json) in the project root (next to `setup.sh`) to your needs:
+By default, every service is created with its built-in defaults and stays stopped until you add and start it from the web UI. To define the setup in a file instead — which services and instances run, their model and accelerator (device), and which auto-start when the app boots — copy [deployment.example.json](deployment.example.json) to `deployment.json` in the project root (next to `setup.sh`) and edit it, or save the current setup from **Settings → Save current deployment**. The repository ships no `deployment.json`, and without one nothing is applied:
 
 ```json
 {
   "$schema": "./docs/deployment.schema.json",
   "services": {
-    "text-generation": {
-      "status": "online",
-      "models": {
-        "default": {
-          "name": "OpenVINO/Qwen3.5-4B-int4-ov",
-          "device": "GPU",
-          "backend": "openvino"
+    "text-generation": [
+      {
+        "status": "online",
+        "models": {
+          "default": {
+            "name": "OpenVINO/Qwen3.5-4B-int4-ov",
+            "device": "GPU",
+            "backend": "openvino"
+          }
         }
       }
-    },
-    "speech-to-text": {
-      "status": "online",
-      "models": { "default": { "device": "NPU" } }
-    }
+    ],
+    "speech-to-text": [
+      { "status": "online", "models": { "default": { "device": "NPU" } } }
+    ]
   }
 }
 ```
 
-The file is read on every startup: the default services are loaded first, then your presets overwrite them. Services with `"status": "online"` are started automatically (they move to `prepare` and are promoted to `active` once their health check passes); everything else stays offline.
+When `deployment.json` exists it is the whole setup, applied on every startup: the listed services get exactly the listed instances — a service nobody added is added from its defaults, with your presets written over them — and **everything else is removed** — an unlisted instance is deleted (with its data directory) and an unlisted service goes back to not added. Changes made in the UI therefore last until the next start unless you save the deployment again. Services with `"status": "online"` are started automatically (they move to `prepare` and are promoted to `active` once their health check passes); everything else stays offline.
+
+Each service lists its instances, first instance first. The first entry configures the instance created with the app. Services that support multiple instances (most visible ones) can list more; every entry after the first needs a `label`. An entry is found again on each boot by its `instanceId` when it has one (saved deployments write it), else by its `label`: the matching instance is updated, a missing one is created as a copy of the first instance with the given overrides, and instances not listed are deleted. Renaming an entry that has an `instanceId`, or the first entry (which otherwise takes the oldest instance left), renames that instance and keeps its address; renaming a later entry without an id replaces that instance — a new one is created under the new name and the old one is deleted with its data. Two entries always mean two instances:
+
+```json
+{
+  "services": {
+    "text-generation": [
+      { "label": "Text Generation", "status": "online", "models": { "default": { "device": "GPU" } } },
+      { "label": "CPU fallback", "status": "online", "models": { "default": { "device": "CPU" } } }
+    ]
+  }
+}
+```
+
+Every instance answers at `/api/<type>@<instance id>`. The id is derived from the name when the instance is created — here `/api/text-generation@text-generation` and `/api/text-generation@cpu-fallback` — and never changes afterwards, even when the instance is renamed; there is no bare `/api/text-generation`. Ports are never set in the file: every instance gets a free port from `INSTANCE_PORT_RANGE` when it starts. **Settings → Save current deployment** writes this file from what is configured now, names and instance ids included. Files in the older form (`"text-generation": { …, "instances": { "<id>": { … } } }`) are still read, with the same removal of anything they do not declare.
 
 The Electron packaging scripts (`scripts/bash/package.sh` / `scripts/win/package.ps1`) bundle the project-root `deployment.json` into the package, so presets set before packaging ship with the app. In a packaged build the file lives at `resources/deployment.json` (next to the bundled frontend) — edit it there and restart the app to change the presets of an existing package, or point the `DEPLOYMENT_CONFIG_PATH` environment variable at a file elsewhere. See [docs/deployment-config.md](docs/deployment-config.md#packaged-electron-builds) for details.
+
+You can also generate the file from a running instance: open **Settings → Deployment → Save current deployment…** in the web UI to snapshot every service's current configuration (running services are marked `"online"`), then download it or save it directly to the location the app reads on startup.
 
 See [docs/deployment-config.md](docs/deployment-config.md) for the full JSON guidelines — all supported fields plus each service's available models, devices, and engines. The reference (and the [docs/deployment.schema.json](docs/deployment.schema.json) editor schema referenced via `$schema` above) is auto-generated from the service registry, so it always matches the version you are running.
 
@@ -158,7 +220,7 @@ Arguments are forwarded to `scripts/export-bundle.mjs` for non-interactive use:
 
 ### Via the Frontend GUI
 
-1. Open the web UI and navigate to the **Samples** page (`http://localhost:8080/samples`).
+1. Open the web UI and navigate to the **Samples** page (`http://127.0.0.1:8080/samples`).
 2. Click **Select to export** (top-right area of the page) to enter selection mode.
 3. Check the sample card(s) you want to export.
 4. Click the **Export selected** button (download icon) that appears in the selection toolbar.
@@ -236,3 +298,20 @@ The terminal may not have picked up a `NO_PROXY` value that was set via the GUI 
   ```powershell
   $env:NO_PROXY = "localhost,127.0.0.1"
   ```
+
+---
+
+
+## Changelog
+
+Every user-facing pull request merged into `main` — features, fixes, performance changes; not chores, docs, CI or tests — gets an entry here, written by GitHub Copilot from the pull request and grouped the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) way. Entries collect on the open `docs: update changelog` pull request until it is merged, and a release moves them under its version. See [docs/CI-CD.md](docs/CI-CD.md#6-changelog) for how it works.
+
+<!-- changelog:start -->
+
+### Unreleased
+
+#### Added
+
+- Multiple model instances per service, running as a background daemon, new Pocket TTS, VieNeu-TTS and Vector Database services, plus a redesigned dashboard and services catalog. (#704) <!-- pr:704 -->
+
+<!-- changelog:end -->

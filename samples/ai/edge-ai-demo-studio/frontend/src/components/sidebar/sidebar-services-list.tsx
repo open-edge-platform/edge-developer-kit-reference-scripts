@@ -3,30 +3,60 @@
 
 'use client'
 
+import { Plus } from 'lucide-react'
 import Link from 'next/link'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useServiceStatus } from '@/context/service-status-context'
 import { useSystemInfo } from '@/context/system-info-context'
+import {
+  CATALOG_HREF,
+  getAttentionStatus,
+  serviceHref,
+} from '@/lib/instances/service-presentation'
 import { cn } from '@/lib/utils'
-import { getOSLabel, isServiceSupportedOnOS } from '@/services/registry'
-import { hasExecutionMode } from '@/services/types'
+import { isServiceSupportedOnOS } from '@/services/registry'
+import { useServicesInUse } from '@/services/_generated/in-use'
+import { ServiceRailRow, type Row } from './service-rail-row'
+import { isServiceInSidebar } from './service-rail'
 
-function statusDotClass(status: string): string {
-  switch (status) {
-    case 'online':
-      return 'bg-status-online'
-    case 'error':
-      return 'bg-status-error'
-    case 'starting':
-      return 'bg-warning animate-pulse'
-    default:
-      return 'bg-status-offline'
-  }
+/** Name-bar widths of the placeholder rows, varied like real service names. */
+const LOADING_ROW_WIDTHS = ['w-28', 'w-20', 'w-32', 'w-24']
+
+/** `Skeleton` in the sidebar's own tone — the page's `bg-accent` glares on it. */
+function RailSkeleton({ className }: { className?: string }) {
+  return <Skeleton className={cn('bg-sidebar-foreground/15', className)} />
+}
+
+/** Placeholder rail rows while services load, fading out since the count isn't known yet. */
+function LoadingRows({ collapsed }: { collapsed: boolean }) {
+  return (
+    <div
+      role="status"
+      aria-busy="true"
+      className="space-y-0.5"
+      data-testid="sidebar-services-loading"
+    >
+      <span className="sr-only">Loading services…</span>
+      {LOADING_ROW_WIDTHS.map((width, i) => (
+        <div
+          key={width}
+          className={cn(
+            'flex min-h-11 items-center gap-3 rounded-lg px-3 py-2',
+            collapsed && 'justify-center px-2',
+          )}
+          style={{ opacity: 1 - i * 0.2 }}
+        >
+          <RailSkeleton className="size-4 shrink-0 rounded-[4px]" />
+          {!collapsed && (
+            <>
+              <RailSkeleton className={cn('h-3 rounded-full', width)} />
+              <RailSkeleton className="ml-auto size-2 shrink-0 rounded-full" />
+            </>
+          )}
+        </div>
+      ))}
+    </div>
+  )
 }
 
 export function SidebarServicesList({
@@ -39,123 +69,104 @@ export function SidebarServicesList({
   onNavigate?: () => void
 }) {
   const { systemInfo } = useSystemInfo()
-  const { services } = useServiceStatus()
-  const visibleServices = services.filter((s) => !s.hidden)
+  const { services, loading } = useServiceStatus()
+  const inUse = useServicesInUse()
+
+  // Alphabetical, so a status change never moves the row under the pointer.
+  const rows: Row[] = services
+    .filter((s) => !s.hidden && isServiceInSidebar(s, inUse))
+    .map((s) => ({
+      service: s,
+      instances: s.instances ?? [],
+      // Worst-wins: one running instance must not hide a failed sibling.
+      status: getAttentionStatus(s),
+      unsupported: systemInfo
+        ? !isServiceSupportedOnOS(s, systemInfo.os)
+        : false,
+      isCurrent: pathname === serviceHref(s.id),
+    }))
+    .sort((a, b) => a.service.name.localeCompare(b.service.name))
+
+  // "+" leads to the Catalog, where each service says what adding it involves.
+  const addButton = (
+    <Link
+      href={CATALOG_HREF}
+      onClick={onNavigate}
+      aria-label="Add service"
+      title="Add service"
+      data-testid="sidebar-add-service"
+      className={cn(
+        'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground focus-visible:ring-sidebar-ring flex items-center justify-center rounded-md transition-colors outline-none focus-visible:ring-2',
+        // Collapsed, the "+" has no "Services" label beside it: a dashed
+        // outline says "add" on its own.
+        collapsed
+          ? 'border-sidebar-foreground/25 hover:border-sidebar-foreground/50 size-9 border border-dashed'
+          : 'size-8',
+      )}
+    >
+      <Plus className="h-4 w-4" />
+    </Link>
+  )
+
   return (
-    <div className="pt-6">
-      <div className={cn('mb-3 px-2', collapsed && 'text-center')}>
+    <div
+      className={cn(
+        'flex min-h-0 flex-1 flex-col',
+        // Collapsed, a rule stands in for the "Services" heading.
+        collapsed ? 'border-sidebar-border mt-3 border-t pt-3' : 'pt-4',
+      )}
+    >
+      <div
+        className={cn(
+          'flex shrink-0 items-center pb-3',
+          collapsed ? 'justify-center' : 'justify-between px-2',
+        )}
+      >
         {!collapsed && (
-          <div className="flex items-center justify-between">
-            <span className="text-sidebar-foreground/50 text-[11px] font-semibold tracking-wider uppercase">
-              Services
-            </span>
+          <span className="text-sidebar-foreground/60 text-xs font-semibold tracking-wider uppercase">
+            Services
+          </span>
+        )}
+        {addButton}
+      </div>
+
+      {/* Its own scroll region, so the nav items above never scroll away. */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {loading ? (
+          <LoadingRows collapsed={collapsed} />
+        ) : (
+          <div className="space-y-0.5">
+            {rows.map((row) => (
+              <ServiceRailRow
+                key={row.service.id}
+                row={row}
+                collapsed={collapsed}
+                os={systemInfo?.os}
+                onNavigate={onNavigate}
+              />
+            ))}
+
+            {rows.length === 0 && !collapsed && (
+              <div className="px-3 py-6 text-center">
+                <p className="text-sidebar-foreground text-[13px] font-semibold">
+                  No services added yet
+                </p>
+                <p className="text-sidebar-foreground/60 mt-1.5 text-xs leading-relaxed">
+                  Services you add stay here, running or not.
+                </p>
+                <Link
+                  href={CATALOG_HREF}
+                  onClick={onNavigate}
+                  className="text-sidebar-accent-foreground mt-3 inline-flex min-h-8 items-center gap-1 text-xs font-medium hover:underline"
+                >
+                  <Plus className="h-3 w-3" />
+                  Add service
+                </Link>
+              </div>
+            )}
           </div>
         )}
       </div>
-      <TooltipProvider>
-        <div className="space-y-0.5">
-          {[...visibleServices]
-            .sort((a, b) => {
-              const aIsNone =
-                hasExecutionMode(a.execution, 'none') || a.port == null
-              const bIsNone =
-                hasExecutionMode(b.execution, 'none') || b.port == null
-              if (aIsNone && !bIsNone) return -1
-              if (!aIsNone && bIsNone) return 1
-              if (aIsNone && bIsNone) return 0
-              return (a.port ?? 0) - (b.port ?? 0)
-            })
-            .map((service) => {
-              const ServiceIcon = service.icon
-              const isActive = pathname === `/services/${service.id}`
-              const isUnsupported = systemInfo
-                ? !isServiceSupportedOnOS(service, systemInfo.os)
-                : false
-              // Enriched status already reflects the mode:'none' → online rule.
-              const liveStatus = service.status
-
-              const linkContent = (
-                <Link
-                  key={service.id}
-                  href={`/services/${service.id}`}
-                  onClick={onNavigate}
-                  className={cn(
-                    'flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
-                    isUnsupported
-                      ? 'cursor-not-allowed opacity-40'
-                      : 'hover:bg-sidebar-accent/50',
-                    isActive
-                      ? 'bg-sidebar-accent/30 text-sidebar-foreground font-medium'
-                      : 'text-sidebar-foreground/70',
-                    collapsed && 'justify-center px-2',
-                  )}
-                >
-                  <span
-                    className={cn(
-                      'shrink-0',
-                      collapsed
-                        ? 'relative'
-                        : 'inline-flex items-center gap-1.5',
-                    )}
-                  >
-                    <ServiceIcon
-                      className={cn(
-                        'h-4 w-4',
-                        isActive
-                          ? 'text-sidebar-accent-foreground'
-                          : 'text-sidebar-foreground/60',
-                      )}
-                    />
-                    <span
-                      className={cn(
-                        'h-2 w-2 rounded-full',
-                        !collapsed && 'hidden',
-                        collapsed &&
-                          'border-sidebar absolute -top-0.5 -right-0.5 border-2',
-                        isUnsupported
-                          ? 'bg-orange-400'
-                          : statusDotClass(liveStatus),
-                      )}
-                    />
-                  </span>
-                  <span
-                    className={cn(
-                      'sidebar-label truncate',
-                      collapsed && 'sidebar-label-hidden',
-                    )}
-                  >
-                    {service.name}
-                  </span>
-                  <span
-                    className={cn(
-                      'sidebar-label ml-auto h-2 w-2 shrink-0 rounded-full',
-                      collapsed && 'sidebar-label-hidden',
-                      isUnsupported
-                        ? 'bg-orange-400'
-                        : statusDotClass(liveStatus),
-                    )}
-                  />
-                </Link>
-              )
-
-              if (collapsed) {
-                return (
-                  <Tooltip key={service.id}>
-                    <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
-                    <TooltipContent side="right" sideOffset={8}>
-                      {service.name}
-                      {isUnsupported && systemInfo
-                        ? ` (unsupported on ${getOSLabel(systemInfo.os)})`
-                        : ''}
-                    </TooltipContent>
-                  </Tooltip>
-                )
-              }
-
-              return <span key={service.id}>{linkContent}</span>
-            })}
-        </div>
-      </TooltipProvider>
     </div>
   )
 }

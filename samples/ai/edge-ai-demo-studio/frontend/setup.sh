@@ -23,7 +23,6 @@ ensure_env_file() {
   else
     echo ".env already exists."
   fi
-  # Always overwrite PAYLOAD_SECRET in .env with a new value
   PAYLOAD_SECRET=$(openssl rand -hex 32)
   if grep -q '^PAYLOAD_SECRET=' .env; then
     sed -i "s/^PAYLOAD_SECRET=.*/PAYLOAD_SECRET=$PAYLOAD_SECRET/" .env

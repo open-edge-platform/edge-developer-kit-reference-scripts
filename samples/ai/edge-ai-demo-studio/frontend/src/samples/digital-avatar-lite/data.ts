@@ -43,7 +43,7 @@ export const sample: Sample = {
       serviceId: 'rerank',
       role: 'optional',
       capabilityKey: 'rag',
-      impactText: 'Knowledge rerank will be unavailable',
+      impactText: 'Search results will not be reranked for relevance.',
     },
     {
       serviceId: 'vectordb',
@@ -60,14 +60,6 @@ export const sample: Sample = {
     },
   ],
   tags: ['Avatar', 'Animated', 'Lightweight', 'Conversational AI'],
-  pipeline: [
-    'wake-word-detection',
-    'speech-to-text',
-    ['embeddings', 'vectordb', 'rerank'],
-    'text-generation',
-    'mcp',
-    'text-to-speech',
-  ],
   image: sampleImage,
   demo: {
     type: 'component',

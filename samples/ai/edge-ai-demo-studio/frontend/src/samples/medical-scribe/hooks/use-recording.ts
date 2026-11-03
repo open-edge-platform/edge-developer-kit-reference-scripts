@@ -3,69 +3,24 @@
 
 'use client'
 
-import { useCallback, useRef, useState } from 'react'
+import { useMediaRecorder } from '@/hooks/use-media-recorder'
 
+/** The shared `useMediaRecorder`, narrowed to the start/stop/clear surface this sample needs. */
 export function useRecording() {
-  const [isRecording, setIsRecording] = useState(false)
-  const [audioBlob, setAudioBlob] = useState<Blob | null>(null)
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
-  const chunksRef = useRef<Blob[]>([])
-  const streamRef = useRef<MediaStream | null>(null)
+  const { isRecording, start, stop, clear } = useMediaRecorder({
+    mimeType: 'audio/webm',
+    timesliceMs: 1000,
+  })
 
-  const startRecording = useCallback(async () => {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-    streamRef.current = stream
-    const mediaRecorder = new MediaRecorder(stream, {
-      mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : 'audio/webm',
-    })
-    chunksRef.current = []
+  const startRecording = async () => {
+    const { timeOrigin } = await start()
+    return timeOrigin
+  }
 
-    mediaRecorder.ondataavailable = (e) => {
-      if (e.data.size > 0) {
-        chunksRef.current.push(e.data)
-      }
-    }
-
-    mediaRecorderRef.current = mediaRecorder
-    mediaRecorder.start(1000)
-    setIsRecording(true)
-    setAudioBlob(null)
-    // `performance.now()` at t=0 of the recorded blob, so other capture paths
-    // can express their timestamps on the same timeline.
-    return performance.now()
-  }, [])
-
-  const stopRecording = useCallback((): Promise<Blob> => {
-    return new Promise<Blob>((resolve) => {
-      const recorder = mediaRecorderRef.current
-      if (!recorder || recorder.state !== 'recording') {
-        setIsRecording(false)
-        resolve(new Blob())
-        return
-      }
-
-      recorder.addEventListener(
-        'stop',
-        () => {
-          const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
-          setAudioBlob(blob)
-          streamRef.current?.getTracks().forEach((track) => track.stop())
-          streamRef.current = null
-          resolve(blob)
-        },
-        { once: true },
-      )
-
-      recorder.stop()
-      setIsRecording(false)
-    })
-  }, [])
-
-  const clearAudio = useCallback(() => {
-    setAudioBlob(null)
-  }, [])
-
-  return { isRecording, audioBlob, startRecording, stopRecording, clearAudio }
+  return {
+    isRecording,
+    startRecording,
+    stopRecording: stop,
+    clearAudio: clear,
+  }
 }

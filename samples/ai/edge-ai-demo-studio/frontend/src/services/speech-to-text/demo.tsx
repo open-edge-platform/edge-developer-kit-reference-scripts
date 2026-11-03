@@ -3,432 +3,403 @@
 
 'use client'
 
-import { Loader2, Mic, MicOff, Square, Upload } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { Badge } from '@/components/ui/badge'
+import { Loader, Mic, Square, Upload } from 'lucide-react'
+import { useState } from 'react'
+import { InlineNotice } from '@/components/common/inline-notice'
+import { UploadButton } from '@/components/common/upload-button'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { UploadButton } from '@/components/common/upload-button'
-import { getMicErrorMessage } from '@/lib/media-utils'
-import { cn } from '@/lib/utils'
+import { useAudioVisualizer } from '@/hooks/use-audio-visualizer'
+import { useElapsedMs } from '@/hooks/use-elapsed-ms'
+import { useMediaRecorder } from '@/hooks/use-media-recorder'
+import { formatClock } from '@/lib/browser/format'
+import { DemoLayout } from '@/services/common/demo/components/demo-layout'
 import { DemoParameterSidebar } from '@/services/common/demo/components/demo-parameter-sidebar'
+import { demoStateKey } from '@/services/common/demo/demo-session'
 import type { Service } from '@/services/types'
-import type { LiveTranscript } from './hooks'
-import { useLiveStream } from './hooks'
+import { getEffectiveModel } from '@/types/service'
+import { RecordControl } from './components/record-control'
+import { TranscriptActions } from './components/transcript-actions'
+import { TranscriptPanel } from './components/transcript-panel'
+import { getSttCapabilities } from './config'
+import { useLiveTranscription } from './hooks/use-live-transcription'
 import { useSttParams } from './hooks/use-params'
 import { useTranscribe } from './hooks/use-transcribe'
+import { subtitleCues } from './lib/transcript-export'
 
-const PROCESSING_BAR_HEIGHTS = [
-  6, 10, 14, 18, 22, 18, 14, 10, 8, 12, 16, 20, 16, 12, 8, 6, 10, 14, 18, 14,
-  10, 8, 6, 4,
-]
-const PROCESSING_ANIM_DURATIONS = [
-  0.4, 0.5, 0.3, 0.6, 0.4, 0.5, 0.3, 0.6, 0.4, 0.5, 0.3, 0.6, 0.4, 0.5, 0.3,
-  0.6, 0.4, 0.5, 0.3, 0.6, 0.4, 0.5, 0.3, 0.4,
-]
+type SttMode = 'batch' | 'live'
 
-export function SpeechToTextDemo(_props: { service: Service }) {
-  const [mode, setMode] = useState<'batch' | 'live'>('batch')
-  const [isRecording, setIsRecording] = useState(false)
-  const [micError, setMicError] = useState<string | null>(null)
-  const [recordDuration, setRecordDuration] = useState(0)
-  const [barHeights, setBarHeights] = useState<number[]>(() =>
-    Array(24).fill(4),
+function isSttMode(value: string): value is SttMode {
+  return value === 'batch' || value === 'live'
+}
+
+/** `1:05.3`: minutes, seconds and tenths. */
+function formatRecordingTime(ms: number): string {
+  return `${formatClock(ms / 1000)}.${Math.floor((ms % 1000) / 100)}`
+}
+
+export function SpeechToTextDemo({ service }: { service: Service }) {
+  const capabilities = getSttCapabilities(service)
+  const [mode, setMode] = useState<SttMode>('batch')
+  const isBatchMode = mode === 'batch'
+  const [recordingStream, setRecordingStream] = useState<MediaStream | null>(
+    null,
   )
+  // The uploaded file or recording the batch transcript is of; names its downloads.
+  const [batchSource, setBatchSource] = useState<{
+    label: string
+    fileName: string
+  } | null>(null)
 
-  const [isLiveActive, setIsLiveActive] = useState(false)
-  const [isLiveFlushing, setIsLiveFlushing] = useState(false)
-  const [liveTranscripts, setLiveTranscripts] = useState<LiveTranscript[]>([])
-  const [liveError, setLiveError] = useState<string | null>(null)
-
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
-  const chunksRef = useRef<Blob[]>([])
-  const durationRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const audioContextRef = useRef<AudioContext | null>(null)
-  const analyserRef = useRef<AnalyserNode | null>(null)
-  const animFrameRef = useRef<number | null>(null)
-  const smoothedDataRef = useRef<Float32Array>(new Float32Array(24))
-  const visualizerStreamRef = useRef<MediaStream | null>(null)
-
-  const transcribeMutation = useTranscribe()
-  const { start: startLiveStream, stop: stopLiveStream } = useLiveStream()
-  const { values: sttValues, params } = useSttParams()
-
-  const bars = useMemo(
-    () => Array.from({ length: 24 }, (_, i) => `bar-${i}`),
-    [],
+  const live = useLiveTranscription(service, {
+    backend: capabilities.backend,
+  })
+  // A live session keeps the language and voice detection it started with.
+  const isLiveSessionOpen = live.isActive || live.isFlushing
+  const { values: sttValues, params } = useSttParams({
+    model: getEffectiveModel(service).name,
+    autoLanguage: capabilities.autoLanguage,
+    denoise: capabilities.denoise,
+    live: !isBatchMode,
+    locked: isLiveSessionOpen,
+    sessionKey: demoStateKey(service, 'stt:params'),
+  })
+  const mediaRecorder = useMediaRecorder()
+  const transcribe = useTranscribe(service.apiBase)
+  const { levels } = useAudioVisualizer(
+    isBatchMode ? recordingStream : live.stream,
   )
+  const recordDuration = useElapsedMs(mediaRecorder.isRecording, {
+    tickMs: 100,
+  })
 
-  const startVisualizer = (stream: MediaStream) => {
-    const audioContext = new AudioContext()
-    audioContextRef.current = audioContext
-    const analyser = audioContext.createAnalyser()
-    analyser.fftSize = 64
-    analyserRef.current = analyser
-    audioContext.createMediaStreamSource(stream).connect(analyser)
-    const loop = () => {
-      if (!analyserRef.current) return
-      const freqData = new Uint8Array(analyserRef.current.frequencyBinCount)
-      analyserRef.current.getByteFrequencyData(freqData)
-      const heights: number[] = []
-      for (let i = 0; i < 24; i++) {
-        const startBin = Math.floor((i * 32) / 24)
-        const endBin = Math.max(startBin + 1, Math.floor(((i + 1) * 32) / 24))
-        let sum = 0
-        for (let b = startBin; b < endBin; b++) sum += freqData[b]
-        const avg = sum / (endBin - startBin)
-        smoothedDataRef.current[i] += (avg - smoothedDataRef.current[i]) * 0.3
-        heights.push(4 + (smoothedDataRef.current[i] / 255) * 52)
-      }
-      setBarHeights(heights)
-      animFrameRef.current = requestAnimationFrame(loop)
-    }
-    animFrameRef.current = requestAnimationFrame(loop)
-  }
-
-  const stopVisualizer = () => {
-    if (animFrameRef.current !== null) {
-      cancelAnimationFrame(animFrameRef.current)
-      animFrameRef.current = null
-    }
-    if (audioContextRef.current) {
-      audioContextRef.current.close()
-      audioContextRef.current = null
-    }
-    analyserRef.current = null
-    smoothedDataRef.current.fill(0)
-    setBarHeights(Array(24).fill(4))
-  }
+  // Blocks a second Record while the mic opens, which would leak a stream that is never stopped.
+  const [isRecordStarting, setIsRecordStarting] = useState(false)
 
   const startRecording = async () => {
-    setMicError(null)
+    setIsRecordStarting(true)
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const mediaRecorder = new MediaRecorder(stream)
-      mediaRecorderRef.current = mediaRecorder
-      chunksRef.current = []
-
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data)
-      }
-
-      mediaRecorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
-        for (const t of stream.getTracks()) t.stop()
-        transcribeMutation.mutate({
-          file: blob,
-          language: sttValues.language,
-          useDenoise: sttValues.useDenoise === 'true',
-        })
-      }
-
-      mediaRecorder.start()
-      setIsRecording(true)
-      setRecordDuration(0)
-      durationRef.current = setInterval(() => {
-        setRecordDuration((d) => d + 100)
-      }, 100)
-      startVisualizer(stream)
-    } catch (error) {
-      setMicError(getMicErrorMessage(error))
+      const { stream } = await mediaRecorder.start()
+      setRecordingStream(stream)
+    } catch {
+      // mediaRecorder.error already reflects the failure.
+    } finally {
+      setIsRecordStarting(false)
     }
   }
 
-  const stopRecording = () => {
-    setIsRecording(false)
-    if (durationRef.current) clearInterval(durationRef.current)
-    durationRef.current = null
-    stopVisualizer()
-    mediaRecorderRef.current?.stop()
-  }
-
-  const handleFileUpload = (file: File) => {
-    transcribeMutation.mutate({
-      file,
+  // Timestamps are requested so the transcript can be saved as subtitles.
+  const stopRecording = async () => {
+    setRecordingStream(null)
+    const length = formatClock(recordDuration / 1000)
+    const blob = await mediaRecorder.stop()
+    if (blob.size === 0) return
+    setBatchSource({ label: `Recording · ${length}`, fileName: 'recording' })
+    transcribe.mutate({
+      file: blob,
       language: sttValues.language,
-      useDenoise: sttValues.useDenoise === 'true',
+      useDenoise: sttValues.useDenoise,
+      returnTimestamps: true,
     })
   }
 
-  const startLive = async () => {
-    setMicError(null)
-    setLiveError(null)
-    setLiveTranscripts([])
-    try {
-      const vizStream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-      })
-      visualizerStreamRef.current = vizStream
-      startVisualizer(vizStream)
-      await startLiveStream({
-        language: sttValues.language,
-        onTranscript: (t) => setLiveTranscripts((prev) => [...prev, t]),
-        onError: (message) => setLiveError(message),
-      })
-      setIsLiveActive(true)
-    } catch (error) {
-      stopVisualizer()
-      if (visualizerStreamRef.current) {
-        for (const t of visualizerStreamRef.current.getTracks()) t.stop()
-        visualizerStreamRef.current = null
-      }
-      setMicError(getMicErrorMessage(error))
-    }
+  const handleFileUpload = (file: File) => {
+    setBatchSource({ label: file.name, fileName: file.name })
+    transcribe.mutate({
+      file,
+      language: sttValues.language,
+      useDenoise: sttValues.useDenoise,
+      returnTimestamps: true,
+    })
   }
 
-  const stopLive = async () => {
-    setIsLiveActive(false)
-    setIsLiveFlushing(true)
-    stopVisualizer()
-    if (visualizerStreamRef.current) {
-      for (const t of visualizerStreamRef.current.getTracks()) t.stop()
-      visualizerStreamRef.current = null
-    }
-    await stopLiveStream()
-    setIsLiveFlushing(false)
+  const clearBatch = () => {
+    transcribe.reset()
+    setBatchSource(null)
   }
+
+  const isProcessing = transcribe.isPending
+  const isActive = isBatchMode ? mediaRecorder.isRecording : live.isActive
+  const isBusy = isBatchMode
+    ? isProcessing || isRecordStarting
+    : live.isFlushing
+  const canSwitchMode =
+    !mediaRecorder.isRecording &&
+    !isRecordStarting &&
+    !isProcessing &&
+    !isLiveSessionOpen
 
   const handleRecordToggle = () => {
-    if (mode === 'batch') {
-      if (isRecording) stopRecording()
-      else startRecording()
-    } else {
-      if (isLiveActive) stopLive()
-      else startLive()
+    if (isBatchMode) {
+      if (mediaRecorder.isRecording) stopRecording()
+      else if (!isRecordStarting) startRecording()
+    } else if (live.isActive) live.stop()
+    else {
+      live.start({
+        language: sttValues.language,
+        pauseSeconds: sttValues.pauseSeconds,
+        vadSensitivity: sttValues.vadSensitivity,
+      })
     }
   }
 
-  useEffect(() => {
-    return () => {
-      if (durationRef.current) clearInterval(durationRef.current)
-      const tracks = mediaRecorderRef.current?.stream?.getTracks()
-      if (tracks) for (const t of tracks) t.stop()
-      if (animFrameRef.current !== null)
-        cancelAnimationFrame(animFrameRef.current)
-      if (audioContextRef.current) audioContextRef.current.close()
-      const vizTracks = visualizerStreamRef.current?.getTracks()
-      if (vizTracks) for (const t of vizTracks) t.stop()
-      stopLiveStream()
-    }
-  }, [stopLiveStream])
+  const status = isBatchMode
+    ? mediaRecorder.isRecording
+      ? `Recording... ${formatRecordingTime(recordDuration)}`
+      : isRecordStarting
+        ? 'Starting...'
+        : isProcessing
+          ? 'Transcribing...'
+          : 'Click to start recording'
+    : live.isStarting
+      ? 'Starting...'
+      : live.isActive
+        ? live.voice.speaking
+          ? 'Speech detected'
+          : live.voice.transcribing
+            ? 'Transcribing...'
+            : 'Listening...'
+        : live.isFlushing
+          ? 'Finishing...'
+          : 'Click to start live transcription'
 
-  const formatDuration = (ms: number) => {
-    const s = Math.floor(ms / 1000)
-    const ms2 = Math.floor((ms % 1000) / 100)
-    return `0:${s.toString().padStart(2, '0')}.${ms2}`
-  }
+  // Screen reader announcement; unlike the visible status it doesn't tick with the clock.
+  const announcement = isBatchMode
+    ? mediaRecorder.isRecording
+      ? 'Recording started'
+      : isProcessing
+        ? 'Recording stopped. Transcribing.'
+        : transcribe.isSuccess
+          ? 'Transcription ready'
+          : ''
+    : live.isStarting
+      ? 'Starting live transcription'
+      : live.isActive
+        ? 'Listening'
+        : live.isFlushing
+          ? 'Stopping. Finishing the last words.'
+          : live.transcripts.length > 0
+            ? 'Live transcription stopped'
+            : ''
 
-  const isProcessing = transcribeMutation.isPending
-  const isBatchMode = mode === 'batch'
-  const isActive = isBatchMode ? isRecording : isLiveActive
-  const isBusy = isBatchMode ? isProcessing : isLiveFlushing
-  const isCapturing = isRecording || isLiveActive
-  const canSwitchMode =
-    !isRecording && !isProcessing && !isLiveActive && !isLiveFlushing
+  const liveText = live.transcripts.map((t) => t.text).join(' ')
+  const batchText = transcribe.data?.text ?? ''
+  const liveFinished = !live.isActive && !live.isFlushing
 
   return (
-    <div className="flex flex-col gap-6 xl:flex-row">
-      <div className="min-w-0 flex-1 space-y-6">
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-foreground text-sm font-medium">Audio Input</p>
-              <Tabs
-                value={mode}
-                onValueChange={(value) => setMode(value as 'batch' | 'live')}
-              >
-                <TabsList>
-                  <TabsTrigger value="batch" disabled={!canSwitchMode}>
-                    Batch
-                  </TabsTrigger>
-                  <TabsTrigger value="live" disabled={!canSwitchMode}>
-                    Live
-                  </TabsTrigger>
-                </TabsList>
-              </Tabs>
-            </div>
-            <div className="border-border bg-muted/20 flex flex-col items-center justify-center rounded-xl border p-8">
-              {micError && (
-                <div className="text-destructive mb-4 flex items-center gap-2 text-xs">
-                  <MicOff className="h-3.5 w-3.5 shrink-0" />
-                  <span>{micError}</span>
-                </div>
-              )}
-              <button
-                type="button"
-                onClick={handleRecordToggle}
-                disabled={isBusy}
-                className={cn(
-                  'flex h-20 w-20 items-center justify-center rounded-full transition-all',
-                  isActive
-                    ? 'scale-110 bg-red-500/20 text-red-400 ring-4 ring-red-500/30'
-                    : 'bg-primary/15 text-primary hover:bg-primary/25',
-                  isBusy && 'cursor-not-allowed opacity-50',
-                )}
-              >
-                {isActive ? (
-                  <Square className="h-7 w-7" />
-                ) : (
-                  <Mic className="h-8 w-8" />
-                )}
-              </button>
-
-              <p className="text-muted-foreground mt-3 text-sm">
-                {isBatchMode
-                  ? isRecording
-                    ? `Recording... ${formatDuration(recordDuration)}`
-                    : isProcessing
-                      ? 'Transcribing...'
-                      : 'Click to start recording'
-                  : isLiveActive
-                    ? 'Listening...'
-                    : isLiveFlushing
-                      ? 'Finishing...'
-                      : 'Click to start live transcription'}
-              </p>
-
-              <div className="mt-4 flex h-12 items-end gap-[3px]">
-                {bars.map((barId, i) => (
-                  <div
-                    key={barId}
-                    className={cn(
-                      'w-1 rounded-full transition-all duration-150',
-                      isCapturing
-                        ? 'bg-red-400'
-                        : isBusy
-                          ? 'bg-secondary'
-                          : 'bg-muted-foreground/20',
-                    )}
-                    style={{
-                      height: isCapturing
-                        ? `${barHeights[i]}px`
-                        : isBusy
-                          ? `${PROCESSING_BAR_HEIGHTS[i]}px`
-                          : '4px',
-                      transition: isCapturing ? 'none' : undefined,
-                      animation: isBusy
-                        ? `pulse-status ${PROCESSING_ANIM_DURATIONS[i]}s ease-in-out infinite`
-                        : 'none',
-                    }}
-                  />
-                ))}
-              </div>
-            </div>
-
-            <div className="flex gap-2">
-              <Button
-                variant={isActive ? 'destructive' : 'outline'}
-                className="flex-1 gap-2"
-                onClick={handleRecordToggle}
-                disabled={isBusy}
-              >
-                {isActive ? (
-                  <>
-                    <Square className="h-4 w-4" />
-                    {isBatchMode ? 'Stop Recording' : 'Stop'}
-                  </>
-                ) : (
-                  <>
-                    <Mic className="h-4 w-4" />
-                    {isBatchMode ? 'Record' : 'Go Live'}
-                  </>
-                )}
-              </Button>
-              {isBatchMode && (
-                <UploadButton
-                  accept="audio/*"
-                  onFiles={(files) => handleFileUpload(files[0])}
-                  disabled={isRecording || isProcessing}
-                  className="gap-2"
-                  inputTestId="stt-file-input"
+    <DemoLayout
+      sidebar={
+        <DemoParameterSidebar params={params}>
+          {isBatchMode && (
+            <p
+              className="text-muted-foreground text-xs"
+              data-testid="stt-live-settings-hint"
+            >
+              Pause length and speech sensitivity are on the Live tab: they tune
+              its voice detection.
+            </p>
+          )}
+          {isLiveSessionOpen && (
+            <p
+              className="text-muted-foreground text-xs"
+              data-testid="stt-params-locked"
+            >
+              Locked while live transcription runs: stop it to change these,
+              then Go Live again.
+            </p>
+          )}
+        </DemoParameterSidebar>
+      }
+    >
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-foreground text-sm font-medium">Audio Input</h3>
+            <Tabs
+              value={mode}
+              onValueChange={(value) => {
+                if (!isSttMode(value)) return
+                mediaRecorder.clearError()
+                live.clearMicError()
+                setMode(value)
+              }}
+            >
+              <TabsList aria-label="Transcription mode">
+                <TabsTrigger
+                  value="batch"
+                  disabled={!canSwitchMode}
+                  data-testid="stt-mode-batch"
                 >
-                  <Upload className="h-4 w-4" />
-                  Upload
-                </UploadButton>
-              )}
-            </div>
+                  Batch
+                </TabsTrigger>
+                <TabsTrigger
+                  value="live"
+                  disabled={!canSwitchMode}
+                  data-testid="stt-mode-live"
+                >
+                  Live
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
           </div>
 
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-foreground text-sm font-medium">
-                Transcription
-              </p>
-              {isBatchMode && transcribeMutation.isSuccess && (
-                <Badge variant="secondary" className="text-[10px]">
-                  Completed
-                </Badge>
-              )}
-              {!isBatchMode && isLiveActive && (
-                <Badge variant="secondary" className="text-[10px]">
-                  Live
-                </Badge>
-              )}
-            </div>
-            <div
-              className={cn(
-                'border-border bg-muted/20 min-h-[260px] overflow-auto rounded-xl border p-4 text-sm leading-relaxed whitespace-pre-wrap',
-                (
-                  isBatchMode
-                    ? transcribeMutation.data?.text
-                    : liveTranscripts.length
-                )
-                  ? 'text-foreground'
-                  : 'text-muted-foreground',
-              )}
+          <p role="status" className="sr-only" data-testid="stt-announcement">
+            {announcement}
+          </p>
+          <RecordControl
+            active={isActive}
+            busy={isBusy}
+            capturing={mediaRecorder.isRecording || live.isActive}
+            levels={levels}
+            speech={
+              !isBatchMode && live.isActive && !live.isStarting
+                ? live.voice.speaking
+                : undefined
+            }
+            status={status}
+            micError={isBatchMode ? mediaRecorder.error : live.micError}
+            onToggle={handleRecordToggle}
+          />
+
+          <div className="flex gap-2">
+            <Button
+              variant={isActive ? 'destructive' : 'outline'}
+              className="flex-1 gap-2"
+              onClick={handleRecordToggle}
+              disabled={isBusy}
             >
-              {isBatchMode ? (
+              {isActive ? (
                 <>
-                  {isProcessing && (
-                    <div className="text-muted-foreground flex items-center gap-2">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Transcribing audio...
-                    </div>
-                  )}
-                  {transcribeMutation.isError && (
-                    <p className="text-destructive">
-                      Error: {transcribeMutation.error.message}
-                    </p>
-                  )}
-                  {transcribeMutation.isSuccess && (
-                    <span data-testid="stt-result-text">
-                      {transcribeMutation.data.text ||
-                        'No speech detected in the audio.'}
-                    </span>
-                  )}
-                  {transcribeMutation.isIdle &&
-                    'Transcription will appear here after recording...'}
+                  <Square aria-hidden className="h-4 w-4" />
+                  {isBatchMode ? 'Stop Recording' : 'Stop'}
                 </>
               ) : (
                 <>
-                  {liveError && (
-                    <p className="text-destructive">Error: {liveError}</p>
-                  )}
-                  {isLiveFlushing && (
-                    <div className="text-muted-foreground mb-2 flex items-center gap-2">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Finishing...
-                    </div>
-                  )}
-                  {liveTranscripts.length > 0 ? (
-                    <span data-testid="stt-result-text">
-                      {liveTranscripts.map((t) => t.text).join(' ')}
-                    </span>
-                  ) : isLiveActive ? (
-                    'Listening for speech...'
-                  ) : (
-                    'Live transcript will appear here as you speak...'
-                  )}
+                  <Mic aria-hidden className="h-4 w-4" />
+                  {isBatchMode ? 'Record' : 'Go Live'}
                 </>
               )}
-            </div>
+            </Button>
+            {isBatchMode && (
+              <UploadButton
+                accept="audio/*"
+                onFiles={(files) => handleFileUpload(files[0])}
+                disabled={
+                  mediaRecorder.isRecording || isRecordStarting || isProcessing
+                }
+                className="gap-2"
+                inputTestId="stt-file-input"
+              >
+                <Upload aria-hidden className="h-4 w-4" />
+                Upload
+              </UploadButton>
+            )}
           </div>
         </div>
-      </div>
 
-      <div className="shrink-0 space-y-4 xl:w-72">
-        <DemoParameterSidebar params={params} />
+        {isBatchMode ? (
+          <TranscriptPanel
+            badge={transcribe.isSuccess ? 'Completed' : undefined}
+            hasText={Boolean(batchText)}
+            source={
+              (transcribe.isSuccess || isProcessing) && batchSource
+                ? batchSource.label
+                : undefined
+            }
+            actions={
+              transcribe.isSuccess && (
+                <TranscriptActions
+                  text={batchText}
+                  cues={subtitleCues(transcribe.data.segments)}
+                  sourceName={batchSource?.fileName ?? 'transcript'}
+                  onClear={clearBatch}
+                  disabled={isProcessing || mediaRecorder.isRecording}
+                />
+              )
+            }
+            note={
+              transcribe.isSuccess || transcribe.isError
+                ? 'A new recording or upload replaces this result. Copy or download the transcript first to keep it.'
+                : undefined
+            }
+          >
+            {isProcessing && (
+              <div className="text-muted-foreground flex items-center gap-2">
+                <Loader aria-hidden className="h-4 w-4 animate-spin" />
+                Transcribing audio...
+              </div>
+            )}
+            {transcribe.isError && (
+              <InlineNotice tone="destructive" size="sm">
+                {transcribe.error.message}
+              </InlineNotice>
+            )}
+            {transcribe.isSuccess && (
+              <span data-testid="stt-result-text">
+                {transcribe.data.text || 'No speech detected in the audio.'}
+              </span>
+            )}
+            {transcribe.isIdle &&
+              'Record or upload audio. Its transcript appears here.'}
+          </TranscriptPanel>
+        ) : (
+          <TranscriptPanel
+            badge={live.isActive && !live.isStarting ? 'Live' : undefined}
+            hasText={liveText.length > 0}
+            source={liveText ? 'Microphone · live' : undefined}
+            actions={
+              liveFinished &&
+              liveText && (
+                <TranscriptActions
+                  text={live.transcripts.map((t) => t.text).join('\n')}
+                  cues={subtitleCues(live.transcripts)}
+                  sourceName="live-transcript"
+                  onClear={live.clear}
+                />
+              )
+            }
+            note={
+              liveFinished && (liveText || live.error)
+                ? 'Go Live starts a new transcript and replaces this one. Copy or download it first to keep it.'
+                : undefined
+            }
+          >
+            {live.error && (
+              <InlineNotice
+                tone="destructive"
+                size="sm"
+                data-testid="stt-live-error"
+              >
+                {live.error}
+              </InlineNotice>
+            )}
+            {live.isFlushing && (
+              <div className="text-muted-foreground flex items-center gap-2">
+                <Loader aria-hidden className="h-4 w-4 animate-spin" />
+                Finishing...
+              </div>
+            )}
+            {liveText ? (
+              <span data-testid="stt-result-text">{liveText}</span>
+            ) : live.voice.transcribing ? null : live.voice.speaking ? (
+              'Speech detected. Its transcript appears when you pause.'
+            ) : live.isActive ? (
+              'Listening for speech...'
+            ) : (
+              'Live transcript will appear here as you speak...'
+            )}
+            {live.voice.transcribing && (
+              <div
+                className="text-muted-foreground flex items-center gap-2"
+                data-testid="stt-live-pending"
+              >
+                <Loader aria-hidden className="h-4 w-4 animate-spin" />
+                Transcribing...
+              </div>
+            )}
+          </TranscriptPanel>
+        )}
       </div>
-    </div>
+    </DemoLayout>
   )
 }
