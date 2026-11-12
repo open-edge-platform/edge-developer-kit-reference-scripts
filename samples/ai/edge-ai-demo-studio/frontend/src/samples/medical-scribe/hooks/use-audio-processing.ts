@@ -5,16 +5,24 @@
 
 import { useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { useServiceApiBase } from '@/context/service-status-context'
+import {
+  useGetService,
+  useServiceApiBase,
+} from '@/context/service-status-context'
 import { logger } from '@/lib/logger'
 import {
   DIARIZATION_DEFAULTS,
   DiarizationCancelledError,
   useDiarize,
 } from '@/services/diarization/hooks'
+import {
+  getServiceSttLanguageOptions,
+  resolveSttLanguage,
+} from '@/services/speech-to-text/config'
 import { useTranscribe } from '@/services/speech-to-text/hooks/use-transcribe'
 import { timestampNow } from '../lib/timestamps'
-import { alignTranscriptWithSegments } from '../lib/transcript-alignment'
+import { alignTranscriptWithSegments } from '../lib/alignment'
+import { joinTokens } from '../lib/alignment/text'
 import type {
   DoctorProfile,
   Session,
@@ -56,6 +64,9 @@ export function useAudioProcessing({
   diarizationEnabled: boolean
 }) {
   const transcribe = useTranscribe(useServiceApiBase('speech-to-text'))
+  const sttLanguages = getServiceSttLanguageOptions(
+    useGetService('speech-to-text'),
+  )
   // Leaving the page cancels the diarization jobs still running (useDiarize).
   const diarize = useDiarize(useServiceApiBase('diarization'))
   // The processing in flight, by session.
@@ -92,7 +103,8 @@ export function useAudioProcessing({
       const liveResult =
         reusable.length > 0
           ? {
-              text: reusable.map((s) => s.text.trim()).join(' '),
+              text: joinTokens(reusable.map((s) => s.text.trim())),
+              words: undefined,
               segments: reusable.map((s) => ({
                 start: s.start,
                 end: s.end,
@@ -110,8 +122,8 @@ export function useAudioProcessing({
         liveResult ??
           transcribe.mutateAsync({
             file: audio,
-            language: session.language,
-            returnTimestamps: true,
+            language: resolveSttLanguage(session.language, sttLanguages),
+            returnWords: diarizationEnabled,
           }),
         diarizationEnabled
           ? diarize.mutateAsync({
@@ -135,7 +147,10 @@ export function useAudioProcessing({
         ? alignTranscriptWithSegments(
             transcriptResult.text,
             diarizeResult.segments,
-            transcriptResult.segments,
+            {
+              words: transcriptResult.words,
+              segments: transcriptResult.segments,
+            },
           )
         : liveResult
           ? // No diarization: keep the live pass's per-utterance split, not one block.
@@ -144,8 +159,14 @@ export function useAudioProcessing({
               {
                 speaker: 'Speaker',
                 text: transcriptResult.text,
-                start: transcriptResult.segments?.[0]?.start ?? 0,
-                end: transcriptResult.segments?.at(-1)?.end ?? 0,
+                start:
+                  transcriptResult.segments?.[0]?.start ??
+                  transcriptResult.words?.[0]?.start ??
+                  0,
+                end:
+                  transcriptResult.segments?.at(-1)?.end ??
+                  transcriptResult.words?.at(-1)?.end ??
+                  0,
               },
             ]
 

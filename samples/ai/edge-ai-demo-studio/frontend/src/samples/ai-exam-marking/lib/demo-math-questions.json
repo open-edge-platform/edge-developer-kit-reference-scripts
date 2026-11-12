@@ -1,0 +1,28 @@
+{
+    "1": {
+        "number": 1,
+        "question": "A right-angled triangle has sides of length 6cm and 8cm. Find the length of the hypotenuse.",
+        "marks": 3,
+        "type": "math",
+        "scheme": "Award 1 mark for correctly applying the Pythagorean theorem: a^2 + b^2 = c^2.\nAward 1 mark for calculating 6^2 + 8^2 = 36 + 64 = 100.\nAward 1 mark for taking the square root: √100 = 10.\nAccept any other appropriate method or response that correctly finds the hypotenuse length.",
+        "boundingBox": {
+            "x1": 70,
+            "y1": 95,
+            "x2": 550,
+            "y2": 320
+        }
+    },
+    "2": {
+        "number": 2,
+        "question": "Sketch the quadratic function graph of y=x^2 + 16.",
+        "marks": 2,
+        "type": "math_graph",
+        "scheme": "Award 1 mark (B1) for a parabola with the correct general shape: opening upwards (U-shape), symmetric about the y-axis, and lying entirely above the x-axis.\nAward 1 mark (B1) for clearly labeling or indicating the y-intercept / vertex at (0, 16) or marking 16 on the positive y-axis.\n\nValidation Guidance:\n- The curve must be drawn as a smooth parabola, not as straight-line segments or a V-shape.\n- The curve MUST NOT touch or cross the x-axis at any point.\n- Do not award shape marks if the curve opens downwards (N-shape) or if the vertex is shifted off the y-axis.\n- Intercept must be labeled clearly as coordinates (0, 16) or as 16 on the y-axis.",
+        "boundingBox": {
+            "x1": 50,
+            "y1": 480,
+            "x2": 550,
+            "y2": 760
+        }
+    }
+}

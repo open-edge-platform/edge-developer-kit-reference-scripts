@@ -11,6 +11,8 @@
 export const proxiedServiceTypes: readonly string[] = [
   'diarization',
   'embeddings',
+  'exam-marking-agent',
+  'exam-marking-database',
   'face-recognition',
   'file-watcher',
   'frame-generation',

@@ -14,19 +14,22 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   webp: 'image/webp',
 }
 
-/** `waiting`: the File Watcher has no port yet (not running). */
+/** How long a dropped socket waits before it connects again. */
+const RECONNECT_DELAY_MS = 1000
+
+/** `waiting`: the watcher has no port yet (not running). */
 export type ScannerConnection =
   'disconnected' | 'waiting' | 'connecting' | 'connected'
 
 interface UseFileWatcherSocketOptions {
-  /** Port the file-watcher service listens on; the socket stays closed while undefined. */
+  /** Port the watching service listens on; the socket stays closed while undefined. */
   port: number | undefined
   /** Folder to watch; sent as a query param only when non-empty. */
   path: string
   active: boolean
-  /** Each scanned image as a data URL resized to 612x792. */
-  onImage: (dataUrl: string) => void
-  /** The socket closed on its own, not by this hook; `failed` when it errored first. */
+  /** Each scanned image as a data URL resized to 612x792, with its file name. */
+  onImage: (dataUrl: string, filename: string) => void
+  /** The socket closed on its own, not by this hook; `failed` when it errored first. It reconnects while `active`. */
   onClosed: (failed: boolean) => void
 }
 
@@ -36,7 +39,7 @@ function socketUrl(port: number, path: string): string {
   return url.toString()
 }
 
-/** The File Watcher WebSocket: open while `active`, resizing each scanned image for `onImage`. */
+/** A folder watcher's WebSocket: open while `active`, resizing each scanned image for `onImage`. */
 export function useFileWatcherSocket({
   port,
   path,
@@ -46,15 +49,20 @@ export function useFileWatcherSocket({
 }: UseFileWatcherSocketOptions): ScannerConnection {
   // The address of the socket that is open, if any.
   const [openUrl, setOpenUrl] = useState<string | null>(null)
+  // Bumped to open a new socket after one dropped.
+  const [attempt, setAttempt] = useState(0)
   const url = active && port ? socketUrl(port, path) : null
 
-  const handleImage = useEffectEvent((dataUrl: string) => onImage(dataUrl))
+  const handleImage = useEffectEvent((dataUrl: string, filename: string) =>
+    onImage(dataUrl, filename),
+  )
   const handleClosed = useEffectEvent((failed: boolean) => onClosed(failed))
 
   useEffect(() => {
     if (!url) return
     const ws = new WebSocket(url)
     let failed = false
+    let reconnectTimer: ReturnType<typeof setTimeout> | undefined
 
     ws.onopen = () => setOpenUrl(url)
 
@@ -67,7 +75,7 @@ export function useFileWatcherSocket({
         const ext = data.filename.split('.').pop()?.toLowerCase() ?? ''
         const mimeType = MIME_BY_EXTENSION[ext] ?? 'image/jpeg'
         const dataUrl = `data:${mimeType};base64,${data.base64}`
-        handleImage(await resizeImage(dataUrl, 612, 792))
+        handleImage(await resizeImage(dataUrl, 612, 792), data.filename)
       } catch {
         // ignore malformed messages
       }
@@ -80,6 +88,10 @@ export function useFileWatcherSocket({
     ws.onclose = () => {
       setOpenUrl(null)
       handleClosed(failed)
+      reconnectTimer = setTimeout(
+        () => setAttempt((n) => n + 1),
+        RECONNECT_DELAY_MS,
+      )
     }
 
     return () => {
@@ -89,9 +101,10 @@ export function useFileWatcherSocket({
       ws.onerror = null
       ws.onclose = null
       ws.close()
+      clearTimeout(reconnectTimer)
       setOpenUrl((current) => (current === url ? null : current))
     }
-  }, [url])
+  }, [url, attempt])
 
   if (!active) return 'disconnected'
   if (!port) return 'waiting'

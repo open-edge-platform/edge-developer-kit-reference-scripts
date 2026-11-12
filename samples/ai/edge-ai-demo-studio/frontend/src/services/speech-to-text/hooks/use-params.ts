@@ -8,6 +8,7 @@ import { useDemoParams } from '@/services/common/demo/use-demo-params'
 import {
   getSttLanguageOptions,
   isSttVadSensitivity,
+  resolveSttLanguage,
   STT_AUTO_LANGUAGE,
   STT_PAUSE_SECONDS,
   STT_VAD_SENSITIVITY_OPTIONS,
@@ -15,7 +16,7 @@ import {
 } from '../config'
 
 const STT_DEFAULTS = {
-  // Falls back to DEFAULT_LANGUAGE where the backend lacks `autoLanguage`.
+  // Falls back to English where the backend lacks `autoLanguage`.
   language: STT_AUTO_LANGUAGE as string,
   useDenoise: false,
   // Both workers' own defaults.
@@ -24,9 +25,6 @@ const STT_DEFAULTS = {
 }
 
 export type SttParamValues = typeof STT_DEFAULTS
-
-// Every model knows it; both workers default to it.
-const DEFAULT_LANGUAGE = 'en'
 
 const PAUSE_OPTIONS = STT_PAUSE_SECONDS.map((seconds) => ({
   value: String(seconds),
@@ -62,18 +60,9 @@ export function useSttParams({
     setters: { setLanguage, setUseDenoise, setPauseSeconds, setVadSensitivity },
   } = useDemoParams(STT_DEFAULTS, { sessionKey })
 
-  const languageOptions = [
-    ...(autoLanguage
-      ? [{ value: STT_AUTO_LANGUAGE, label: 'Auto-detect' }]
-      : []),
-    ...getSttLanguageOptions(model),
-  ]
+  const languageOptions = getSttLanguageOptions(model, autoLanguage)
   // Replaces a language kept from another model or backend that this one lacks (e.g. Auto on OEP).
-  const knownLanguage = languageOptions.some((o) => o.value === language)
-    ? language
-    : autoLanguage
-      ? STT_AUTO_LANGUAGE
-      : DEFAULT_LANGUAGE
+  const knownLanguage = resolveSttLanguage(language, languageOptions)
 
   const values: SttParamValues = {
     language: knownLanguage,

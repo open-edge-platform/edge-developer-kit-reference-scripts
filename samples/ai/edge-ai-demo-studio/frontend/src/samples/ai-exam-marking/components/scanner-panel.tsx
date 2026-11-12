@@ -19,7 +19,7 @@ import {
 const STATUS_TEXT: Record<ScannerConnection, string> = {
   connected: 'Ready to receive scanned papers…',
   connecting: 'Connecting…',
-  waiting: 'Waiting for the File Watcher to start…',
+  waiting: 'Waiting for the Exam Marking Agent to start…',
   disconnected: 'Auto-Grade via Scanner',
 }
 
@@ -30,32 +30,33 @@ const ICON_SURFACE: Record<ScannerConnection, string> = {
   disconnected: 'bg-muted',
 }
 
-/** Auto-grading from a scanner: the File Watcher streams each new image in a folder to the queue. */
+/**
+ * Auto-grading from a scanner: the Exam Marking Agent streams each new image in its prior_mark
+ * folder (or the folder given) to the queue. Connected from the start, and again after a drop.
+ */
 export function ScannerPanel({
   onImage,
 }: {
-  /** A scanned sheet, resized, as a data URL. */
-  onImage: (dataUrl: string) => void
+  /** A scanned sheet, resized, as a data URL, with its file name in the watched folder. */
+  onImage: (dataUrl: string, filename: string) => void
 }) {
-  const [active, setActive] = useState(false)
+  const [active, setActive] = useState(true)
   const [watchedPath, setWatchedPath] = useState('')
   const [dropped, setDropped] = useState<string | null>(null)
-  // Allocated while the file watcher runs; undefined when it is stopped.
-  const port = useGetService('file-watcher')?.instancePort
+  // Allocated while the agent runs; undefined when it is stopped.
+  const port = useGetService('exam-marking-agent')?.instancePort
 
   const connection = useFileWatcherSocket({
     port,
     path: watchedPath,
     active,
     onImage,
-    onClosed: (failed) => {
-      setActive(false)
+    onClosed: (failed) =>
       setDropped(
         failed
-          ? 'Could not reach the File Watcher. Check that it is running and that the folder exists, then connect again.'
-          : 'The File Watcher closed the connection. Connect again to keep grading scans.',
-      )
-    },
+          ? 'Could not reach the Exam Marking Agent; reconnecting. Check that it is running and that the folder exists.'
+          : 'The Exam Marking Agent closed the connection; reconnecting.',
+      ),
   })
 
   const toggle = () => {
@@ -102,7 +103,7 @@ export function ScannerPanel({
               : 'Connect and scan answer sheets directly to the watched folder. Each scanned image will be picked up and graded automatically.'}
           </p>
         </div>
-        {dropped && !active && (
+        {dropped && active && connection !== 'connected' && (
           <InlineNotice tone="destructive" size="sm" className="w-full">
             {dropped}
           </InlineNotice>

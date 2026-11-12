@@ -58,6 +58,19 @@ export const sample: Sample = {
       capabilityKey: 'mcp_tools',
       impactText: 'MCP tool integrations will not be available.',
     },
+    {
+      serviceId: 'exam-marking-database',
+      role: 'required',
+      capabilityKey: 'database',
+      impactText:
+        'Graded records will not be persisted and MCP insights will be unavailable.',
+    },
+    {
+      serviceId: 'exam-marking-agent',
+      role: 'required',
+      capabilityKey: 'analysis_agent',
+      impactText: 'The AI-powered analysis chatbot will be unavailable.',
+    },
   ],
   pipeline: [
     'wake-word-detection',

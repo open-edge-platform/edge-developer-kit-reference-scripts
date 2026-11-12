@@ -18,6 +18,8 @@ export type DashboardStats = {
   passRate: number | null
   humanReviewCount: number
   scoredRecords: { record: SavedRecord; pct: number }[]
+  /** Students without a score yet, after merging their papers. */
+  unscoredRecords: SavedRecord[]
   buckets: { label: string; min: number; max: number; count: number }[]
   maxBucketCount: number
   questionStats: {
@@ -28,20 +30,86 @@ export type DashboardStats = {
   }[]
 }
 
-/** A record's final score (its last running total), or null without one. */
-export function getRecordTotalScore(record: SavedRecord): MarksTotal | null {
-  const last = record.llmResult.response.at(-1)
-  if (!last || last.runningTotal.max === 0) return null
-  return last.runningTotal
+/** The marking scheme's total marks: the denominator of a record's score. */
+function configuredTotalMarks(record: SavedRecord): number {
+  return record.dataEntries.reduce(
+    (sum, entry) => (Number.isFinite(entry.marks) ? sum + entry.marks : sum),
+    0,
+  )
+}
+
+/**
+ * A record's score, or null without one: marks awarded on the questions graded so far, over the
+ * full marking scheme's total.
+ */
+function getRecordTotalScore(record: SavedRecord): MarksTotal | null {
+  const results = record.llmResult.response
+  if (results.length === 0) return null
+  const max = configuredTotalMarks(record)
+  if (max <= 0) return null
+  const awarded = results.reduce(
+    (sum, { marks }) => sum + (scoreOf(marks)?.awarded ?? 0),
+    0,
+  )
+  return { awarded, max }
+}
+
+const byTime = (record: SavedRecord) => new Date(record.timestamp).getTime()
+
+/**
+ * Each graded paper is its own history record, so a student re-graded twice for the same subject
+ * (e.g. multiple pages/attempts) has multiple entries. The dashboard still reports one row per
+ * student+subject, so merge those papers here: data entries/question results are combined by
+ * question number (last paper wins per question) before totals are computed.
+ */
+function mergeRecordsForDashboard(records: SavedRecord[]): SavedRecord[] {
+  const groups = new Map<string, SavedRecord[]>()
+  for (const record of records) {
+    const key = `${record.studentId ?? record.id}::${record.subjectId ?? ''}`
+    const group = groups.get(key)
+    if (group) group.push(record)
+    else groups.set(key, [record])
+  }
+
+  return Array.from(groups.values()).map((group) => {
+    if (group.length === 1) return group[0]!
+
+    const oldestFirst = [...group].sort((a, b) => byTime(a) - byTime(b))
+    const latest = oldestFirst.at(-1)!
+    const dataEntryMap = new Map<string, SavedRecord['dataEntries'][number]>()
+    const responseMap = new Map<
+      string,
+      SavedRecord['llmResult']['response'][number]
+    >()
+    for (const paper of oldestFirst) {
+      for (const entry of paper.dataEntries) {
+        dataEntryMap.set(String(entry.number), entry)
+      }
+      for (const entry of paper.llmResult.response) {
+        responseMap.set(entry.questionNumber, entry)
+      }
+    }
+
+    return {
+      ...latest,
+      dataEntries: Array.from(dataEntryMap.values()),
+      llmResult: {
+        ...latest.llmResult,
+        response: Array.from(responseMap.values()),
+      },
+    }
+  })
 }
 
 /** Aggregate class-wide statistics from all saved grading records. */
 export function computeDashboardStats(
-  records: SavedRecord[],
+  savedRecords: SavedRecord[],
 ): DashboardStats | null {
-  if (records.length === 0) return null
+  if (savedRecords.length === 0) return null
+  const records = mergeRecordsForDashboard(savedRecords)
 
   const scoredRecords: { record: SavedRecord; pct: number }[] = []
+  const unscoredRecords: SavedRecord[] = []
 
   for (const record of records) {
     const total = getRecordTotalScore(record)
@@ -50,6 +118,8 @@ export function computeDashboardStats(
         record,
         pct: Math.round((total.awarded / total.max) * 100),
       })
+    } else {
+      unscoredRecords.push(record)
     }
   }
 
@@ -122,6 +192,7 @@ export function computeDashboardStats(
     passRate,
     humanReviewCount,
     scoredRecords,
+    unscoredRecords,
     buckets,
     maxBucketCount,
     questionStats,

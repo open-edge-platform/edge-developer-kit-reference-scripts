@@ -88,7 +88,6 @@ export function SpeechToTextDemo({ service }: { service: Service }) {
     }
   }
 
-  // Timestamps are requested so the transcript can be saved as subtitles.
   const stopRecording = async () => {
     setRecordingStream(null)
     const length = formatClock(recordDuration / 1000)
@@ -99,7 +98,6 @@ export function SpeechToTextDemo({ service }: { service: Service }) {
       file: blob,
       language: sttValues.language,
       useDenoise: sttValues.useDenoise,
-      returnTimestamps: true,
     })
   }
 
@@ -109,7 +107,6 @@ export function SpeechToTextDemo({ service }: { service: Service }) {
       file,
       language: sttValues.language,
       useDenoise: sttValues.useDenoise,
-      returnTimestamps: true,
     })
   }
 

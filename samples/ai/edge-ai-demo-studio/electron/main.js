@@ -17,10 +17,28 @@ const isWindows = os.platform() === "win32";
 const isMac = os.platform() === "darwin";
 let cleanupPromise = null;
 
-/** The address the bundled Next.js server listens on. */
-const SERVER_HOST = "127.0.0.1";
+/** Characters allowed in FRONTEND_HOST: an IPv4 or IPv6 address, or a host name. */
+const HOST_CHARS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-:";
+
+let SERVER_HOST = "";
+for (const ch of process.env.FRONTEND_HOST || "127.0.0.1") {
+  let allowedChar = "";
+  for (const allowed of HOST_CHARS) {
+    if (allowed === ch) {
+      allowedChar = allowed;
+      break;
+    }
+  }
+  if (!allowedChar) {
+    console.warn("FRONTEND_HOST is not an address or host name; listening on 127.0.0.1.");
+    SERVER_HOST = "127.0.0.1";
+    break;
+  }
+  SERVER_HOST += allowedChar;
+}
 const SERVER_PORT = 8080;
-const APP_URL = `http://${SERVER_HOST}:${SERVER_PORT}`;
+/** Loopback whatever SERVER_HOST is: 0.0.0.0 is not an address to connect to on Windows. */
+const APP_URL = `http://127.0.0.1:${SERVER_PORT}`;
 
 /** Characters allowed in a file-system path (PATH_CHARS in frontend/src/lib/validation.ts). */
 const PATH_CHARS =

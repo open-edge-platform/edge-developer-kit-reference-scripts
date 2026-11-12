@@ -17,21 +17,45 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { Plus, Trash2, ArrowRight, GripVertical, Sparkles } from 'lucide-react'
-import type { DataEntry } from '@/samples/ai-exam-marking/lib/types'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  Plus,
+  Trash2,
+  ArrowRight,
+  GripVertical,
+  Sparkles,
+  Calculator,
+} from 'lucide-react'
+import {
+  SUBJECTS,
+  type DataEntry,
+  type QuestionType,
+  type Subject,
+} from '@/samples/ai-exam-marking/lib/types'
 import demoQuestionsData from '@/samples/ai-exam-marking/lib/demo-questions.json'
+import demoMathQuestionsData from '@/samples/ai-exam-marking/lib/demo-math-questions.json'
 import { v4 as uuidv4 } from 'uuid'
 import { QuestionHeading } from './question-heading'
 
 type DataDefinitionProps = {
   dataEntries: DataEntry[]
   setDataEntries: (entries: DataEntry[]) => void
+  subject: Subject
+  setSubject: (s: Subject) => void
   onNext: () => void
 }
 
 export function DataDefinition({
   dataEntries,
   setDataEntries,
+  subject,
+  setSubject,
   onNext,
 }: DataDefinitionProps) {
   const [number, setNumber] = useState('')
@@ -39,6 +63,9 @@ export function DataDefinition({
   const [marks, setMarks] = useState('')
   const [scheme, setScheme] = useState('')
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
+
+  // auto-derive question type from subject
+  const isMathSubject = SUBJECTS[subject][1] === 'math'
 
   const addEntry = () => {
     if (number && question && marks && scheme) {
@@ -48,6 +75,7 @@ export function DataDefinition({
         question,
         marks: Number.parseInt(marks),
         scheme,
+        type: isMathSubject ? 'math' : 'text',
       }
       setDataEntries([...dataEntries, newEntry])
       setNumber('')
@@ -58,10 +86,12 @@ export function DataDefinition({
   }
 
   const loadDemoQuestions = () => {
-    const demoEntries: DataEntry[] = Object.values(demoQuestionsData).map(
-      (q) => ({
+    const demoData = isMathSubject ? demoMathQuestionsData : demoQuestionsData
+    const demoEntries: DataEntry[] = Object.values(demoData).map(
+      (q: Omit<DataEntry, 'id' | 'type'> & Record<string, unknown>) => ({
         ...q,
         id: uuidv4(),
+        type: (q.type as QuestionType) ?? 'text',
       }),
     )
     setDataEntries(demoEntries)
@@ -103,6 +133,27 @@ export function DataDefinition({
         </CardHeader>
         <CardContent className="space-y-4">
           <fieldset className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="subject" className="text-xs">
+                Subject
+              </Label>
+              <Select
+                value={subject}
+                onValueChange={(v) => setSubject(v as Subject)}
+              >
+                <SelectTrigger id="subject" className="text-xs">
+                  <SelectValue placeholder="Select subject" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(Object.keys(SUBJECTS) as Subject[]).map((s) => (
+                    <SelectItem key={s} value={s} className="text-xs">
+                      {s}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="question-number" className="text-xs">
@@ -170,8 +221,12 @@ export function DataDefinition({
                 variant="outline"
                 className="flex-1 bg-transparent text-xs"
               >
-                <Sparkles className="mr-2 h-4 w-4" />
-                Load Predefined Questions
+                {isMathSubject ? (
+                  <Calculator className="mr-2 h-4 w-4" aria-hidden />
+                ) : (
+                  <Sparkles className="mr-2 h-4 w-4" aria-hidden />
+                )}
+                Load Sample Questions
               </Button>
             </div>
           </fieldset>

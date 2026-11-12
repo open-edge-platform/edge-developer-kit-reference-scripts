@@ -10,6 +10,8 @@ export interface GradingPdfInput {
   label?: string
   studentName?: string
   studentId?: string
+  /** Subject label, e.g. "Mathematics". */
+  subject?: string
   timestamp: string
   dataEntries: readonly SavedDataEntry[]
   ocrText: string
@@ -70,6 +72,7 @@ function writeReport(doc: jsPDF, input: GradingPdfInput): void {
     )
   }
   addText(`Saved: ${new Date(input.timestamp).toLocaleString()}`, 9)
+  if (input.subject) addText(`Subject: ${input.subject}`, 9)
   y += 4
 
   addText('Marking Scheme', 13, true)

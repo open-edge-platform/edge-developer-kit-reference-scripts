@@ -8,7 +8,10 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
-import { STT_LANGUAGE_OPTIONS } from '@/services/speech-to-text/config'
+import {
+  resolveSttLanguage,
+  type SttLanguageOption,
+} from '@/services/speech-to-text/config'
 import { formatTimestamp } from '../lib/timestamps'
 import type { DoctorProfile, Session, SessionStatus } from '../lib/types'
 import { doctorOptions, SessionSelectField } from './session-select-field'
@@ -108,12 +111,14 @@ export function SessionEditRow({
   session,
   selected,
   doctorProfiles,
+  languageOptions,
   onSave,
   onCancel,
 }: {
   session: Session
   selected: boolean
   doctorProfiles: DoctorProfile[]
+  languageOptions: SttLanguageOption[]
   onSave: (edit: {
     name: string
     doctorProfileId: string | null
@@ -123,7 +128,8 @@ export function SessionEditRow({
 }) {
   const [name, setName] = useState(session.name)
   const [doctorId, setDoctorId] = useState(session.doctorProfileId ?? '')
-  const [language, setLanguage] = useState(session.language)
+  const [pickedLanguage, setLanguage] = useState(session.language)
+  const language = resolveSttLanguage(pickedLanguage, languageOptions)
 
   const save = () => {
     const trimmed = name.trim()
@@ -164,7 +170,7 @@ export function SessionEditRow({
           label="Language"
           value={language}
           onChange={setLanguage}
-          options={STT_LANGUAGE_OPTIONS}
+          options={languageOptions}
           className="h-8 text-sm"
         />
         <div className="flex justify-end gap-1">

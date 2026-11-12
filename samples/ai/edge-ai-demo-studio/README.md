@@ -313,5 +313,11 @@ Every user-facing pull request merged into `main` — features, fixes, performan
 #### Added
 
 - Multiple model instances per service, running as a background daemon, new Pocket TTS, VieNeu-TTS and Vector Database services, plus a redesigned dashboard and services catalog. (#704) <!-- pr:704 -->
+- AI Exam Marking gains an analysis agent, a new exam database service, and a Dispatch tab to send results to students via email or Telegram. (#743) <!-- pr:743 -->
+
+#### Fixed
+
+- The Docker image now ships both llama.cpp backends; set `LLAMACPP_BACKEND=sycl` or `vulkan` in `docker-compose.yml` to choose, switchable without rebuilding. (#780) <!-- pr:780 -->
+- Medical Scribe now correctly aligns Qwen3-ASR transcripts with speaker diarization, using word-level timing from a new forced aligner instead of misaligned segments. (#778) <!-- pr:778 -->
 
 <!-- changelog:end -->

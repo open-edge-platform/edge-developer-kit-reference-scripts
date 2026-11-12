@@ -10,6 +10,8 @@ import type { Service as ServiceType } from '@/payload-types'
 // Data imports
 import { service as diarizationMeta } from '../diarization/data'
 import { service as embeddingsMeta } from '../embeddings/data'
+import { service as examMarkingAgentMeta } from '../exam-marking-agent/data'
+import { service as examMarkingDatabaseMeta } from '../exam-marking-database/data'
 import { service as faceRecognitionMeta } from '../face-recognition/data'
 import { service as fileWatcherMeta } from '../file-watcher/data'
 import { service as frameGenerationMeta } from '../frame-generation/data'
@@ -35,6 +37,7 @@ import { service as wakeWordDetectionMeta } from '../wake-word-detection/data'
 // Demo imports
 import { DiarizationDemo } from '../diarization/demo'
 import { EmbeddingDemo } from '../embeddings/demo'
+import { ExamMarkingAgentDemo } from '../exam-marking-agent/demo'
 import { FaceRecognitionDemo } from '../face-recognition/demo'
 import { FrameGenerationDemo } from '../frame-generation/demo'
 import { ImageGenerationDemo } from '../image-generation/demo'
@@ -61,6 +64,15 @@ export const serviceMap: Record<ServiceType['type'], Service> = {
     ...embeddingsMeta,
     status: 'offline',
     demo: EmbeddingDemo,
+  },
+  'exam-marking-agent': {
+    ...examMarkingAgentMeta,
+    status: 'offline',
+    demo: ExamMarkingAgentDemo,
+  },
+  'exam-marking-database': {
+    ...examMarkingDatabaseMeta,
+    status: 'offline',
   },
   'face-recognition': {
     ...faceRecognitionMeta,

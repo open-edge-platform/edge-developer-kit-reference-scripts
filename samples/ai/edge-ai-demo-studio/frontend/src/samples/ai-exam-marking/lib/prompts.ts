@@ -1,18 +1,20 @@
 // Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-import type { DashboardStats } from './dashboard-stats'
-import { isPass, PASS_MARK_PCT } from './marks'
+export const DEFAULT_OCR_PROMPT = `Given an image of a student answer sheet, extract the content and return exactly one JSON object.
 
-export const DEFAULT_OCR_PROMPT = `Given an image of a student answer sheet, extract the following information and return it as a single JSON object.
-
+Required JSON shape:
 1. Student information (usually found in the header or top section of the sheet):
 - 'student_name': The student's full name as a string (empty string if not found)
 - 'student_id': The student's ID or registration number as a string (empty string if not found)
 
-2. Each question and its corresponding answer(s) as numbered entries. Each entry should use the question number as the key and contain 'question' and 'answer' fields. The answer should be a single string combining all bullet points separated by semicolons.
+2. One object per detected question number, for example "1", "2", "3". Each question object must contain:
+   - question: string
+   - answer: string
 
 If a question does not have an answer, set the answer field to an empty string. If the question number is missing, skip that question. Do not include any additional text or formatting outside of the JSON structure.
+Transcribe exactly as drawn/written without correcting it even if scientifically or mathematically wrong.
+Do NOT infer meaning. Do NOT correct mistakes. Do NOT use scientific knowledge. Do NOT complete missing labels. Do NOT guess hidden text. Do NOT explain. Do NOT summarize. Never calculate, simplify, solve, verify, or validate any equation/value. Never replace a visible number/symbol/sign with a corrected one.
 
 Example output:
 {
@@ -21,16 +23,24 @@ Example output:
 '1': {
 'question': 'Explain one way a business could increase its gross profit margin.',
 'answer': 'increase selling price'
-},
-'2': {
-'question': 'Analyze the importance to Backyard Shoes of satisfying customer needs.',
-'answer': 'lead to customer loyalty; build brand image'
-},
-'3': {
-'question': 'Explain one method of above the line promotion a business could use. [3m]',
-'answer': 'tv ads; promotes to large audience'
 }
-}
+
+Extraction rules by special answer type:
+MATHEMATICAL / FORMULA:
+- Transcribe symbols and steps faithfully.
+- Use LaTeX-style notation where useful (for example: \\frac{a}{b}, x^2, \\sqrt{x}, \\int_a^b f(x)dx).
+- Preserve order of working steps separated by "; ".
+
+Diagrams/Graphs:
+- Describe only what is visibly drawn. Do not compare against the equation, prompt text, expected graph, or correct mathematical result.
+Store in answer as:
+"VISUAL: labels=[...]; arrows=[source->target,...]; axes=[...]; scale=[...]; key_points=[...]; shape=[...]; orientation=[...]; notes=[...]."
+
+For curved graphs also include:
+- concavity (concave up/down)
+- opening direction (up/down/left/right)
+- vertex/extremum (minimum or maximum)
+
 Your task is to generate the exact same structured JSON output based on the provided image content.`
 
 export const DEFAULT_LLM_PROMPT = `You are an AI grading assistant tasked with evaluating student answers based on a provided marking scheme for each question.
@@ -80,53 +90,29 @@ Provide the feedback in only 10 words.
 
 Sum the marks based on the marking scheme's criteria.
 
+Text grading:
+- Match key ideas and required terms from the scheme.
+- Award partial marks when only some required points are present.
+
+Math/formula grading:
+- Accept equivalent forms and valid alternative methods.
+- Award follow-through marks when later steps are consistent with earlier work.
+
+Graph/diagram/drawing grading:
+- Evaluate orientation and concavity strictly: If the scheme requires a curve opening upwards (U-shape / local min) and the visual evidence string indicates opening downwards (N-shape / inverted / local max), award 0 marks for the shape criterion.
+- Verify vertical and horizontal placement against axes: If the scheme requires a vertex above the x-axis at positive y, and the evidence shows a vertex below the x-axis or at a negative y-value, award 0 marks for that intercept/vertex criterion.
+- Use directional evidence strictly: Treat "A->B" as an arrow from A to B. Compare this literally against scheme requirements.
+- If the scheme says "1 mark for each correct label and arrow direction", both label and direction must be correct for that item; if either is wrong, absent, or reversed, award 0 for that item.
+- For plotted graphs, evaluate these dimensions against the scheme when relevant:
+  a) axis names and units
+  b) scale/range and equal intervals
+  c) key plotted points/coordinates
+  d) curve or line shape, concavity, and orientation
+  e) intercepts, turning points, asymptotes, and legends/annotations
+- Do not award a point when the feature is missing, orientation/position is wrong, or the evidence string does not mention it.
+
 Return a JSON with the following fields:
 student_answer: Student answer extracted based on question above. Do not include the question. 
-feedback: A summary of the evaluation.
+feedback: A summary of the evaluation (max 10 words).
 marks_awarded: The total marks given.
 human_review: A boolean (true or false) indicating if the answer needs human review.`
-
-/** The class results as plain text for the chatbot, appended after the user's system prompt. */
-export function buildResultsContext(stats: DashboardStats | null): string {
-  if (!stats) {
-    return 'You are an AI assistant helping with exam marking. No exam results have been graded yet. Answer general questions about exam marking.'
-  }
-
-  const lines: string[] = [
-    "You are an AI assistant analyzing exam results. Answer the user's questions using the data below.",
-    '',
-    '=== DASHBOARD SUMMARY ===',
-    `Total students: ${stats.totalStudents}`,
-    `Class average: ${stats.averagePct !== null ? `${stats.averagePct}%` : 'N/A'}`,
-    `Pass rate (≥${PASS_MARK_PCT}%): ${stats.passRate !== null ? `${stats.passRate}%` : 'N/A'}`,
-    `Items flagged for human review: ${stats.humanReviewCount}`,
-    '',
-    '=== SCORE DISTRIBUTION ===',
-    ...stats.buckets.map((b) => `${b.label}: ${b.count} student(s)`),
-  ]
-
-  if (stats.questionStats.length > 0) {
-    lines.push('', '=== PER-QUESTION AVERAGES ===')
-    for (const q of stats.questionStats) {
-      lines.push(`${q.label}: avg ${q.avgAwarded}/${q.avgMax} (${q.avgPct}%)`)
-    }
-  }
-
-  if (stats.scoredRecords.length > 0) {
-    lines.push('', '=== STUDENT RESULTS ===')
-    for (const { record, pct } of stats.scoredRecords) {
-      const name =
-        [
-          record.studentName,
-          record.studentId ? `(ID: ${record.studentId})` : null,
-        ]
-          .filter(Boolean)
-          .join(' ') || 'Unknown'
-      lines.push(
-        `- ${name} | Score: ${pct}% | ${isPass(pct) ? 'Pass' : 'Fail'}`,
-      )
-    }
-  }
-
-  return lines.join('\n')
-}

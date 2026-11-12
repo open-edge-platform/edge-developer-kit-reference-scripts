@@ -8,22 +8,36 @@ import {
   buildAnnotatedImage,
   MARKING_DATA_DIR,
 } from '@/samples/ai-exam-marking/lib/image-utils'
-import { buildSavedRecord } from '@/samples/ai-exam-marking/lib/records'
-import type {
-  DataEntry,
-  GradingEntry,
-  LLMResultEntry,
-  SavedRecord,
+import {
+  buildArchiveRequest,
+  buildSavedRecord,
+} from '@/samples/ai-exam-marking/lib/records'
+import {
+  SUBJECTS,
+  type ArchiveRequest,
+  type DataEntry,
+  type GradingEntry,
+  type LLMResultEntry,
+  type SavedRecord,
+  type Subject,
 } from '@/samples/ai-exam-marking/lib/types'
 import { useGrading, type GradingResult } from './use-grading'
 import { useOCR } from './use-ocr'
 
 interface UseGradingPipelineOptions {
   dataEntries: DataEntry[]
+  subject: Subject
   ocrPrompt: string
   llmPrompt: string
   updateEntry: (id: string, patch: Partial<GradingEntry>) => void
-  saveRecord: (record: SavedRecord) => void
+  /** Saves the graded sheet's record, then archives it with the Exam Marking Agent. */
+  finalizeEntry: (
+    entryId: string,
+    archive: ArchiveRequest,
+    record: SavedRecord,
+  ) => Promise<void>
+  /** Unlocks a scanned sheet that was not saved, so the agent may send it again. */
+  releaseSource: (filename: string | undefined) => void
 }
 
 /** Why a call failed, short enough to show on the answer sheet. */
@@ -40,6 +54,18 @@ interface OcrSheet {
   answers: Record<number, { question: string; answer: string }>
 }
 
+/** Drops the model's verdicts (e.g. "which is correct") from a `VISUAL:` graph description. */
+function sanitizeVisualAnswer(answer: string): string {
+  if (!answer.startsWith('VISUAL:')) return answer
+  return answer
+    .replace(/,?\s*but\s+the\s+graph\s+shown\s+has[^\]]*(?=\])/gi, '')
+    .replace(/,?\s*which\s+is\s+(?:in)?correct[^\]]*(?=\])/gi, '')
+    .replace(
+      /,?\s*(?:this|it)\s+(?:is|looks)\s+(?:in)?correct[^\]]*(?=\])/gi,
+      '',
+    )
+}
+
 /** The OCR route's JSON: student fields plus one object per question number. */
 function parseOcrSheet(parsed: Record<string, unknown>): OcrSheet {
   const sheet: OcrSheet = { studentName: '', studentId: '', answers: {} }
@@ -49,7 +75,8 @@ function parseOcrSheet(parsed: Record<string, unknown>): OcrSheet {
       continue
     }
     if (key === 'student_id') {
-      if (typeof value === 'string') sheet.studentId = value
+      // model doesn't reliably honor the "no spacing" instruction, so strip whitespace ourselves
+      if (typeof value === 'string') sheet.studentId = value.replace(/\s+/g, '')
       continue
     }
     const numKey = Number(key)
@@ -58,11 +85,32 @@ function parseOcrSheet(parsed: Record<string, unknown>): OcrSheet {
       const obj = value as Record<string, string>
       sheet.answers[numKey] = {
         question: obj.question ?? 'N/A',
-        answer: obj.answer ?? '',
+        answer: sanitizeVisualAnswer(obj.answer ?? ''),
       }
     }
   }
   return sheet
+}
+
+/** Remove an echoed "<n>. <question>" or "<question>" prefix (case-insensitive) from an OCR answer. */
+function stripQuestionPrefix(
+  answer: string,
+  qNumber: string,
+  question: string,
+): string {
+  const stripQuestion = (text: string) => {
+    const t = text.trimStart()
+    return t.slice(0, question.length).toLowerCase() === question.toLowerCase()
+      ? t.slice(question.length).trimStart()
+      : text
+  }
+  let rest = answer.trimStart()
+  if (rest.startsWith(qNumber)) {
+    const afterNumber = rest.slice(qNumber.length).replace(/^[.):-]?\s*/, '')
+    const stripped = stripQuestion(afterNumber)
+    if (stripped !== afterNumber) rest = stripped
+  }
+  return stripQuestion(rest).trim()
 }
 
 /**
@@ -71,10 +119,12 @@ function parseOcrSheet(parsed: Record<string, unknown>): OcrSheet {
  */
 export function useGradingPipeline({
   dataEntries,
+  subject,
   ocrPrompt,
   llmPrompt,
   updateEntry,
-  saveRecord,
+  finalizeEntry,
+  releaseSource,
 }: UseGradingPipelineOptions) {
   const { mutateAsync: runOCR } = useOCR()
   const { mutateAsync: runGrading } = useGrading()
@@ -83,6 +133,7 @@ export function useGradingPipeline({
     entryId: string,
     uploadedImage: string,
     base64: string,
+    sourceFilename?: string,
   ) => {
     updateEntry(entryId, {
       step: { phase: 'extracting' },
@@ -93,11 +144,15 @@ export function useGradingPipeline({
       overlayImage: undefined,
     })
     try {
+      // prepend subject context so the model applies the right grading strategy
+      const subjectPrefix = `This is a ${subject} exam paper.\n\n`
       const {
         studentName,
         studentId,
         answers: ocrResult,
-      } = parseOcrSheet(await runOCR({ image: base64, prompt: ocrPrompt }))
+      } = parseOcrSheet(
+        await runOCR({ image: base64, prompt: subjectPrefix + ocrPrompt }),
+      )
       const ocrText = Object.entries(ocrResult)
         .map(([num, { question, answer }]) => `${num}. ${question}\n${answer}`)
         .join('\n\n')
@@ -109,14 +164,23 @@ export function useGradingPipeline({
       const dataEntryByNumber = new Map(
         sortedDataEntries.map((entry) => [String(entry.number), entry]),
       )
-      const fallbackQuestionNumbers = Object.keys(ocrResult)
+      const ocrQuestionNumbers = Object.keys(ocrResult)
         .map((key) => Number(key))
         .filter((num) => Number.isInteger(num) && num > 0)
         .sort((a, b) => a - b)
+      const configuredQuestionNumbers = sortedDataEntries
+        .map((entry) => Number(entry.number))
+        .filter((num) => Number.isInteger(num) && num > 0)
+      // Grade the scheme's questions this sheet answers; a sheet may carry only some of them.
+      const matchedConfiguredQuestionNumbers = configuredQuestionNumbers.filter(
+        (num) => ocrQuestionNumbers.includes(num),
+      )
       const questionNumbers =
-        sortedDataEntries.length > 0
-          ? sortedDataEntries.map((entry) => Number(entry.number))
-          : fallbackQuestionNumbers
+        matchedConfiguredQuestionNumbers.length > 0
+          ? matchedConfiguredQuestionNumbers
+          : ocrQuestionNumbers.length > 0
+            ? ocrQuestionNumbers
+            : configuredQuestionNumbers
 
       const totalQuestions = questionNumbers.length
       const newResults: LLMResultEntry[] = []
@@ -127,12 +191,15 @@ export function useGradingPipeline({
         const qNumber = String(questionNumbers[i])
         const qInfo = dataEntryByNumber.get(qNumber)
         const numericMaxMarks = Number(qInfo?.marks)
+        const question =
+          qInfo?.question ?? ocrResult[questionNumbers[i]]?.question ?? 'N/A'
+        const rawAnswer = (ocrResult[questionNumbers[i]]?.answer ?? '').trim()
         return {
           qNumber,
-          question:
-            qInfo?.question ?? ocrResult[questionNumbers[i]]?.question ?? 'N/A',
+          question,
           scheme: qInfo?.scheme ?? 'N/A',
-          answer: ocrResult[questionNumbers[i]]?.answer ?? '',
+          answer:
+            stripQuestionPrefix(rawAnswer, qNumber, question) || rawAnswer,
           /** `null` when the marking scheme gives no maximum. */
           maxMarks: Number.isFinite(numericMaxMarks) ? numericMaxMarks : null,
         }
@@ -144,7 +211,7 @@ export function useGradingPipeline({
         })
         const { qNumber, question, scheme, answer, maxMarks } = questionAt(i)
 
-        const finalPrompt = llmPrompt
+        const finalPrompt = (subjectPrefix + llmPrompt)
           .replace('{question}', question)
           .replace('{marks}', String(maxMarks ?? 'N/A'))
           .replace('{marking_scheme}', scheme)
@@ -188,6 +255,7 @@ export function useGradingPipeline({
             step: null,
             error: `Grading question ${qNumber} failed (${newResults.length} of ${totalQuestions} graded): ${shortErrorMessage(error)}`,
           })
+          releaseSource(sourceFilename)
           return
         }
 
@@ -200,7 +268,7 @@ export function useGradingPipeline({
 
         newResults.push({
           questionNumber: qNumber,
-          extractedAnswer: gradingResultObj?.student_answer ?? 'N/A',
+          extractedAnswer: answer || 'N/A',
           feedback: gradingResultObj?.feedback ?? 'N/A',
           marks: { awarded: givenMarks, max: maxMarks },
           runningTotal: { ...runningTotal },
@@ -226,11 +294,21 @@ export function useGradingPipeline({
         step: null,
       })
 
-      saveRecord(
+      // Manual uploads/webcam captures have no prior_mark file, so they are stored directly.
+      await finalizeEntry(
+        entryId,
+        buildArchiveRequest({
+          entryId,
+          sourceFilename,
+          annotatedImage,
+          studentId,
+          subject,
+        }),
         buildSavedRecord({
           entryId,
           studentName,
           studentId,
+          subjectId: SUBJECTS[subject][0],
           dataEntries,
           ocrText,
           overlayImage,
@@ -241,6 +319,7 @@ export function useGradingPipeline({
       )
     } catch (error) {
       // OCR or annotating failed; whatever was written so far stays.
+      releaseSource(sourceFilename)
       updateEntry(entryId, {
         step: null,
         error: `Processing failed: ${shortErrorMessage(error)}`,

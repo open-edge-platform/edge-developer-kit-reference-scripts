@@ -54,7 +54,22 @@ WORKDIR /home/ubuntu
 
 USER ${USER}
 
-RUN ./setup.sh --verbose
+# Default llama.cpp build for the multiserve engine: sycl or vulkan. Passed
+# explicitly so the .llamacpp-backend of the checkout the image is built from does
+# not decide. The image ships both builds; LLAMACPP_BACKEND at run time switches.
+ARG LLAMACPP_BACKEND=sycl
+
+RUN ./setup.sh --verbose --backend ${LLAMACPP_BACKEND}
+# Add the other backend's llama.cpp build next to it, then restore the selection
+# setup.sh saved, so docker/start-container.sh can switch without a download.
+RUN bash -c 'set -euo pipefail; \
+      . scripts/bash/llamacpp_backend.sh; \
+      case "$LLAMACPP_BACKEND" in sycl) other=vulkan ;; *) other=sycl ;; esac; \
+      cp "$LLAMACPP_BACKEND_CONFIG_FILE" /tmp/llamacpp-backend; \
+      lb_save_config "$other"; \
+      cd workers/engines/multiserve; \
+      UV_PATH=/home/ubuntu/workers/thirdparty/uv/uv LLAMACPP_KEEP_OTHER_BUILD=true ./setup.sh; \
+      mv /tmp/llamacpp-backend "$LLAMACPP_BACKEND_CONFIG_FILE"'
 RUN mkdir -p /home/ubuntu/models
 RUN mkdir -p /home/ubuntu/logs
 RUN mkdir -p /home/ubuntu/data
@@ -62,4 +77,4 @@ RUN mkdir -p /home/ubuntu/data
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD test -x /home/ubuntu/start.sh || exit 1
 
-CMD ["/bin/bash", "-c", "cd /home/ubuntu && ./start.sh"]
+CMD ["/bin/bash", "/home/ubuntu/docker/start-container.sh"]

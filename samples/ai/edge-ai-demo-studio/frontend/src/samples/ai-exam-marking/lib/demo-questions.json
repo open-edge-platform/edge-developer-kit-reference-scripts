@@ -22,42 +22,5 @@
       "x2": 594,
       "y2": 377
     }
-  },
-  "3": {
-    "number": 3,
-    "question": "Explain one method of above the line promotion a business could use. ",
-    "marks": 3,
-    "scheme": "Award 1 mark for identification of method, plus 2 further marks for explaining this method, for a maximum of 3 marks.\n• A business could use television advertising (1). This can be seen by large numbers of people raising awareness (1) resulting in an increase in sales for a business (1).\nAnswers that list more than one method with no explanation will get a maximum of 1 mark.\nAccept any other appropriate response.\n",
-    "boundingBox": {
-      "x1": 510,
-      "y1": 392,
-      "x2": 602,
-      "y2": 482
-    }
-  },
-  "4": {
-    "number": 4,
-    "question": "Explain one reason why non-renewable energy resources need to be managed.",
-    "marks": 4,
-    "scheme": "Award 1 mark for point about energy source and a further one mark for explanation of its effect, up to a maximum of 4 marks:\nnon-renewable energy resources are finite (1), which means they will eventually run out so alternatives in the form of renewables are needed that can be recycled/reused/replenished (1) over a shorter period of time\nnon-renewable energy resources emit carbon dioxide (1) which is a greenhouse gas and causes sea level rise/extremes in climate (1)\nAccept any other appropriate response.\n",
-    "boundingBox": {
-      "x1": 503,
-      "y1": 521,
-      "x2": 600,
-      "y2": 610
-    }
-  },
-  "5": {
-    "number": 5,
-    "question": "Explain the change in breathing rate during exercise.",
-    "marks": 3,
-    "scheme": "An explanation that makes reference to three of the following points:\n• increases (1)\n• oxygen for respiration / aerobic respiration (1)\n• muscle (1)\n• remove carbon dioxide (1)\n",
-    "boundingBox": {
-      "x1": 483,
-      "y1": 635,
-      "x2": 599,
-      "y2": 754
-    }
   }
 }
-

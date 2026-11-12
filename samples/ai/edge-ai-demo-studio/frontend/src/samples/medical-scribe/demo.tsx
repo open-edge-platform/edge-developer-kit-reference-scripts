@@ -40,7 +40,10 @@ export function MedicalScribeDemo({ sample }: { sample: Sample }) {
 
 function MedicalScribeDemoInner({ sample: _sample }: { sample: Sample }) {
   const textGen = useTextGenerationParams({
-    initial: { systemPrompt: SOAP_SYSTEM_PROMPT },
+    initial: {
+      systemPrompt: SOAP_SYSTEM_PROMPT,
+      disableReasoning: true,
+    },
   })
   const diarizationGroup = useOptionalServiceGroup({
     serviceId: 'diarization',

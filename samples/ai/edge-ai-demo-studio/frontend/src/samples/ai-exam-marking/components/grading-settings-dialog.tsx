@@ -58,19 +58,16 @@ export function GradingSettingsDialog({
             </TabsTrigger>
             <TabsTrigger value="llm" className="gap-2 text-xs">
               <Sparkles className="h-3.5 w-3.5" />
-              LLM Grading Prompt
+              Grading Prompt
             </TabsTrigger>
           </TabsList>
 
           <TabsContent value="ocr" className="mt-4 space-y-3">
             <div className="bg-muted/40 rounded-lg border px-4 py-3">
               <p className="text-muted-foreground text-xs leading-relaxed">
-                Sent to the vision model to extract text from each uploaded
-                answer sheet image. Use{' '}
-                <code className="bg-muted rounded px-1 font-mono">
-                  plain text instructions
-                </code>{' '}
-                only — no template variables needed.
+                Sent to the vision model to extract answers from each uploaded
+                image. Automatically handles text, mathematical working (LaTeX),
+                and graph/diagram descriptions. No template variables needed.
               </p>
             </div>
             <Textarea
@@ -95,7 +92,9 @@ export function GradingSettingsDialog({
           <TabsContent value="llm" className="mt-4 space-y-3">
             <div className="bg-muted/40 rounded-lg border px-4 py-3">
               <p className="text-muted-foreground text-xs leading-relaxed">
-                Sent to the LLM for each question. Use the template variables{' '}
+                Sent to the LLM for each question. Automatically detects text,
+                math, and graph/diagram answers and applies the right grading
+                logic. Use{' '}
                 <code className="bg-muted rounded px-1 font-mono">
                   {'{question}'}
                 </code>
@@ -107,7 +106,7 @@ export function GradingSettingsDialog({
                 <code className="bg-muted rounded px-1 font-mono">
                   {'{marking_scheme}'}
                 </code>{' '}
-                which are substituted automatically.
+                as template variables.
               </p>
             </div>
             <Textarea

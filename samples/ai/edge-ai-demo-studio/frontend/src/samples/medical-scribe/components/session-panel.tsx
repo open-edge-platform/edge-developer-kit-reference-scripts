@@ -5,6 +5,8 @@
 
 import { type ReactNode, useState } from 'react'
 import { ConfirmDialog } from '@/components/common/confirm-dialog'
+import { useGetService } from '@/context/service-status-context'
+import { getServiceSttLanguageOptions } from '@/services/speech-to-text/config'
 import type { DoctorProfile, Session, SessionUpdate } from '../lib/types'
 import { NewSessionForm } from './new-session-form'
 import { isSessionStarted, SessionEditRow, SessionRow } from './session-row'
@@ -38,6 +40,9 @@ export function SessionPanel({
 }: SessionPanelProps) {
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<Session | null>(null)
+  const languageOptions = getServiceSttLanguageOptions(
+    useGetService('speech-to-text'),
+  )
 
   /** The doctor's current name (a renamed profile shows its new one). */
   const doctorName = (session: Session) =>
@@ -66,6 +71,7 @@ export function SessionPanel({
     <div className="flex h-full min-h-0 flex-col">
       <NewSessionForm
         doctorProfiles={doctorProfiles}
+        languageOptions={languageOptions}
         profileActions={profileActions}
         onCreate={(name, doctorProfileId, language) =>
           onSelectSession(onCreateSession(name, doctorProfileId, language).id)
@@ -83,6 +89,7 @@ export function SessionPanel({
                   session={session}
                   selected={session.id === selectedSessionId}
                   doctorProfiles={doctorProfiles}
+                  languageOptions={languageOptions}
                   onSave={(edit) => handleSaveEdit(session.id, edit)}
                   onCancel={() => setEditingSessionId(null)}
                 />

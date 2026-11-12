@@ -65,6 +65,9 @@ export const worker: WorkerConfig = {
         '--denoise-device',
         doc.metadata?.denoiseDevice || (doc.models?.denoise?.device ?? device),
       )
+      if (doc.metadata?.alignerWarmStart === true) {
+        args.push('--warm-start-aligner')
+      }
     }
     return args
   },

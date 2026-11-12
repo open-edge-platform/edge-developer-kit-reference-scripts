@@ -45,9 +45,3 @@ export type DiarizationSeg = {
   start: number
   end: number
 }
-
-export type WhisperSeg = {
-  start: number
-  end: number
-  text: string
-}

@@ -3,6 +3,8 @@ services:
     build:
       context: ../
       dockerfile: docker/Dockerfile
+      args:
+        LLAMACPP_BACKEND: ${LLAMACPP_BACKEND:-sycl}
     image: edge-ai-demo-studio:v1.0.0
     container_name: edge-ai-demo-studio
     # devices: # Uncomment if you have a GPU/NPU
@@ -10,11 +12,13 @@ services:
     #   - "/dev/accel:/dev/accel" # Uncomment if you have an NPU
     # group_add: # Uncomment if you have a GPU/NPU
     #   - ${RENDER_GROUP_ID:-992} # Uncomment if you have a GPU/NPU (render group)
-    ports:
-      - "8080:8080"
+    # The app listens on 127.0.0.1:8080, which a published port cannot reach.
+    network_mode: host
     environment:
       - DATABASE_URL=file:/home/ubuntu/data/db.sqlite
       - NEXT_MANUAL_SIG_HANDLE=true
+      # llama.cpp build for LLMs: sycl or vulkan (the image has both)
+      - LLAMACPP_BACKEND=${LLAMACPP_BACKEND:-sycl}
     volumes:
       - models:/home/ubuntu/models
       - logs:/home/ubuntu/logs

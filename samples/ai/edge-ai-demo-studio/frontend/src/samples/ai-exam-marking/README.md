@@ -8,11 +8,12 @@ An AI-powered exam grading system that extracts student answers from answer shee
 
 The AI Exam Marking sample automates the manual grading workflow in five steps:
 
-1. **Marking Scheme Setup** — Define questions, max marks, and marking rubrics. Draw bounding boxes on a reference answer sheet to map where each question's answer appears.
+1. **Marking Scheme Setup** — Define subject, questions, max marks, and marking rubrics. Draw bounding boxes on a reference answer sheet to map where each question's answer appears.
 2. **Grading** — Upload or capture one or more student answer sheet images. Each image is queued and processed automatically: OCR extracts the answers, the LLM grades each answer against the rubric, and the result is annotated directly onto the image.
 3. **History** — Browse all graded records, preview annotated images, export PDF reports, and delete individual or all records.
 4. **Dashboard** — View class-level analytics including average score, pass rate, score distribution, per-question performance, and student result summaries.
 5. **Chatbot** — Ask natural-language questions about the graded results (for example, trends, top/bottom performers, or question-level difficulty) using an AI assistant grounded in dashboard statistics.
+6. **Dispatch** — Send results to teacher or student via email/telegram.
 
 ---
 
@@ -36,11 +37,12 @@ The AI Exam Marking sample automates the manual grading workflow in five steps:
 
 Define the structure of the exam:
 
+- **Subject** — Subject of the question
 - **Question** — The question text.
 - **Marks** — Maximum marks available for the question.
 - **Marking Scheme** — Detailed rubric describing what earns each mark.
 
-A **Load Predefined Questions** button is available to populate example questions (5 business-oriented questions with full rubrics) for quick testing.
+A **Load Sample Questions** button is available to populate example questions (2 questions with full rubrics) for quick testing.
 
 #### Bounding Box Setup
 
@@ -52,7 +54,7 @@ Upload a reference (blank or sample) answer sheet image. For each defined questi
 
 Upload or capture student answer sheet images. Each image is added to a serial processing queue and graded automatically:
 
-> **Sample image:** A sample student answer sheet is provided at `public/data/ai-exam-marking/sample.png`. Use it together with the demo marking scheme (loaded via **Load Predefined Questions**) to try the full grading pipeline without needing a real exam paper.
+> **Sample image:** Three sample student answer sheet are provided at `public/data/ai-exam-marking`. Use it together with the demo marking scheme (loaded via **Load Sample Questions**) to try the full grading pipeline without needing a real exam paper.
 
 1. **OCR** — The image is sent to the VLM with the OCR prompt. The model returns a structured JSON array:
    ```json
@@ -126,12 +128,23 @@ This step is intended for quick class-level quality checks and identifying patte
 
 ### Step 5 — Chatbot
 
-The chatbot uses the same text-generation service and is automatically grounded with dashboard-derived context (summary metrics, score distribution, per-question averages, and student score outcomes).
+The chatbot uses the same text-generation service and is automatically grounded with dashboard-derived context (summary metrics, score distribution, per-question averages, and student score outcomes). Also, can use this chatbot to send result to teacher/students via email/Telegram.
 
 Use it to ask questions such as:
 
 - Which students scored above 80%?
 - Which question has the lowest average?
 - How many answers were flagged for human review?
+- Send result to students via email.
 
 ---
+
+### Step 6 — Dispatch
+
+Annotated results can be distributed to teachers or students via **email** or **Telegram**.
+
+For teachers, results are automatically packaged into a ZIP archive before dispatch. Enter the teacher's contact details to send the results.
+
+For students, contact information is automatically retrieved from `DISPATCH_CONTACTS_FILE`, eliminating the need for manual entry.
+
+**Prerequisite:** Follow setup instruction in `workers/services/exam-marking-agent/README.md` to configure email and Telegram credentials.

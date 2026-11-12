@@ -14,19 +14,25 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import { useServiceApiBase } from '@/context/service-status-context'
 import { plural } from '@/lib/browser/format'
 import {
   buildCombinedGradingPdf,
   buildGradingPdf,
   type GradingPdfInput,
 } from '@/samples/ai-exam-marking/lib/pdf-report'
-import type { SavedRecord } from '@/samples/ai-exam-marking/lib/types'
+import {
+  getSubjectLabel,
+  type SavedRecord,
+} from '@/samples/ai-exam-marking/lib/types'
+import { useLoadFullExamRecord } from '../hooks/use-database'
 import type { ExamRole } from '../hooks/use-exam-role'
 import { RecordDetailDialog } from './record-detail-dialog'
 
 const toPdfInput = (record: SavedRecord): GradingPdfInput => ({
   studentName: record.studentName,
   studentId: record.studentId,
+  subject: getSubjectLabel(record.subjectId),
   timestamp: record.timestamp,
   dataEntries: record.dataEntries,
   ocrText: record.ocrResult.text,
@@ -52,6 +58,10 @@ export function HistoryView({
 }) {
   const [selectedRecord, setSelectedRecord] = useState<SavedRecord | null>(null)
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
+  // The database lists records without their images; exports fetch them.
+  const loadFullRecord = useLoadFullExamRecord(
+    useServiceApiBase('exam-marking-database'),
+  )
 
   const visibleRecords =
     role === 'student' && studentId
@@ -70,14 +80,15 @@ export function HistoryView({
     }
   }
 
-  const handleExport = (record: SavedRecord) => {
-    buildGradingPdf(toPdfInput(record)).save(
+  const handleExport = async (record: SavedRecord) => {
+    buildGradingPdf(toPdfInput(await loadFullRecord(record))).save(
       `grading-result-${record.studentId || record.id}.pdf`,
     )
   }
 
-  const handleExportAll = () => {
-    buildCombinedGradingPdf(visibleRecords.map(toPdfInput)).save(
+  const handleExportAll = async () => {
+    const fullRecords = await Promise.all(visibleRecords.map(loadFullRecord))
+    buildCombinedGradingPdf(fullRecords.map(toPdfInput)).save(
       'grading-results.pdf',
     )
   }
@@ -115,7 +126,7 @@ export function HistoryView({
             </div>
             <div className="flex gap-2">
               <Button
-                onClick={handleExportAll}
+                onClick={() => void handleExportAll()}
                 variant="outline"
                 size="sm"
                 className="text-xs"
@@ -171,8 +182,9 @@ export function HistoryView({
                     {new Date(record.timestamp).toLocaleString()}
                   </span>
                   <span className="text-muted-foreground block text-xs">
-                    {plural(record.dataEntries.length, 'question')} •{' '}
-                    {plural(record.llmResult.response.length, 'result')}
+                    {getSubjectLabel(record.subjectId)} •{' '}
+                    {plural(record.llmResult.response.length, 'question')}{' '}
+                    graded
                   </span>
                 </button>
                 <div className="flex gap-2 p-4 pl-0">
@@ -180,7 +192,7 @@ export function HistoryView({
                     aria-label="Export Record"
                     variant="outline"
                     size="sm"
-                    onClick={() => handleExport(record)}
+                    onClick={() => void handleExport(record)}
                   >
                     <Download className="h-4 w-4" aria-hidden />
                   </Button>

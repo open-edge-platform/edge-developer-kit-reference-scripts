@@ -9,7 +9,11 @@ import { useGetService } from '@/context/service-status-context'
 import { useElapsedMs } from '@/hooks/use-elapsed-ms'
 import { RecordingCancelledError } from '@/hooks/use-media-recorder'
 import { logger } from '@/lib/logger'
-import { getRunningSttBackend } from '@/services/speech-to-text/config'
+import {
+  getRunningSttBackend,
+  getServiceSttLanguageOptions,
+  resolveSttLanguage,
+} from '@/services/speech-to-text/config'
 import { useLiveStream } from '@/services/speech-to-text/hooks/use-live-stream'
 import type { Session, SessionUpdate, TranscriptEntry } from '../lib/types'
 import { useRecording } from './use-recording'
@@ -67,7 +71,10 @@ export function useLiveRecording({
       // transcription only runs as a fallback when it is unavailable.
       try {
         await liveTranscription.start({
-          language: session.language,
+          language: resolveSttLanguage(
+            session.language,
+            getServiceSttLanguageOptions(sttService),
+          ),
           backend: sttBackend,
           timeOrigin,
           onTranscript: (t) => {

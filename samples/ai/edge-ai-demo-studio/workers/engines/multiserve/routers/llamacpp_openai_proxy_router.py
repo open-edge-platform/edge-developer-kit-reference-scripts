@@ -294,8 +294,21 @@ def create_llamacpp_openai_proxy_router(llmcpp_manager: LlamaManagerCLI) -> APIR
 
                 try:
                     llmcpp_manager.is_active_model(task, repo_id)
-                except (FileNotFoundError, ValueError, RuntimeError, TimeoutError) as e:
-                    raise HTTPException(status_code=503, detail=f"{e}")
+                except (FileNotFoundError, ValueError, RuntimeError, TimeoutError):
+                    # Auto-recover when the selected model is downloaded but not currently active
+                    # in the manager state. Starting waits for the server: off the event loop.
+                    start_error = None
+                    try:
+                        await run_in_threadpool(
+                            llmcpp_manager.start_local_model, repo_id=repo_id, task=task
+                        )
+                    except (FileNotFoundError, ValueError, RuntimeError, TimeoutError) as e:
+                        start_error = e
+                    try:
+                        # Also passes when a concurrent request started the model meanwhile.
+                        llmcpp_manager.is_active_model(task, repo_id)
+                    except (FileNotFoundError, ValueError, RuntimeError, TimeoutError) as e:
+                        raise HTTPException(status_code=503, detail=f"{start_error or e}")
 
                 server_url = get_server_url(llmcpp_manager, task)
                 backend_url = f"{server_url}/v1/chat/completions"

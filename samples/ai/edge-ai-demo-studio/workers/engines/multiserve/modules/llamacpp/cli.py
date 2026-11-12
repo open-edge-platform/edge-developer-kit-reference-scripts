@@ -326,6 +326,10 @@ class LlamaManagerCLI:
         extra_args: List[str] = [],
         timeout: int = 120,
     ) -> int:
+        if not model_path:
+            model_path, resolved_mmproj = self.manager.get_model_file_path(repo_id)
+            mmproj_path = mmproj_path or resolved_mmproj
+
         params = {
             "n_ctx": context_size,
             "model_path": model_path,
@@ -381,16 +385,17 @@ class LlamaManagerCLI:
 
     def get_server_url(self, task) -> Optional[str]:
         """Base URL of the server running ``task``, or None; each server picks its own loopback port."""
-        if task not in self.manager.running_servers:
+        server_info = self.manager.running_servers.get(task)
+        if not server_info:
             return None
 
-        return self.manager.running_servers[task]["url"]
+        return server_info.get("url")
 
     def get_server_status(self) -> List[Any]:
         server_status = []
 
-        for task in self.manager.running_servers:
-            params = self.manager.running_servers[task]
+        # Snapshot to avoid RuntimeError if running_servers mutates concurrently.
+        for task, params in list(self.manager.running_servers.items()):
             try:
                 (_, pid) = self.manager.get_server_status(task)
             except:

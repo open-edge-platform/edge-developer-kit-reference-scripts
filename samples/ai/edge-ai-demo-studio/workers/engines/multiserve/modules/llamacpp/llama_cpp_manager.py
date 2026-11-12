@@ -92,6 +92,8 @@ class LlamaCPPManager:
                 else f"./engine/llama.cpp-{FORCE_LLAMACPP_BACKEND}/llama-server"
             )
             if Path(get_resource_path(executable)).exists():
+                self.SERVER_EXECUTABLE = executable
+                self.CUSTOM_SERVER_EXECUTABLE = executable
                 self.BACKEND = FORCE_LLAMACPP_BACKEND
 
         llama_cpp_exe_name = "llama-server.exe" if self.IS_WINDOWS else "llama-server"

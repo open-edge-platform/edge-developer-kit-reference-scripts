@@ -46,7 +46,8 @@ type GradingSectionProps = {
   dataEntries: DataEntry[]
   /** The sheets and their queue — held above the tabs (`useGradingSession`). */
   grading: GradingSession
-  saveRecord: (record: SavedRecord) => void
+  /** Resolves false when the exam database did not store the record. */
+  saveRecord: (record: SavedRecord) => Promise<boolean>
 }
 
 export function GradingSection({
@@ -54,8 +55,16 @@ export function GradingSection({
   grading,
   saveRecord,
 }: GradingSectionProps) {
-  const { entries, updateEntry, removeEntry, addImage, retryEntry, prompts } =
-    grading
+  const {
+    entries,
+    subject,
+    updateEntry,
+    removeEntry,
+    addImage,
+    retryEntry,
+    archiveEntry,
+    prompts,
+  } = grading
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [previewEntry, setPreviewEntry] = useState<PreviewEntry | null>(null)
   const [reviewEntry, setReviewEntry] = useState<ReviewEntry | null>(null)
@@ -218,9 +227,11 @@ export function GradingSection({
         reviewEntry={reviewEntry}
         setReviewEntry={setReviewEntry}
         dataEntries={dataEntries}
+        subject={subject}
         llmPrompt={prompts.llmPrompt}
         updateEntry={updateEntry}
         saveRecord={saveRecord}
+        archiveEntry={archiveEntry}
       />
 
       <ImagePreviewDialog

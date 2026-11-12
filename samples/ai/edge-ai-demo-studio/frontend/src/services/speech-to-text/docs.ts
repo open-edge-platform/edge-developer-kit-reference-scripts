@@ -242,7 +242,7 @@ export const getDocsData = ({
             name: 'timestamp_granularities[]',
             type: 'string[]',
             required: false,
-            desc: "'segment' (default) and/or 'word'. Requires response_format=verbose_json; repeat the field or pass it once comma-separated.",
+            desc: "'segment' (default) and/or 'word'. Requires response_format=verbose_json; repeat the field or pass it once comma-separated. On the OpenVINO Model Server backend, Qwen3-ASR's word timings come from a forced aligner (Qwen3-ForcedAligner-0.6B) that starts on the first word request unless the instance's alignerWarmStart setting is on, so that request is slower; `words` is empty when the model gives none.",
           },
           {
             name: 'stream',

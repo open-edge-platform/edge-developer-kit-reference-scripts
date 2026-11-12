@@ -418,6 +418,312 @@
           ],
           "description": "Generate dense vector embeddings for semantic search and RAG pipelines, with optional image embeddings through the Open Edge Platform multimodal models."
         },
+        "exam-marking-agent": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "Display name of the first instance, unique per service (\"Exam Marking Agent\" when this file adds the service). A different name renames it, as in the UI: its address stays"
+                    },
+                    "instanceId": {
+                      "description": "The instance's id, which its address is built on (/api/exam-marking-agent@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                      "type": "string",
+                      "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
+                    },
+                    "status": {
+                      "description": "'online' starts the instance when the app boots; 'offline' (default) leaves it stopped.",
+                      "type": "string",
+                      "enum": [
+                        "online",
+                        "offline"
+                      ]
+                    },
+                    "engine": {
+                      "description": "Execution engine for this instance",
+                      "type": "string",
+                      "enum": [
+                        "worker"
+                      ]
+                    },
+                    "models": {
+                      "allOf": [
+                        {
+                          "$ref": "#/definitions/exam-marking-agent-models"
+                        }
+                      ]
+                    },
+                    "metadata": {
+                      "allOf": [
+                        {
+                          "$ref": "#/definitions/exam-marking-agent-metadata"
+                        }
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              ],
+              "additionalItems": {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Display name, unique per service (ignoring case). An entry without an instanceId is found again by it on every boot; a new instance's id is derived from it (\"CPU fallback\" → /api/exam-marking-agent@cpu-fallback). A different name renames a matched instance: its address stays"
+                  },
+                  "instanceId": {
+                    "description": "The instance's id, which its address is built on (/api/exam-marking-agent@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                    "type": "string",
+                    "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
+                  },
+                  "status": {
+                    "description": "'online' starts the instance when the app boots; 'offline' (default) leaves it stopped.",
+                    "type": "string",
+                    "enum": [
+                      "online",
+                      "offline"
+                    ]
+                  },
+                  "engine": {
+                    "description": "Execution engine for this instance",
+                    "type": "string",
+                    "enum": [
+                      "worker"
+                    ]
+                  },
+                  "models": {
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/exam-marking-agent-models"
+                      }
+                    ]
+                  },
+                  "metadata": {
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/exam-marking-agent-metadata"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "label"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 1,
+              "maxItems": 1,
+              "description": "The Exam Marking Agent instance (a single-instance service: one entry)."
+            },
+            {
+              "type": "object",
+              "properties": {
+                "label": {
+                  "description": "Display name of the first instance, unique per service (\"Exam Marking Agent\" when this file adds the service). A different name renames it: its address stays",
+                  "type": "string",
+                  "minLength": 1
+                },
+                "status": {
+                  "description": "'online' starts the instance when the app boots; 'offline' (default) leaves it stopped.",
+                  "type": "string",
+                  "enum": [
+                    "online",
+                    "offline"
+                  ]
+                },
+                "engine": {
+                  "description": "Execution engine for this instance",
+                  "type": "string",
+                  "enum": [
+                    "worker"
+                  ]
+                },
+                "models": {
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/exam-marking-agent-models"
+                    }
+                  ]
+                },
+                "metadata": {
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/exam-marking-agent-metadata"
+                    }
+                  ]
+                },
+                "port": {
+                  "description": "Ignored — ports are allocated from INSTANCE_PORT_RANGE when the service starts",
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 65535
+                }
+              },
+              "additionalProperties": false,
+              "description": "Older form, still read: the fields configure the first Exam Marking Agent instance. Saving from the UI writes the list form."
+            }
+          ],
+          "description": "ReAct AI agent that queries the exam database and generates insightful student performance reports."
+        },
+        "exam-marking-database": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "Display name of the first instance, unique per service (\"Exam Marking Database\" when this file adds the service). A different name renames it, as in the UI: its address stays"
+                    },
+                    "instanceId": {
+                      "description": "The instance's id, which its address is built on (/api/exam-marking-database@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                      "type": "string",
+                      "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
+                    },
+                    "status": {
+                      "description": "'online' starts the instance when the app boots; 'offline' (default) leaves it stopped.",
+                      "type": "string",
+                      "enum": [
+                        "online",
+                        "offline"
+                      ]
+                    },
+                    "engine": {
+                      "description": "Execution engine for this instance",
+                      "type": "string",
+                      "enum": [
+                        "worker"
+                      ]
+                    },
+                    "models": {
+                      "allOf": [
+                        {
+                          "$ref": "#/definitions/exam-marking-database-models"
+                        }
+                      ]
+                    },
+                    "metadata": {
+                      "allOf": [
+                        {
+                          "$ref": "#/definitions/exam-marking-database-metadata"
+                        }
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              ],
+              "additionalItems": {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Display name, unique per service (ignoring case). An entry without an instanceId is found again by it on every boot; a new instance's id is derived from it (\"CPU fallback\" → /api/exam-marking-database@cpu-fallback). A different name renames a matched instance: its address stays"
+                  },
+                  "instanceId": {
+                    "description": "The instance's id, which its address is built on (/api/exam-marking-database@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                    "type": "string",
+                    "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
+                  },
+                  "status": {
+                    "description": "'online' starts the instance when the app boots; 'offline' (default) leaves it stopped.",
+                    "type": "string",
+                    "enum": [
+                      "online",
+                      "offline"
+                    ]
+                  },
+                  "engine": {
+                    "description": "Execution engine for this instance",
+                    "type": "string",
+                    "enum": [
+                      "worker"
+                    ]
+                  },
+                  "models": {
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/exam-marking-database-models"
+                      }
+                    ]
+                  },
+                  "metadata": {
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/exam-marking-database-metadata"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "label"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 1,
+              "maxItems": 1,
+              "description": "The Exam Marking Database instance (a single-instance service: one entry)."
+            },
+            {
+              "type": "object",
+              "properties": {
+                "label": {
+                  "description": "Display name of the first instance, unique per service (\"Exam Marking Database\" when this file adds the service). A different name renames it: its address stays",
+                  "type": "string",
+                  "minLength": 1
+                },
+                "status": {
+                  "description": "'online' starts the instance when the app boots; 'offline' (default) leaves it stopped.",
+                  "type": "string",
+                  "enum": [
+                    "online",
+                    "offline"
+                  ]
+                },
+                "engine": {
+                  "description": "Execution engine for this instance",
+                  "type": "string",
+                  "enum": [
+                    "worker"
+                  ]
+                },
+                "models": {
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/exam-marking-database-models"
+                    }
+                  ]
+                },
+                "metadata": {
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/exam-marking-database-metadata"
+                    }
+                  ]
+                },
+                "port": {
+                  "description": "Ignored — ports are allocated from INSTANCE_PORT_RANGE when the service starts",
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 65535
+                }
+              },
+              "additionalProperties": false,
+              "description": "Older form, still read: the fields configure the first Exam Marking Database instance. Saving from the UI writes the list form."
+            }
+          ],
+          "description": "Stores and retrieves AI exam marking results and exposes an MCP server for insights."
+        },
         "face-recognition": {
           "anyOf": [
             {
@@ -4421,6 +4727,186 @@
       },
       "description": "Instance metadata, merged over existing values"
     },
+    "exam-marking-agent-models": {
+      "type": "object",
+      "properties": {
+        "default": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "description": "Model identifier (e.g. Hugging Face repo id)",
+              "type": "string",
+              "minLength": 1
+            },
+            "device": {
+              "description": "Accelerator to run on (e.g. CPU, GPU, NPU)",
+              "type": "string",
+              "minLength": 1
+            },
+            "source": {
+              "type": "string",
+              "enum": [
+                "huggingface",
+                "modelscope",
+                "custom"
+              ]
+            },
+            "quant": {
+              "description": "Weight format / quantization",
+              "type": "string"
+            },
+            "params": {
+              "type": "string"
+            },
+            "backend": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "description": "Model identifier (e.g. Hugging Face repo id)",
+            "type": "string",
+            "minLength": 1
+          },
+          "device": {
+            "description": "Accelerator to run on (e.g. CPU, GPU, NPU)",
+            "type": "string",
+            "minLength": 1
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "huggingface",
+              "modelscope",
+              "custom"
+            ]
+          },
+          "quant": {
+            "description": "Weight format / quantization",
+            "type": "string"
+          },
+          "params": {
+            "type": "string"
+          },
+          "backend": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "Partial per-model overrides, merged over the instance's current settings (a new instance starts from the first instance's). 'default' is the primary model."
+    },
+    "exam-marking-agent-metadata": {
+      "type": "object",
+      "properties": {
+        "cpuAffinity": {
+          "description": "CPU cores to pin this service to (numactl -C format, e.g. \"0-7\" or \"0,2,4\"). Empty / missing = all cores. Linux, and Windows for CPUs 0-63.",
+          "type": "string"
+        }
+      },
+      "description": "Instance metadata, merged over existing values"
+    },
+    "exam-marking-database-models": {
+      "type": "object",
+      "properties": {
+        "default": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "description": "Model identifier (e.g. Hugging Face repo id)",
+              "type": "string",
+              "minLength": 1
+            },
+            "device": {
+              "description": "Accelerator to run on (e.g. CPU, GPU, NPU)",
+              "type": "string",
+              "minLength": 1
+            },
+            "source": {
+              "type": "string",
+              "enum": [
+                "huggingface",
+                "modelscope",
+                "custom"
+              ]
+            },
+            "quant": {
+              "description": "Weight format / quantization",
+              "type": "string"
+            },
+            "params": {
+              "type": "string"
+            },
+            "backend": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "description": "Model identifier (e.g. Hugging Face repo id)",
+            "type": "string",
+            "minLength": 1
+          },
+          "device": {
+            "description": "Accelerator to run on (e.g. CPU, GPU, NPU)",
+            "type": "string",
+            "minLength": 1
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "huggingface",
+              "modelscope",
+              "custom"
+            ]
+          },
+          "quant": {
+            "description": "Weight format / quantization",
+            "type": "string"
+          },
+          "params": {
+            "type": "string"
+          },
+          "backend": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "Partial per-model overrides, merged over the instance's current settings (a new instance starts from the first instance's). 'default' is the primary model."
+    },
+    "exam-marking-database-metadata": {
+      "type": "object",
+      "properties": {
+        "cpuAffinity": {
+          "description": "CPU cores to pin this service to (numactl -C format, e.g. \"0-7\" or \"0,2,4\"). Empty / missing = all cores. Linux, and Windows for CPUs 0-63.",
+          "type": "string"
+        }
+      },
+      "description": "Instance metadata, merged over existing values"
+    },
     "face-recognition-models": {
       "type": "object",
       "properties": {
@@ -6020,6 +6506,11 @@
         "denoiseDevice": {
           "description": "Device of the noise suppression model on the OpenVINO Model Server backend of Speech to Text. Empty / missing = models.denoise.device, else the speech model's device. The worker falls back to CPU when the model cannot compile there.",
           "type": "string"
+        },
+        "alignerWarmStart": {
+          "description": "Start the Qwen3-ASR forced aligner at boot instead of on the first word-timestamp request, so that request skips the aligner start-up (and its one-time export). Only applies to Qwen3-ASR on the OpenVINO Model Server backend of Speech to Text; use it when clients always ask for word timings (e.g. Medical Scribe).",
+          "default": false,
+          "type": "boolean"
         }
       },
       "description": "Instance metadata, merged over existing values"
@@ -6124,6 +6615,8 @@
               "description": "Model identifier (e.g. Hugging Face repo id)",
               "examples": [
                 "OpenVINO/Qwen3.5-4B-int4-ov",
+                "OpenVINO/Qwen3.5-9B-int8-ov",
+                "OpenVINO/Qwen3.5-9B-int4-ov",
                 "OpenVINO/InternVL2-2B-int4-ov",
                 "Qwen/Qwen3-1.7B-GGUF",
                 "ggml-org/Qwen3-VL-2B-Instruct-GGUF"
