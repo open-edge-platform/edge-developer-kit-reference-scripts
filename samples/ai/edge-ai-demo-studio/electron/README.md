@@ -124,6 +124,11 @@ that port (another install, or a studio started with `start.sh` or
 program's pages; stop the other program and choose Retry. Only one instance
 runs per user: launching the app again brings its window (or its splash) up.
 
+Setting `FRONTEND_HOST=0.0.0.0` in the app's environment makes the server listen
+on every interface, so other machines can reach it on port 8080; the CD demo
+machine does this. The window still loads `127.0.0.1`, and the workers stay on
+loopback behind the server's proxy.
+
 ## Command-line switches
 
 | Switch | Effect |

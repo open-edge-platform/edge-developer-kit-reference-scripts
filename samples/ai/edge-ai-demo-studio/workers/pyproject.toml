@@ -33,6 +33,10 @@ exclude = [
     "services/vectordb",
     # openwakeword needs tflite-runtime, which has no wheels past cp311: pinned to Python 3.11.
     "services/wake-word-detection",
+    # llama-index-llms-openai caps openai <3, and both pin mcp >=2.2, which pulls fastmcp 4 into
+    # robotics-ai: the exam-marking workers keep their own locks rather than move the workspace's.
+    "services/exam-marking-agent",
+    "services/exam-marking-database",
     # The OEP microservice wrappers: not projects. Each .venv is built from upstream's own
     # dependency file at the pinned tag (scripts/oep_env.py), apart from this workspace.
     "services/speech-to-text/oep",

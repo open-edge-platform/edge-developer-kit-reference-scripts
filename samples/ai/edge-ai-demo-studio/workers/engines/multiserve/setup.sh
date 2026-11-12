@@ -127,7 +127,11 @@ install_uv() {
 }
 
 # Remove the unselected backend's build, so switching SYCL/Vulkan doesn't leave both on disk.
+# The Docker image keeps both (LLAMACPP_KEEP_OTHER_BUILD=true) and picks one at container start.
 remove_unused_llamacpp() {
+    if [[ "${LLAMACPP_KEEP_OTHER_BUILD:-false}" == "true" ]]; then
+        return 0
+    fi
     if [[ -d "$LLAMA_OTHER_EXTRACT_DIR" ]]; then
         echo "Removing llama.cpp build for the unselected backend: $LLAMA_OTHER_EXTRACT_DIR"
         rm -rf "$LLAMA_OTHER_EXTRACT_DIR"

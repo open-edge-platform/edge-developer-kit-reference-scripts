@@ -22,6 +22,16 @@ export const supportedBackends: EngineBackend[] = [
           backend: 'openvino',
         },
         {
+          name: 'OpenVINO/Qwen3.5-9B-int8-ov',
+          device: 'AUTO',
+          backend: 'openvino',
+        },
+        {
+          name: 'OpenVINO/Qwen3.5-9B-int4-ov',
+          device: 'AUTO',
+          backend: 'openvino',
+        },
+        {
           name: 'OpenVINO/InternVL2-2B-int4-ov',
           device: 'AUTO',
           backend: 'openvino',

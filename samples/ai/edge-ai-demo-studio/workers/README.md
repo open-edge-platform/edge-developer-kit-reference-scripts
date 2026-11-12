@@ -32,7 +32,7 @@ by walking up, so `uv run` inside any worker uses the shared `.venv` and
 
 **Some workers keep their own environment.** A worker whose dependencies
 cannot share the workspace's pins (geti-sdk caps openvino, tflite-runtime
-stops at Python 3.11) is listed under `exclude` in
+stops at Python 3.11, llama-index caps openai) is listed under `exclude` in
 `pyproject.toml`, with the reason as a comment. It keeps its own `uv.lock`
 and `.venv` and takes `worker-common` / `model-downloader` by path instead of
 `{ workspace = true }`. Start scripts need no special casing: `run_worker`

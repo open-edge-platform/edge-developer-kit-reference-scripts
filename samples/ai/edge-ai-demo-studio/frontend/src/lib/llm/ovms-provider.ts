@@ -10,13 +10,16 @@ import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 export function createOvmsProvider(options: {
   baseUrl: string
   patchBody?: (body: Record<string, unknown>) => void
+  /** Send `Output.object` schemas as a `json_schema` response format, not bare `json_object`. */
+  supportsStructuredOutputs?: boolean
 }) {
-  const { baseUrl, patchBody } = options
+  const { baseUrl, patchBody, supportsStructuredOutputs } = options
   return createOpenAICompatible({
     baseURL: `${baseUrl}/v1`,
     name: 'ovms',
     // OVMS reports streaming token counts only in this final `usage` chunk; llama.cpp accepts it too.
     includeUsage: true,
+    supportsStructuredOutputs,
     fetch: async (url, fetchOptions) => {
       if (fetchOptions?.body && patchBody) {
         const body = JSON.parse(fetchOptions.body.toString())

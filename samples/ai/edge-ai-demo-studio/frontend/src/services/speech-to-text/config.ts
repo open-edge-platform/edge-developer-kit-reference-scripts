@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { ModelOption, Service, ServiceConfig } from '@/services/types'
+import { getEffectiveModel } from '@/types/service'
 
 /**
  * Speech to Text runs on one of two workers under workers/services/speech-to-text/: `oep` (OEP
@@ -10,16 +11,6 @@ import type { ModelOption, Service, ServiceConfig } from '@/services/types'
  */
 
 export type SttBackendId = 'oep' | 'ovms'
-
-/** Languages the demo and the samples offer for transcription. */
-export const STT_LANGUAGE_OPTIONS = [
-  { value: 'en', label: 'English' },
-  { value: 'zh', label: 'Chinese' },
-  { value: 'de', label: 'German' },
-  { value: 'fr', label: 'French' },
-  { value: 'ja', label: 'Japanese' },
-  { value: 'es', label: 'Spanish' },
-]
 
 /**
  * Auto-detect language, OVMS only: the worker lets the model detect it (`verbose_json` language is
@@ -383,17 +374,53 @@ const QWEN3_ASR_LANGUAGES = [
   'ro',
 ]
 
-/** Languages `model` transcribes, sorted by name; a custom model id counts as Whisper. */
+export interface SttLanguageOption {
+  value: string
+  label: string
+}
+
+/**
+ * Languages `model` transcribes, sorted by name, after Auto-detect when `autoLanguage`; a custom
+ * model id counts as Whisper.
+ */
 export function getSttLanguageOptions(
   model: string | undefined,
-): { value: string; label: string }[] {
+  autoLanguage = false,
+): SttLanguageOption[] {
   const id = (model ?? '').toLowerCase()
   const codes = id.includes('qwen3-asr')
     ? QWEN3_ASR_LANGUAGES
     : id.includes('large-v3')
       ? [...WHISPER_LANGUAGES, 'yue']
       : WHISPER_LANGUAGES
-  return codes
+  const languages = codes
     .map((code) => ({ value: code, label: LANGUAGE_NAMES[code] }))
     .sort((a, b) => a.label.localeCompare(b.label))
+  return autoLanguage
+    ? [{ value: STT_AUTO_LANGUAGE, label: 'Auto-detect' }, ...languages]
+    : languages
+}
+
+/** The language list of the STT service as it runs now, for samples that pick a language. */
+export function getServiceSttLanguageOptions(
+  service: Service | undefined,
+): SttLanguageOption[] {
+  return getSttLanguageOptions(
+    service ? getEffectiveModel(service).name : undefined,
+    getSttCapabilities(service).autoLanguage,
+  )
+}
+
+/**
+ * `language` if offered, else Auto-detect where offered, else English (every model knows it; both
+ * workers default to it). With no `language`, the default.
+ */
+export function resolveSttLanguage(
+  language: string | null | undefined,
+  options: SttLanguageOption[],
+): string {
+  if (language && options.some((o) => o.value === language)) return language
+  return options.some((o) => o.value === STT_AUTO_LANGUAGE)
+    ? STT_AUTO_LANGUAGE
+    : 'en'
 }

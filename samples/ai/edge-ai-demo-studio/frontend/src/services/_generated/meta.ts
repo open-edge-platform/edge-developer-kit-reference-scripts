@@ -7,6 +7,8 @@
 
 import { service as diarizationMeta } from '../diarization/data'
 import { service as embeddingsMeta } from '../embeddings/data'
+import { service as examMarkingAgentMeta } from '../exam-marking-agent/data'
+import { service as examMarkingDatabaseMeta } from '../exam-marking-database/data'
 import { service as faceRecognitionMeta } from '../face-recognition/data'
 import { service as fileWatcherMeta } from '../file-watcher/data'
 import { service as frameGenerationMeta } from '../frame-generation/data'
@@ -33,6 +35,8 @@ import { service as wakeWordDetectionMeta } from '../wake-word-detection/data'
 export const metaMap = {
   diarization: diarizationMeta,
   embeddings: embeddingsMeta,
+  'exam-marking-agent': examMarkingAgentMeta,
+  'exam-marking-database': examMarkingDatabaseMeta,
   'face-recognition': faceRecognitionMeta,
   'file-watcher': fileWatcherMeta,
   'frame-generation': frameGenerationMeta,

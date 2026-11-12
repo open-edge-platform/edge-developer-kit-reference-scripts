@@ -24,12 +24,12 @@ import { TONES, type Tone } from '@/components/common/tones'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { cn } from '@/lib/utils'
-import {
-  getRecordTotalScore,
-  type DashboardStats,
-} from '@/samples/ai-exam-marking/lib/dashboard-stats'
+import type { DashboardStats } from '@/samples/ai-exam-marking/lib/dashboard-stats'
 import { isPass, PASS_MARK_PCT } from '@/samples/ai-exam-marking/lib/marks'
-import type { SavedRecord } from '@/samples/ai-exam-marking/lib/types'
+import {
+  getSubjectLabel,
+  type SavedRecord,
+} from '@/samples/ai-exam-marking/lib/types'
 
 interface ResultsDashboardProps {
   records: SavedRecord[]
@@ -82,6 +82,9 @@ function StudentRow({ record, pct }: { record: SavedRecord; pct?: number }) {
             <p className="text-muted-foreground">{record.studentName}</p>
           )}
         </div>
+      </td>
+      <td className="text-muted-foreground py-2.5 pr-4">
+        {getSubjectLabel(record.subjectId)}
       </td>
       <td className="text-muted-foreground py-2.5 pr-4">
         {new Date(record.timestamp).toLocaleDateString()}
@@ -243,6 +246,9 @@ export function ResultsDashboard({ records, stats }: ResultsDashboardProps) {
                     Student
                   </th>
                   <th className="text-muted-foreground pb-2 text-left font-medium">
+                    Subject
+                  </th>
+                  <th className="text-muted-foreground pb-2 text-left font-medium">
                     Date
                   </th>
                   <th className="text-muted-foreground pb-2 text-right font-medium">
@@ -257,11 +263,9 @@ export function ResultsDashboard({ records, stats }: ResultsDashboardProps) {
                 {stats.scoredRecords.map(({ record, pct }) => (
                   <StudentRow key={record.id} record={record} pct={pct} />
                 ))}
-                {records
-                  .filter((r) => !getRecordTotalScore(r))
-                  .map((record) => (
-                    <StudentRow key={record.id} record={record} />
-                  ))}
+                {stats.unscoredRecords.map((record) => (
+                  <StudentRow key={record.id} record={record} />
+                ))}
               </tbody>
             </table>
           </div>

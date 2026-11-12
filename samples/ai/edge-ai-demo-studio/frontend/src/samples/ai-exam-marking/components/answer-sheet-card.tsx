@@ -14,7 +14,9 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import {
+  Archive,
   Clock,
+  Database,
   Download,
   Expand,
   FileImage,
@@ -37,13 +39,15 @@ const STEP_ICON: Record<ProcessingStep['phase'], typeof Clock> = {
   extracting: ScanText,
   grading: Sparkles,
   annotating: FileImage,
+  saving: Database,
+  archiving: Archive,
 }
 
 interface AnswerSheetCardProps {
   entry: GradingEntry
   index: number
   onRemove: (id: string) => void
-  onRetry: (id: string, uploadedImage: string) => void
+  onRetry: (entry: GradingEntry) => void
   onPreview: (preview: PreviewEntry) => void
   onReview: (review: ReviewEntry) => void
   onExport: (entry: GradingEntry, label: string) => void
@@ -135,10 +139,14 @@ export function AnswerSheetCard({
               <Button
                 size="sm"
                 className="text-xs"
-                onClick={() => onRetry(entry.id, entry.uploadedImage)}
+                onClick={() => onRetry(entry)}
               >
                 <RefreshCw className="mr-2 h-3.5 w-3.5" aria-hidden />
-                Retry Grading
+                {entry.pendingRecord
+                  ? 'Retry Saving'
+                  : entry.pendingArchive
+                    ? 'Retry Archiving'
+                    : 'Retry Grading'}
               </Button>
             </div>
           </div>
@@ -205,6 +213,7 @@ export function AnswerSheetCard({
                     : [],
                   studentName: entry.studentName,
                   studentId: entry.studentId,
+                  sourceFilename: entry.sourceFilename,
                 })
               }
               aria-label={`Review ${entryLabel}`}

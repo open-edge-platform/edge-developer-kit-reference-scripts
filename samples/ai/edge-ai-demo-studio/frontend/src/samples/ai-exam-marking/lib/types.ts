@@ -8,12 +8,30 @@ export type BoundingBox = {
   y2: number
 }
 
+/** Each subject's stored ID and the kind of answers its questions take. */
+export const SUBJECTS = {
+  Mathematics: ['S0001', 'math'],
+  'Business Studies': ['S0006', 'text'],
+} as const
+
+export type Subject = keyof typeof SUBJECTS
+
+/** Reverse-lookup a subject label from stored subject ID (e.g. S0001). */
+export function getSubjectLabel(subjectId?: string): string {
+  if (!subjectId) return 'Unknown Subject'
+  const match = Object.entries(SUBJECTS).find(([, [id]]) => id === subjectId)
+  return match?.[0] ?? subjectId
+}
+
+export type QuestionType = 'text' | 'math'
+
 export type DataEntry = {
   id: string
   number: number
   question: string
   marks: number
   scheme: string
+  type?: QuestionType
   boundingBox?: BoundingBox
 }
 
@@ -28,6 +46,8 @@ export interface SavedRecord {
   timestamp: string
   studentName?: string
   studentId?: string
+  /** Stored subject ID (`SUBJECTS`); see `getSubjectLabel`. */
+  subjectId?: string
   dataEntries: SavedDataEntry[]
   ocrResult: {
     text: string
@@ -68,6 +88,19 @@ export type ProcessingStep =
   | { phase: 'extracting' }
   | { phase: 'grading'; question: number; total: number }
   | { phase: 'annotating' }
+  | { phase: 'saving' }
+  | { phase: 'archiving' }
+
+/** A graded sheet for the Exam Marking Agent to file away with its annotated image. */
+export type ArchiveRequest = {
+  /** Set only when the paper came from prior_mark and must be moved to marked. */
+  sourceFilename?: string
+  originalFilename: string
+  annotatedImage: string
+  annotatedFilename: string
+  studentId?: string
+  subject?: string
+}
 
 /** One answer sheet on the Grading tab. */
 export interface GradingEntry {
@@ -83,4 +116,10 @@ export interface GradingEntry {
   step: ProcessingStep | null
   error?: string
   reviewed?: boolean
+  /** The file name in the agent's prior_mark folder, for a sheet the scanner sent. */
+  sourceFilename?: string
+  /** Graded record the exam database has not confirmed yet; retry saves it before archiving. */
+  pendingRecord?: SavedRecord
+  /** Set when grading was saved but archiving failed; retry re-sends only this. */
+  pendingArchive?: ArchiveRequest
 }

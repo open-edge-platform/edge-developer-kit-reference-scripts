@@ -17,18 +17,24 @@ import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { ClipboardList, Loader, ScanText, Sparkles } from 'lucide-react'
-import { toastError } from '@/lib/browser/toast-error'
+import { InlineNotice } from '@/components/common/inline-notice'
 import {
   buildAnnotatedImage,
   MARKING_DATA_DIR,
 } from '@/samples/ai-exam-marking/lib/image-utils'
 import { withRunningTotals } from '@/samples/ai-exam-marking/lib/marks'
-import { buildSavedRecord } from '@/samples/ai-exam-marking/lib/records'
-import type {
-  DataEntry,
-  GradingEntry,
-  LLMResultEntry,
-  SavedRecord,
+import {
+  buildArchiveRequest,
+  buildSavedRecord,
+} from '@/samples/ai-exam-marking/lib/records'
+import {
+  SUBJECTS,
+  type ArchiveRequest,
+  type DataEntry,
+  type GradingEntry,
+  type LLMResultEntry,
+  type SavedRecord,
+  type Subject,
 } from '@/samples/ai-exam-marking/lib/types'
 
 export interface ReviewEntry {
@@ -39,30 +45,44 @@ export interface ReviewEntry {
   llmResults: LLMResultEntry[]
   studentName?: string
   studentId?: string
+  sourceFilename?: string
 }
 
 interface HumanReviewDialogProps {
   reviewEntry: ReviewEntry | null
   setReviewEntry: React.Dispatch<React.SetStateAction<ReviewEntry | null>>
   dataEntries: DataEntry[]
+  subject: Subject
   llmPrompt: string
   updateEntry: (id: string, patch: Partial<GradingEntry>) => void
-  saveRecord: (record: SavedRecord) => void
+  /** Resolves false when the exam database did not store the record. */
+  saveRecord: (record: SavedRecord) => Promise<boolean>
+  /** Resolves false when the agent did not store the annotated image. */
+  archiveEntry: (entryId: string, req: ArchiveRequest) => Promise<boolean>
 }
 
 export function HumanReviewDialog({
   reviewEntry,
   setReviewEntry,
   dataEntries,
+  subject,
   llmPrompt,
   updateEntry,
   saveRecord,
+  archiveEntry,
 }: HumanReviewDialogProps) {
   const [isRegenerating, setIsRegenerating] = useState(false)
+  const [reviewError, setReviewError] = useState<string | null>(null)
+
+  const close = () => {
+    setReviewEntry(null)
+    setReviewError(null)
+  }
 
   const handleRegenerate = async () => {
     if (!reviewEntry) return
     setIsRegenerating(true)
+    setReviewError(null)
     try {
       // Edited marks move the running totals the record and the dashboard
       // read; the AI's totals would be stale.
@@ -78,13 +98,13 @@ export function HumanReviewDialog({
         annotatedImage,
         overlayImage,
         llmResults,
-        reviewed: true,
       })
-      saveRecord(
+      const saved = await saveRecord(
         buildSavedRecord({
           entryId: reviewEntry.entryId,
           studentName: reviewEntry.studentName,
           studentId: reviewEntry.studentId,
+          subjectId: SUBJECTS[subject][0],
           dataEntries,
           ocrText: reviewEntry.ocrText,
           overlayImage,
@@ -93,9 +113,40 @@ export function HumanReviewDialog({
           llmResults,
         }),
       )
-      setReviewEntry(null)
-    } catch (error) {
-      toastError('Could not regenerate the annotations')(error)
+      if (!saved) {
+        setReviewError(
+          'Saving the reviewed result failed. Your edits are kept — click Regenerate to retry.',
+        )
+        return
+      }
+
+      // Moves the paper if an earlier save failed; otherwise falls back to storing only.
+      const archived = await archiveEntry(
+        reviewEntry.entryId,
+        buildArchiveRequest({
+          entryId: reviewEntry.entryId,
+          sourceFilename: reviewEntry.sourceFilename,
+          annotatedImage,
+          studentId: reviewEntry.studentId,
+          subject,
+        }),
+      )
+      if (!archived) {
+        setReviewError(
+          'Storing the reviewed image failed, so results would be sent with the old image. Click Regenerate to retry.',
+        )
+        return
+      }
+
+      updateEntry(reviewEntry.entryId, {
+        reviewed: true,
+        pendingRecord: undefined,
+      })
+      close()
+    } catch {
+      setReviewError(
+        'Regenerating the annotations failed. Click Regenerate to retry.',
+      )
     } finally {
       setIsRegenerating(false)
     }
@@ -117,7 +168,7 @@ export function HumanReviewDialog({
   return (
     <Dialog
       open={reviewEntry !== null}
-      onOpenChange={(open) => !open && setReviewEntry(null)}
+      onOpenChange={(open) => !open && close()}
     >
       <DialogContent className="max-w-3xl">
         <DialogHeader>
@@ -227,6 +278,11 @@ export function HumanReviewDialog({
                   </tbody>
                 </table>
               </div>
+              {reviewError && (
+                <InlineNotice tone="destructive" size="sm">
+                  {reviewError}
+                </InlineNotice>
+              )}
               <Button
                 className="w-full text-xs"
                 disabled={isRegenerating}

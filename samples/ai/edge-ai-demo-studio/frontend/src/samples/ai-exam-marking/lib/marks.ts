@@ -63,5 +63,9 @@ export function describeStep(step: ProcessingStep): string {
       return `Grading question ${step.question} of ${step.total}…`
     case 'annotating':
       return 'Annotating image…'
+    case 'saving':
+      return 'Saving…'
+    case 'archiving':
+      return 'Archiving…'
   }
 }

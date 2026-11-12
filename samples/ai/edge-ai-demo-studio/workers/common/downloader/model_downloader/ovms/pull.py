@@ -153,7 +153,7 @@ def serve_lock_path(model_repository_path: str | os.PathLike[str], source_model:
 
 
 def pull_device(device: str | None, task: str | None = None) -> str | None:
-    """``--target_device`` for a pull: ``GPU.1`` becomes ``GPU``; empty stays unset.
+    """``--target_device`` for a pull: the device as given (``GPU.1`` keeps its index); empty stays unset.
 
     ``AUTO`` for ``text_generation`` stays unset too: AUTO cannot run LLM pipelines, whose KV-cache
     inputs have no precision until a real device compiles them ("Check
@@ -163,7 +163,7 @@ def pull_device(device: str | None, task: str | None = None) -> str | None:
         return None
     if task == "text_generation" and device.split(":", 1)[0].upper() == "AUTO":
         return None
-    return device.split(".", 1)[0]
+    return device
 
 
 def pinned_cpu_args(device: str | None) -> list[str]:

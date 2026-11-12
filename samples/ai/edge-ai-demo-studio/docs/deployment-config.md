@@ -132,6 +132,7 @@ Metadata keys:
 | `performanceMode` | OpenVINO performance hint of the Open Edge Platform embeddings worker (OV_PERFORMANCE_MODE). Empty / missing = THROUGHPUT on GPU, LATENCY on other devices. |
 | `compiledModelCache` | Keep the compiled OpenVINO model of the Open Edge Platform embeddings worker on CPU and GPU too (OV_ENABLE_MODEL_CACHE), so restarts skip compiling. The NPU always caches. |
 | `denoiseDevice` | Device of the noise suppression model on the OpenVINO Model Server backend of Speech to Text. Empty / missing = models.denoise.device, else the speech model's device. The worker falls back to CPU when the model cannot compile there. |
+| `alignerWarmStart` | Start the Qwen3-ASR forced aligner at boot instead of on the first word-timestamp request, so that request skips the aligner start-up (and its one-time export). Only applies to Qwen3-ASR on the OpenVINO Model Server backend of Speech to Text; use it when clients always ask for word timings (e.g. Medical Scribe). |
 | `serverArgs` | Extra arguments the model server starts with, as typed (quote values with spaces): llama-server flags, which replace the engine's own, or OpenVINO Model Server graph options (ovms --pull). Flags the engine sets itself (port, host, model) are refused. |
 
 ## Multiple instances
@@ -286,6 +287,34 @@ Known models:
 | `SigLIP/siglip2-vit-b-16` | `AUTO`, `CPU`, `GPU`, `NPU` | `openvino` |
 | `SigLIP/siglip2-vit-l-16` | `AUTO`, `CPU`, `GPU`, `NPU` | `openvino` |
 | `QwenText/qwen3-embedding-0.6b` | `AUTO`, `CPU`, `GPU` | `openvino` |
+
+### `exam-marking-agent` — Exam Marking Agent
+
+ReAct AI agent that queries the exam database and generates insightful student performance reports.
+
+| Field | Value |
+| --- | --- |
+| Port | allocated from `INSTANCE_PORT_RANGE` when the service starts |
+| Instances | single instance only (later entries are ignored) |
+| Engines | `worker` |
+| Default model | — |
+| Devices | — |
+| Custom models | no |
+| Supported OS | `linux`, `windows` |
+
+### `exam-marking-database` — Exam Marking Database
+
+Stores and retrieves AI exam marking results and exposes an MCP server for insights.
+
+| Field | Value |
+| --- | --- |
+| Port | allocated from `INSTANCE_PORT_RANGE` when the service starts |
+| Instances | single instance only (later entries are ignored) |
+| Engines | `worker` |
+| Default model | — |
+| Devices | — |
+| Custom models | no |
+| Supported OS | `linux`, `windows` |
 
 ### `face-recognition` — Face Recognition
 
@@ -614,6 +643,8 @@ Known models:
 | Model (`models.default.name`) | Devices | Backend |
 | --- | --- | --- |
 | `OpenVINO/Qwen3.5-4B-int4-ov` | `AUTO`, `CPU`, `GPU`, `NPU` | — |
+| `OpenVINO/Qwen3.5-9B-int8-ov` | `AUTO`, `CPU`, `GPU`, `NPU` | — |
+| `OpenVINO/Qwen3.5-9B-int4-ov` | `AUTO`, `CPU`, `GPU`, `NPU` | — |
 | `OpenVINO/InternVL2-2B-int4-ov` | `AUTO`, `CPU`, `GPU`, `NPU` | — |
 | `Qwen/Qwen3-1.7B-GGUF` | `CPU`, `GPU` | — |
 | `ggml-org/Qwen3-VL-2B-Instruct-GGUF` | `CPU`, `GPU` | — |

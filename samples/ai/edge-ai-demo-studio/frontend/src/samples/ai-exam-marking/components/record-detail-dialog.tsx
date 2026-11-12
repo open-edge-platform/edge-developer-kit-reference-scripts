@@ -13,8 +13,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { useServiceApiBase } from '@/context/service-status-context'
 import { formatMarks, formatTotal } from '@/samples/ai-exam-marking/lib/marks'
-import type { SavedRecord } from '@/samples/ai-exam-marking/lib/types'
+import {
+  getSubjectLabel,
+  type SavedRecord,
+} from '@/samples/ai-exam-marking/lib/types'
+import { useExamRecordDetailQuery } from '../hooks/use-database'
 
 /** A saved result in full: the sheet, the marking scheme, OCR text and grading. */
 export function RecordDetailDialog({
@@ -24,6 +29,14 @@ export function RecordDetailDialog({
   record: SavedRecord | null
   onClose: () => void
 }) {
+  // The database lists records without their images; fetch this one's.
+  const detail = useExamRecordDetailQuery(
+    useServiceApiBase('exam-marking-database'),
+    record,
+  )
+  const image =
+    record?.ocrResult.imagePreview ?? detail.data?.ocrResult.imagePreview
+
   return (
     <Dialog open={record !== null} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="flex max-h-[85svh] max-w-2xl flex-col overflow-hidden">
@@ -32,19 +45,20 @@ export function RecordDetailDialog({
             <DialogHeader>
               <DialogTitle>Record Details</DialogTitle>
               <DialogDescription>
-                Saved on {new Date(record.timestamp).toLocaleString()}
+                {getSubjectLabel(record.subjectId)} • Saved on{' '}
+                {new Date(record.timestamp).toLocaleString()}
               </DialogDescription>
             </DialogHeader>
 
             <div className="space-y-6 overflow-y-auto pr-1">
-              {record.ocrResult.imagePreview && (
+              {image && (
                 <section>
                   <h3 className="mb-2 flex items-center gap-2 text-sm font-medium">
                     <ImageIcon className="h-4 w-4" aria-hidden />
                     Uploaded/Captured Image
                   </h3>
                   <Image
-                    src={record.ocrResult.imagePreview}
+                    src={image}
                     alt="Captured"
                     width={0}
                     height={0}

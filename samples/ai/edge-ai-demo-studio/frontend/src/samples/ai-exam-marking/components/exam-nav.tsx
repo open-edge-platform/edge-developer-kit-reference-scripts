@@ -7,7 +7,13 @@ import { cn } from '@/lib/utils'
 import type { ExamRole } from '../hooks/use-exam-role'
 
 export type ExamTab =
-  'define' | 'bbox' | 'grading' | 'history' | 'dashboard' | 'chatbot'
+  | 'define'
+  | 'bbox'
+  | 'grading'
+  | 'history'
+  | 'dashboard'
+  | 'chatbot'
+  | 'dispatch'
 
 type NavItem =
   | { label: string; tabs: { value: ExamTab; label: string }[] }
@@ -26,7 +32,8 @@ const NAV: Record<ExamRole, NavItem[]> = {
     { label: 'Grading', value: 'grading' },
     { label: 'History', value: 'history' },
     { label: 'Dashboard', value: 'dashboard' },
-    { label: 'Chatbot', value: 'chatbot' },
+    { label: 'Agent', value: 'chatbot' },
+    { label: 'Dispatch', value: 'dispatch' },
   ],
   student: [{ label: 'History', value: 'history' }],
 }

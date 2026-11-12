@@ -7,17 +7,22 @@ import { Plus } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { STT_LANGUAGE_OPTIONS } from '@/services/speech-to-text/config'
+import {
+  resolveSttLanguage,
+  type SttLanguageOption,
+} from '@/services/speech-to-text/config'
 import type { DoctorProfile } from '../lib/types'
 import { doctorOptions, SessionSelectField } from './session-select-field'
 
 /** Name, doctor and language of a new consultation. */
 export function NewSessionForm({
   doctorProfiles,
+  languageOptions,
   onCreate,
   profileActions,
 }: {
   doctorProfiles: DoctorProfile[]
+  languageOptions: SttLanguageOption[]
   onCreate: (
     name: string,
     doctorProfileId: string | null,
@@ -28,7 +33,9 @@ export function NewSessionForm({
 }) {
   const [sessionName, setSessionName] = useState('')
   const [doctorId, setDoctorId] = useState('')
-  const [language, setLanguage] = useState('en')
+  // Empty until picked: the default follows the STT service's languages as it loads.
+  const [pickedLanguage, setPickedLanguage] = useState('')
+  const language = resolveSttLanguage(pickedLanguage, languageOptions)
 
   const create = () => {
     const name = sessionName.trim()
@@ -64,8 +71,8 @@ export function NewSessionForm({
         <SessionSelectField
           label="Language"
           value={language}
-          onChange={setLanguage}
-          options={STT_LANGUAGE_OPTIONS}
+          onChange={setPickedLanguage}
+          options={languageOptions}
           className="h-8 text-sm"
         />
         <Button

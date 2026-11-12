@@ -164,6 +164,8 @@ export interface Service {
   type:
     | 'diarization'
     | 'embeddings'
+    | 'exam-marking-agent'
+    | 'exam-marking-database'
     | 'face-recognition'
     | 'file-watcher'
     | 'frame-generation'
@@ -271,6 +273,10 @@ export interface Service {
      * Device of the noise suppression model on the OpenVINO Model Server backend of Speech to Text. Empty / missing = models.denoise.device, else the speech model's device. The worker falls back to CPU when the model cannot compile there.
      */
     denoiseDevice?: string;
+    /**
+     * Start the Qwen3-ASR forced aligner at boot instead of on the first word-timestamp request, so that request skips the aligner start-up (and its one-time export). Only applies to Qwen3-ASR on the OpenVINO Model Server backend of Speech to Text; use it when clients always ask for word timings (e.g. Medical Scribe).
+     */
+    alignerWarmStart?: boolean;
     /**
      * Extra arguments the model server starts with, as typed (quote values with spaces): llama-server flags, which replace the engine's own, or OpenVINO Model Server graph options (ovms --pull). Flags the engine sets itself (port, host, model) are refused.
      */

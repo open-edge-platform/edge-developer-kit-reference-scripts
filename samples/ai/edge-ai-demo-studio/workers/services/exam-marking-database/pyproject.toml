@@ -1,0 +1,24 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+[project]
+name = "exam-marking-database-worker"
+version = "0.1.0"
+description = "Database persistence and MCP insights server for AI Exam Marking"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "worker-common",
+    "fastapi[standard]>=0.120.1",
+    "fastmcp>=2.0.0",
+    "pydantic>=2.7.0",
+    "sqlalchemy>=2.0.44",
+    "uvicorn>=0.35.0",
+    "pyjwt>=2.14.0",
+    "urllib3>=2.8.0",
+    "cryptography>=50.0.0",
+    "mcp>=2.2.0",
+]
+
+[tool.uv.sources]
+# Not a workspace member, so the shared library comes in by path.
+worker-common = { path = "../../common", editable = true }

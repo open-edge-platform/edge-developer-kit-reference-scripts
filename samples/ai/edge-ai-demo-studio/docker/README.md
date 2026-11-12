@@ -15,6 +15,8 @@ Run from the project root or from `docker/`:
 docker compose build
 ```
 
+The image contains both llama.cpp builds, SYCL and Vulkan, for the LLM engine. SYCL is the default. To use Vulkan, set `LLAMACPP_BACKEND=vulkan` in the shell or in a `.env` file next to `docker-compose.yml`, then run `docker compose up -d`. Switching back works the same way and needs no rebuild.
+
 3) Export render group ID (for GPU access) and run
 If you use GPU passthrough, export the `RENDER_GROUP_ID` environment variable so the container can access the render group:
 
@@ -26,4 +28,4 @@ docker compose up -d
 Notes
 - If you don't have GPU/NPU hardware, you can leave the device lines commented; the app will still run but without hardware acceleration.
 - If `getent group render` returns nothing, you may need to find the appropriate group ID for your system (often `render` or `video`) or run without setting `RENDER_GROUP_ID` and adjust permissions manually.
-- The app is exposed on port `8080` by default; open http://127.0.0.1:8080 after the container is running.
+- The container uses the host's network and the app listens on `127.0.0.1:8080`; open http://127.0.0.1:8080 on the host after the container is running. Port `8080` must be free on the host.

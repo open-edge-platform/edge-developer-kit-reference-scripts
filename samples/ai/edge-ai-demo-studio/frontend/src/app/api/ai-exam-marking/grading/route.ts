@@ -36,7 +36,11 @@ export async function POST(request: Request) {
       'text-generation',
       boundInstanceKey(instances, 'text-generation'),
     )
-    const provider = createOvmsProvider({ baseUrl })
+    // Sends the output schema as a json_schema response format, so the server constrains the reply.
+    const provider = createOvmsProvider({
+      baseUrl,
+      supportsStructuredOutputs: true,
+    })
 
     const { output } = await generateText({
       model: provider(model),

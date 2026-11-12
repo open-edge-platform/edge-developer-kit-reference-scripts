@@ -24,6 +24,7 @@ from audio_input_stream import get_silero_model, handle_audio_stream, pcm_to_wav
 from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile, WebSocket
 from fastapi.responses import JSONResponse, PlainTextResponse
 
+from modules.aligner import ALIGNER_MODEL_ID, Aligner, is_qwen3_asr, start_aligner, to_aligner_language
 from modules.audio import ensure_wav
 from modules.denoise import denoise, download_omz_model, load_denoise_model
 from modules.stt_ovms import (
@@ -74,12 +75,22 @@ CONFIG: dict[str, Any] = {
     "denoise_device": "CPU",
     "source": "huggingface",
     "precision": "int8",
+    "warm_start_aligner": False,
     # Set in main() (--ovms-port or --port + 1), never a fixed port two instances could share.
     "ovms_port": None,
 }
 
-STATE: dict[str, Any] = {"ready": False, "error": None, "startup_seconds": None}
+STATE: dict[str, Any] = {
+    "ready": False,
+    "error": None,
+    "startup_seconds": None,
+    "ovms_word_timestamps": None,
+}
 OVMS_PROCESS = None
+# Qwen3-ASR only: its word timings come from the forced aligner, started on the first word-timestamp
+# request (or at boot with --warm-start-aligner) and serving one request at a time.
+ALIGNER: Optional[Aligner] = None
+ALIGNER_LOCK = asyncio.Lock()
 DENOISE_COMPILED_MODEL = None
 DENOISE_LOCK = asyncio.Lock()
 # Silero VAD for /v1/audio/stream; loaded at startup, retried on first use.
@@ -109,6 +120,44 @@ def _omz_models_dir() -> str:
     path = validate_and_sanitize_cache_dir(str(models_dir("stt", "omz")))
     create_cache_directory(path)
     return path
+
+
+def _aligner_model_dir() -> str:
+    path = validate_and_sanitize_cache_dir(str(models_dir("stt", "forced-aligner")))
+    create_cache_directory(path)
+    return os.path.join(path, *ALIGNER_MODEL_ID.split("/"))
+
+
+async def _start_aligner(model_id: str, timeout: int) -> Aligner:
+    """Start the forced aligner Qwen3-ASR's word timings come from (exporting it on first use)."""
+    model_dir = _aligner_model_dir()
+    logger.info("Starting the Qwen3 forced aligner on %s ...", CONFIG["stt_device"])
+    # The first start exports the model into model_dir: one instance at a time.
+    async with async_shared_model_lock(model_dir):
+        aligner = await asyncio.to_thread(start_aligner, model_id, CONFIG["stt_device"])
+        try:
+            ready = await asyncio.to_thread(aligner.wait_ready, timeout)
+        except Exception:
+            aligner.stop()
+            raise
+    if not ready:
+        aligner.stop()
+        raise RuntimeError(f"The forced aligner did not become ready within {timeout}s; see the worker logs")
+    logger.info("Forced aligner ready")
+    return aligner
+
+
+async def _ensure_aligner(model_id: str, timeout: int) -> Aligner:
+    """The forced aligner, restarted if its process exited; a start failure propagates to the caller."""
+    global ALIGNER
+    async with ALIGNER_LOCK:
+        if ALIGNER is not None and ALIGNER.process.poll() is not None:
+            logger.warning("Forced aligner exited (code %s); restarting it", ALIGNER.process.returncode)
+            ALIGNER.stop()
+            ALIGNER = None
+        if ALIGNER is None:
+            ALIGNER = await _start_aligner(model_id, timeout)
+    return ALIGNER
 
 
 def _initialize_denoise_model():
@@ -142,7 +191,7 @@ def _compile_denoise_model(device: str):
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    global OVMS_PROCESS
+    global OVMS_PROCESS, ALIGNER
 
     started = time.monotonic()
     os.makedirs(TEMP_DIR, exist_ok=True)
@@ -178,6 +227,8 @@ async def lifespan(_app: FastAPI):
                 f"OVMS server did not become ready within {timeout}s or exited "
                 f"early (device: {CONFIG['stt_device']}); see the worker logs"
             )
+        if is_qwen3_asr(model_id) and CONFIG["warm_start_aligner"]:
+            await _ensure_aligner(model_id, timeout)
     except Exception as exc:
         STATE["error"] = f"{type(exc).__name__}: {exc}"
         logger.error("Failed to initialize the OVMS speech-to-text backend: %s", exc)
@@ -200,6 +251,8 @@ async def lifespan(_app: FastAPI):
     STATE["ready"] = False
     logger.info("Stopping OVMS speech-to-text backend ...")
     cleanup_ovms_process()
+    if ALIGNER is not None:
+        ALIGNER.stop()
     OVMS_SESSION.close()
 
 
@@ -390,12 +443,22 @@ async def transcription(
             form_data.append(("prompt", prompt))
         if temperature is not None:
             form_data.append(("temperature", str(temperature)))
+        want_words = "word" in granularities
+        qwen3 = is_qwen3_asr(CONFIG["stt_model_id"])
         for granularity in granularities or (["segment"] if want_segments else []):
+            # Qwen3-ASR's word timings come from the forced aligner, not OVMS.
+            if granularity == "word" and (qwen3 or STATE["ovms_word_timestamps"] is False):
+                continue
             form_data.append(("timestamp_granularities[]", granularity))
 
-        ovms_data = await _post_audio_to_ovms("transcriptions", wav_path, form_data, response)
+        ovms_data = await _transcribe_with_ovms(wav_path, form_data, response)
         text = (ovms_data.get("text") or "").strip()
         duration = await asyncio.to_thread(_wav_duration, wav_path)
+        words = (
+            (await _align_words(text, language, wav_path) if qwen3 else ovms_data.get("words") or [])
+            if want_words
+            else []
+        )
         segments = (
             _segments_or_whole(ovms_data.get("segments"), text, duration) if want_segments else []
         )
@@ -426,8 +489,8 @@ async def transcription(
             # that was asked for, defaulting to segment.
             if not granularities or "segment" in granularities:
                 body["segments"] = segments
-            if "word" in granularities:
-                body["words"] = _normalize_words(ovms_data.get("words") or [])
+            if want_words:
+                body["words"] = _normalize_words(words)
         elif want_segments:
             body["segments"] = segments
         return body
@@ -523,6 +586,43 @@ async def translation(
 
 
 # Helpers
+
+async def _transcribe_with_ovms(wav_path: str, form_data: list, response: Response) -> dict:
+    """OVMS transcription; if OVMS refuses word timings, answer without them from now on."""
+    word = ("timestamp_granularities[]", "word")
+    try:
+        data = await _post_audio_to_ovms("transcriptions", wav_path, form_data, response)
+    except RuntimeError as exc:
+        if word not in form_data or "timestamp" not in str(exc).lower():
+            raise
+        logger.warning(
+            "OVMS gives no word timestamps for %s; answering without them: %s", CONFIG["stt_model_id"], exc
+        )
+        STATE["ovms_word_timestamps"] = False
+        return await _post_audio_to_ovms(
+            "transcriptions", wav_path, [f for f in form_data if f != word], response
+        )
+    if word in form_data:
+        STATE["ovms_word_timestamps"] = True
+    return data
+
+
+async def _align_words(text: str, language: Optional[str], wav_path: str) -> list[dict[str, Any]]:
+    """Qwen3-ASR word timings from the forced aligner.
+
+    A failed start raises; a failed alignment is logged and answered without words.
+    """
+    if not text:
+        return []
+    aligner = await _ensure_aligner(CONFIG["stt_model_id"], startup_timeout())
+    try:
+        async with ALIGNER_LOCK:
+            words = await asyncio.to_thread(aligner.align, text, to_aligner_language(language), wav_path)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Forced alignment failed; answering without word timestamps: %s", exc)
+        return []
+    return [{"word": w.get("text"), "start": w.get("start"), "end": w.get("end")} for w in words]
+
 
 async def _apply_denoise(wav_path: str) -> None:
     global DENOISE_COMPILED_MODEL
@@ -784,6 +884,11 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         default=None,
         help="Port for the embedded OVMS (default: --port + 1, so two instances never collide)",
     )
+    parser.add_argument(
+        "--warm-start-aligner",
+        action="store_true",
+        help="Qwen3-ASR: start the forced aligner at boot instead of on the first word-timestamp request",
+    )
     # parse_known_args so an unrecognised flag from buildArgs degrades to a
     # warning rather than killing the worker.
     args, unknown = parser.parse_known_args(argv)
@@ -801,6 +906,7 @@ def main() -> None:
     CONFIG["denoise_device"] = str(args.denoise_device or args.device).upper()
     CONFIG["source"] = args.source
     CONFIG["precision"] = args.precision
+    CONFIG["warm_start_aligner"] = args.warm_start_aligner
     CONFIG["ovms_port"] = args.ovms_port or (args.port + 1)
     serve(app, args, log_level="info")
 

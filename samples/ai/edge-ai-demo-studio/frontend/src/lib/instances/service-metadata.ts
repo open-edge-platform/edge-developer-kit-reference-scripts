@@ -159,6 +159,15 @@ const SERVICE_METADATA_FIELDS: Record<
     },
     services: ['speech-to-text'],
   },
+  alignerWarmStart: {
+    schema: {
+      type: 'boolean',
+      default: false,
+      description:
+        'Start the Qwen3-ASR forced aligner at boot instead of on the first word-timestamp request, so that request skips the aligner start-up (and its one-time export). Only applies to Qwen3-ASR on the OpenVINO Model Server backend of Speech to Text; use it when clients always ask for word timings (e.g. Medical Scribe).',
+    },
+    services: ['speech-to-text'],
+  },
   serverArgs: {
     schema: {
       type: 'string',
