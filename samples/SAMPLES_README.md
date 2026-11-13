@@ -32,6 +32,8 @@ Refer to below samples to kickstart you own demo or application.
   - Vertical Reference Solutions Blueprint 
     - [Kiosk Operational Efficiency - Public Services](./ai/retail/public-service-kiosk/README.md)
     - [Healthcare Patient Service Kiosk](./ai/retail/healthcare-service-kiosk/README.md)
+- **Agentic Ultrasound Analyzer Reference Implementation**
+  - [Agentic Ultrasound Analyzer Reference Implementation](./agentic-ultrasound-analyzer/README.md)
 - **Camera**
   - [MIPI and GMSL Setup Tutorial](./camera/README.md)
 - **Real-Time**

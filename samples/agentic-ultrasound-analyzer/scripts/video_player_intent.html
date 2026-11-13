@@ -1,0 +1,1328 @@
+<!DOCTYPE html>
+<!--
+Copyright (C) 2026 Intel Corporation
+
+SPDX-License-Identifier: Apache-2.0
+-->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ultrasound Player - Intent Recognition (Moonshine)</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-dark: #1e40af;
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --bg-main: #f8fafc;
+            --bg-card: #ffffff;
+            --text-primary: #0f172a;
+            --text-secondary: #64748b;
+            --border: #e2e8f0;
+            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            --shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: var(--bg-main);
+            padding: 24px;
+            min-height: 100vh;
+            color: var(--text-primary);
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: var(--bg-card);
+            border-radius: 16px;
+            box-shadow: var(--shadow-lg);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: white;
+            padding: 32px 40px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .header-left h1 {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 6px;
+            letter-spacing: -0.5px;
+        }
+        
+        .header-left p {
+            font-size: 14px;
+            opacity: 0.9;
+            font-weight: 400;
+        }
+        
+        .header-right {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+        
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(255,255,255,0.15);
+            backdrop-filter: blur(10px);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        
+        .badge.online {
+            background: rgba(16, 185, 129, 0.2);
+            border-color: rgba(16, 185, 129, 0.3);
+            color: #d1fae5;
+        }
+        
+        .badge.listening {
+            background: rgba(16, 185, 129, 0.25);
+            border-color: rgba(16, 185, 129, 0.4);
+            animation: pulse 2s infinite;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+            animation: pulse 2s infinite;
+        }
+        
+        .content {
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 24px;
+            padding: 32px 40px;
+        }
+        
+        .main-content {
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+        
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: var(--shadow);
+        }
+        
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .card-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        
+        .video-container {
+            background: #000;
+            border-radius: 12px;
+            overflow: hidden;
+            position: relative;
+            aspect-ratio: 16/9;
+        }
+        
+        video {
+            width: 100%;
+            height: 100%;
+            display: block;
+            object-fit: contain;
+        }
+        
+        .upload-area {
+            border: 2px dashed var(--border);
+            border-radius: 12px;
+            padding: 60px 40px;
+            text-align: center;
+            background: var(--bg-main);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .upload-area:hover {
+            background: #f1f5f9;
+            border-color: var(--primary);
+        }
+        
+        .upload-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.6;
+        }
+        
+        .upload-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: var(--text-primary);
+        }
+        
+        .upload-subtitle {
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+        
+        button {
+            padding: 14px 24px;
+            font-size: 15px;
+            font-weight: 600;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        
+        button:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 8px 16px rgba(0,0,0,0.12);
+        }
+        
+        button:active:not(:disabled) {
+            transform: translateY(0);
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
+        }
+        
+        .btn-success {
+            background: var(--success);
+            color: white;
+        }
+        
+        .btn-danger {
+            background: var(--danger);
+            color: white;
+        }
+        
+        .control-section {
+            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+        }
+        
+        .control-label {
+            font-size: 15px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .control-desc {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 16px;
+            line-height: 1.5;
+        }
+        
+        .status-display {
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 16px;
+            margin-top: 12px;
+            font-size: 14px;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .status-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--text-secondary);
+            flex-shrink: 0;
+        }
+        
+        .status-indicator.active {
+            background: var(--success);
+            animation: pulse 2s infinite;
+        }
+        
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+        
+        .log-container {
+            background: #0f172a;
+            color: #e2e8f0;
+            padding: 20px;
+            border-radius: 10px;
+            height: 450px;
+            overflow-y: auto;
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.6;
+            border: 1px solid #1e293b;
+        }
+        
+        .log-container::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .log-container::-webkit-scrollbar-track {
+            background: #1e293b;
+            border-radius: 4px;
+        }
+        
+        .log-container::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 4px;
+        }
+        
+        .log-entry {
+            padding: 6px 0;
+            border-bottom: 1px solid #1e293b;
+        }
+        
+        .log-entry:last-child {
+            border-bottom: none;
+        }
+        
+        .log-timestamp {
+            color: #64748b;
+            margin-right: 8px;
+        }
+        
+        .info-panel {
+            background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+            border: 1px solid #bae6fd;
+            border-radius: 12px;
+            padding: 20px;
+        }
+        
+        .info-panel h4 {
+            font-size: 14px;
+            font-weight: 600;
+            margin: 16px 0 10px;
+            color: #0c4a6e;
+        }
+        
+        .info-panel h4:first-child {
+            margin-top: 0;
+        }
+        
+        .info-panel ul {
+            margin-left: 20px;
+            font-size: 13px;
+            color: #0369a1;
+            line-height: 1.8;
+        }
+        
+        .info-panel p {
+            font-size: 13px;
+            color: #0369a1;
+            line-height: 1.6;
+        }
+        
+        .analysis-panel {
+            background: white;
+            border: 1px solid #0ea5e9;
+            border-radius: 12px;
+            padding: 24px;
+            margin-top: 24px;
+            display: none;
+            box-shadow: 0 10px 25px rgba(14, 165, 233, 0.1);
+        }
+        
+        .analysis-panel.visible {
+            display: block;
+            animation: slideIn 0.3s ease-out;
+        }
+        
+        .analysis-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 16px;
+            border-bottom: 2px solid #e0f2fe;
+        }
+        
+        .analysis-header h3 {
+            font-size: 18px;
+            font-weight: 600;
+            color: #0c4a6e;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .close-btn {
+            background: var(--danger);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        
+        .close-btn:hover {
+            background: #dc2626;
+            transform: scale(1.05);
+        }
+        
+        .analysis-content {
+            color: #334155;
+            background: #f8fafc;
+            padding: 20px;
+            border-radius: 10px;
+            max-height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            font-size: 14px;
+            line-height: 1.8;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        input[type="file"] {
+            display: none;
+        }
+        
+        @media (max-width: 1200px) {
+            .content {
+                grid-template-columns: 1fr;
+            }
+            
+            .header-content {
+                flex-direction: column;
+                gap: 16px;
+                text-align: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="header-content">
+                <div class="header-left">
+                    <h1>🏥 Ultrasound Video Player</h1>
+                    <p>Voice-Controlled Agentic Ultrasound Analysis & Reporting</p>
+                </div>
+                <div class="header-right">
+                    <span class="badge" id="backendStatus">
+                        <span class="status-dot"></span>
+                        Backend Offline
+                    </span>
+                    <span class="badge listening" id="listeningStatus" style="display: none;">
+                        <span class="status-dot"></span>
+                        Listening
+                    </span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="content">
+            <div class="main-content">
+                <!-- Video Section -->
+                <div class="card">
+                    <!-- Upload Area -->
+                    <div class="upload-area" id="uploadArea">
+                        <div class="upload-icon">📁</div>
+                        <div class="upload-title">Click to Upload Video</div>
+                        <div class="upload-subtitle">MP4, WebM, or OGG format supported</div>
+                        <input type="file" id="fileInput" accept="video/*">
+                    </div>
+                    
+                    <!-- Video Player -->
+                    <div class="video-container" id="videoContainer" style="display: none;">
+                        <video id="videoPlayer" controls></video>
+                    </div>
+                </div>
+                
+                <!-- Voice Control Section -->
+                <div class="control-section">
+                    <div class="control-label">
+                        <span>🎤</span>
+                        <span>Voice Recognition</span>
+                    </div>
+                    <div class="control-desc">
+                        Intent Recognition Mode • Continuous listening with fuzzy matching • Ultra-low latency
+                    </div>
+                    <button id="intentBtn" class="btn-success" disabled>
+                        <span id="intentBtnText">▶️ Start Listening</span>
+                    </button>
+                    <div class="status-display" id="intentStatus">
+                        <div class="status-indicator"></div>
+                        <span>Upload a video and ensure backend is online to start</span>
+                    </div>
+                </div>
+
+                <!-- Manual Test Controls -->
+                <div class="control-section">
+                    <div class="control-label">
+                        <span>🧪</span>
+                        <span>Manual Test Controls</span>
+                    </div>
+                    <div class="control-desc">
+                        Simulate voice commands for testing • No voice recognition needed
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 12px;">
+                        <button data-command="play" class="btn-primary" style="padding: 10px; font-size: 14px;">
+                            Play
+                        </button>
+                        <button data-command="pause" class="btn-primary" style="padding: 10px; font-size: 14px;">
+                            Pause
+                        </button>
+                        <button data-command="forward_5" class="btn-primary" style="padding: 10px; font-size: 14px;">
+                            +5s
+                        </button>
+                        <button data-command="backward_5" class="btn-primary" style="padding: 10px; font-size: 14px;">
+                            -5s
+                        </button>
+                        <button data-command="forward_10" class="btn-primary" style="padding: 10px; font-size: 14px;">
+                            +10s
+                        </button>
+                        <button data-command="backward_10" class="btn-primary" style="padding: 10px; font-size: 14px;">
+                            -10s
+                        </button>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr; gap: 10px;">
+                        <button data-command="capture" class="btn-success" style="padding: 12px; font-size: 14px;">
+                            Capture Frame
+                        </button>
+                        <button data-command="analyze" class="btn-success" style="padding: 12px; font-size: 14px;">
+                            Analyze Current Frame
+                        </button>
+                        <button data-command="report" class="btn-success" style="padding: 12px; font-size: 14px;">
+                            Generate Report
+                        </button>
+                    </div>
+                    <div style="margin-top: 10px;">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: #64748b;">
+                            <input type="checkbox" id="agentModeToggle">
+                            🤖 Agent Mode <span style="font-size: 11px;">(LLM decides tool calls)</span>
+                        </label>
+                    </div>
+                </div>                
+
+                <!-- Analysis Results -->
+                <div class="analysis-panel" id="analysisPanel">
+                    <div class="analysis-header">
+                        <h3>🔬 Analysis Results</h3>
+                        <button class="close-btn" id="closeAnalysisBtn">✕ Close</button>
+                    </div>
+                    <div class="analysis-metadata" id="analysisMetadata" style="padding: 12px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; font-size: 13px; color: #64748b; display: none;">
+                        <!-- Report metadata will appear here -->
+                    </div>
+                    <div class="analysis-content" id="analysisContent">
+                        Analysis results will appear here...
+                    </div>
+                </div>
+            </div>
+            
+            <div class="sidebar">
+                <!-- Command Log -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">📋 Activity Log</div>
+                    </div>
+                    <div class="log-container" id="logContainer">
+                        <div class="log-entry">System ready</div>
+                    </div>
+                </div>
+                
+                <!-- Transcript Panel -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">📝 Live Transcription</div>
+                        <span class="badge" id="transcriptStatus">Inactive</span>
+                    </div>
+                    <div class="log-container" id="transcriptContainer">
+                        <div class="log-entry" style="color: #64748b; font-style: italic;">
+                            Continuous transcription will appear here when listening...
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Info Panel -->
+                <div class="info-panel">
+                    <h4>⚡ Voice Commands</h4>
+                    <ul>
+                        <li>"play video"</li>
+                        <li>"pause" / "stop"</li>
+                        <li>"forward 5 seconds"</li>
+                        <li>"backward 10 seconds"</li>
+                        <li>"capture" / "snapshot"</li>
+                        <li>"analyze"</li>
+                        <li>"create report"</li>
+                    </ul>
+                    
+                    <h4>🎯 Technology</h4>
+                    <p><strong>Dual-Mode Processing:</strong></p>
+                    <ul style="font-size: 13px; margin-top: 8px;">
+                        <li><strong>IntentRecognizer</strong> - Fuzzy command matching (~100-200ms latency)</li>
+                        <li><strong>Continuous Transcription</strong> - Full speech-to-text logging with timestamps</li>
+                    </ul>
+                    
+                    <h4>📝 Transcription</h4>
+                    <p>All speech is automatically transcribed and saved to <code>./transcripts/</code> with timestamps for documentation and review.</p>
+                    
+                    <h4>🔒 Privacy</h4>
+                    <p>All processing runs locally. No data leaves your machine.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const video = document.getElementById('videoPlayer');
+        const logContainer = document.getElementById('logContainer');
+        const BACKEND_URL = window.location.origin;
+        
+        let backendAvailable = false;
+        let isListening = false;
+        let commandPollingInterval = null;
+        let transcriptPollingInterval = null;
+        let lastTranscriptIndex = -1; // Track last transcript we've seen
+        let videoId = null; // Track current video session
+        let agentMode = false; // When true, analyze/report go through /agent
+        
+        // Check backend
+        async function checkBackend() {
+            try {
+                const response = await fetch(`${BACKEND_URL}/health`);
+                if (response.ok) {
+                    const data = await response.json();
+                    backendAvailable = true;
+                    const badge = document.getElementById('backendStatus');
+                    if (data.ready) {
+                        badge.innerHTML = '<span class="status-dot"></span>Backend Online';
+                        badge.className = 'badge online';
+                    } else {
+                        badge.innerHTML = '<span class="status-dot"></span>Backend Not Ready';
+                        badge.className = 'badge';
+                    }
+                    
+                    // Enable intent button if video loaded
+                    if (video.src) {
+                        document.getElementById('intentBtn').disabled = false;
+                    }
+                    return true;
+                }
+            } catch {
+                backendAvailable = false;
+                const badge = document.getElementById('backendStatus');
+                badge.innerHTML = '<span class="status-dot"></span>Backend Offline';
+                badge.className = 'badge';
+            }
+            return false;
+        }
+        
+        // Load video
+        function loadVideo(event) {
+            const file = event.target.files[0];
+            if (file) {
+                // Session IDs only need to be unique per load, not unpredictable
+                videoId = Date.now().toString(16).slice(-8);
+                
+                const url = URL.createObjectURL(file);
+                video.src = url;
+                document.getElementById('uploadArea').style.display = 'none';
+                document.getElementById('videoContainer').style.display = 'block';
+                updateStatus('Video loaded successfully', true);
+                addLog(`Video loaded: ${file.name} (ID: ${videoId})`);
+                
+                if (backendAvailable) {
+                    document.getElementById('intentBtn').disabled = false;
+                }
+            }
+        }
+        
+        // Toggle intent recognition
+        async function toggleIntent() {
+            if (isListening) {
+                await stopListening();
+            } else {
+                await startListening();
+            }
+        }
+        
+        // Start listening (backend microphone)
+        async function startListening() {
+            if (!backendAvailable) {
+                alert('Backend not running! Start with: python flask_backend_server.py');
+                return;
+            }
+            
+            try {
+                addLog('Starting voice recognition...');
+                
+                const response = await fetch(`${BACKEND_URL}/start_listening`, {
+                    method: 'POST'
+                });
+                
+                // Check if response is actually JSON
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    const text = await response.text();
+                    console.error('Backend returned non-JSON response:', text);
+                    addLog(`❌ Backend error: ${response.status} ${response.statusText}`);
+                    addLog(`Response preview: ${text.substring(0, 100)}...`);
+                    alert('Backend error - check console and backend logs');
+                    return;
+                }
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    isListening = true;
+                    document.getElementById('intentBtnText').textContent = '⏹️ Stop Listening';
+                    document.getElementById('intentBtn').className = 'btn-danger';
+                    document.getElementById('listeningStatus').style.display = 'flex';
+                    updateStatus('Listening for voice commands...', true);
+                    
+                    addLog('Voice recognition activated');
+                    
+                    // Update transcript status
+                    const transcriptBadge = document.getElementById('transcriptStatus');
+                    transcriptBadge.textContent = 'Recording';
+                    transcriptBadge.className = 'badge online';
+                    
+                    // Clear previous transcripts
+                    lastTranscriptIndex = -1;
+                    document.getElementById('transcriptContainer').innerHTML = '';
+                    
+                    // Start polling for commands and transcripts
+                    commandPollingInterval = setInterval(checkForCommands, 500);
+                    transcriptPollingInterval = setInterval(checkForTranscripts, 500);
+                } else {
+                    addLog(`Failed to start: ${result.error}`);
+                    alert('Failed to start listening: ' + result.error);
+                }
+                
+            } catch (error) {
+                addLog(`Error: ${error.message}`);
+                alert('Error starting listening: ' + error.message);
+            }
+        }
+        
+        // Stop listening
+        async function stopListening() {
+            try {
+                await fetch(`${BACKEND_URL}/stop_listening`, {
+                    method: 'POST'
+                });
+                
+                // Clear polling intervals
+                if (commandPollingInterval) {
+                    clearInterval(commandPollingInterval);
+                    commandPollingInterval = null;
+                }
+                
+                if (transcriptPollingInterval) {
+                    clearInterval(transcriptPollingInterval);
+                    transcriptPollingInterval = null;
+                }
+                
+                isListening = false;
+                document.getElementById('intentBtnText').textContent = '▶️ Start Listening';
+                document.getElementById('intentBtn').className = 'btn-success';
+                document.getElementById('listeningStatus').style.display = 'none';
+                updateStatus('Ready to start listening', false);
+                
+                // Update transcript status
+                const transcriptBadge = document.getElementById('transcriptStatus');
+                transcriptBadge.textContent = 'Inactive';
+                transcriptBadge.className = 'badge';
+                
+                addLog('Voice recognition stopped');
+                
+            } catch (error) {
+                addLog(`Error stopping: ${error.message}`);
+            }
+        }
+        
+        // Check for detected commands
+        async function checkForCommands() {
+            if (!isListening) return;
+            
+            try {
+                const response = await fetch(`${BACKEND_URL}/get_command`);
+                const result = await response.json();
+                
+                if (result.command) {
+                    const confidenceLabel = Number.isFinite(result.confidence)
+                        ? ` (${(result.confidence * 100).toFixed(0)}%)`
+                        : '';
+                    
+                    addLog(`🎯 Detected: "${result.utterance}" → ${result.command}${confidenceLabel}`);
+                    
+                    // Execute command
+                    executeCommand(result.command);
+                }
+                
+            } catch (error) {
+                console.error('Polling error:', error);
+            }
+        }
+        
+        // Check for new transcripts
+        async function checkForTranscripts() {
+            if (!isListening) return;
+            
+            try {
+                const response = await fetch(`${BACKEND_URL}/get_transcripts?limit=50`);
+                const result = await response.json();
+                
+                if (result.success && result.transcripts && result.transcripts.length > 0) {
+                    // Show only new transcripts
+                    const newTranscripts = result.transcripts.filter(t => t.index > lastTranscriptIndex);
+                    
+                    if (newTranscripts.length > 0) {
+                        const container = document.getElementById('transcriptContainer');
+                        
+                        newTranscripts.forEach(transcript => {
+                            addTranscript(transcript.timestamp, transcript.text);
+                            lastTranscriptIndex = transcript.index;
+                        });
+                        
+                        // Auto-scroll to bottom
+                        container.scrollTop = container.scrollHeight;
+                    }
+                }
+            } catch (error) {
+                console.error('Transcript polling error:', error);
+            }
+        }
+        
+        // Add transcript entry
+        function addTranscript(timestamp, text) {
+            const container = document.getElementById('transcriptContainer');
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            
+            // Extract time part from timestamp
+            const timeMatch = timestamp.match(/(\d{2}:\d{2}:\d{2})/);
+            const time = timeMatch ? timeMatch[1] : timestamp;
+            
+            const timeEl = document.createElement('span');
+            timeEl.style.color = '#64748b';
+            timeEl.style.fontSize = '11px';
+            timeEl.textContent = time;
+            const textEl = document.createElement('span');
+            textEl.textContent = ` ${text}`;
+            entry.appendChild(timeEl);
+            entry.appendChild(textEl);
+            container.appendChild(entry);
+            
+            // Keep only last 50 entries
+            while (container.children.length > 50) {
+                container.removeChild(container.firstChild);
+            }
+        }
+        
+        // Simulate a voice command manually (for testing)
+        function simulateCommand(trigger) {
+            if (!video.src) {
+                addLog('⚠️ No video loaded — upload a video first');
+                return;
+            }
+            addLog(`🧪 Simulated: ${trigger}`);
+            executeCommand(trigger, trigger);
+        }
+
+        // Execute command
+        function executeCommand(trigger) {
+            addLog(`⚡ Executing: ${trigger}`);
+            
+            // Map triggers to actions
+            switch (trigger) {
+                case 'play':
+                    video.play();
+                    updateStatus('Playing video', true);
+                    break;
+                case 'pause':
+                case 'stop':
+                    video.pause();
+                    updateStatus('Video paused', false);
+                    break;
+                case 'forward_5':
+                    video.currentTime = Math.min(video.duration, video.currentTime + 5);
+                    updateStatus('Skipped forward 5 seconds', true);
+                    break;
+                case 'forward_10':
+                    video.currentTime = Math.min(video.duration, video.currentTime + 10);
+                    updateStatus('Skipped forward 10 seconds', true);
+                    break;
+                case 'backward_5':
+                    video.currentTime = Math.max(0, video.currentTime - 5);
+                    updateStatus('Skipped backward 5 seconds', true);
+                    break;
+                case 'backward_10':
+                    video.currentTime = Math.max(0, video.currentTime - 10);
+                    updateStatus('Skipped backward 10 seconds', true);
+                    break;
+                case 'capture':
+                    captureVideoFrame();
+                    break;
+                case 'analyze':
+                    if (agentMode) {
+                        sendToAgent('analyze image');
+                    } else {
+                        analyzeCurrentFrame();
+                    }
+                    break;
+                case 'report':
+                    if (agentMode) {
+                        sendToAgent('generate report');
+                    } else {
+                        generateReport();
+                    }
+                    break;
+                default:
+                    addLog(`⚠️ Unknown command: ${trigger}`);
+            }
+        }
+        
+        // Capture video frame
+        async function captureVideoFrame() {
+            if (!video.src) {
+                updateStatus('No video loaded', false);
+                return;
+            }
+            
+            updateStatus('Capturing frame...', true);
+            
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0);
+            
+            canvas.toBlob(async (blob) => {
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                const filename = `capture_${timestamp}.png`;
+                
+                // Save to backend
+                const formData = new FormData();
+                formData.append('image', blob, filename);
+                formData.append('filename', filename);
+                
+                try {
+                    const response = await fetch(`${BACKEND_URL}/save_capture`, {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    if (response.ok) {
+                        addLog(`📸 Frame saved: ${filename}`);
+                        updateStatus('Frame captured successfully', true);
+                    }
+                } catch (error) {
+                    addLog(`❌ Save error: ${error.message}`);
+                    updateStatus('Failed to save frame', false);
+                }
+                
+                // Also download to browser
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                a.click();
+            });
+        }
+        
+        // Analyze current frame
+        async function analyzeCurrentFrame() {
+            if (!video.src) {
+                updateStatus('No video loaded', false);
+                return;
+            }
+            
+            updateStatus('Analyzing frame with VLM...', true);
+            addLog('🔬 Starting Ultrasound analysis...');
+            addLog('⏱️  Ultrasound analysis may take 20-40 seconds ...');
+            
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0);
+            
+            // Show progress timer for long-running analysis
+            let progressInterval;
+            let secondsElapsed = 0;
+            progressInterval = setInterval(() => {
+                secondsElapsed++;
+                if (secondsElapsed === 25) {
+                    addLog('⏳ Still processing...');
+                } else if (secondsElapsed === 35) {
+                    addLog('⏳ Almost there... complex medical analysis in progress');
+                } else if (secondsElapsed === 50) {
+                    addLog('⚠️  Taking longer than expected. Check API logs.');
+                }
+            }, 1000);
+            
+            canvas.toBlob(async (blob) => {
+                const formData = new FormData();
+                formData.append('image', blob, 'frame.png');
+                
+                // Include video ID for report tracking
+                if (videoId) {
+                    formData.append('video_id', videoId);
+                }
+                
+                try {
+                    // Submit analysis (async by default — returns immediately)
+                    const response = await fetch(`${BACKEND_URL}/analyze_image`, {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (result.success && result.async) {
+                        // Async mode — poll for completion
+                        const taskId = result.task_id;
+                        addLog(`📋 Analysis submitted (task: ${taskId}). Waiting for output...`);
+                        
+                        const pollResult = await pollAnalysisStatus(taskId);
+                        clearInterval(progressInterval);
+                        
+                        if (pollResult && pollResult.status === 'completed') {
+                            updateStatus('Analysis completed', true);
+                            showAnalysisResults(pollResult.analysis, {
+                                report_id: pollResult.report_id,
+                                video_id: pollResult.video_id,
+                                timestamp: pollResult.timestamp,
+                                image_path: pollResult.image_path
+                            });
+                            addLog(`✅ Analysis completed (${secondsElapsed}s) - Report ID: ${pollResult.report_id.substring(0, 8)}`);
+                        } else {
+                            updateStatus('Analysis failed', false);
+                            addLog(`❌ Error: ${pollResult ? pollResult.error : 'Unknown error'}`);
+                        }
+                    } else if (result.success) {
+                        // Sync fallback
+                        clearInterval(progressInterval);
+                        updateStatus('Analysis completed', true);
+                        showAnalysisResults(result.analysis, result.report);
+                        if (result.report) {
+                            addLog(`✅ Analysis completed (${secondsElapsed}s) - Report ID: ${result.report.report_id.substring(0, 8)}`);
+                        }
+                    } else {
+                        clearInterval(progressInterval);
+                        updateStatus('Analysis failed', false);
+                        addLog(`❌ Error: ${result.error}`);
+                    }
+                } catch (error) {
+                    clearInterval(progressInterval);
+                    updateStatus('Analysis failed', false);
+                    addLog(`❌ Error: ${error.message}`);
+                }
+            });
+        }
+
+        // Poll analysis status until completed or failed
+        async function pollAnalysisStatus(taskId, maxWait = 180000, interval = 2000) {
+            const start = Date.now();
+            while (Date.now() - start < maxWait) {
+                try {
+                    const statusUrl = new URL('/analysis_status', window.location.origin);
+                    statusUrl.searchParams.set('task_id', taskId);
+                    const resp = await fetch(statusUrl);
+                    const data = await resp.json();
+                    if (data.success && data.task) {
+                        if (data.task.status === 'completed' || data.task.status === 'failed') {
+                            return data.task;
+                        }
+                    }
+                } catch { /* retry */ }
+                await new Promise(resolve => {
+                    setTimeout(() => resolve(), interval);
+                });
+            }
+            return { status: 'failed', error: 'Polling timed out' };
+        }
+
+        // Send a validated command to the agent endpoint
+        async function sendToAgent(command) {
+            updateStatus(`🤖 Agent processing: ${command}...`, true);
+            addLog(`🤖 Sending to agent: "${command}"`);
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/agent`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        message: command,
+                        video_id: videoId || ''
+                    })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    updateStatus('Agent completed', true);
+                    addLog(`🤖 Agent answer: ${result.answer}`);
+                    if (result.tool_calls && result.tool_calls.length > 0) {
+                        for (const tc of result.tool_calls) {
+                            addLog(`  🔧 Tool: ${tc.tool}(${JSON.stringify(tc.args)})`);
+                        }
+                    }
+                    addLog(`⏱️ ${result.iterations} iteration(s), ${result.elapsed_ms}ms`);
+                } else {
+                    updateStatus('Agent error', false);
+                    addLog(`❌ Agent error: ${result.error}`);
+                }
+            } catch (error) {
+                updateStatus('Agent unreachable', false);
+                addLog(`❌ Agent error: ${error.message}`);
+            }
+        }
+
+        // Generate report
+        async function generateReport() {
+            if (!video.src) {
+                updateStatus('No video loaded', false);
+                return;
+            }
+            
+            updateStatus('Generating report using LangGraph\'s agentic workflow...', true);
+            addLog('🔬 Starting report generation...');
+            addLog('⏱️  Report generation may take 30-180 seconds ...');
+            if (videoId) {
+                addLog(`📋 Report request submitted for video: ${videoId}`);
+            }
+            
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0);
+            
+            // Show progress timer for long-running analysis
+            let progressInterval;
+            let secondsElapsed = 0;
+            progressInterval = setInterval(() => {
+                secondsElapsed++;
+                if (secondsElapsed === 30) {
+                    addLog('⏳ Still processing...');
+                } else if (secondsElapsed === 60) {
+                    addLog('⏳ Still processing... report generation in progress');
+                } else if (secondsElapsed === 90) {
+                    addLog('⏳ Still running... this can take longer for multi-frame context.');
+                } else if (secondsElapsed > 90 && secondsElapsed % 30 === 0) {
+                    addLog(`⏳ Report generation still running (${secondsElapsed}s)...`);
+                }
+            }, 1000);
+            
+            canvas.toBlob(async () => {
+                const formData = new FormData();                
+                
+                // Include video ID for report tracking
+                if (videoId) {
+                    formData.append('video_id', videoId);
+                }
+
+                const controller = new AbortController();
+                const timeoutMs = 360000; // 6 minutes hard cap for UI request
+                const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+                
+                try {
+                    const response = await fetch(`${BACKEND_URL}/generate_report`, {
+                        method: 'POST',
+                        body: formData,
+                        signal: controller.signal
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        updateStatus('Report generation completed', true);                        
+                        
+                        // Log report metadata
+                        if (result.report) {
+                            addLog(`✅ Report generation completed (${secondsElapsed}s) - Report ID: ${result.report.report_id.substring(0, 8)}`);
+                            if (result.report.text) {
+                                showAnalysisResults(result.report.text, {
+                                    report_id: result.report.report_id,
+                                    video_id: result.report.video_id,
+                                    timestamp: result.report.timestamp,
+                                    image_path: ''
+                                });
+                            }
+                        } else {
+                            addLog(`✅ Report generation completed (${secondsElapsed}s) - Results displayed`);
+                        }
+                    } else {
+                        updateStatus('Report generation failed', false);
+                        addLog(`❌ Error: ${result.error}`);
+                    }
+                } catch (error) {
+                    updateStatus('Report generation failed', false);
+                    if (error.name === 'AbortError') {
+                        addLog('❌ Report request timed out after 6 minutes. Backend may still be processing.');
+                    } else {
+                        addLog(`❌ Error: ${error.message}`);
+                    }
+                } finally {
+                    clearTimeout(timeoutId);
+                    clearInterval(progressInterval);
+                }
+            });
+        }
+        
+        // Show analysis results
+        function showAnalysisResults(text, report = null) {
+            document.getElementById('analysisContent').textContent = text;
+            
+            // Show metadata if available
+            const metadataEl = document.getElementById('analysisMetadata');
+            if (report) {
+                const imageLabel = report.image_path
+                    ? report.image_path.split('/').pop().split('\\').pop()
+                    : 'n/a';
+                metadataEl.replaceChildren();
+                const fields = [
+                    ['Report ID:', `${String(report.report_id).substring(0, 8)}...`],
+                    ['Video ID:', report.video_id],
+                    ['Time:', report.timestamp],
+                    ['Image:', imageLabel],
+                ];
+                fields.forEach(([label, value], index) => {
+                    const labelEl = document.createElement('strong');
+                    labelEl.textContent = label;
+                    const valueEl = document.createElement('span');
+                    valueEl.textContent = ` ${value}${index < fields.length - 1 ? ' | ' : ''}`;
+                    metadataEl.appendChild(labelEl);
+                    metadataEl.appendChild(valueEl);
+                });
+                metadataEl.style.display = 'block';
+            } else {
+                metadataEl.style.display = 'none';
+            }
+            
+            document.getElementById('analysisPanel').classList.add('visible');
+        }
+        
+        function hideAnalysisPanel() {
+            document.getElementById('analysisPanel').classList.remove('visible');
+        }
+        
+        // Utility functions
+        function updateStatus(message, active = false) {
+            const statusDisplay = document.getElementById('intentStatus');
+            const indicator = statusDisplay.querySelector('.status-indicator');
+            statusDisplay.querySelector('span').textContent = message;
+            
+            if (active) {
+                indicator.classList.add('active');
+            } else {
+                indicator.classList.remove('active');
+            }
+        }
+        
+        function addLog(message) {
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            const time = new Date().toLocaleTimeString('en-US', { 
+                hour12: false, 
+                hour: '2-digit', 
+                minute: '2-digit', 
+                second: '2-digit' 
+            });
+            const timeEl = document.createElement('span');
+            timeEl.className = 'log-timestamp';
+            timeEl.textContent = `[${time}]`;
+            const messageEl = document.createElement('span');
+            messageEl.textContent = message;
+            entry.appendChild(timeEl);
+            entry.appendChild(messageEl);
+            logContainer.appendChild(entry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+        
+        // Initialize
+        const fileInput = document.getElementById('fileInput');
+        document.getElementById('uploadArea').addEventListener('click', event => {
+            if (event.target !== fileInput) fileInput.click();
+        });
+        fileInput.addEventListener('change', loadVideo);
+        document.getElementById('intentBtn').addEventListener('click', toggleIntent);
+        document.querySelectorAll('button[data-command]').forEach(button => {
+            button.addEventListener('click', () => simulateCommand(button.dataset.command));
+        });
+        document.getElementById('agentModeToggle').addEventListener('change', event => {
+            agentMode = event.target.checked;
+            addLog(agentMode ? '🤖 Agent mode ON — LLM orchestrates tools' : '⚡ Agent mode OFF — direct execution');
+        });
+        document.getElementById('closeAnalysisBtn').addEventListener('click', hideAnalysisPanel);
+        checkBackend();
+        setInterval(checkBackend, 10000);
+        addLog('System initialized - Ready');
+        addLog('Upload a video to begin');
+    </script>
+</body>
+</html>
