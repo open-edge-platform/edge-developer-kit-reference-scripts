@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<!--
+Copyright (C) 2026 Intel Corporation
+
+SPDX-License-Identifier: Apache-2.0
+-->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin — Agentic Ultrasound Analyzer POC</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #e0e0e0;
+            min-height: 100vh;
+            padding: 2rem;
+        }
+        .container { max-width: 700px; margin: 0 auto; }
+        h1 {
+            font-size: 1.6rem;
+            margin-bottom: 0.5rem;
+            color: #4fc3f7;
+        }
+        .subtitle {
+            color: #888;
+            margin-bottom: 2rem;
+            font-size: 0.9rem;
+        }
+        .card {
+            background: #16213e;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            border: 1px solid #2a2a4a;
+        }
+        .card h2 {
+            font-size: 1.1rem;
+            margin-bottom: 1rem;
+            color: #81d4fa;
+        }
+        .setting-row {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        .setting-row label {
+            min-width: 120px;
+            font-weight: 500;
+        }
+        .radio-group {
+            display: flex;
+            gap: 0.5rem;
+        }
+        .radio-group input[type="radio"] { display: none; }
+        .radio-group label {
+            padding: 0.4rem 1rem;
+            border-radius: 6px;
+            border: 1px solid #4a4a6a;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+            min-width: auto;
+        }
+        .radio-group input[type="radio"]:checked + label {
+            background: #4fc3f7;
+            color: #1a1a2e;
+            border-color: #4fc3f7;
+            font-weight: 600;
+        }
+        .radio-group label:hover {
+            border-color: #4fc3f7;
+        }
+        .btn {
+            padding: 0.6rem 1.5rem;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        .btn-primary {
+            background: #4fc3f7;
+            color: #1a1a2e;
+        }
+        .btn-primary:hover { background: #81d4fa; }
+        .btn-secondary {
+            background: #2a2a4a;
+            color: #e0e0e0;
+            border: 1px solid #4a4a6a;
+        }
+        .btn-secondary:hover { background: #3a3a5a; }
+        .actions {
+            display: flex;
+            gap: 0.75rem;
+            margin-top: 1.5rem;
+        }
+        .status-bar {
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            margin-top: 1rem;
+            display: none;
+        }
+        .status-bar.success { display: block; background: #1b5e20; color: #a5d6a7; }
+        .status-bar.error { display: block; background: #b71c1c; color: #ef9a9a; }
+        .metrics-panel {
+            margin-top: 1rem;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: 'Consolas', monospace;
+            font-size: 0.8rem;
+            background: #0d1b2a;
+            padding: 1rem;
+            border-radius: 8px;
+            white-space: pre-wrap;
+        }
+        .badge {
+            display: inline-block;
+            padding: 0.2rem 0.6rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-left: 0.5rem;
+        }
+        .badge-on { background: #1b5e20; color: #a5d6a7; }
+        .badge-off { background: #4a4a6a; color: #999; }
+        .telemetry-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.75rem;
+            margin-top: 0.75rem;
+        }
+        .telemetry-item {
+            background: #0d1b2a;
+            border-radius: 8px;
+            padding: 0.75rem;
+        }
+        .telemetry-item .label {
+            font-size: 0.7rem;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .telemetry-item .value {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #4fc3f7;
+            margin-top: 0.25rem;
+        }
+        .telemetry-item .sub {
+            font-size: 0.75rem;
+            color: #888;
+        }
+        .device-row {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid #2a2a4a;
+        }
+        .device-row:last-child { border-bottom: none; }
+        .device-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.9rem;
+            font-weight: 700;
+        }
+        .device-icon.cpu { background: #1b5e20; color: #a5d6a7; }
+        .device-icon.gpu { background: #1a237e; color: #90caf9; }
+        .device-icon.npu { background: #4a148c; color: #ce93d8; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>⚙️ Admin Settings</h1>
+        <p class="subtitle">Agentic Ultrasound Analyzer POC — Runtime Configuration</p>
+
+        <div class="card">
+            <h2>Logging</h2>
+            <p style="color:#999; font-size:0.85rem; margin-bottom:1rem;">
+                Controls console log verbosity. <strong>Off</strong> = errors only. <strong>Normal</strong> = major activities (analysis, reports, captures). <strong>Verbose</strong> = all details including payloads and timing breakdowns.
+            </p>
+            <div class="setting-row">
+                <label>Level:</label>
+                <div class="radio-group">
+                    <input type="radio" name="logging" id="log-off" value="off">
+                    <label for="log-off">Off</label>
+                    <input type="radio" name="logging" id="log-normal" value="normal">
+                    <label for="log-normal">Normal</label>
+                    <input type="radio" name="logging" id="log-verbose" value="verbose">
+                    <label for="log-verbose">Verbose</label>
+                </div>
+            </div>
+        </div>
+
+        <div class="actions">
+            <button class="btn btn-primary" data-action="applySettings">Apply Settings</button>
+            <button class="btn btn-secondary" data-action="loadSettings">Refresh</button>
+            <button class="btn btn-secondary" data-action="viewTelemetry">Intel Telemetry</button>
+            <button class="btn btn-secondary" data-action="viewLogs">View Logs</button>
+        </div>
+
+        <div id="status" class="status-bar"></div>
+
+        <div class="card" id="logs-card" style="display:none; margin-top:1.5rem;">
+            <h2>Log Viewer
+                <span id="logs-count" class="badge badge-off">0 entries</span>
+            </h2>
+            <div style="display:flex; gap:0.5rem; margin-bottom:0.75rem;">
+                <button class="btn btn-secondary" data-action="viewLogs" style="padding:0.3rem 0.8rem; font-size:0.8rem;">Refresh</button>
+                <button class="btn btn-secondary" data-action="clearLogs" style="padding:0.3rem 0.8rem; font-size:0.8rem;">Clear</button>
+                <label style="display:flex; align-items:center; gap:0.3rem; font-size:0.8rem; color:#999;">
+                    <input type="checkbox" id="auto-refresh"> Auto-refresh (3s)
+                </label>
+            </div>
+            <div id="logs-panel" class="metrics-panel" style="max-height:400px;">No logs yet.</div>
+        </div>
+
+        <div class="card" id="telemetry-card" style="display:none; margin-top:1.5rem;">
+            <h2>Intel Hardware Telemetry
+                <span id="telemetry-badge" class="badge badge-off">loading</span>
+            </h2>
+            <div id="telemetry-devices"></div>
+        </div>
+    </div>
+
+    <script>
+        const BACKEND_URL = window.location.origin;
+
+        function showStatus(msg, type) {
+            const el = document.getElementById('status');
+            el.textContent = msg;
+            el.className = 'status-bar ' + type;
+            setTimeout(() => { el.className = 'status-bar'; }, 4000);
+        }
+
+        async function loadSettings() {
+            try {
+                const resp = await fetch(`${BACKEND_URL}/admin/config`);
+                const data = await resp.json();
+                if (data.success) {
+                    const cfg = data.config;
+                    document.querySelector(`input[name="logging"][value="${cfg.logging}"]`).checked = true;
+                    showStatus('Settings loaded', 'success');
+                }
+            } catch (e) {
+                showStatus('Failed to connect to backend: ' + e.message, 'error');
+            }
+        }
+
+        async function applySettings() {
+            const logging = document.querySelector('input[name="logging"]:checked')?.value;
+
+            if (!logging) {
+                showStatus('Please select a logging level', 'error');
+                return;
+            }
+
+            try {
+                const body = { logging };
+                const resp = await fetch(`${BACKEND_URL}/admin/config`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    showStatus('Settings applied successfully', 'success');
+                } else {
+                    showStatus('Error: ' + (data.error || 'Unknown'), 'error');
+                }
+            } catch (e) {
+                showStatus('Failed to apply: ' + e.message, 'error');
+            }
+        }
+
+        // ── Log Viewer ──────────────────────────────────────
+        let autoRefreshInterval = null;
+
+        async function viewLogs() {
+            const card = document.getElementById('logs-card');
+            const panel = document.getElementById('logs-panel');
+            const countBadge = document.getElementById('logs-count');
+            card.style.display = 'block';
+
+            try {
+                const resp = await fetch(`${BACKEND_URL}/admin/logs?last=100`);
+                const data = await resp.json();
+
+                if (data.success && data.entries.length > 0) {
+                    countBadge.className = 'badge badge-on';
+                    countBadge.textContent = `${data.count} entries`;
+                    panel.replaceChildren();
+                    for (const entry of data.entries) {
+                        const levelColor = entry.level === 'ERROR' ? '#ef5350' :
+                                           entry.level === 'DEBUG' ? '#78909c' : '#81d4fa';
+                        const timestampEl = document.createElement('span');
+                        timestampEl.style.color = '#666';
+                        timestampEl.textContent = `[${entry.timestamp}] `;
+                        const levelEl = document.createElement('span');
+                        levelEl.style.color = levelColor;
+                        levelEl.textContent = String(entry.level).padEnd(5);
+                        const messageEl = document.createElement('span');
+                        messageEl.textContent = ` ${entry.message}\n`;
+                        panel.appendChild(timestampEl);
+                        panel.appendChild(levelEl);
+                        panel.appendChild(messageEl);
+                    }
+                    panel.scrollTop = panel.scrollHeight;
+                } else {
+                    countBadge.className = 'badge badge-off';
+                    countBadge.textContent = '0 entries';
+                    panel.textContent = 'No log entries yet. Perform some operations (analyze, report) to see logs.';
+                }
+            } catch (e) {
+                panel.textContent = 'Error fetching logs: ' + e.message;
+            }
+        }
+
+        async function clearLogs() {
+            try {
+                await fetch(`${BACKEND_URL}/admin/logs`, { method: 'DELETE' });
+                viewLogs();
+                showStatus('Log buffer cleared', 'success');
+            } catch (e) {
+                showStatus('Failed to clear logs: ' + e.message, 'error');
+            }
+        }
+
+        function toggleAutoRefresh() {
+            const checked = document.getElementById('auto-refresh').checked;
+            if (checked) {
+                viewLogs();
+                autoRefreshInterval = setInterval(viewLogs, 3000);
+            } else {
+                if (autoRefreshInterval) {
+                    clearInterval(autoRefreshInterval);
+                    autoRefreshInterval = null;
+                }
+            }
+        }
+
+        // ── Intel Telemetry ─────────────────────────────────
+        async function viewTelemetry() {
+            const card = document.getElementById('telemetry-card');
+            const badge = document.getElementById('telemetry-badge');
+            const devicesEl = document.getElementById('telemetry-devices');            
+            card.style.display = 'block';
+
+            try {
+                const resp = await fetch(`${BACKEND_URL}/admin/telemetry`);
+                const data = await resp.json();
+
+                if (!data.success) {
+                    badge.textContent = 'error';
+                    badge.className = 'badge badge-off';
+                    return;
+                }
+
+                badge.textContent = 'live';
+                badge.className = 'badge badge-on';
+
+                // Render devices
+                const devInfo = data.devices;
+                if (devInfo && devInfo.devices) {
+                    devicesEl.replaceChildren();
+                    for (const [id, dev] of Object.entries(devInfo.devices)) {
+                        const iconClass = id.includes('GPU') ? 'gpu' : id.includes('NPU') ? 'npu' : 'cpu';
+                        const name = dev.full_device_name || id;
+                        const arch = dev.device_architecture || dev.npu_arch || '';
+                        const mem = dev.total_memory_gb ? `${dev.total_memory_gb} GB shared` : '';
+                        const row = document.createElement('div');
+                        row.className = 'device-row';
+                        const icon = document.createElement('div');
+                        icon.className = `device-icon ${iconClass}`;
+                        icon.textContent = id.substring(0, 3);
+                        const details = document.createElement('div');
+                        const nameEl = document.createElement('div');
+                        nameEl.style.fontSize = '0.85rem';
+                        nameEl.style.fontWeight = '600';
+                        nameEl.textContent = name;
+                        const archEl = document.createElement('div');
+                        archEl.style.fontSize = '0.75rem';
+                        archEl.style.color = '#888';
+                        archEl.textContent = mem ? `${arch} • ${mem}` : arch;
+                        details.appendChild(nameEl);
+                        details.appendChild(archEl);
+                        row.appendChild(icon);
+                        row.appendChild(details);
+                        devicesEl.appendChild(row);
+                    }
+                }
+
+            } catch (e) {
+                badge.textContent = 'error';
+                badge.className = 'badge badge-off';
+                const failureEl = document.createElement('div');
+                failureEl.style.color = '#ef9a9a';
+                failureEl.textContent = `Failed: ${e.message}`;
+                devicesEl.replaceChildren(failureEl);
+            }
+        }
+
+        // Load settings on page open
+        const actions = { applySettings, loadSettings, viewTelemetry, viewLogs, clearLogs };
+        document.querySelectorAll('button[data-action]').forEach(button => {
+            button.addEventListener('click', actions[button.dataset.action]);
+        });
+        document.getElementById('auto-refresh').addEventListener('change', toggleAutoRefresh);
+        loadSettings();
+    </script>
+</body>
+</html>
