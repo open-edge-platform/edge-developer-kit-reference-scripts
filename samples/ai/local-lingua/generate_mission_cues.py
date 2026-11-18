@@ -530,10 +530,17 @@ def main():
             pipeline_desc = ("the app's Whisper (transcribe) + NLLB (translate) pipeline" if translator is not None
                               else "Whisper's built-in translate task (NLLB unavailable)")
             print(f"[detect] Skimming up to {args.max_samples} sample(s)/language with {pipeline_desc}...")
+            gists = {}
             for code, lang_dir in lang_dirs.items():
                 gist = gist_for_language(lang_dir, whisper_model, translator, code, args.max_samples)
+                gists[code] = gist
                 hits_by_lang[code] = detect_cues_in_text(gist)
                 new_keywords_by_lang[code] = extract_new_keywords(gist)
+            if not any(gists.values()):
+                # Fail so `make demo-prereq` doesn't treat a detection-less PDF as done
+                shutil.rmtree(OUTPUT_DIR, ignore_errors=True)
+                sys.exit("[error] Detection produced no transcripts for any language; "
+                         "no PDF written. Fix the errors above and re-run.")
 
     cues = select_cues(hits_by_lang, new_keywords_by_lang, names)
     language_names = [names.get(code, code.upper()) for code in sorted(lang_dirs)]

@@ -26,6 +26,8 @@ scipy
 
 # Speech-to-text (faster-whisper uses CTranslate2 — faster than OpenVINO for Whisper)
 faster-whisper>=1.1.0
+# PyAV 17+ dropped the `metadata_errors` open() kwarg that faster-whisper uses
+av>=11,<17
 
 # TTS text processing (Kokoro-82M requires espeak-ng phonemization)
 phonemizer
