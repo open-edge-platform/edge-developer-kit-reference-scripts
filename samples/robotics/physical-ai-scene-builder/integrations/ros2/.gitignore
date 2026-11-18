@@ -1,0 +1,17 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+# pixi environments
+.pixi/*
+!.pixi/config.toml
+build/
+install/
+log/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.venv/
+core
+core.*
+external/*
+!external/.gitkeep

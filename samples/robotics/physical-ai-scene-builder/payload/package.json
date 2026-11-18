@@ -1,0 +1,33 @@
+{
+  "name": "@mujoco-studio/payload",
+  "version": "0.1.1",
+  "private": true,
+  "type": "module",
+  "main": "./src/payload.config.ts",
+  "types": "./src/payload.config.ts",
+  "exports": {
+    ".": "./src/payload.config.ts",
+    "./collections": "./src/collections/index.ts",
+    "./storage": "./src/storage.ts",
+    "./mesh-metadata": "./src/lib/meshMetadata.ts",
+    "./robot-capabilities": "./src/lib/robotCapabilities.ts",
+    "./scene-runtime-cleanup": "./src/sceneRuntimeCleanup.ts"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@xmldom/xmldom": "^0.9.8",
+    "@payloadcms/db-postgres": "3.90.2",
+    "@payloadcms/richtext-lexical": "3.90.2",
+    "graphql": "^16.8.1",
+    "payload": "3.90.2",
+    "sharp": "^0.35.3"
+  },
+  "devDependencies": {
+    "@mujoco-studio/eslint-config": "*",
+    "eslint": "^9",
+    "typescript": "^5"
+  }
+}

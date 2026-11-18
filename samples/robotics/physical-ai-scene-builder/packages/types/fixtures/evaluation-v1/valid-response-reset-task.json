@@ -1,0 +1,30 @@
+{
+  "protocolVersion": 1,
+  "sessionId": "session-1",
+  "requestId": 6,
+  "ok": true,
+  "result": {
+    "episodeId": "episode-1",
+    "observation": {
+      "attachments": [],
+      "requestId": 7,
+      "episodeId": "episode-1",
+      "stepId": 0,
+      "simulationTime": 0,
+      "physicsSteps": 4
+    },
+    "resetInfo": {
+      "seed": 3,
+      "samples": []
+    },
+    "task": {
+      "success": false,
+      "terminated": false,
+      "truncated": false,
+      "reason": null,
+      "metrics": {
+        "quietSeconds": 0
+      }
+    }
+  }
+}

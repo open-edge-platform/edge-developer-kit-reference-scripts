@@ -1,0 +1,10 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+# Stop the active recording (if any), then save (true) or discard (false) it.
+# Saving pauses simulation stepping.
+bool save
+---
+bool success
+string message
+string episode_id

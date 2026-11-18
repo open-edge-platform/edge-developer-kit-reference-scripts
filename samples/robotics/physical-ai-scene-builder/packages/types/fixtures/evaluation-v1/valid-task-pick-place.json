@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "name": "pick-place-arm",
+  "inputConvention": "raw",
+  "state": [{ "name": "joint-position", "source": { "kind": "qpos", "component": "joint" } }],
+  "action": [{ "name": "joint-command", "actuator": "motor" }],
+  "cameras": [],
+  "physicsSteps": 4,
+  "baseline": { "kind": "model-default" },
+  "randomization": [],
+  "task": {
+    "kind": "pick-place",
+    "sourceBody": "asset_cube",
+    "containerBody": "container",
+    "placementHalfExtents": [0.02, 0.02],
+    "settleSeconds": 0.2,
+    "maxEpisodeSteps": 600,
+    "terminateOnSuccess": true,
+    "offTableMargin": 0.05
+  }
+}

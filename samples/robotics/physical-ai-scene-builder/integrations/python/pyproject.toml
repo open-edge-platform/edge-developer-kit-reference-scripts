@@ -1,0 +1,87 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+[project]
+name = "robotic-studio"
+version = "0.1.1"
+description = "Synchronous Python SDK for Physical AI Scene Builder external evaluation."
+requires-python = ">=3.12"
+dependencies = [
+    "numpy>=1.24",
+    "pyzmq>=26.0.0",
+    "websockets>=16.0",
+]
+
+[project.scripts]
+robotic-studio-physicalai-openvino-eval = "robotic_studio.physicalai_openvino:main"
+robotic-studio-physicalai-openvino-convert = "robotic_studio.physicalai_export:main"
+robotic-studio-lerobot-eval = "robotic_studio.lerobot_policy:main"
+robotic-studio-teleoperate = "robotic_studio.teleoperation.cli:main"
+robotic-studio-compare-runs = "robotic_studio.evaluation_loop:compare_runs_main"
+robotic-studio-so101-calibrate = "robotic_studio.real.so101_calibrate:main"
+robotic-studio-generate-batch = "robotic_studio.generation.batch:main"
+robotic-studio-virtual-so101 = "robotic_studio.robots.so101.virtual_device:main"
+
+[project.optional-dependencies]
+openvino = [
+    "physicalai>=0.2.0,<0.3.0",
+    # Policy classes and .export() for physicalai_convert_to_openvino.py, which converts a Physical
+    # AI training checkpoint (.ckpt) into the OpenVINO package the evaluators load. [pi05] brings
+    # the PaliGemma tokenizer/transformers pins Pi0.5 needs; [nncf] enables --int8. Keep both
+    # Physical AI ranges in step with the training bundle (training/pyproject.toml) so the
+    # checkpoints it writes load here.
+    "physicalai-train[pi05,nncf]>=0.2.0,<0.3.0",
+    "lerobot[feetech]==0.6.0",
+    "Pillow>=13.0.0",
+    "av>=12.0",
+    "torch",
+    "torchvision",
+]
+lerobot = [
+    "lerobot[training]==0.6.0",
+    "Pillow>=13.0.0",
+    "torch",
+    "torchvision",
+    "pytorch-triton-xpu",
+    "triton-xpu",
+]
+teleoperation = [
+    "Pillow>=13.0.0",
+    "lerobot[dataset]==0.6.0",
+    "mujoco>=3.10.0",
+    "pyarrow>=14.0.0",
+]
+test = ["pytest>=8.0", "jsonschema>=4.0"]
+hardware = ["lerobot[feetech]==0.6.0", "mujoco>=3.10.0", "opencv-python-headless"]
+# Converts an uploaded OBJ+MTL+texture into an MJCF asset (web/app/api/assets/obj2mjcf).
+obj2mjcf = ["obj2mjcf>=0.0.25"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["robotic_studio"]
+
+[tool.uv]
+environments = ["sys_platform == 'linux' and platform_machine == 'x86_64'"]
+index-strategy = "unsafe-best-match"
+override-dependencies = [
+    "Pillow>=13.0.0",
+    "datasets>=5.0.1",
+    "fsspec>=2026.6.0",
+    "setuptools>=84.1.0",
+    # XPU wheels start at torch 2.13, above lerobot's caps; torchvision must match torch exactly.
+    "torch==2.14.1",
+    "torchvision==0.29.1",
+]
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-xpu" }]
+torchvision = [{ index = "pytorch-xpu" }]
+pytorch-triton-xpu = [{ index = "pytorch-xpu" }]
+triton-xpu = [{ index = "pytorch-xpu" }]
+
+[[tool.uv.index]]
+name = "pytorch-xpu"
+url = "https://download.pytorch.org/whl/xpu"

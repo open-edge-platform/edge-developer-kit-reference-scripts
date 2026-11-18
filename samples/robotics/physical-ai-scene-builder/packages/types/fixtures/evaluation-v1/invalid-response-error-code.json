@@ -1,0 +1,10 @@
+{
+  "protocolVersion": 1,
+  "sessionId": "session-1",
+  "requestId": 8,
+  "ok": false,
+  "error": {
+    "code": "EPISODE_DONE",
+    "message": "unknown code"
+  }
+}

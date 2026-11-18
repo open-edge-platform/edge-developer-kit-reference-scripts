@@ -1,0 +1,51 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+# dependencies
+node_modules
+
+# builds
+.next
+.next-alt
+out
+dist
+build
+.turbo
+*.tsbuildinfo
+
+# env
+.env
+.env.*
+!.env.example
+
+# misc
+.DS_Store
+coverage
+test-results
+.playwright-cli
+*.pem
+npm-debug.log*
+
+# MuJoCo WASM runtime, synced from node_modules
+apps/web/public/mujoco
+
+# Runtime data (ROBOTIC_STUDIO_DATA_DIR): uploads, recordings, datasets
+/data
+# Local scratch: downloaded archives, training runs, checkpoints
+/temp
+
+# Python
+__pycache__
+.venv
+.pytest_cache
+.ruff_cache
+integrations/examples
+integrations/python/benchmarks/results
+integrations/python/benchmarks/fixtures
+
+# Legacy local checkout; new setups provision the pinned runtime below.
+/services/trellis2/
+
+# Pinned TRELLIS.2 checkout created by setup.sh
+/services/trellis2-runtime/
+/services/.trellis2-setup.*/
