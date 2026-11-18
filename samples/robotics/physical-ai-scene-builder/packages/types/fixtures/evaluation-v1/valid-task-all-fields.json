@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "name": "fixture-arm",
+  "inputConvention": "raw",
+  "state": [
+    {
+      "name": "joint-position",
+      "source": {
+        "kind": "qpos",
+        "component": "joint"
+      }
+    }
+  ],
+  "action": [
+    {
+      "name": "joint-command",
+      "actuator": "motor"
+    }
+  ],
+  "cameras": [],
+  "physicsSteps": 4,
+  "baseline": {
+    "kind": "model-default"
+  },
+  "randomization": [],
+  "task": {
+    "kind": "pick-place",
+    "sourceBody": "asset_cube",
+    "containerBody": "container",
+    "interiorSite": "container__generation_interior",
+    "placementHalfExtents": [0.02, 0.025],
+    "settleSeconds": 0.3,
+    "maxEpisodeSteps": 400,
+    "terminateOnSuccess": false,
+    "offTableMargin": 0.04
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "name": "invalid-task",
+  "inputConvention": "raw",
+  "state": [],
+  "action": [],
+  "cameras": [],
+  "physicsSteps": 1,
+  "baseline": { "kind": "model-default" },
+  "randomization": [],
+  "task": { "kind": "place", "sourceBody": "cube", "containerBody": "container" }
+}

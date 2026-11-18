@@ -1,0 +1,36 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+[project]
+name = "robotic-studio-training"
+version = "0.2.0"
+requires-python = ">=3.12,<3.15"
+dependencies = [
+        # Keep in step with the evaluation project's `openvino` extra
+        # (integrations/python/pyproject.toml), which loads these checkpoints to export them.
+        "physicalai-train[pi05]>=0.2.0,<0.3.0",
+        "physicalai>=0.2.0,<0.3.0",
+        "lerobot[training]==0.6.0",
+        "Pillow>=13.0.0",
+        "peft>=0.20.0,<1.0.0",
+        "safetensors>=0.4.3,<1.0.0",
+        "sentencepiece<=0.2.1",
+        "transformers>=5.15.1,<5.16.0",
+        "zmq",
+]
+
+[tool.uv]
+index-strategy = "unsafe-best-match"
+override-dependencies = [
+        "Pillow>=13.0.0",
+        "datasets>=5.0.1",
+        "fsspec>=2026.6.0",
+        "setuptools>=84.1.0",
+        # XPU wheels start at torch 2.13, above lerobot's caps; torchvision must match torch exactly.
+        "torch==2.14.1",
+        "torchvision==0.29.1",
+]
+
+[[tool.uv.index]]
+name = "pytorch-xpu"
+url = "https://download.pytorch.org/whl/xpu"

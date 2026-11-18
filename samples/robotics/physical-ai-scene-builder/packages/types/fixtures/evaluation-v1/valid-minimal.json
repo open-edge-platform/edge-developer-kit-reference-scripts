@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "name": "minimal-arm",
+  "inputConvention": "raw",
+  "state": [
+    {
+      "name": "elbow-position",
+      "source": { "kind": "qpos", "component": "elbow" },
+      "unit": "rad"
+    }
+  ],
+  "action": [
+    {
+      "name": "elbow-command",
+      "actuator": "elbow-motor",
+      "inputRange": [-1, 1],
+      "controlRange": [-2, 2]
+    }
+  ],
+  "cameras": [],
+  "physicsSteps": 4,
+  "baseline": { "kind": "model-default" },
+  "randomization": []
+}

@@ -1,0 +1,8 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+repositories:
+  SO-ARM100/ros2_so_arm100:
+    type: git
+    url: https://github.com/ros-physical-ai/ros2_so_arm.git
+    version: 12fbcb8cf30da7c3d679db384c43765ea311eb18

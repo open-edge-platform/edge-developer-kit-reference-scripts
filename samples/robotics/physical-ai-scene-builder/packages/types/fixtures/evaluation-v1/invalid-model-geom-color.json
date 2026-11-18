@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "name": "fixture-arm",
+  "inputConvention": "raw",
+  "state": [
+    {
+      "name": "joint-position",
+      "source": {
+        "kind": "qpos",
+        "component": "joint"
+      }
+    }
+  ],
+  "action": [
+    {
+      "name": "joint-command",
+      "actuator": "motor"
+    }
+  ],
+  "cameras": [],
+  "physicsSteps": 4,
+  "baseline": {
+    "kind": "model-default"
+  },
+  "randomization": [
+    {
+      "kind": "geom-color",
+      "target": "asset_cube",
+      "mode": "body",
+      "hueShift": [-0.05, 0.05],
+      "saturationScale": [-0.1, 1.0],
+      "valueScale": [0.85, 1.15]
+    }
+  ]
+}

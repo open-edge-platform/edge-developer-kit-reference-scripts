@@ -1,0 +1,66 @@
+/*
+Copyright (C) 2026 Intel Corporation
+SPDX-License-Identifier: Apache-2.0
+ */
+
+@import 'tailwindcss';
+
+/* Workspace packages live outside the app root, so Tailwind needs them listed
+   explicitly to discover class names. */
+@source "../components";
+@source "../lib";
+@source "../../../packages/ui/src";
+
+@theme {
+  --color-background: #08090c;
+  --color-foreground: #e6e8ee;
+
+  --color-surface: #0d0f14;
+  --color-surface-raised: #12151c;
+  --color-surface-hover: #1a1e28;
+
+  --color-border: #232833;
+  --color-border-strong: #333a49;
+
+  --color-muted: #7c8598;
+  --color-muted-foreground: #9aa3b5;
+
+  --color-accent: #ff8a3d;
+  --color-accent-foreground: #150a02;
+  --color-info: #4cc4e0;
+  --color-danger: #e5484d;
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+
+  --font-sans: var(--font-geist-sans), system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-border-strong);
+  background-clip: content-box;
+}

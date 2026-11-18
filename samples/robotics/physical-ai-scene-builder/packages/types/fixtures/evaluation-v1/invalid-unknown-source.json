@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "name": "invalid-source",
+  "inputConvention": "raw",
+  "state": [
+    {
+      "name": "unknown",
+      "source": { "kind": "joint-address", "component": "joint" }
+    }
+  ],
+  "action": [],
+  "cameras": [],
+  "physicsSteps": 1,
+  "baseline": { "kind": "model-default" },
+  "randomization": []
+}

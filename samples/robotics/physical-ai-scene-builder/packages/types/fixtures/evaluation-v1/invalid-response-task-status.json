@@ -1,0 +1,22 @@
+{
+  "protocolVersion": 1,
+  "sessionId": "session-1",
+  "requestId": 7,
+  "ok": true,
+  "result": {
+    "observation": {
+      "attachments": [],
+      "requestId": 7,
+      "episodeId": "episode-1",
+      "stepId": 600,
+      "simulationTime": 4.8,
+      "physicsSteps": 4
+    },
+    "task": {
+      "terminated": false,
+      "truncated": true,
+      "reason": "max_steps",
+      "metrics": {}
+    }
+  }
+}

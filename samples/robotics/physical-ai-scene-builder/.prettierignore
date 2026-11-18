@@ -1,0 +1,26 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+node_modules
+integrations/python/.venv
+integrations/python/.pytest_cache
+integrations/ros2/.pixi
+integrations/ros2/.venv
+integrations/ros2/install
+integrations/ros2/log
+integrations/ros2/external
+.next
+.next-alt
+out
+dist
+build
+.turbo
+coverage
+test-results
+*.tsbuildinfo
+.DS_Store
+samples
+next-env.d.ts
+apps/web/public/mujoco
+apps/web/app/(payload)/admin/importMap.js
+services/trellis2 # Vendored third-party source, kept as-is from upstream.

@@ -1,0 +1,40 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+model:
+  class_path: physicalai.policies.ACT
+  init_args:
+    optimizer_lr: 1.0e-4
+
+data:
+  class_path: physicalai.data.lerobot.LeRobotDataModule
+  init_args:
+    repo_id: 'converted/dataset'
+    train_batch_size: 32
+    # Video decoding runs in these processes (~1.5 GB each); with 0 it stalls the GPU and training
+    # takes about twice as long.
+    num_workers: 4
+    data_format: physicalai
+    video_backend: pyav
+
+trainer:
+  max_epochs: 10
+  accelerator: auto
+  devices: auto
+  precision: 32
+  log_every_n_steps: 1
+  check_val_every_n_epoch: 1
+  # Lightning's implicit checkpoint waits for validation, which never runs without a val split,
+  # so checkpoints are configured explicitly. Files land in
+  # experiments/lightning_logs/version_N/checkpoints/.
+  callbacks:
+    # One checkpoint per epoch, all kept (~620 MB each). The partial epoch that max_steps ends in
+    # is saved too. last.ckpt is a symlink to the newest one.
+    - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+      init_args:
+        filename: 'epoch-{epoch:04d}-step-{step:06d}'
+        auto_insert_metric_name: false
+        every_n_epochs: 1
+        save_on_train_epoch_end: true
+        save_top_k: -1
+        save_last: link

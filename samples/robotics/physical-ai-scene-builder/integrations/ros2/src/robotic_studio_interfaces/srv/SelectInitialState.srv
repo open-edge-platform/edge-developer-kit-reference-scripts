@@ -1,0 +1,8 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+# Select an initial state of the session; stepping is paused afterwards.
+string state_id
+---
+bool success
+string message
