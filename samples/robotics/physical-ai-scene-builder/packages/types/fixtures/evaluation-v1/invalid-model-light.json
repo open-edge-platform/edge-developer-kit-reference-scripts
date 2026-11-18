@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "name": "fixture-arm",
+  "inputConvention": "raw",
+  "state": [
+    {
+      "name": "joint-position",
+      "source": {
+        "kind": "qpos",
+        "component": "joint"
+      }
+    }
+  ],
+  "action": [
+    {
+      "name": "joint-command",
+      "actuator": "motor"
+    }
+  ],
+  "cameras": [],
+  "physicsSteps": 4,
+  "baseline": {
+    "kind": "model-default"
+  },
+  "randomization": [
+    {
+      "kind": "light",
+      "light": "key",
+      "positionJitter": -0.05,
+      "directionJitter": 5,
+      "diffuseScale": [0.8, 1.2]
+    }
+  ]
+}

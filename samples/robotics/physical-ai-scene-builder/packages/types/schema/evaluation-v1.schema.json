@@ -1,0 +1,996 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://robotic-studio.local/schema/evaluation-v1.schema.json",
+  "title": "Physical AI Scene Builder External Evaluation Protocol Version 1 (profiles, commands, responses)",
+  "type": "object",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/profile"
+    },
+    {
+      "$ref": "#/$defs/command"
+    },
+    {
+      "$ref": "#/$defs/response"
+    }
+  ],
+  "$defs": {
+    "finiteNumber": {
+      "type": "number"
+    },
+    "range": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "$ref": "#/$defs/finiteNumber"
+        },
+        {
+          "$ref": "#/$defs/finiteNumber"
+        }
+      ],
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "axisRanges": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "$ref": "#/$defs/range"
+        },
+        "y": {
+          "$ref": "#/$defs/range"
+        },
+        "z": {
+          "$ref": "#/$defs/range"
+        }
+      },
+      "required": ["x", "y", "z"],
+      "additionalProperties": false
+    },
+    "stateSource": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "qpos"
+            },
+            "component": {
+              "$ref": "#/$defs/name"
+            }
+          },
+          "required": ["kind", "component"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "qvel"
+            },
+            "component": {
+              "$ref": "#/$defs/name"
+            }
+          },
+          "required": ["kind", "component"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "actuator"
+            },
+            "actuator": {
+              "$ref": "#/$defs/name"
+            },
+            "value": {
+              "enum": ["position", "velocity", "force"]
+            }
+          },
+          "required": ["kind", "actuator", "value"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "sensor"
+            },
+            "sensor": {
+              "$ref": "#/$defs/name"
+            },
+            "component": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": ["kind", "sensor"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "stateField": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "source": {
+          "$ref": "#/$defs/stateSource"
+        },
+        "unit": {
+          "type": "string"
+        },
+        "scale": {
+          "$ref": "#/$defs/finiteNumber"
+        },
+        "offset": {
+          "$ref": "#/$defs/finiteNumber"
+        }
+      },
+      "required": ["name", "source"],
+      "additionalProperties": false
+    },
+    "actionField": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "actuator": {
+          "$ref": "#/$defs/name"
+        },
+        "unit": {
+          "type": "string"
+        },
+        "inputRange": {
+          "$ref": "#/$defs/range"
+        },
+        "controlRange": {
+          "$ref": "#/$defs/range"
+        }
+      },
+      "required": ["name", "actuator"],
+      "additionalProperties": false
+    },
+    "cameraOutput": {
+      "type": "object",
+      "properties": {
+        "camera": {
+          "$ref": "#/$defs/name"
+        },
+        "outputName": {
+          "$ref": "#/$defs/name"
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": ["camera", "outputName", "width", "height"],
+      "additionalProperties": false
+    },
+    "randomization": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/poseRandomization"
+        },
+        {
+          "$ref": "#/$defs/modelRandomization"
+        }
+      ]
+    },
+    "baseline": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "model-default"
+            }
+          },
+          "required": ["kind"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "captured-state"
+            },
+            "snapshotId": {
+              "$ref": "#/$defs/name"
+            }
+          },
+          "required": ["kind", "snapshotId"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "pickPlaceTask": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "pick-place"
+        },
+        "sourceBody": {
+          "$ref": "#/$defs/name"
+        },
+        "containerBody": {
+          "$ref": "#/$defs/name"
+        },
+        "interiorSite": {
+          "$ref": "#/$defs/name"
+        },
+        "placementHalfExtents": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          ],
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "settleSeconds": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "maxEpisodeSteps": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "terminateOnSuccess": {
+          "type": "boolean"
+        },
+        "offTableMargin": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      },
+      "required": ["kind", "sourceBody", "containerBody"],
+      "additionalProperties": false
+    },
+    "profile": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "inputConvention": {
+          "enum": ["raw", "so101-normalized"]
+        },
+        "state": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/stateField"
+          }
+        },
+        "action": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/actionField"
+          }
+        },
+        "cameras": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/cameraOutput"
+          }
+        },
+        "physicsSteps": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "baseline": {
+          "$ref": "#/$defs/baseline"
+        },
+        "randomization": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/randomization"
+          }
+        },
+        "actionRangePolicy": {
+          "enum": ["reject", "clip"]
+        },
+        "task": {
+          "$ref": "#/$defs/pickPlaceTask"
+        }
+      },
+      "required": [
+        "version",
+        "name",
+        "inputConvention",
+        "state",
+        "action",
+        "cameras",
+        "physicsSteps",
+        "baseline",
+        "randomization"
+      ],
+      "additionalProperties": false
+    },
+    "commandBase": {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "const": 1
+        },
+        "sessionId": {
+          "$ref": "#/$defs/name"
+        },
+        "requestId": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "command": {
+          "type": "string"
+        }
+      },
+      "required": ["protocolVersion", "sessionId", "requestId", "command"]
+    },
+    "command": {
+      "oneOf": [
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/commandBase"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "command": {
+                  "const": "hello"
+                },
+                "supportedVersions": {
+                  "type": "array",
+                  "items": {
+                    "const": 1
+                  },
+                  "minItems": 1
+                }
+              },
+              "required": ["supportedVersions"]
+            }
+          ],
+          "unevaluatedProperties": false
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/commandBase"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "command": {
+                  "const": "describe"
+                }
+              }
+            }
+          ],
+          "unevaluatedProperties": false
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/commandBase"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "command": {
+                  "const": "acquire"
+                },
+                "sceneFingerprint": {
+                  "$ref": "#/$defs/name"
+                },
+                "profileFingerprint": {
+                  "$ref": "#/$defs/name"
+                }
+              }
+            }
+          ],
+          "unevaluatedProperties": false
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/commandBase"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "command": {
+                  "const": "reset"
+                },
+                "seed": {
+                  "type": "integer"
+                }
+              }
+            }
+          ],
+          "unevaluatedProperties": false
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/commandBase"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "command": {
+                  "const": "step"
+                },
+                "episodeId": {
+                  "$ref": "#/$defs/name"
+                },
+                "action": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/finiteNumber"
+                  }
+                },
+                "physicsSteps": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1000
+                }
+              },
+              "required": ["episodeId", "action"]
+            }
+          ],
+          "unevaluatedProperties": false
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/commandBase"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "command": {
+                  "const": "render"
+                },
+                "cameras": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/name"
+                  }
+                }
+              }
+            }
+          ],
+          "unevaluatedProperties": false
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/commandBase"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "command": {
+                  "const": "stop"
+                },
+                "episodeId": {
+                  "$ref": "#/$defs/name"
+                }
+              }
+            }
+          ],
+          "unevaluatedProperties": false
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/commandBase"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "command": {
+                  "const": "release"
+                }
+              }
+            }
+          ],
+          "unevaluatedProperties": false
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/commandBase"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "command": {
+                  "const": "ping"
+                }
+              }
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      ]
+    },
+    "nonNegative": {
+      "type": "number",
+      "minimum": 0
+    },
+    "scaleRange": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "number",
+          "minimum": 0
+        },
+        {
+          "type": "number",
+          "minimum": 0
+        }
+      ],
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "modelRandomization": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "geom-color"
+            },
+            "target": {
+              "$ref": "#/$defs/name"
+            },
+            "mode": {
+              "enum": ["body", "geom"]
+            },
+            "hueShift": {
+              "$ref": "#/$defs/range"
+            },
+            "saturationScale": {
+              "$ref": "#/$defs/scaleRange"
+            },
+            "valueScale": {
+              "$ref": "#/$defs/scaleRange"
+            }
+          },
+          "required": ["kind", "target", "mode", "hueShift", "saturationScale", "valueScale"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "geom-material"
+            },
+            "geom": {
+              "$ref": "#/$defs/name"
+            },
+            "materials": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/name"
+              },
+              "minItems": 1
+            }
+          },
+          "required": ["kind", "geom", "materials"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "light"
+            },
+            "light": {
+              "$ref": "#/$defs/name"
+            },
+            "positionJitter": {
+              "$ref": "#/$defs/nonNegative"
+            },
+            "directionJitter": {
+              "$ref": "#/$defs/nonNegative"
+            },
+            "diffuseScale": {
+              "$ref": "#/$defs/scaleRange"
+            }
+          },
+          "required": ["kind", "light", "positionJitter", "diffuseScale"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "camera-pose"
+            },
+            "camera": {
+              "$ref": "#/$defs/name"
+            },
+            "positionJitter": {
+              "$ref": "#/$defs/nonNegative"
+            },
+            "rotationJitter": {
+              "$ref": "#/$defs/nonNegative"
+            }
+          },
+          "required": ["kind", "camera", "positionJitter", "rotationJitter"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "camera-fov"
+            },
+            "camera": {
+              "$ref": "#/$defs/name"
+            },
+            "range": {
+              "type": "array",
+              "prefixItems": [
+                {
+                  "type": "number",
+                  "minimum": 1,
+                  "maximum": 179
+                },
+                {
+                  "type": "number",
+                  "minimum": 1,
+                  "maximum": 179
+                }
+              ],
+              "minItems": 2,
+              "maxItems": 2
+            }
+          },
+          "required": ["kind", "camera", "range"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "body-mass"
+            },
+            "body": {
+              "$ref": "#/$defs/name"
+            },
+            "scale": {
+              "$ref": "#/$defs/scaleRange"
+            }
+          },
+          "required": ["kind", "body", "scale"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "geom-friction"
+            },
+            "target": {
+              "$ref": "#/$defs/name"
+            },
+            "mode": {
+              "enum": ["body", "geom"]
+            },
+            "scale": {
+              "type": "object",
+              "properties": {
+                "sliding": {
+                  "$ref": "#/$defs/scaleRange"
+                },
+                "torsional": {
+                  "$ref": "#/$defs/scaleRange"
+                },
+                "rolling": {
+                  "$ref": "#/$defs/scaleRange"
+                }
+              },
+              "required": ["sliding"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["kind", "target", "mode", "scale"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "joint-damping"
+            },
+            "joint": {
+              "$ref": "#/$defs/name"
+            },
+            "scale": {
+              "$ref": "#/$defs/scaleRange"
+            }
+          },
+          "required": ["kind", "joint", "scale"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "actuator-gain"
+            },
+            "actuator": {
+              "$ref": "#/$defs/name"
+            },
+            "scale": {
+              "$ref": "#/$defs/scaleRange"
+            }
+          },
+          "required": ["kind", "actuator", "scale"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "backdrop-appearance"
+            },
+            "target": {
+              "$ref": "#/$defs/name"
+            },
+            "hueShift": {
+              "$ref": "#/$defs/range"
+            },
+            "saturationScale": {
+              "$ref": "#/$defs/scaleRange"
+            },
+            "valueScale": {
+              "$ref": "#/$defs/scaleRange"
+            }
+          },
+          "required": ["kind", "target", "hueShift", "saturationScale", "valueScale"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "poseRandomization": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "free-body-position"
+            },
+            "body": {
+              "$ref": "#/$defs/name"
+            },
+            "range": {
+              "$ref": "#/$defs/axisRanges"
+            }
+          },
+          "required": ["kind", "body", "range"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "free-body-orientation-euler"
+            },
+            "body": {
+              "$ref": "#/$defs/name"
+            },
+            "order": {
+              "enum": ["xyz", "xzy", "yxz", "yzx", "zxy", "zyx"]
+            },
+            "range": {
+              "$ref": "#/$defs/axisRanges"
+            }
+          },
+          "required": ["kind", "body", "order", "range"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "free-body-orientation-quaternion"
+            },
+            "body": {
+              "$ref": "#/$defs/name"
+            },
+            "range": {
+              "type": "object",
+              "properties": {
+                "w": {
+                  "$ref": "#/$defs/range"
+                },
+                "x": {
+                  "$ref": "#/$defs/range"
+                },
+                "y": {
+                  "$ref": "#/$defs/range"
+                },
+                "z": {
+                  "$ref": "#/$defs/range"
+                }
+              },
+              "required": ["w", "x", "y", "z"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["kind", "body", "range"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "enum": ["joint-position", "joint-velocity"]
+            },
+            "joint": {
+              "$ref": "#/$defs/name"
+            },
+            "range": {
+              "$ref": "#/$defs/range"
+            }
+          },
+          "required": ["kind", "joint", "range"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "taskStatus": {
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "terminated": {
+          "type": "boolean"
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": ["string", "null"]
+        },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number"
+          }
+        }
+      },
+      "required": ["success", "terminated", "truncated", "reason", "metrics"],
+      "additionalProperties": false
+    },
+    "errorCode": {
+      "enum": [
+        "PROTOCOL_VERSION_UNSUPPORTED",
+        "MALFORMED_COMMAND",
+        "SESSION_MISMATCH",
+        "REQUEST_ID_STALE",
+        "COMMAND_IN_FLIGHT",
+        "ALREADY_ACQUIRED",
+        "LEASE_REQUIRED",
+        "EPISODE_REQUIRED",
+        "EPISODE_INVALID",
+        "EPISODE_TERMINATED",
+        "ACTION_LENGTH_MISMATCH",
+        "ACTION_NON_FINITE",
+        "ACTION_OUT_OF_RANGE",
+        "PHYSICS_STEPS_INVALID",
+        "TARGET_NOT_FOUND",
+        "PROFILE_INVALID",
+        "SCENE_CHANGED",
+        "SESSION_INVALIDATED",
+        "CAPTURE_FAILED",
+        "TIMEOUT",
+        "TRANSPORT_ERROR"
+      ]
+    },
+    "response": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "protocolVersion": {
+              "const": 1
+            },
+            "sessionId": {
+              "$ref": "#/$defs/name"
+            },
+            "requestId": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "ok": {
+              "const": true
+            },
+            "result": {
+              "type": "object",
+              "properties": {
+                "task": {
+                  "$ref": "#/$defs/taskStatus"
+                },
+                "observation": {
+                  "type": "object"
+                },
+                "episodeId": {
+                  "$ref": "#/$defs/name"
+                },
+                "resetInfo": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "required": ["protocolVersion", "sessionId", "requestId", "ok", "result"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "protocolVersion": {
+              "const": 1
+            },
+            "sessionId": {
+              "$ref": "#/$defs/name"
+            },
+            "requestId": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "ok": {
+              "const": false
+            },
+            "error": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "$ref": "#/$defs/errorCode"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "details": {
+                  "type": "object"
+                }
+              },
+              "required": ["code", "message"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["protocolVersion", "sessionId", "requestId", "ok", "error"],
+          "additionalProperties": false
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "name": "mujoco-studio",
+  "version": "0.1.1",
+  "private": true,
+  "description": "Browser-based visual editor for building, simulating, and exporting MuJoCo environments.",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "payload"
+  ],
+  "packageManager": "npm@12.0.2",
+  "scripts": {
+    "dev": "turbo run dev --",
+    "build": "turbo run build",
+    "clean": "node scripts/clean-build.mjs",
+    "start": "npm run db:up && npm run start --workspace @mujoco-studio/web",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down"
+  },
+  "devDependencies": {
+    "prettier": "^3.4.2",
+    "turbo": "^2.10.8",
+    "typescript": "^5.7.3",
+    "vite": "^7.3.6"
+  },
+  "overrides": {
+    "esbuild": "^0.28.2",
+    "dompurify": "^3.4.16",
+    "undici": "^7.30.1",
+    "sass": "^1.105.1",
+    "minimatch@^10.2.2": "11.0.1"
+  },
+  "engines": {
+    "node": ">=20.9.0"
+  }
+}

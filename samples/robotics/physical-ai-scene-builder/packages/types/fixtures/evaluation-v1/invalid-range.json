@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "name": "invalid-range",
+  "inputConvention": "raw",
+  "state": [],
+  "action": [
+    {
+      "name": "command",
+      "actuator": "motor",
+      "inputRange": [1, -1]
+    }
+  ],
+  "cameras": [],
+  "physicsSteps": 0,
+  "baseline": { "kind": "model-default" },
+  "randomization": []
+}

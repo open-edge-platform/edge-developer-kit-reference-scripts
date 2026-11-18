@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "name": "randomized-camera-arm",
+  "inputConvention": "raw",
+  "state": [
+    {
+      "name": "joint-position",
+      "source": { "kind": "qpos", "component": "shoulder" },
+      "unit": "rad"
+    },
+    {
+      "name": "joint-velocity",
+      "source": { "kind": "qvel", "component": "shoulder" },
+      "unit": "rad/s"
+    },
+    {
+      "name": "touch",
+      "source": { "kind": "sensor", "sensor": "gripper-touch", "component": 0 }
+    }
+  ],
+  "action": [
+    {
+      "name": "shoulder-command",
+      "actuator": "shoulder-motor",
+      "unit": "rad",
+      "inputRange": [-1, 1],
+      "controlRange": [-0.75, 0.75]
+    }
+  ],
+  "cameras": [{ "camera": "wrist-camera", "outputName": "wrist", "width": 224, "height": 224 }],
+  "physicsSteps": 2,
+  "baseline": { "kind": "model-default" },
+  "randomization": [
+    {
+      "kind": "joint-position",
+      "joint": "shoulder",
+      "range": [-0.1, 0.1]
+    },
+    {
+      "kind": "free-body-orientation-euler",
+      "body": "payload",
+      "order": "xyz",
+      "range": {
+        "x": [-0.05, 0.05],
+        "y": [-0.05, 0.05],
+        "z": [-0.1, 0.1]
+      }
+    }
+  ],
+  "actionRangePolicy": "reject"
+}

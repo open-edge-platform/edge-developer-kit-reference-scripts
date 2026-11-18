@@ -1,0 +1,25 @@
+<!--
+Copyright (C) 2026 Intel Corporation
+SPDX-License-Identifier: Apache-2.0
+-->
+
+<mujoco model="so101-environment">
+  <compiler angle="degree" meshdir="objects" texturedir="textures"/>
+  <option timestep="0.002" gravity="0 0 -9.81"/>
+
+  <asset>
+    <material name="floor_material" rgba="0.22 0.24 0.28 1"/>
+  </asset>
+
+  <worldbody>
+    <light name="key" pos="0 0 3" dir="0 0 -1" diffuse="1 1 1"/>
+    <geom name="floor" type="plane" size="3 3 0.1" material="floor_material"/>
+    <body name="table" pos="0 0 0">
+      <geom name="table_top" type="box" pos="0 0 0.75" size="0.6 0.8 0.05" rgba="0.55 0.35 0.18 1"/>
+      <geom name="leg_fl" type="cylinder" pos="-0.5 -0.3 0.375" size="0.05 0.375" rgba="0.45 0.28 0.14 1"/>
+      <geom name="leg_fr" type="cylinder" pos="0.5 -0.3 0.375" size="0.05 0.375" rgba="0.45 0.28 0.14 1"/>
+      <geom name="leg_bl" type="cylinder" pos="-0.5 0.3 0.375" size="0.05 0.375" rgba="0.45 0.28 0.14 1"/>
+      <geom name="leg_br" type="cylinder" pos="0.5 0.3 0.375" size="0.05 0.375" rgba="0.45 0.28 0.14 1"/>
+    </body>
+  </worldbody>
+</mujoco>

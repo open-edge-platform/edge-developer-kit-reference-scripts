@@ -1,0 +1,90 @@
+{
+  "version": 1,
+  "name": "fixture-arm",
+  "inputConvention": "raw",
+  "state": [
+    {
+      "name": "joint-position",
+      "source": {
+        "kind": "qpos",
+        "component": "joint"
+      }
+    }
+  ],
+  "action": [
+    {
+      "name": "joint-command",
+      "actuator": "motor"
+    }
+  ],
+  "cameras": [],
+  "physicsSteps": 4,
+  "baseline": {
+    "kind": "model-default"
+  },
+  "randomization": [
+    {
+      "kind": "geom-color",
+      "target": "asset_cube",
+      "mode": "body",
+      "hueShift": [-0.05, 0.05],
+      "saturationScale": [0.85, 1.15],
+      "valueScale": [0.85, 1.15]
+    },
+    {
+      "kind": "geom-material",
+      "geom": "table_top",
+      "materials": ["wood", "steel"]
+    },
+    {
+      "kind": "light",
+      "light": "key",
+      "positionJitter": 0.05,
+      "directionJitter": 5,
+      "diffuseScale": [0.8, 1.2]
+    },
+    {
+      "kind": "camera-pose",
+      "camera": "camera_2",
+      "positionJitter": 0.005,
+      "rotationJitter": 1
+    },
+    {
+      "kind": "camera-fov",
+      "camera": "camera_2",
+      "range": [55, 65]
+    },
+    {
+      "kind": "body-mass",
+      "body": "asset_cube",
+      "scale": [0.9, 1.1]
+    },
+    {
+      "kind": "geom-friction",
+      "target": "asset_cube",
+      "mode": "body",
+      "scale": {
+        "sliding": [0.9, 1.1],
+        "torsional": [1, 1],
+        "rolling": [1, 1]
+      }
+    },
+    {
+      "kind": "joint-damping",
+      "joint": "shoulder_pan",
+      "scale": [0.8, 1.2]
+    },
+    {
+      "kind": "actuator-gain",
+      "actuator": "shoulder_pan",
+      "scale": [0.9, 1.1]
+    },
+    {
+      "kind": "backdrop-appearance",
+      "target": "rs_backdrop",
+      "hueShift": [-0.03, 0.03],
+      "saturationScale": [0.9, 1.1],
+      "valueScale": [0.85, 1.15]
+    }
+  ]
+}

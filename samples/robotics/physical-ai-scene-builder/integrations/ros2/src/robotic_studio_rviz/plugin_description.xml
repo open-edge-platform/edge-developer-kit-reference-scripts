@@ -1,0 +1,13 @@
+<!--
+Copyright (C) 2026 Intel Corporation
+SPDX-License-Identifier: Apache-2.0
+-->
+
+<library path="robotic_studio_rviz">
+  <class
+    name="robotic_studio_rviz/Robot Studio control"
+    type="robotic_studio_rviz::StudioControlPanel"
+    base_class_type="rviz_common::Panel">
+    <description>Robot Studio control: bridge status, pause/resume, reset, initial state and recording.</description>
+  </class>
+</library>

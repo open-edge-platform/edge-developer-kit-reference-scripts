@@ -1,0 +1,8 @@
+{
+  "protocolVersion": 1,
+  "sessionId": "session-1",
+  "requestId": 2,
+  "command": "step",
+  "episodeId": "episode-1",
+  "action": [0, "not-a-number"]
+}

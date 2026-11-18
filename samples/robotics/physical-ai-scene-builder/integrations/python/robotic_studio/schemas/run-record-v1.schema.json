@@ -1,0 +1,189 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://robotic-studio.local/schema/run-record-v1.schema.json",
+  "title": "Physical AI Scene Builder Evaluation Run Record v1",
+  "type": "object",
+  "required": [
+    "format",
+    "formatVersion",
+    "runId",
+    "createdAt",
+    "backend",
+    "environment",
+    "policy",
+    "settings",
+    "episodes",
+    "summary",
+    "software"
+  ],
+  "properties": {
+    "format": {
+      "const": "robotic-studio-run"
+    },
+    "formatVersion": {
+      "const": 1
+    },
+    "runId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "backend": {
+      "enum": ["sim", "real-so101"]
+    },
+    "environment": {
+      "type": "object"
+    },
+    "policy": {
+      "type": "object"
+    },
+    "settings": {
+      "type": "object"
+    },
+    "episodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "index",
+          "seed",
+          "outcome",
+          "reason",
+          "steps",
+          "simulationSeconds",
+          "wallSeconds",
+          "deadlineMisses",
+          "label"
+        ],
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "seed": {
+            "type": ["integer", "null"]
+          },
+          "outcome": {
+            "enum": ["success", "failure", "truncated", "stopped", "void"]
+          },
+          "reason": {
+            "type": ["string", "null"]
+          },
+          "steps": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "simulationSeconds": {
+            "type": "number",
+            "minimum": 0
+          },
+          "wallSeconds": {
+            "type": "number",
+            "minimum": 0
+          },
+          "deadlineMisses": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "label": {
+            "enum": ["auto", "operator"]
+          },
+          "resetSamples": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["ruleIndex", "target", "values"],
+              "properties": {
+                "ruleIndex": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "target": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "values": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  }
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "videos": {
+            "type": "object",
+            "description": "Camera name to MP4 path relative to the run directory.",
+            "additionalProperties": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["completed", "successes", "void", "successRate", "wilson95"],
+      "properties": {
+        "completed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "successes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "void": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "successRate": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "wilson95": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "array",
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "minItems": 2,
+              "maxItems": 2
+            }
+          ]
+        },
+        "meanStepsToSuccess": {
+          "type": ["number", "null"]
+        },
+        "failureReasons": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "software": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": false
+}

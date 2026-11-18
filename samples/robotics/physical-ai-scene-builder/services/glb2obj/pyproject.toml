@@ -1,0 +1,13 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+[project]
+name = "glb2obj"
+version = "0.1.0"
+description = "Converts a GLB mesh into OBJ + MTL + texture files for the obj2mjcf pipeline."
+requires-python = ">=3.12"
+dependencies = ["trimesh==5.1.1", "numpy==2.5.4", "pillow==13.0.0"]
+
+# This project is a single script invoked by `uv run`, not a distributable library.
+[tool.uv]
+package = false

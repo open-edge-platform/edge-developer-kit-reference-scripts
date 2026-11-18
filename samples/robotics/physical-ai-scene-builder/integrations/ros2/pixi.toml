@@ -1,0 +1,93 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+[workspace]
+authors = ["Intel Robotics <robotics@intel.com>"]
+channels = ["conda-forge", "https://prefix.dev/robostack-lyrical"]
+name = "ros2"
+platforms = ["linux-64"]
+version = "0.1.0"
+
+[tasks]
+
+# Install dependencies
+# Bring external repos via vcstool
+install-source-deps = { cmd = "mkdir -p external && vcs import external --recursive < upstream-ros-deps.repos" }
+install-deps = { depends-on = ["install-source-deps"] }
+
+build = { cmd = ["colcon", "build"], env = { CMAKE_BUILD_TYPE = "Release" } }
+test-python = { cmd = ["bash", "-c", "if [ -d ../../internal/tests/ros2/robotic_studio_ros ]; then python -m pytest ../../internal/tests/ros2/robotic_studio_ros -q; else echo 'Private ROS Python tests are not included in this checkout; skipping.'; fi"], depends-on = ["build"] }
+test-rviz = { cmd = ["bash", "-c", "if [ -f ../../internal/tests/ros2/robotic_studio_rviz/test_panel_state.cpp ]; then colcon test --packages-select robotic_studio_rviz && colcon test-result --test-result-base build/robotic_studio_rviz --verbose; else echo 'Private RViz tests are not included in this checkout; skipping.'; fi"], depends-on = ["build"] }
+test = { depends-on = ["test-python", "test-rviz"] }
+bridge = { cmd = ["ros2", "launch", "robotic_studio_ros", "bridge.launch.py"], depends-on = ["build"] }
+zenoh-router = { cmd = ["ros2", "run", "rmw_zenoh_cpp", "rmw_zenohd"]}
+
+[dependencies]
+# Build deps
+colcon-common-extensions = ">=0.3.0,<0.4"
+cmake = ">=3.30.5,<4"
+ninja = ">=1.13.1,<2"
+# Conda C/C++ toolchain so the compiler matches conda's `ld` already on PATH.
+c-compiler = "*"
+cxx-compiler = "*"
+pkg-config = "*"
+vcstool = "*"
+rosdep = "*"
+
+# Common base deps
+# robostack-lyrical only publishes py314 builds.
+python = "3.14.*"
+pip = "*"
+setuptools = "*"
+pytest = ">=8"
+
+# ROS dependencies
+ros-lyrical-ros-core = "*"
+ros-lyrical-ament-cmake = "*"
+ros-lyrical-launch = "*"
+ros-lyrical-launch-ros = "*"
+ros-lyrical-rclpy = "*"
+ros-lyrical-rviz2 = "*"
+ros-lyrical-sensor-msgs = "*"
+ros-lyrical-compressed-image-transport = "*"
+ros-lyrical-image-transport = "*"
+ros-lyrical-std-msgs = "*"
+ros-lyrical-rosgraph-msgs = "*"
+ros-lyrical-diagnostic-msgs = "*"
+ros-lyrical-std-srvs = "*"
+ros-lyrical-rmw-zenoh-cpp = "*"
+ros-lyrical-builtin-interfaces = "*"
+ros-lyrical-rcl-interfaces = "*"
+ros-lyrical-ament-index-python = "*"
+ros-lyrical-xacro = "*"
+
+ros-lyrical-robot-state-publisher = "*"
+ros-lyrical-rosidl-default-generators = "*"
+ros-lyrical-rosidl-default-runtime = "*"
+ros-lyrical-rviz-common = "*"
+ros-lyrical-pluginlib = "*"
+ros-lyrical-ament-cmake-gtest = "*"
+
+[pypi-dependencies]
+robotic-studio = { path = "../python", editable = true }
+mujoco = ">=3.10.0"
+pillow = ">=10.0.0"
+
+
+[activation]
+scripts = ["scripts/activate.sh"]
+
+[activation.env]
+# Ensures the linker knows where to look for conda managed packages
+LIBRARY_PATH = "${CONDA_PREFIX}/lib:${LIBRARY_PATH}"
+LD_LIBRARY_PATH = "${CONDA_PREFIX}/lib:${LD_LIBRARY_PATH}"
+# CMake needs this to find ROS 2 packages installed by robostack
+CMAKE_PREFIX_PATH = "${CONDA_PREFIX}"
+ROS_DISTRO = "lyrical"
+# Force ROS 2 to use Zenoh middleware
+RMW_IMPLEMENTATION = "rmw_zenoh_cpp"
+# uv/PyPI: large wheels (e.g. torch) need a longer per-request timeout than the default 30s
+UV_HTTP_TIMEOUT = "600"
+# Ignore the user site-packages dir (~/.local/lib/pythonX.Y/site-packages) so stray
+# pip --user installs (e.g. cmeel .pth files) don't leak into the pixi environment.
+PYTHONNOUSERSITE = "1"

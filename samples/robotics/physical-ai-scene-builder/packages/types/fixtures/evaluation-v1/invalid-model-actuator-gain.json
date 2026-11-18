@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "name": "fixture-arm",
+  "inputConvention": "raw",
+  "state": [
+    {
+      "name": "joint-position",
+      "source": {
+        "kind": "qpos",
+        "component": "joint"
+      }
+    }
+  ],
+  "action": [
+    {
+      "name": "joint-command",
+      "actuator": "motor"
+    }
+  ],
+  "cameras": [],
+  "physicsSteps": 4,
+  "baseline": {
+    "kind": "model-default"
+  },
+  "randomization": [
+    {
+      "kind": "actuator-gain",
+      "actuator": "shoulder_pan",
+      "scale": [0.9, 1.1],
+      "gain": 2
+    }
+  ]
+}

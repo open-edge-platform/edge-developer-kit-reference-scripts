@@ -1,0 +1,55 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+model:
+  class_path: physicalai.policies.Pi05
+  init_args:
+    paligemma_variant: gemma_2b
+    action_expert_variant: gemma_300m
+    dtype: bfloat16
+    n_obs_steps: 1
+    chunk_size: 50
+    n_action_steps: 50
+    max_state_dim: 32
+    max_action_dim: 32
+    image_resolution: [224, 224]
+    num_inference_steps: 10
+    freeze_vision_encoder: true
+    train_expert_only: false
+    optimizer_lr: 2.5e-5
+    optimizer_weight_decay: 0.01
+    optimizer_grad_clip_norm: 1.0
+    scheduler_warmup_steps: 1000
+    scheduler_decay_steps: 30000
+    scheduler_decay_lr: 2.5e-6
+
+data:
+  class_path: physicalai.data.lerobot.LeRobotDataModule
+  init_args:
+    repo_id: 'converted/dataset'
+    train_batch_size: 1
+    num_workers: 0
+    data_format: physicalai
+    video_backend: pyav
+
+trainer:
+  max_epochs: 4
+  accelerator: auto
+  devices: auto
+  precision: 32
+  log_every_n_steps: 1
+  check_val_every_n_epoch: 1
+  # Lightning's implicit checkpoint waits for validation, which never runs without a val split,
+  # so checkpoints are configured explicitly. Files land in
+  # experiments/lightning_logs/version_N/checkpoints/.
+  callbacks:
+    # One checkpoint per epoch, all kept. Pi0.5 checkpoints are large, so watch disk space.
+    # last.ckpt is a symlink to the newest one.
+    - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+      init_args:
+        filename: 'epoch-{epoch:03d}-step-{step:07d}'
+        auto_insert_metric_name: false
+        every_n_epochs: 1
+        save_on_train_epoch_end: true
+        save_top_k: -1
+        save_last: link
