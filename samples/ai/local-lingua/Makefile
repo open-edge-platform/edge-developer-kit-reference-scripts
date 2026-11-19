@@ -257,7 +257,7 @@ run:
 
 # ─── make stop ───────────────────────────────────────────────────────────────
 stop:
-	docker compose down
+	docker compose down -t 10
 
 # ─── make ensure-dirs ────────────────────────────────────────────────────────
 # Docker creates a missing bind-mount source as root, which the non-root app
