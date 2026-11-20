@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils'
 import { safeMediaSrc, MEDIA_SRC_CHARS } from '@/lib/validation'
 import type { SpeechRequest } from '../lib/speech-synthesis'
 import {
+  getDialectLabel,
   getTtsCapabilities,
   getVoicesForModel,
   ttsFormatLabel,
@@ -32,8 +33,10 @@ function describeRequest({ model, params }: SpeechRequest): string {
   const voice =
     getVoicesForModel(model).find((v) => v.id === params.voice)?.label ??
     params.voice
+  const dialect = params.dialect && getDialectLabel(model, params.dialect)
   return [
     voice && `Voice ${voice}`,
+    dialect,
     getTtsCapabilities(model).speed && `Speed ${params.speed}×`,
     ttsFormatLabel(params.responseFormat),
   ]

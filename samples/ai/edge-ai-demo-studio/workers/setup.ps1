@@ -69,13 +69,32 @@ function Get-ServiceLog {
 
 $thirdpartyDir = Join-Path $SCRIPT_DIR "thirdparty"
 $rootThirdpartyDir = Join-Path (Split-Path $SCRIPT_DIR -Parent) "thirdparty"
-$uvZipPath = Join-Path $thirdpartyDir "uv.zip"
-$uvZipUrl = "https://releases.astral.sh/github/uv/releases/download/0.13.3/uv-x86_64-pc-windows-msvc.zip"
+
+# Checked downloads and install manifests: scripts\win\ in the repo, scripts\ in a packaged build.
+$integrityScript = @('scripts\win', 'scripts') |
+    ForEach-Object { Join-Path (Split-Path $SCRIPT_DIR -Parent) "$_\thirdparty_integrity.ps1" } |
+    Where-Object { Test-Path $_ } | Select-Object -First 1
+if (-not $integrityScript) {
+    Write-ColorOutput "❌ ERROR: thirdparty_integrity.ps1 not found next to the project's setup scripts." "Red"
+    exit 1
+}
+. $integrityScript
+
+# Each download is checked against the SHA-256 beside its URL (see thirdparty_integrity.ps1). Moving
+# to another release means updating both, from the project's own checksum list where it has one.
+# Another uv release writes uv.lock differently when it re-locks, so a copy from any other download
+# is replaced.
+$uvZipUrl = "https://releases.astral.sh/github/uv/releases/download/0.13.7/uv-x86_64-pc-windows-msvc.zip"
+# From the release's uv-x86_64-pc-windows-msvc.zip.sha256
+$uvSha256 = "0cdc5b38fe5a8168ed6a25814f5ba43c21d313dd3187314fccb37b7cec46e021"
 $uvDir = Join-Path $thirdpartyDir "uv"
 $uvPath = Join-Path $uvDir "uv.exe"
 
-$ovmsZipPath = Join-Path $thirdpartyDir "ovms_windows.zip"
-$ovmsZipUrl = 'https://github.com/openvinotoolkit/model_server/releases/download/v2026.4.0/ovms_windows_2026.4.0_python_on.zip'
+$ovmsZipUrl = 'https://github.com/openvinotoolkit/model_server/releases/download/v2026.4.1/ovms_windows_2026.4.1_python_on.zip'
+# GitHub's digest of the release asset
+$ovmsSha256 = "aa79a0ae3b858356ba550978e397a8e8876a9d2706ffe4041b1dfd3f32cb8ce4"
+# Initialize-Ovms (worker-common.ps1) installs and upgrades packages in these: the manifest leaves them out.
+$ovmsExclude = @('python/Lib/site-packages', 'python/Scripts')
 $ovmsDir = Join-Path $thirdpartyDir "ovms"
 $ovmsPath = Join-Path $ovmsDir "ovms.exe"
 
@@ -84,50 +103,13 @@ $ffmpegPath = Join-Path $ffmpegDir "bin\ffmpeg.exe"
 
 function Test-UvInstalled {
     Write-ColorOutput "Checking if uv is installed..." "Yellow"
-    # Another uv release writes uv.lock differently when it re-locks, so replace a copy that isn't the pinned one.
-    $pinnedUv = ($uvZipUrl -split '/download/')[1].Split('/')[0]
 
-    if (Test-Path $uvPath) {
-        $installedUv = ""
-        try {
-            $versionLine = & $uvPath --version 2>$null
-            if ($LASTEXITCODE -eq 0) { $installedUv = ("$versionLine" -split ' ')[1] }
-        } catch { $installedUv = "" }
-        if ($installedUv -eq $pinnedUv) {
-            Write-ColorOutput "✅ uv found in thirdparty folder." "Green"
-            return $uvPath
-        }
-        if ($installedUv) {
-            Write-ColorOutput "uv $installedUv in thirdparty folder is not the pinned $pinnedUv. Downloading $pinnedUv..." "Yellow"
-        } else {
-            # Usually a download or extract that was cut short.
-            Write-ColorOutput "uv binary in thirdparty folder is not working. Downloading it again..." "Yellow"
-        }
-        Remove-Item $uvDir -Recurse -Force -ErrorAction SilentlyContinue
-    } else {
-        Write-ColorOutput "uv is not installed. Downloading uv binary..." "Yellow"
-    }
-    
     $uvLogFile = Get-ServiceLog -ServiceName "uv"
     "=== UV Setup Log - $(Get-Date) ===" | Out-File -FilePath $uvLogFile -Encoding utf8
-    
+
     try {
-        if (-not (Test-Path $thirdpartyDir)) {
-            New-Item -ItemType Directory -Path $thirdpartyDir -ErrorAction Stop | Out-Null
-        }
-        
-        if (-not (Test-Path $uvDir)) {
-            New-Item -ItemType Directory -Path $uvDir -ErrorAction Stop | Out-Null
-        }
-        
-        Write-ColorOutput "Downloading uv from $uvZipUrl..." "White"
-        Invoke-WebRequest -Uri $uvZipUrl -OutFile $uvZipPath -ErrorAction Stop
-        
-        Write-ColorOutput "Extracting uv binary..." "White"
-        Expand-Archive -Path $uvZipPath -DestinationPath $uvDir -Force -ErrorAction Stop
-        
-        Remove-Item $uvZipPath -Force -ErrorAction SilentlyContinue
-        
+        $null = Install-VerifiedArchive -Label "uv" -Url $uvZipUrl -Sha256 $uvSha256 -Destination $uvDir
+
         if (-not (Test-Path $uvPath)) {
             Write-ColorOutput "❌ ERROR: uv executable not found at $uvPath after extraction" "Red"
             "UV setup failed at $(Get-Date)" | Out-File -FilePath $uvLogFile -Append -Encoding utf8
@@ -141,7 +123,7 @@ function Test-UvInstalled {
             exit 1
         }
         
-        Write-ColorOutput "✅ uv is successfully downloaded and extracted." "Green"
+        Write-ColorOutput "✅ uv is ready." "Green"
         "UV setup completed successfully at $(Get-Date)" | Out-File -FilePath $uvLogFile -Append -Encoding utf8
         return $uvPath
     } catch {
@@ -153,18 +135,6 @@ function Test-UvInstalled {
         "UV setup failed at $(Get-Date): $($_.Exception.Message)" | Out-File -FilePath $uvLogFile -Append -Encoding utf8
         exit 1
     }
-}
-
-# The version setup recorded when it installed OVMS, else the one the package
-# reports in its metadata ("2026.2.0.5e9dcfc46"); $null when neither exists.
-function Get-InstalledOvmsVersion {
-    $marker = Join-Path $ovmsDir ".installed-version"
-    if (Test-Path $marker) { return (Get-Content $marker -Raw).Trim() }
-    $metadata = Join-Path $ovmsDir "metadata.json"
-    if (Test-Path $metadata) {
-        try { return (Get-Content $metadata -Raw | ConvertFrom-Json).PROJECT_VERSION } catch { return $null }
-    }
-    return $null
 }
 
 function Get-ThirdPartyDependencies {
@@ -181,54 +151,21 @@ function Get-ThirdPartyDependencies {
 
     Set-Location $thirdpartyDir
 
-    # The OVMS URL pins the wanted version; an install of any other version is replaced.
-    $ovmsWanted = if ($ovmsZipUrl -match '_(\d+\.\d+\.\d+)_python') { $Matches[1] } else { $null }
-    $ovmsInstalled = if (Test-Path $ovmsDir) { Get-InstalledOvmsVersion } else { $null }
-    if ($ovmsInstalled -and ($ovmsInstalled -eq $ovmsWanted -or $ovmsInstalled.StartsWith("$ovmsWanted."))) {
-        Write-ColorOutput "✅ OVMS $ovmsInstalled already installed. Skipping download." "Green"
-    } else {
-        if (Test-Path $ovmsDir) {
-            $ovmsFrom = if ($ovmsInstalled) { $ovmsInstalled } else { '(unknown version)' }
-            Write-ColorOutput "Replacing OVMS $ovmsFrom with $ovmsWanted..." "Yellow"
-        } else {
-            Write-ColorOutput "Downloading OpenVINO Model Server for Windows..." "Yellow"
-        }
-
-        $ovmsLogFile = Get-ServiceLog -ServiceName "ovms"
-        "=== OVMS Setup Log - $(Get-Date) ===" | Out-File -FilePath $ovmsLogFile -Encoding utf8
-
-        # Extract beside the current install so a failure leaves it usable.
-        $ovmsStaging = Join-Path $thirdpartyDir "ovms.new"
-        $ovmsOld = Join-Path $thirdpartyDir "ovms.old"
-        try {
-            Write-ColorOutput "Downloading from $ovmsZipUrl..." "White"
-            Invoke-WebRequest -Uri $ovmsZipUrl -OutFile $ovmsZipPath -ErrorAction Stop
-
-            Write-ColorOutput "Extracting OVMS..." "White"
-            if (Test-Path $ovmsStaging) { Remove-Item $ovmsStaging -Recurse -Force -ErrorAction Stop }
-            Expand-Archive -Path $ovmsZipPath -DestinationPath $ovmsStaging -ErrorAction Stop
-            Remove-Item $ovmsZipPath -Force -ErrorAction SilentlyContinue
-
-            # A rename fails as a whole while ovms.exe is running; a delete
-            # would stop partway and leave a broken install.
-            if (Test-Path $ovmsOld) { Remove-Item $ovmsOld -Recurse -Force -ErrorAction Stop }
-            if (Test-Path $ovmsDir) { Rename-Item $ovmsDir "ovms.old" -ErrorAction Stop }
-            Move-Item (Join-Path $ovmsStaging "ovms") $ovmsDir -ErrorAction Stop
-            Remove-Item $ovmsStaging, $ovmsOld -Recurse -Force -ErrorAction SilentlyContinue
-            Set-Content -Path (Join-Path $ovmsDir ".installed-version") -Value $ovmsWanted -Encoding ascii
-
-            Write-ColorOutput "✅ OVMS $ovmsWanted downloaded and extracted successfully." "Green"
-            "OVMS setup completed successfully at $(Get-Date)" | Out-File -FilePath $ovmsLogFile -Append -Encoding utf8
-        } catch {
-            if (-not (Test-Path $ovmsDir) -and (Test-Path $ovmsOld)) {
-                Rename-Item $ovmsOld "ovms" -ErrorAction SilentlyContinue
-            }
-            Write-ColorOutput "❌ ERROR: Failed to install OVMS (stop Edge AI Studio first if it is running)" "Red"
-            Write-ColorOutput "Error: $($_.Exception.Message)" "Red"
-            "OVMS setup failed at $(Get-Date): $($_.Exception.Message)" | Out-File -FilePath $ovmsLogFile -Append -Encoding utf8
-            Set-Location "..\"
-            exit 1
-        }
+    # Replaced unless intact and from this download: a new one is extracted beside it, so a
+    # failure leaves it usable. Its bundled Python's packages come back on the next Initialize-Ovms.
+    $ovmsLogFile = Get-ServiceLog -ServiceName "ovms"
+    "=== OVMS Setup Log - $(Get-Date) ===" | Out-File -FilePath $ovmsLogFile -Encoding utf8
+    try {
+        $null = Install-VerifiedArchive -Label "OpenVINO Model Server" -Url $ovmsZipUrl -Sha256 $ovmsSha256 `
+            -Destination $ovmsDir -Exclude $ovmsExclude
+        if (-not (Test-Path $ovmsPath)) { throw "ovms.exe not found at $ovmsPath after extraction" }
+        "OVMS setup completed successfully at $(Get-Date)" | Out-File -FilePath $ovmsLogFile -Append -Encoding utf8
+    } catch {
+        Write-ColorOutput "❌ ERROR: Failed to install OVMS (stop Edge AI Studio first if it is running)" "Red"
+        Write-ColorOutput "Error: $($_.Exception.Message)" "Red"
+        "OVMS setup failed at $(Get-Date): $($_.Exception.Message)" | Out-File -FilePath $ovmsLogFile -Append -Encoding utf8
+        Set-Location "..\"
+        exit 1
     }
     
     if (-not (Test-Path $ffmpegPath)) {
@@ -353,7 +290,8 @@ $engineSetup = Join-Path $PSScriptRoot "engines\setup.ps1"
 if (Test-Path $engineSetup) {
     $engineLog = Get-ServiceLog -ServiceName "engines"
     $ErrorActionPreference = "Continue"
-    & powershell -NoProfile -ExecutionPolicy Bypass -File $engineSetup *>&1 | ForEach-Object { "$_" } | Tee-Object -FilePath $engineLog
+    $psExe = [System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
+    & $psExe -NoProfile -ExecutionPolicy Bypass -File $engineSetup *>&1 | ForEach-Object { "$_" } | Tee-Object -FilePath $engineLog
     $ErrorActionPreference = $prevEAP
     if ($LASTEXITCODE -ne 0) {
         Write-ColorOutput "FAILED: Engine setup (exit $LASTEXITCODE). See $engineLog" "Red"

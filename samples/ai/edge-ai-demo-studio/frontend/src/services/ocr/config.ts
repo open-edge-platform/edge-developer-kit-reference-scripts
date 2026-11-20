@@ -65,23 +65,7 @@ export const serviceConfig: ServiceConfig = {
   supportsCustomModel: false,
 }
 
-/** What the selected OCR model reads and returns, for the demo to state. */
-export interface OcrModelSummary {
-  /** The preset's label, or the model id when it is not a preset. */
-  label: string
-  kind: OcrModelOption['kind']
-  capabilities: string
-}
-
-export function describeOcrModel(model: string): OcrModelSummary {
-  const preset = OCR_MODELS.find((m) => m.value === model)
-  const kind = preset?.kind ?? 'pp-ocr'
-  return {
-    label: preset?.label ?? model,
-    kind,
-    capabilities:
-      kind === 'vl'
-        ? 'Reads whole pages with their layout and can also recognize tables, formulas and charts (pick a task). It detects the language itself; its text may come without positions on the image.'
-        : 'Finds each line of text with its position and a confidence score. It reads one script at a time: pick the language of the image.',
-  }
+/** Whether `model` takes a task (VL) or a language (PP-OCR); an id that is not a preset is PP-OCR. */
+export function ocrModelKind(model: string): OcrModelOption['kind'] {
+  return OCR_MODELS.find((m) => m.value === model)?.kind ?? 'pp-ocr'
 }

@@ -17,7 +17,7 @@ def getLogger(name=__name__):
 
     if logger == None:
         logger = logging.getLogger(name)
-        logger.setLevel(logging.DEBUG)
+        logger.setLevel(logging.INFO)
         formatter = logging.Formatter(
             "%(asctime)s - %(funcName)s - %(levelname)s - %(message)s"
         )

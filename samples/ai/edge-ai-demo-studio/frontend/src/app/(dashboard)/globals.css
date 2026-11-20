@@ -1,12 +1,15 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+/* Bundled from npm rather than next/font/google, so `next build` needs no Google Fonts access. */
+@import "@fontsource-variable/inter";
 
 @source "../node_modules/streamdown/dist/*.js";
 
 @custom-variant dark (&:is(.dark *));
 
 :root {
+  --font-inter: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
   --font-sans: var(--font-inter);
 }
 

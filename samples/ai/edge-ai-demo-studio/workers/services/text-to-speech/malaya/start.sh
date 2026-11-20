@@ -12,7 +12,7 @@ done
 # shellcheck source=SCRIPTDIR/../../../scripts/worker-common.sh
 . "$WORKERS_ROOT/scripts/worker-common.sh"
 
-# malaya and malaya_speech are vendored here (pinned in workers/oep-services.json)
+# malaya and malaya_speech are vendored here (pinned in workers/upstream.json)
 # because no release has the VITS code the worker uses.
-oep_fetch services/text-to-speech/malaya
+upstream_fetch services/text-to-speech/malaya
 run_worker "$@"

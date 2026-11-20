@@ -34,7 +34,7 @@ const PAUSE_OPTIONS = STT_PAUSE_SECONDS.map((seconds) => ({
 interface SttParamOptions {
   /** Picks the Language list. */
   model?: string
-  /** Offer Auto-detect (OVMS backend only); without it the language defaults to English. */
+  /** Offer Auto-detect (every backend: OEP, OVMS and MERaLiON); without it the language defaults to English. */
   autoLanguage?: boolean
   /** Offer Noise Suppression (OVMS backend only); without it `useDenoise` is always false. */
   denoise?: boolean
@@ -61,7 +61,7 @@ export function useSttParams({
   } = useDemoParams(STT_DEFAULTS, { sessionKey })
 
   const languageOptions = getSttLanguageOptions(model, autoLanguage)
-  // Replaces a language kept from another model or backend that this one lacks (e.g. Auto on OEP).
+  // Replaces a language kept from another model or backend that this one lacks (e.g. Welsh on Qwen3-ASR).
   const knownLanguage = resolveSttLanguage(language, languageOptions)
 
   const values: SttParamValues = {
@@ -77,7 +77,7 @@ export function useSttParams({
       id: 'language',
       label: 'Language',
       tooltip:
-        'The language spoken in the audio, from those the model knows: Whisper 99 (100 on Large v3, with Cantonese), Qwen3-ASR 30 (its Chinese dialects under Chinese). Auto-detect (OpenVINO Model Server backend) lets the model identify it; choosing one is more reliable on short or accented clips.',
+        'The language spoken in the audio, from those the model knows: Whisper 99 (100 on Large v3, with Cantonese), Qwen3-ASR 30 (its Chinese dialects under Chinese). Auto-detect lets the model identify it; choosing one is more reliable on short or accented clips. MERaLiON-3 always detects the language, so Auto-detect is its only choice.',
       value: knownLanguage,
       options: languageOptions,
       onChange: setLanguage,
@@ -103,7 +103,7 @@ export function useSttParams({
         id: 'vad-sensitivity',
         label: 'Speech sensitivity',
         tooltip:
-          "How readily the worker's voice detection takes sound for speech: High hears quieter voices but more noise, Low ignores more background sound. It sets the energy threshold on the OEP backend and the Silero speech probability on OpenVINO Model Server.",
+          "How readily the worker's voice detection takes sound for speech: High hears quieter voices but more noise, Low ignores more background sound. It sets the energy threshold on the OEP backend and the Silero speech probability on the OpenVINO Model Server and MERaLiON backends.",
         value: vadSensitivity,
         options: STT_VAD_SENSITIVITY_OPTIONS,
         onChange: (value) => {

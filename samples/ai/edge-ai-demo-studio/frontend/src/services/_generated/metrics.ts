@@ -12,11 +12,13 @@ import { figures as embeddingsFigures } from '../embeddings/metrics'
 import { figures as faceRecognitionFigures } from '../face-recognition/metrics'
 import { figures as frameGenerationFigures } from '../frame-generation/metrics'
 import { figures as imageGenerationFigures } from '../image-generation/metrics'
+import { figures as imageUpscalingFigures } from '../image-upscaling/metrics'
 import { figures as ocrFigures } from '../ocr/metrics'
 import { figures as rerankFigures } from '../rerank/metrics'
 import { figures as speechToTextFigures } from '../speech-to-text/metrics'
 import { figures as textGenerationFigures } from '../text-generation/metrics'
 import { figures as textToSpeechFigures } from '../text-to-speech/metrics'
+import { figures as videoGenerationFigures } from '../video-generation/metrics'
 
 /** Figures of each service's Live metrics panel (`metrics.tsx`), keyed by service ID. */
 export const metricsRegistry: Partial<Record<string, MetricFigure[]>> = {
@@ -25,9 +27,11 @@ export const metricsRegistry: Partial<Record<string, MetricFigure[]>> = {
   'face-recognition': faceRecognitionFigures,
   'frame-generation': frameGenerationFigures,
   'image-generation': imageGenerationFigures,
+  'image-upscaling': imageUpscalingFigures,
   ocr: ocrFigures,
   rerank: rerankFigures,
   'speech-to-text': speechToTextFigures,
   'text-generation': textGenerationFigures,
   'text-to-speech': textToSpeechFigures,
+  'video-generation': videoGenerationFigures,
 }

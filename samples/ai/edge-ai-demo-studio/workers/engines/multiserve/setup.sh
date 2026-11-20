@@ -5,14 +5,8 @@
 set -e
 
 # Global variables
-UV_INSTALL_SCRIPT="https://astral.sh/uv/install.sh"
-if [ -n "$UV_PATH" ]; then
-    UV_EXE="$UV_PATH"
-elif command -v uv >/dev/null 2>&1; then
-    UV_EXE=$(command -v uv)
-else
-    UV_EXE="$HOME/.local/bin/uv"
-fi
+# The uv workers/setup.sh installs, from a checked download; never a fetched install script.
+UV_EXE="${UV_PATH:-../../thirdparty/uv/uv}"
 VENV_ACTIVATE_SCRIPT="../../.venv/bin/activate"
 
 # The root setup.sh saves the backend (sycl or vulkan) to .llamacpp-backend; run standalone, that file
@@ -20,19 +14,29 @@ VENV_ACTIVATE_SCRIPT="../../.venv/bin/activate"
 MULTISERVE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$MULTISERVE_DIR/../../.." && pwd)"
 
-for backend_helper in \
-    "$REPO_ROOT/scripts/bash/llamacpp_backend.sh" \
-    "$REPO_ROOT/scripts/llamacpp_backend.sh"; do
-    if [ -f "$backend_helper" ]; then
-        # shellcheck source=../../../scripts/bash/llamacpp_backend.sh disable=SC1091
-        source "$backend_helper"
+# Shared helpers: scripts/bash/ in the repo, scripts/ in a packaged build.
+for helper_dir in "$REPO_ROOT/scripts/bash" "$REPO_ROOT/scripts"; do
+    if [ -f "$helper_dir/llamacpp_backend.sh" ]; then
+        # shellcheck source=SCRIPTDIR/../../../scripts/bash/llamacpp_backend.sh
+        source "$helper_dir/llamacpp_backend.sh"
+    fi
+    if [ -f "$helper_dir/thirdparty_integrity.sh" ]; then
+        # Checked downloads and install manifests.
+        # shellcheck source=SCRIPTDIR/../../../scripts/bash/thirdparty_integrity.sh
+        source "$helper_dir/thirdparty_integrity.sh"
         break
     fi
 done
+if ! command -v install_verified_archive >/dev/null 2>&1; then
+    echo "**ERROR:** thirdparty_integrity.sh not found next to the project's setup scripts."
+    exit 1
+fi
 
+# Each download is checked against the SHA-256 beside its URL (GitHub's digest of the release asset).
 if command -v lb_load_config >/dev/null 2>&1; then
     lb_load_config || true
     LLAMA_RELEASE_URL="$(lb_llamacpp_url "$LLAMACPP_BACKEND" "$LLAMACPP_SYCL_PRECISION")"
+    LLAMA_SHA256="$(lb_llamacpp_sha256 "$LLAMACPP_BACKEND" "$LLAMACPP_SYCL_PRECISION")" || LLAMA_SHA256=""
     LLAMA_EXTRACT_DIR="engine/$(lb_engine_dir "$LLAMACPP_BACKEND")"
 else
     # Helper missing (unexpected): fall back to the Vulkan build.
@@ -40,10 +44,10 @@ else
     LLAMACPP_SYCL_PRECISION="fp16"
     LLAMACPP_VERSION="b11540"
     LLAMA_RELEASE_URL="https://github.com/ggml-org/llama.cpp/releases/download/${LLAMACPP_VERSION}/llama-${LLAMACPP_VERSION}-bin-ubuntu-vulkan-x64.tar.gz"
+    LLAMA_SHA256="d639b4b98d0c028e17ace64caaa9b881937b98da433840efd0316d560ee92e8f"
     LLAMA_EXTRACT_DIR="engine/llama.cpp-vulkan"
 fi
 
-LLAMA_DOWNLOAD_FILE="llama-ubuntu.tar.gz"
 # The unselected backend's build, removed so only one exists (LlamaCPPManager takes whichever it finds).
 if [ "$LLAMACPP_BACKEND" = "sycl" ]; then
     LLAMA_OTHER_EXTRACT_DIR="engine/llama.cpp-vulkan"
@@ -55,13 +59,14 @@ fi
 QMASSA_PATH="../../../thirdparty/qmassa/bin/qmassa"
 
 GGUF_PARSER_RELEASE_URL="https://github.com/gpustack/gguf-parser-go/releases/download/v0.22.1/gguf-parser-linux-amd64"
+GGUF_PARSER_SHA256="50e61732864d37f881c87e3912fba12a928706d33d9d8ae9cd0abacaade82a71"
 GGUF_PARSER_BINARY_NAME="gguf-parser"
 GGUF_PARSER_INSTALL_DIR="engine"
 
 SHARED_OVMS_DIR="../../thirdparty/ovms"
 # The uv the workers run with (worker-common.sh); it wrote workers/uv.lock.
 SHARED_UV_EXE="../../thirdparty/uv/uv"
-# The optimum-cli environment `ovms --pull` converts with; ovms_prepare (start.sh) syncs it on first start.
+# The optimum-cli environment `ovms --pull` converts with; ovms_prepare (start.sh) builds it on first start.
 SHARED_OVMS_EXPORT_VENV="../../common/ovms-export/.venv"
 
 # Utility functions
@@ -86,43 +91,16 @@ is_executable() {
     [[ -f "$1" && -x "$1" ]]
 }
 
-download_file() {
-    local url="$1"
-    local output="$2"
-    local description="${3:-file}"
-    
-    echo "Downloading $description..."
-    if ! curl -L --progress-bar "$url" -o "$output"; then
-        print_error "Failed to download $description from $url"
-        return 1
-    fi
-    print_success "Downloaded $description"
-    return 0
-}
-
 # Installation functions
 install_uv() {
-    print_step "1. uv Installation"
-    
-    if is_executable "$UV_EXE"; then
-        print_success "uv is already installed. Skipping installation."
-        return 0
-    fi
-    
-    echo "uv is NOT found. Attempting to install uv now..."
-    if ! curl -LsSf "$UV_INSTALL_SCRIPT" | sh; then
-        print_error "uv installation script failed!"
-        return 1
-    fi
-    
-    if ! is_executable "$UV_EXE"; then
-        print_error "uv installation failed! File not found at: $UV_EXE"
-        return 1
-    fi
-    
-    print_success "uv installed successfully."
+    print_step "1. uv"
 
-    export PATH="$HOME/.local/bin:$PATH"
+    if ! is_executable "$UV_EXE"; then
+        print_error "uv not found at $UV_EXE."
+        print_error "Please run workers/setup.sh first to download the shared uv."
+        return 1
+    fi
+    print_success "uv found at $UV_EXE"
     return 0
 }
 
@@ -148,83 +126,33 @@ install_llamacpp() {
     fi
     echo "Release: $LLAMA_RELEASE_URL"
 
-    # The stamp records the release URL (backend and precision included), so a switch re-downloads.
-    local stamp_file="$LLAMA_EXTRACT_DIR/.llamacpp-release"
-    local stamp="$LLAMA_RELEASE_URL"
-
-    if [[ -d "$LLAMA_EXTRACT_DIR" && "$(find "$LLAMA_EXTRACT_DIR" -name 'llama-*' -type f | wc -l)" -gt 0 ]]; then
-        if [[ -f "$stamp_file" && "$(cat "$stamp_file")" == "$stamp" ]]; then
-            print_success "$LLAMA_EXTRACT_DIR already has the requested build. Skipping download and extraction."
-            remove_unused_llamacpp
-            return 0
-        fi
-        echo "Existing $LLAMA_EXTRACT_DIR was built from a different release; it is replaced once the new build is ready."
-    fi
-
-    # Stage beside the target so the build in use stays intact until the replacement is verified;
-    # LlamaCPPManager resolves the exact engine path, so it never picks up the staging directory.
-    local staging_dir="$LLAMA_EXTRACT_DIR.tmp"
-    local old_dir="$LLAMA_EXTRACT_DIR.old"
-    rm -rf "$staging_dir" "$old_dir"
-    mkdir -p "$staging_dir"
-
-    if ! download_file "$LLAMA_RELEASE_URL" "$LLAMA_DOWNLOAD_FILE" "Llama.cpp binaries"; then
-        rm -rf "$staging_dir"
+    if [[ -z "$LLAMA_SHA256" ]]; then
+        print_error "No SHA-256 is pinned for llama.cpp $LLAMACPP_VERSION ($LLAMACPP_BACKEND); add it to lb_llamacpp_sha256 in llamacpp_backend.sh."
         return 1
     fi
 
-    echo "Extracting to $staging_dir..."
-    if ! tar -xzf "$LLAMA_DOWNLOAD_FILE" -C "$staging_dir"; then
-        print_error "Extraction failed."
-        rm -f "$LLAMA_DOWNLOAD_FILE"
-        rm -rf "$staging_dir"
+    # Staged beside the target and swapped in once checked, so the build in use stays intact until
+    # then; the manifest records the archive (backend and precision included), so a switch
+    # re-downloads. LlamaCPPManager resolves the exact engine path, so it never picks up the staging
+    # directory.
+    if ! install_verified_archive --after has_llamacpp_binaries "llama.cpp ($LLAMACPP_BACKEND)" \
+        "$LLAMA_RELEASE_URL" "$LLAMA_SHA256" "$LLAMA_EXTRACT_DIR"; then
         return 1
     fi
-    rm -f "$LLAMA_DOWNLOAD_FILE"
-
-    shopt -s dotglob
-    local entries=("$staging_dir"/*)
-    shopt -u dotglob
-    if [[ ${#entries[@]} -eq 1 && -d "${entries[0]}" ]]; then
-        local inner_dir="${entries[0]}"
-        echo "Flattening nested directory: $(basename "$inner_dir")"
-        if ! mv "$inner_dir"/* "$staging_dir"/; then
-            print_error "Failed to flatten extracted directory."
-            rm -rf "$staging_dir"
-            return 1
-        fi
-        rmdir "$inner_dir" || true
-    fi
-
-    if [[ "$(find "$staging_dir" -name 'llama-*' -type f | wc -l)" -eq 0 ]]; then
-        print_error "The downloaded archive contains no llama.cpp binaries."
-        rm -rf "$staging_dir"
-        return 1
-    fi
-    echo "$stamp" > "$staging_dir/.llamacpp-release"
-
-    # Keep the previous build aside until the new one is in place, so a failed move can roll back.
-    echo "Installing the new build into $LLAMA_EXTRACT_DIR"
-    if [[ -d "$LLAMA_EXTRACT_DIR" ]] && ! mv "$LLAMA_EXTRACT_DIR" "$old_dir"; then
-        print_error "Failed to move the previous build aside."
-        rm -rf "$staging_dir"
-        return 1
-    fi
-    if ! mv "$staging_dir" "$LLAMA_EXTRACT_DIR"; then
-        print_error "Failed to move the new build into place."
-        if [[ -d "$old_dir" ]]; then
-            mv "$old_dir" "$LLAMA_EXTRACT_DIR" || true
-        fi
-        rm -rf "$staging_dir"
-        return 1
-    fi
-    rm -rf "$old_dir"
 
     # Only now is it safe to drop the other backend's build.
     remove_unused_llamacpp
 
     print_success "Llama.cpp extraction complete."
     return 0
+}
+
+# has_llamacpp_binaries <dir> -- whether the extracted release holds llama.cpp's programs.
+has_llamacpp_binaries() {
+    if [[ "$(find "$1" -name 'llama-*' -type f | wc -l)" -eq 0 ]]; then
+        print_error "The downloaded archive contains no llama.cpp binaries."
+        return 1
+    fi
 }
 
 # Install the runtime the SYCL build links against: the llamacpp-sycl group of
@@ -254,19 +182,10 @@ install_gguf_parser() {
     print_step "4. GGUF Parser Installation"
     
     local gguf_parser_path="$GGUF_PARSER_INSTALL_DIR/$GGUF_PARSER_BINARY_NAME"
-    
-    if is_executable "$gguf_parser_path"; then
-        print_success "GGUF Parser is already installed at $gguf_parser_path. Skipping installation."
-        return 0
-    fi
-    
-    mkdir -p "$GGUF_PARSER_INSTALL_DIR"
 
-    if ! download_file "$GGUF_PARSER_RELEASE_URL" "$gguf_parser_path" "GGUF Parser binary"; then
+    if ! install_verified_file "GGUF Parser" "$GGUF_PARSER_RELEASE_URL" "$GGUF_PARSER_SHA256" "$gguf_parser_path"; then
         return 1
     fi
-    
-    chmod +x "$gguf_parser_path"
 
     if is_executable "$gguf_parser_path"; then
         print_success "GGUF Parser installed successfully at $gguf_parser_path"
@@ -308,7 +227,7 @@ provision_ovms() {
             optimum openvino transformers torch >/dev/null 2>&1; then
         print_success "OVMS conversion environment found at $SHARED_OVMS_EXPORT_VENV."
     elif [[ -x "$SHARED_OVMS_EXPORT_VENV/bin/optimum-cli" ]]; then
-        print_warning "OVMS conversion environment at $SHARED_OVMS_EXPORT_VENV is incomplete (an earlier sync did not finish)."
+        print_warning "OVMS conversion environment at $SHARED_OVMS_EXPORT_VENV is incomplete (an earlier install did not finish)."
         print_warning "The conversion environment will be synced when multiserve or an OVMS worker starts."
     else
         print_warning "OVMS conversion environment not found at $SHARED_OVMS_EXPORT_VENV."

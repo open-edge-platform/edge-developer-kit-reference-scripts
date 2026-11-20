@@ -9,7 +9,7 @@ the same `start.sh <args>` + `/healthcheck` contract as everything else under
 | | |
 |---|---|
 | Upstream | `microservices/audio-analyzer` |
-| Pinned tag | `tag` in [`workers/oep-services.json`](../../oep-services.json) |
+| Pinned tag | `edge-ai-libraries.tag` in [`workers/upstream.json`](../../upstream.json) |
 | Port | `8023` |
 | Backend | Whisper exported to OpenVINO (`openvino-genai`) on CPU, GPU or NPU |
 | API | OpenAI-compatible `/v1/audio/transcriptions`, NDJSON `/v1/audio/transcriptions/stream`, Realtime-style WebSocket `/v1/realtime` |
@@ -17,11 +17,11 @@ the same `start.sh <args>` + `/healthcheck` contract as everything else under
 ## How the upstream source gets here
 
 The service source is **not committed** to this repository. `start.sh` and
-`start.ps1` call `oep_fetch services/speech-to-text/oep` (from
+`start.ps1` call `upstream_fetch services/speech-to-text/oep` (from
 `workers/scripts/worker-common.sh`), which runs
-`workers/oep-setup.sh fetch services/speech-to-text/oep`. That script reads
-[`workers/oep-services.json`](../../oep-services.json), the catalogue of OEP
-microservices Edge AI Studio uses together with the pinned release `tag`
+`workers/upstream-setup.sh fetch services/speech-to-text/oep`. That script reads
+[`workers/upstream.json`](../../upstream.json), the catalogue of upstream
+code Edge AI Studio fetches, with the pinned edge-ai-libraries `tag`
 (this worker's entry names `microservices/audio-analyzer`), and copies
 `microservices/audio-analyzer` at that release tag into
 `thirdparty/audio-analyzer` (gitignored) out of the one sparse clone of
@@ -31,10 +31,10 @@ when the copy already carries that exact tag
 everything the worker adapts goes through upstream's own configuration (see
 below).
 
-This runs on every start; it is cheap and idempotent. Bump the tag (`workers/oep-setup.sh pin <tag>`) to move to
+This runs on every start; it is cheap and idempotent. Bump the tag (`workers/upstream-setup.sh pin <tag>`) to move to
 a newer upstream; the next start remakes the copy. To try a different release
 without editing the repository, set `EDGE_AI_LIBRARIES_REF=<tag>` for one
-start. `workers/oep-setup.sh` lists every OEP-backed worker with its pin,
+start. `workers/upstream-setup.sh` lists every OEP-backed worker with its pin,
 `check` verifies the copies, and `info services/speech-to-text/oep` shows
 what this entry resolves to.
 
@@ -89,9 +89,18 @@ adds only (through `worker_common.oep`):
 - `/healthcheck`, answering 503 until upstream's startup (first-run OpenVINO
   export + warm-up) has finished, then 200 with `upstream`, `upstream_tag`,
   `active_model`, `device` and `startup_seconds`.
+- The language Whisper detected, which upstream's OpenVINO GenAI path drops
+  (`_report_detected_language`, patched onto upstream's classes once they are
+  imported): `language=auto` makes Whisper detect it, where upstream would
+  hand it on as `<|auto|>` and fail; the language `WhisperPipeline.generate`
+  detected comes back as `language` (`"ms"`) in `verbose_json`, the SSE
+  `transcript.text.done` and the realtime socket's `completed` event; and a
+  request that names no language reports the one Whisper heard in it, not
+  the one its session reported first (so on `/v1/realtime` every utterance
+  has its own). A language that is sent is decoded in, and reported, as sent.
 
 **Dependencies** — upstream's `requirements.txt` at the pinned tag, installed
-the way its Dockerfile does (`"install"` in `workers/oep-services.json`: pip's
+the way its Dockerfile does (`"install"` in `workers/upstream.json`: pip's
 handling of the CPU torch index the file names, then `torchcodec` uninstalled).
 Upstream owns those pins and their security fixes: a tag bump needs no change
 here. [`overrides.txt`](overrides.txt) holds the only deviation, `pywhispercpp`
@@ -105,10 +114,10 @@ Whisper exports on the NPU (`!self_attn_nodes.empty()` at compile,
 `unordered_map::at` at the first `generate`).
 
 Everything else — chunking with `ffmpeg` from `thirdparty/ffmpeg` or `PATH`
-and session handling — is upstream behaviour. That includes `language`: the
-transcription routes default an omitted or empty one to `en`, so the app
-always sends one to this backend and offers no Auto-detect here (the OpenVINO
-Model Server backend has it).
+and session handling — is upstream behaviour. That includes the default
+`language`: the transcription routes take an omitted or empty one as `en`, so
+a client that wants it detected sends `auto`. The app always sends one to
+this backend: Auto-detect (`auto`, its default) or the language picked.
 
 ## Models on disk
 

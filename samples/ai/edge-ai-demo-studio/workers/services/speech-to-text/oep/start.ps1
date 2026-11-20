@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Start the speech-to-text worker: the OEP audio-analyzer microservice, fetched at the tag
-# pinned in workers\oep-services.json and run unmodified.
+# pinned in workers\upstream.json and run unmodified.
 
 $ErrorActionPreference = "Stop"
 $SCRIPT_DIR = $PSScriptRoot
@@ -25,7 +25,7 @@ if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue) -or -not (Get-Comman
     exit 1
 }
 
-Invoke-OepFetch services/speech-to-text/oep
+Invoke-UpstreamFetch services/speech-to-text/oep
 
 Start-OepWorker @args
 exit $LASTEXITCODE

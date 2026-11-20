@@ -17,6 +17,7 @@ import {
   NO_VOICE_ACTIVITY,
   type VoiceActivity,
 } from '../lib/live/protocol'
+import { sttProtocol } from '../lib/live/stt-protocol'
 import { useLiveStream } from './use-live-stream'
 
 type LivePhase = 'idle' | 'starting' | 'active' | 'flushing'
@@ -58,15 +59,16 @@ export function useLiveTranscription(
     setPhase('starting')
     try {
       await live.start({
-        language,
-        backend,
-        vad: {
-          pauseSeconds,
-          threshold: getSttVadThreshold(backend, vadSensitivity),
-        },
-        onTranscript: (t) => {
-          if (isLatest()) setTranscripts((prev) => [...prev, t])
-        },
+        protocol: sttProtocol(backend, {
+          language,
+          vad: {
+            pauseSeconds,
+            threshold: getSttVadThreshold(backend, vadSensitivity),
+          },
+          onTranscript: (t) => {
+            if (isLatest()) setTranscripts((prev) => [...prev, t])
+          },
+        }),
         onVoiceActivity: (activity) => {
           if (isLatest()) setVoice(activity)
         },

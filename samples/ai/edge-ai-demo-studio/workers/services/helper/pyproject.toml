@@ -6,8 +6,8 @@ readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "worker-common",
-    "openvino==2026.2.1",
-    "torch==2.13.0",
+    "openvino==2026.4.1",
+    "torch==2.15.0",
 ]
 
 [tool.uv.sources]

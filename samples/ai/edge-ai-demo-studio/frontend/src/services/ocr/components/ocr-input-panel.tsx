@@ -12,7 +12,6 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { ImageSourcePanel } from '@/components/common/image-source-panel'
-import { TruncatedText } from '@/components/common/truncated-text'
 import { Label } from '@/components/ui/label'
 import {
   Select,
@@ -22,7 +21,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import type { useImageSource } from '@/hooks/use-image-source'
-import type { OcrModelSummary } from '../config'
 import type { OcrLanguage, OcrRegion, OcrTask } from '../hooks'
 import { OcrImageOverlay } from './ocr-image-overlay'
 
@@ -37,8 +35,8 @@ const OCR_TASK_OPTIONS: { value: OcrTask; label: string; icon: LucideIcon }[] =
 interface OcrInputPanelProps {
   /** The picked image and the webcam (`useImageSource`). */
   image: ReturnType<typeof useImageSource>
-  /** The active model: a VL model takes a task, a PP-OCR one a language. */
-  model: OcrModelSummary
+  /** A VL model takes a task, a PP-OCR one a language. */
+  isVlModel: boolean
   task: OcrTask
   onTaskChange: (task: OcrTask) => void
   /** Recognition languages from the worker; empty until they load. */
@@ -55,7 +53,7 @@ interface OcrInputPanelProps {
 /** The image to read, under the model's one control: the task (VL) or the language (PP-OCR). */
 export function OcrInputPanel({
   image,
-  model,
+  isVlModel,
   task,
   onTaskChange,
   languages,
@@ -68,20 +66,6 @@ export function OcrInputPanel({
   isRunning,
 }: OcrInputPanelProps) {
   const selectedLanguage = languages.find((l) => l.key === lang)
-  const isVlModel = model.kind === 'vl'
-
-  const modelSummary = (
-    <div
-      className="border-border bg-muted/20 space-y-1 rounded-lg border p-3"
-      data-testid="ocr-model-capabilities"
-    >
-      <div className="flex min-w-0 items-baseline gap-1.5 text-xs">
-        <span className="text-muted-foreground shrink-0">Model</span>
-        <TruncatedText text={model.label} className="font-medium" />
-      </div>
-      <p className="text-muted-foreground text-xs">{model.capabilities}</p>
-    </div>
-  )
 
   return (
     <ImageSourcePanel
@@ -94,7 +78,6 @@ export function OcrInputPanel({
       isRunning={isRunning}
       headerContent={
         <div className="space-y-3">
-          {modelSummary}
           {isVlModel ? (
             <div className="space-y-2">
               <Label

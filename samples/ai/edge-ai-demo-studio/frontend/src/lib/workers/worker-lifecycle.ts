@@ -36,6 +36,7 @@ import {
   beginStartupAttempt,
   cancelStartupAttempt,
   completeStartupAttempt,
+  currentStartupAttempt,
   failStartupAttempt,
   recordStartupEvent,
 } from '@/lib/workers/startup-telemetry'
@@ -142,6 +143,7 @@ async function startWorkerProcess(
       recordStartupEvent(processName, attemptId, event),
   })
   if (spawned.kind === 'failed') throw new Error(spawned.error)
+  // 'cancelled': a stop came while it waited, and the row already says so.
 }
 
 async function setStatus(
@@ -165,7 +167,11 @@ async function startOnMode(
     return
   }
   if (mode === 'worker') {
-    await startWorkerProcess(service, attemptId)
+    // Not awaited: the spawn may wait for another worker's install into workers/.venv (see
+    // shared-env.ts), longer than a hook may hold the request for.
+    startWorkerProcess(service, attemptId).catch((error) =>
+      failStart(service, payload, attemptId, error),
+    )
     return
   }
 
@@ -182,6 +188,32 @@ async function startOnMode(
   })
 }
 
+/** Start attempt `attemptId` failed: the row moves to `error`, unless a stop or newer start came first. */
+async function failStart(
+  service: Service,
+  payload: BasePayload,
+  attemptId: string,
+  error: unknown,
+): Promise<void> {
+  const processName = getInstanceProcessName(service)
+  const message =
+    error instanceof Error ? error.message : 'Unknown startup error'
+  logger.error(`Service ${service.type} failed to start: ${message}`)
+  if (currentStartupAttempt(processName) !== attemptId) return
+  recordStartupEvent(processName, attemptId, {
+    type: 'failure',
+    summary: message,
+  })
+  try {
+    await setStatus(payload, service.id, {
+      status: 'error',
+      statusMessage: message,
+    })
+  } catch (updateError) {
+    logger.error(`Failed to update status for ${service.name}:`, updateError)
+  }
+}
+
 /** Starts an instance on its execution mode as a new start attempt; a failure moves the row to `error`. */
 export async function startInstance(
   service: Service,
@@ -195,17 +227,7 @@ export async function startInstance(
     // What this run uses, for "Restart to apply" (see applied-config.ts).
     recordAppliedConfig(withPort)
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : 'Unknown startup error'
-    logger.error(`Service ${service.type} failed to start: ${message}`)
-    recordStartupEvent(processName, attemptId, {
-      type: 'failure',
-      summary: message,
-    })
-    await setStatus(payload, service.id, {
-      status: 'error',
-      statusMessage: message,
-    })
+    await failStart(service, payload, attemptId, error)
   }
 }
 

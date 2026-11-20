@@ -1,7 +1,10 @@
 // Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-// Types shared by the two live transcription backends' protocols.
+// Types shared by the live protocols: the two transcription protocols' (OEP realtime; OVMS and
+// MERaLiON audio stream) and diarization's.
+
+import type { TimedText } from '../transcript-export'
 
 export interface LiveTranscript {
   text: string
@@ -9,6 +12,14 @@ export interface LiveTranscript {
   start: number
   /** Seconds, like `start`. */
   end: number
+}
+
+/** Word timings of an utterance already emitted as a `LiveTranscript`, on the same timeline. */
+export interface LiveWords {
+  /** The utterance's `start` and `end`, as its transcript had them. */
+  start: number
+  end: number
+  words: TimedText[]
 }
 
 /** The worker-side VAD's state, so it lags the audio by the worker's analysis window. */
@@ -31,7 +42,19 @@ export interface LiveVadSettings {
   threshold: number
 }
 
-/** One backend's side of the live socket. */
+/** What a transcription protocol asks the worker for, and where its answers go. */
+export interface SttStreamSettings {
+  language: string
+  /** Unset: the worker's own defaults. */
+  vad?: LiveVadSettings
+  /** Ask for each utterance's word timings (OVMS on Qwen3-ASR); ignored where unsupported. */
+  wordTimestamps?: boolean
+  onTranscript?: (transcript: LiveTranscript) => void
+  /** Each utterance's word timings, after its transcript. */
+  onWords?: (words: LiveWords) => void
+}
+
+/** One worker's side of the live socket. */
 export interface LiveProtocol {
   path: string
   params: URLSearchParams
@@ -43,16 +66,13 @@ export interface LiveProtocol {
   handleMessage: (data: string, ws: WebSocket) => void
 }
 
+/** What the session gives a protocol, whichever worker it speaks to. */
 export interface ProtocolContext {
-  language: string
-  /** Unset: the worker's own defaults. */
-  vad?: LiveVadSettings
   latencyLog: boolean
   /** Seconds since capture started. */
   elapsed: () => number
   /** Offset from capture time to the reference recording timeline, seconds. */
   timeOffset: () => number
-  emit: (transcript: LiveTranscript) => void
   voice: (activity: VoiceActivity) => void
   /** Records an utterance for the demo's Live metrics. */
   measured: (work: {
@@ -62,3 +82,6 @@ export interface ProtocolContext {
   }) => void
   onError?: (message: string) => void
 }
+
+/** A protocol, built once the session's context exists (`LiveStartOptions.protocol`). */
+export type LiveProtocolFactory = (ctx: ProtocolContext) => LiveProtocol

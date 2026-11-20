@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import threading
 from pathlib import Path
 
 import yaml
@@ -140,12 +141,72 @@ def _publish_native_environment(args: argparse.Namespace) -> None:
         os.environ.setdefault(key, value)
 
 
+def _requested_language(language: str | None) -> str | None:
+    """``ms``, ``<|ms|>`` -> ``ms``; none, ``""`` and ``auto`` -> None: Whisper detects the language."""
+    code = (language or "").strip().strip("<|>").strip().lower()
+    return None if code in ("", "auto") else code
+
+
+def _report_detected_language() -> None:
+    """Auto-detect and the detected language, which upstream's OpenVINO GenAI path lacks.
+
+    Upstream passes ``language=auto`` on to Whisper as ``<|auto|>``, which it rejects, and drops the
+    language ``WhisperPipeline.generate`` detected, so ``verbose_json`` (and the realtime socket's
+    ``completed`` event) had no ``language`` unless one was sent. Here ``auto`` detects, the detected code
+    (``ms``) comes back as ``language``, and a request that names none reports what Whisper heard in it,
+    not the language its session reported first. A language that is sent is still the one reported.
+    """
+    import pipeline  # noqa: PLC0415  (upstream's modules, importable once load_upstream_main ran)
+    from components.asr.openvino_genai import whisper as genai_whisper  # noqa: PLC0415
+
+    heard = threading.local()  # generate() runs in the request's thread; requests run concurrently
+
+    class _Recorder:
+        """The WhisperPipeline, keeping the language each generate() detected."""
+
+        def __init__(self, pipe):
+            self._pipe = pipe
+
+        def generate(self, *args, **kwargs):
+            result = self._pipe.generate(*args, **kwargs)
+            heard.language = _requested_language(getattr(result, "language", None))
+            return result
+
+        def __getattr__(self, name):
+            return getattr(self._pipe, name)
+
+    upstream_transcribe = genai_whisper.Whisper.transcribe
+
+    def transcribe(self, audio_path: str, temperature: float = 0.0, language: str | None = None) -> dict:
+        if not isinstance(self.model, _Recorder):
+            self.model = _Recorder(self.model)
+        language = _requested_language(language)
+        heard.language = None
+        result = upstream_transcribe(self, audio_path, temperature=temperature, language=language)
+        return {**result, "language": language or heard.language}
+
+    genai_whisper.Whisper.transcribe = transcribe
+
+    def per_request(upstream):
+        def run(self, input, language: str | None = None):
+            language = _requested_language(language)
+            if language is None:
+                self._session_state["language"] = None
+            return upstream(self, input, language=language)
+
+        return run
+
+    pipeline.Pipeline.transcribe = per_request(pipeline.Pipeline.transcribe)
+    pipeline.Pipeline.stream_transcribe = per_request(pipeline.Pipeline.stream_transcribe)
+
+
 ARGS = _parse_args()
 _publish_native_environment(ARGS)
 
 STATE = UpstreamState()
 try:
     app = load_upstream_main(APP_DIR, "audio_analyzer_main").app
+    _report_detected_language()
 except Exception as exc:  # noqa: BLE001 - surfaced through /healthcheck
     app = failed_app(SERVICE_ID, STATE, exc, logger)
 else:

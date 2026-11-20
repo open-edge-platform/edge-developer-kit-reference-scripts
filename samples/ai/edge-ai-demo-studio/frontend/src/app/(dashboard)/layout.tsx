@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
 import { connection } from 'next/server'
 import './globals.css'
 import { DashboardShell } from '@/components/shell/dashboard-shell'
@@ -14,11 +13,6 @@ import {
   type Theme,
 } from '@/lib/settings/app-settings'
 import { readAppSettingsSafe } from '@/lib/settings/app-settings-store'
-
-const inter = Inter({
-  variable: '--font-inter',
-  subsets: ['latin'],
-})
 
 const APP_NAME = 'Edge AI Demo Studio'
 
@@ -62,7 +56,7 @@ export default async function RootLayout({
       <head>
         <script>{THEME_INIT_SCRIPT}</script>
       </head>
-      <body className={`${inter.variable} font-sans antialiased`}>
+      <body className="font-sans antialiased">
         <Providers initialTheme={theme}>
           <DashboardShell>{children}</DashboardShell>
           <Toaster richColors closeButton />

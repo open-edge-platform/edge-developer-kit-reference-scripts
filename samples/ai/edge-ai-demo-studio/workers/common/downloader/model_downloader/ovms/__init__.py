@@ -22,10 +22,12 @@ from .fixups import (
     repair_rerank_tokenizer,
 )
 from .pull import (
+    NPU_CACHE_DIR,
     PROGRESS_PREFIXES,
     OvmsPuller,
     build_pull_command,
-    pinned_cpu_args,
+    npu_cache_config,
+    plugin_config_args,
     pull,
     pull_device,
     serve_lock_path,
@@ -34,6 +36,7 @@ from .pull import (
 __all__ = [
     "EXPORT_PROFILES",
     "OVMS_EXPORT_VENV_ENV",
+    "NPU_CACHE_DIR",
     "OVMS_HOME_ENV",
     "PROGRESS_PREFIXES",
     "RERANK_TOKENIZER_MARKER",
@@ -46,9 +49,10 @@ __all__ = [
     "embeddings_pooling",
     "export_profile_for",
     "has_optimum_cli",
+    "npu_cache_config",
     "optimum_home",
     "ovms_env",
-    "pinned_cpu_args",
+    "plugin_config_args",
     "pull",
     "pull_device",
     "repair_rerank_tokenizer",

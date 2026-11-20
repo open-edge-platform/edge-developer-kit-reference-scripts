@@ -13,7 +13,7 @@ from audio_input_stream.config import (
 )
 from audio_input_stream.latency import LatencyTracker
 from audio_input_stream.segmenter import UtteranceSegmenter
-from audio_input_stream.stream import handle_audio_stream
+from audio_input_stream.stream import UtteranceProcessor, handle_audio_stream
 from audio_input_stream.vad import AlgoOptions, SileroVadOptions, get_silero_model
 
 __all__ = [
@@ -24,6 +24,7 @@ __all__ = [
     "AlgoOptions",
     "LatencyTracker",
     "SileroVadOptions",
+    "UtteranceProcessor",
     "UtteranceSegmenter",
     "get_silero_model",
     "handle_audio_stream",

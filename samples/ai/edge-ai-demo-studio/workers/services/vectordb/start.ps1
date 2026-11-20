@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # With `--db-backend pgvector`, first fetches the OEP document-ingestion microservice (pinned in
-# workers\oep-services.json); the default FAISS backend needs nothing extra.
+# workers\upstream.json); the default FAISS backend needs nothing extra.
 
 $ErrorActionPreference = "Stop"
 $SCRIPT_DIR = $PSScriptRoot
@@ -29,7 +29,7 @@ function Test-WantsPgvector {
 Test-UV
 
 if (Test-WantsPgvector -Arguments $args) {
-    Invoke-OepFetch services/vectordb
+    Invoke-UpstreamFetch services/vectordb
 }
 
 Start-Worker @args

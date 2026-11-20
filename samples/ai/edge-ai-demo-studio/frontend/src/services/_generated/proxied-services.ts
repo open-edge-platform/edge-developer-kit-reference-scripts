@@ -19,6 +19,7 @@ export const proxiedServiceTypes: readonly string[] = [
   'geti-classifier',
   'image-based-video-search',
   'image-generation',
+  'image-upscaling',
   'lipsync',
   'loss-prevention',
   'medical-scribe-database',
@@ -32,5 +33,6 @@ export const proxiedServiceTypes: readonly string[] = [
   'text-generation',
   'text-to-speech',
   'vectordb',
+  'video-generation',
   'wake-word-detection',
 ]

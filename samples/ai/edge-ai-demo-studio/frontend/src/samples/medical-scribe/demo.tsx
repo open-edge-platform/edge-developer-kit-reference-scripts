@@ -74,6 +74,8 @@ function MedicalScribeDemoInner({ sample: _sample }: { sample: Sample }) {
   const recording = useLiveRecording({
     updateSession,
     processAudio: audio.processAudio,
+    diarizationEnabled: diarizationGroup.enabled,
+    profiles,
   })
 
   // The pane shown when they are stacked. All stay mounted, so switching never interrupts a
@@ -265,6 +267,7 @@ function MedicalScribeDemoInner({ sample: _sample }: { sample: Sample }) {
             }
             dialogueCreatedAt={selectedSession?.dialogueCreatedAt ?? ''}
             isRecording={selectedIsRecording}
+            isMicStarting={recording.micStarting}
             isProcessing={isProcessing}
             audioDuration={
               selectedSessionId
@@ -309,6 +312,7 @@ function MedicalScribeDemoInner({ sample: _sample }: { sample: Sample }) {
               ? {
                   sessionName: recordingSession?.name ?? 'Session',
                   seconds: recording.recordingSeconds,
+                  starting: recording.micStarting,
                 }
               : null
           }

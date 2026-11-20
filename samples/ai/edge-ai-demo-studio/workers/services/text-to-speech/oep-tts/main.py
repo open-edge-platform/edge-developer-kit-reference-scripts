@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """Text-to-speech worker for models without a built-in worker (SpeechT5): the OEP
-``text-to-speech`` microservice, fetched at the tag in ``workers/oep-services.json`` and imported
+``text-to-speech`` microservice, fetched at the tag in ``workers/upstream.json`` and imported
 unchanged. The wrapper maps worker flags to ``TEXT_TO_SPEECH__*`` overrides, keeps models under
 ``models/tts/oep-tts``, keeps session storage per instance and holds ``/healthcheck`` at 503 until
 upstream's startup (export, preload, warm-up) finishes.

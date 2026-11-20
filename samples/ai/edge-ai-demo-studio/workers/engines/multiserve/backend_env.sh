@@ -15,7 +15,7 @@ for backend_helper in \
     "$REPO_ROOT/scripts/bash/llamacpp_backend.sh" \
     "$REPO_ROOT/scripts/llamacpp_backend.sh"; do
     if [ -f "$backend_helper" ]; then
-        # shellcheck source=../../../scripts/bash/llamacpp_backend.sh disable=SC1091
+        # shellcheck source=SCRIPTDIR/../../../scripts/bash/llamacpp_backend.sh
         source "$backend_helper"
         break
     fi

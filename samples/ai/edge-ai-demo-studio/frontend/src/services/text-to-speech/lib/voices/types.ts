@@ -9,3 +9,10 @@ export interface VoiceInfo {
   /** Language (and region) it speaks, as the voice list groups it. */
   language: string
 }
+
+/** A dialect a model reads its text in on request. */
+export interface DialectInfo {
+  /** What the worker is asked for (`dialect`). */
+  id: string
+  label: string
+}

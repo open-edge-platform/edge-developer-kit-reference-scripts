@@ -35,7 +35,7 @@ internal port:
   [`workers/common/ovms-export-qwen3-asr`](../../../common/ovms-export-qwen3-asr).
   `model_downloader.ovms` picks that environment from the model id
   (`EXPORT_PROFILES`); `start.sh` / `start.ps1` provision it the first time
-  such a model is selected (`oep-setup.sh fetch
+  such a model is selected (`upstream-setup.sh fetch
   common/ovms-export-qwen3-asr`, then `uv sync --project` on it), so nothing
   is installed for users who never pick Qwen3-ASR. Qwen3-ASR transcribes
   without timestamps: `verbose_json`, `srt` and `vtt` get one segment spanning
@@ -98,7 +98,16 @@ HTTP).
   utterance (`text` empty when nothing was recognised; seconds of received
   audio; `latency` = `endpoint_ms`, `queue_ms`, `stt_ms`, `e2e_ms`),
   `{"type": "error", "message"}`, and `{"type": "done"}` after a stop.
-- Query parameters: `language` (`auto` to detect it per utterance), `latency_log`, and the segmentation tuning
+- With `word_timestamps=true` on Qwen3-ASR, each non-empty transcript is
+  followed by `{"type": "words", "start", "end", "words"}`: the utterance's
+  word timings from the forced aligner (`{word, start, end}` in seconds of
+  received audio, `start`/`end` identifying the utterance). The aligner starts
+  when such a stream connects, and runs beside transcription so it never
+  delays the next transcript; a stop waits up to 10 s for it before `done`.
+  No `words` message comes for an utterance that failed to align, nor on
+  Whisper (the medical scribe uses these timings to split speakers within an
+  utterance).
+- Query parameters: `language` (`auto` to detect it per utterance), `latency_log`, `word_timestamps`, and the segmentation tuning
   values of `audio_input_stream.DEFAULT_CONFIG` (`pause_duration`, the
   silence in seconds that ends an utterance; `vad_threshold`, Silero's speech
   probability; `max_continuous_speech_s`, `preroll_duration`,

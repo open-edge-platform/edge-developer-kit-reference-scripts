@@ -658,6 +658,63 @@ async function setupThirdparty(onLog) {
   return runSetupScript(scriptPath, path.dirname(scriptPath), onLog, [thirdpartyPath], "thirdparty");
 }
 
+/**
+ * Lines naming the installed third-party tools that are damaged, were changed since setup installed
+ * them, or were never checked (verify_thirdparty.ps1/.sh, which compares sizes against the manifests
+ * setup wrote); empty when all are intact or the check could not run.
+ */
+function checkThirdpartyInstalls() {
+  const scriptName = isWindows ? "verify_thirdparty.ps1" : "verify_thirdparty.sh";
+  const scriptPath = getEnvironmentPath(
+    path.join(__dirname, "..", "scripts", isWindows ? "win" : "bash", scriptName),
+    path.join(getRuntimeRoot(), "scripts", scriptName)
+  );
+  if (!fs.existsSync(scriptPath)) return Promise.resolve([]);
+
+  const command = isWindows ? "powershell.exe" : "/bin/bash";
+  const args = isWindows
+    ? ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", scriptPath, "-ProjectRoot", getProjectRoot()]
+    : [scriptPath, getProjectRoot()];
+  return new Promise((resolve) => {
+    const check = spawn(command, args, { windowsHide: true });
+    const timer = setTimeout(() => check.kill(), 60_000);
+    let output = "";
+    check.stdout.on("data", (chunk) => {
+      output += chunk;
+    });
+    check.on("error", () => {
+      clearTimeout(timer);
+      resolve([]);
+    });
+    // Exit code 1: something to report, a line each.
+    check.on("close", (code) => {
+      clearTimeout(timer);
+      resolve(code === 1 ? output.split(/\r?\n/).filter((line) => line.trim()) : []);
+    });
+  });
+}
+
+/**
+ * For a launch that skips setup: when an installed tool is damaged or was changed, asks whether to
+ * run setup again, which downloads it again. True to repair.
+ */
+async function askToRepairThirdparty() {
+  const problems = await checkThirdpartyInstalls();
+  if (problems.length === 0) return false;
+  console.warn(`Installed tools to repair:\n${problems.join("\n")}`);
+  const { response } = showDialog(null, {
+    type: "warning",
+    buttons: ["Repair", "Continue anyway"],
+    defaultId: 0,
+    cancelId: 1,
+    title: "Installed tools need repair",
+    message:
+      "Some installed tools are damaged, were changed since setup installed them, or were never checked.",
+    detail: `${problems.join("\n")}\n\nRepair runs setup again, which downloads them again.`,
+  });
+  return response === 0;
+}
+
 /** Runs the thirdparty and per-worker setup scripts, reporting progress on the splash screen. */
 async function setupWorkers(splash, startProgress = 0) {
   const onLog = (line) => sendSplashLog(splash, line);
@@ -1732,7 +1789,7 @@ app.whenReady().then(async () => {
 
   let splash = null;
 
-  if (isSetupComplete() && !reconfigure) {
+  if (isSetupComplete() && !reconfigure && !(await askToRepairThirdparty())) {
     console.log("Setup already complete, skipping setup.");
     try {
       // Something to look at while the server starts; a --hidden start shows nothing until it is up.
@@ -1749,7 +1806,7 @@ app.whenReady().then(async () => {
     return;
   }
 
-  // First run or --reconfigure: the full setup behind the splash screen.
+  // First run, --reconfigure or a repair: the full setup behind the splash screen.
   try {
     splash = await createSplashScreen();
     setupRunning = true;

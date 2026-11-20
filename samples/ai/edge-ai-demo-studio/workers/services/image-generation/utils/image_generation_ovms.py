@@ -13,7 +13,7 @@ from typing import AsyncContextManager
 
 import worker_common
 from model_downloader import OvmsError, ovms_env, ovms_pull
-from model_downloader.ovms import add_pipeline_tokenizers, pinned_cpu_args, serve_lock_path
+from model_downloader.ovms import add_pipeline_tokenizers, plugin_config_args, serve_lock_path
 from utils.util import create_cache_directory, validate_and_sanitize_cache_dir
 from worker_common import OvmsServer, async_shared_model_lock
 
@@ -134,7 +134,7 @@ def serving_args(port: int, model_path: str, model_id: str, device: str) -> list
         "--task", "image_generation",
         "--target_device", device,
         *_npu_args(device, model_id),
-        *pinned_cpu_args(device),
+        *plugin_config_args(device, os.path.join(model_path, model_id)),
     ]
 
 

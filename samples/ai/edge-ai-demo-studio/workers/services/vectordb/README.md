@@ -46,9 +46,9 @@ therefore the one every other OEP pgvector consumer expects.
 
 The upstream source is **not vendored**. `start.sh` / `start.ps1` clone it on
 demand when the pgvector backend is selected by calling
-`oep_fetch services/vectordb` (`workers/oep-setup.sh fetch services/vectordb`).
-That script reads `workers/oep-services.json`, the catalogue of OEP
-microservices Edge AI Studio uses together with the pinned release `tag`, and
+`upstream_fetch services/vectordb` (`workers/upstream-setup.sh fetch services/vectordb`).
+That script reads `workers/upstream.json`, the catalogue of upstream code
+Edge AI Studio fetches, with the pinned edge-ai-libraries `tag`, and
 copies `microservices/document-ingestion/pgvector` at that tag into
 `thirdparty/document-ingestion` (gitignored) out of the one sparse clone of
 `edge-ai-libraries` it keeps under `workers/thirdparty/`:
@@ -62,9 +62,9 @@ workers/services/vectordb/thirdparty/
 ```
 
 This is the same shape as `workers/services/speech-to-text/oep`; there is no
-`overlay/` because nothing in the copy needs replacing. `tag` in
-`workers/oep-services.json` is the single place the release tag lives: bump
-it (`workers/oep-setup.sh pin <tag>`) and restart the worker (the start
+`overlay/` because nothing in the copy needs replacing. `edge-ai-libraries.tag`
+in `workers/upstream.json` is the single place the release tag lives: bump
+it (`workers/upstream-setup.sh pin <tag>`) and restart the worker (the start
 script remakes the copy when it is at a different tag). Nothing in the copy
 is modified; `utils/oep_upstream.py` supplies the environment its
 settings need, serves its structlog logger from the stdlib, and builds its
@@ -148,6 +148,6 @@ utils/backends/pgvector_backend.py
 utils/oep_upstream.py      locate / fetch / import the pinned upstream copy
 utils/embedded_postgres.py pgserver lifecycle
 utils/loaders.py           file loaders and splitters shared by both backends
-thirdparty/                the upstream copy (gitignored), made by workers/oep-setup.sh
-                           from the services/vectordb entry in workers/oep-services.json
+thirdparty/                the upstream copy (gitignored), made by workers/upstream-setup.sh
+                           from the services/vectordb entry in workers/upstream.json
 ```

@@ -49,7 +49,7 @@ function TtsVoicesSection({
           </span>
           <Mic aria-hidden className="h-3.5 w-3.5 shrink-0" />
           <span data-testid="tts-voices-count">
-            {plural(voices.length, 'voice')}
+            {plural(new Set(voices.map((v) => v.id)).size, 'voice')}
           </span>
           {voiceCounts.size > 0 && (
             <CollapsibleTrigger

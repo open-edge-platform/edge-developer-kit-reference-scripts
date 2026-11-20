@@ -15,6 +15,7 @@ import { service as frameGenerationMeta } from '../frame-generation/data'
 import { service as getiClassifierMeta } from '../geti-classifier/data'
 import { service as imageBasedVideoSearchMeta } from '../suites/metro-ai-suite/image-based-video-search/data'
 import { service as imageGenerationMeta } from '../image-generation/data'
+import { service as imageUpscalingMeta } from '../image-upscaling/data'
 import { service as lipsyncMeta } from '../lipsync/data'
 import { service as lossPreventionMeta } from '../suites/retail-ai-suite/loss-prevention/data'
 import { service as mcpMeta } from '../mcp/data'
@@ -29,6 +30,7 @@ import { service as syntheticImageGenerationMeta } from '../synthetic-image-gene
 import { service as textGenerationMeta } from '../text-generation/data'
 import { service as textToSpeechMeta } from '../text-to-speech/data'
 import { service as vectordbMeta } from '../vectordb/data'
+import { service as videoGenerationMeta } from '../video-generation/data'
 import { service as wakeWordDetectionMeta } from '../wake-word-detection/data'
 
 /** Metadata-only map — safe to import in non-React/config contexts. */
@@ -43,6 +45,7 @@ export const metaMap = {
   'geti-classifier': getiClassifierMeta,
   'image-based-video-search': imageBasedVideoSearchMeta,
   'image-generation': imageGenerationMeta,
+  'image-upscaling': imageUpscalingMeta,
   lipsync: lipsyncMeta,
   'loss-prevention': lossPreventionMeta,
   mcp: mcpMeta,
@@ -57,5 +60,6 @@ export const metaMap = {
   'text-generation': textGenerationMeta,
   'text-to-speech': textToSpeechMeta,
   vectordb: vectordbMeta,
+  'video-generation': videoGenerationMeta,
   'wake-word-detection': wakeWordDetectionMeta,
 }

@@ -9,12 +9,11 @@ import type { Service } from '@/services/types'
 import { getEffectiveModel } from '@/types/service'
 import { OcrInputPanel } from './components/ocr-input-panel'
 import { OcrResultsPanel } from './components/ocr-results-panel'
-import { describeOcrModel } from './config'
+import { ocrModelKind } from './config'
 import { useOcrJob, useOcrLanguages, type OcrTask } from './hooks'
 
 export function OcrDemo({ service }: { service: Service }) {
-  const model = describeOcrModel(getEffectiveModel(service).name)
-  const isVlModel = model.kind === 'vl'
+  const isVlModel = ocrModelKind(getEffectiveModel(service).name) === 'vl'
 
   const ocr = useOcrJob(service.apiBase)
   // Only PP-OCR models have a recogniser to swap; VL models need no language catalogue.
@@ -54,7 +53,7 @@ export function OcrDemo({ service }: { service: Service }) {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <OcrInputPanel
           image={image}
-          model={model}
+          isVlModel={isVlModel}
           task={task}
           onTaskChange={setTask}
           languages={languages}

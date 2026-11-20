@@ -12,7 +12,7 @@ import logging
 import os
 
 from model_downloader import ovms_pull
-from model_downloader.ovms import pinned_cpu_args
+from model_downloader.ovms import plugin_config_args
 from worker_common import OvmsServer
 
 # The one OVMS this worker fronts; None until start_stt_background ran.
@@ -73,7 +73,7 @@ def serving_args(port: int, model_id: str, model_repository_path: str, device: s
         "--model_name", model_id,
         "--task", "speech2text",
         "--target_device", device,
-        *pinned_cpu_args(device),
+        *plugin_config_args(device, os.path.join(model_repository_path, model_id)),
     ]
 
 

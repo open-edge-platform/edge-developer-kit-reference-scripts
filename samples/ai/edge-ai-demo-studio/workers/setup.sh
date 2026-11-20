@@ -12,24 +12,41 @@ TIMESTAMP="${EADS_SETUP_TIMESTAMP:-$(date +%Y%m%d_%H%M%S)}"
 
 THIRDPARTY_DIR="$SCRIPT_DIR/thirdparty"
 ROOT_THIRDPARTY_DIR="$SCRIPT_DIR/../thirdparty"
-UV_ZIP_PATH="$THIRDPARTY_DIR/uv.zip"
-UV_ZIP_URL="https://releases.astral.sh/github/uv/releases/download/0.13.3/uv-x86_64-unknown-linux-gnu.tar.gz"
+
+# Checked downloads and install manifests: scripts/bash/ in the repo, scripts/ in a packaged build.
+for helper_dir in "$SCRIPT_DIR/../scripts/bash" "$SCRIPT_DIR/../scripts"; do
+    if [ -f "$helper_dir/thirdparty_integrity.sh" ]; then
+        # shellcheck source=SCRIPTDIR/../scripts/bash/thirdparty_integrity.sh
+        source "$helper_dir/thirdparty_integrity.sh"
+        break
+    fi
+done
+if ! command -v install_verified_archive >/dev/null 2>&1; then
+    echo "❌ ERROR: thirdparty_integrity.sh not found next to the project's setup scripts."
+    exit 1
+fi
+
+# Each download is checked against the SHA-256 beside its URL (see thirdparty_integrity.sh). Moving
+# to another release means updating both, from the project's own checksum list where it has one.
+# Another uv release writes uv.lock differently when it re-locks, so a copy from any other download
+# is replaced.
+UV_ZIP_URL="https://releases.astral.sh/github/uv/releases/download/0.13.7/uv-x86_64-unknown-linux-gnu.tar.gz"
+# From the release's uv-x86_64-unknown-linux-gnu.tar.gz.sha256
+UV_SHA256="c5221ff41b7892bfc223543883600125f6a47fe845093e0f5bdff4f359196d83"
 UV_DIR="$THIRDPARTY_DIR/uv"
 UV_PATH="$UV_DIR/uv"
 
-OVMS_ZIP_PATH="$THIRDPARTY_DIR/ovms.tar.gz"
-OVMS_ZIP_URL_UBUNTU24="https://github.com/openvinotoolkit/model_server/releases/download/v2026.4.0/ovms_ubuntu24_2026.4.0_python_off.tar.gz"
+OVMS_ZIP_URL_UBUNTU24="https://github.com/openvinotoolkit/model_server/releases/download/v2026.4.1/ovms_ubuntu24_2026.4.1_python_off.tar.gz"
+# GitHub's digest of the release asset
+OVMS_SHA256_UBUNTU24="2b7198671a9e99e030b408601733fbd61798d8a741337c867b96eb41c295b3f8"
 OVMS_DIR="$THIRDPARTY_DIR/ovms"
+# Setup and ovms_prepare (worker-common.sh) install Jinja2 into it: the manifest leaves it out.
+OVMS_EXCLUDE="lib/python"
 
 FFMPEG_DIR="$ROOT_THIRDPARTY_DIR/ffmpeg"
 FFMPEG_PATH="$FFMPEG_DIR/bin/ffmpeg"
 
 export UV_EXE="$UV_PATH"
-
-cleanup_temp_files() {
-    rm -f "$UV_ZIP_PATH" "$OVMS_ZIP_PATH" 2>/dev/null
-}
-trap cleanup_temp_files EXIT INT TERM
 
 cleanup_old_logs() {
     if [ -d "$LOG_DIR" ]; then
@@ -59,77 +76,29 @@ get_service_log() {
     echo "$LOG_DIR/${service_name}_${TIMESTAMP}.log"
 }
 
+# show_log_tail <log> -- the end of a step's own log, so its error also shows wherever this
+# script's output goes (the Workers log, when the main setup runs it).
+show_log_tail() {
+    echo "--- Last lines of $1 ---"
+    tail -n 20 "$1"
+    echo "------------------------------------"
+}
+
 check_uv_installed() {
     echo "Checking if uv is installed..."
-    # Another uv release writes uv.lock differently when it re-locks, so replace a copy that isn't the pinned one.
-    local pinned="${UV_ZIP_URL#*/download/}"
-    pinned="${pinned%%/*}"
-    if [ -x "$UV_PATH" ]; then
-        local installed
-        installed="$("$UV_PATH" --version 2>/dev/null)" || installed=""
-        installed="$(echo "$installed" | cut -d' ' -f2)"
-        if [ "$installed" = "$pinned" ]; then
-            echo "✅ uv $installed found in thirdparty folder."
-            return 0
-        elif [ -n "$installed" ]; then
-            echo "uv $installed in thirdparty folder is not the pinned $pinned. Downloading $pinned..."
-        else
-            # Usually a download or extract that was cut short.
-            echo "⚠️  uv binary in thirdparty folder is not working. Downloading it again..."
-        fi
-        rm -rf "$UV_DIR"
-    else
-        echo "uv is not installed. Downloading uv binary..."
-    fi
-    
+
     local uv_log_file
     uv_log_file="$(get_service_log "uv")"
     echo "=== UV Setup Log - $(date) ===" > "$uv_log_file"
-    
-    if ! mkdir -p "$THIRDPARTY_DIR"; then
-        echo "❌ ERROR: Failed to create thirdparty directory"
+
+    if ! install_verified_archive "uv" "$UV_ZIP_URL" "$UV_SHA256" "$UV_DIR" 2>&1 | tee -a "$uv_log_file"; then
+        echo "❌ ERROR: Failed to install uv"
+        echo "Check log file: $uv_log_file"
         exit 1
     fi
-    
-    if ! mkdir -p "$UV_DIR"; then
-        echo "❌ ERROR: Failed to create UV directory"
-        exit 1
-    fi
-    
-    echo "Downloading uv from $UV_ZIP_URL..."
-    if [[ $VERBOSE -eq 1 ]]; then
-        if ! wget -O "$UV_ZIP_PATH" "$UV_ZIP_URL" 2>&1 | tee -a "$uv_log_file"; then
-            echo "❌ ERROR: Failed to download uv from $UV_ZIP_URL"
-            exit 1
-        fi
-    else
-        if ! wget -q -O "$UV_ZIP_PATH" "$UV_ZIP_URL" >> "$uv_log_file" 2>&1; then
-            echo "❌ ERROR: Failed to download uv"
-            echo "Check log file: $uv_log_file"
-            exit 1
-        fi
-    fi
-    
-    echo "Extracting uv binary..."
-    if [[ $VERBOSE -eq 1 ]]; then
-        if ! tar --strip-components=1 -xzf "$UV_ZIP_PATH" -C "$UV_DIR" 2>&1 | tee -a "$uv_log_file"; then
-            echo "❌ ERROR: Failed to extract uv archive"
-            rm -f "$UV_ZIP_PATH"
-            exit 1
-        fi
-    else
-        if ! tar --strip-components=1 -xzf "$UV_ZIP_PATH" -C "$UV_DIR" >> "$uv_log_file" 2>&1; then
-            echo "❌ ERROR: Failed to extract uv archive"
-            echo "Check log file: $uv_log_file"
-            rm -f "$UV_ZIP_PATH"
-            exit 1
-        fi
-    fi
-    
-    rm -f "$UV_ZIP_PATH"
-    
+
     if "$UV_PATH" --version >/dev/null 2>&1; then
-        echo "✅ uv is successfully downloaded and extracted."
+        echo "✅ uv is ready."
         echo "UV setup completed successfully at $(date)" >> "$uv_log_file"
         return 0
     else
@@ -141,16 +110,6 @@ check_uv_installed() {
     fi
 }
 
-# The version setup recorded when it installed OVMS, else the one the package
-# reports in its metadata ("2026.2.0.5e9dcfc46"); empty when neither exists.
-installed_ovms_version() {
-    if [ -f "$OVMS_DIR/.installed-version" ]; then
-        cat "$OVMS_DIR/.installed-version"
-    elif [ -f "$OVMS_DIR/metadata.json" ]; then
-        sed -n 's/.*"PROJECT_VERSION": *"\([^"]*\)".*/\1/p' "$OVMS_DIR/metadata.json"
-    fi
-}
-
 get_thirdparty_dependencies() {
     echo "Creating thirdparty directory..."
     if ! mkdir -p "$THIRDPARTY_DIR"; then
@@ -158,80 +117,27 @@ get_thirdparty_dependencies() {
         exit 1
     fi
 
-    # The OVMS URL pins the wanted version; an install of any other version is replaced.
-    local ovms_wanted ovms_installed=""
-    ovms_wanted="$(sed -E 's/.*_([0-9]+\.[0-9]+\.[0-9]+)_python.*/\1/' <<< "$OVMS_ZIP_URL_UBUNTU24")"
-    if [ -d "$OVMS_DIR" ]; then
-        ovms_installed="$(installed_ovms_version)"
-    fi
-
-    if [ -n "$ovms_installed" ] && [[ "$ovms_installed" == "$ovms_wanted" || "$ovms_installed" == "$ovms_wanted".* ]]; then
-        echo "✅ OVMS $ovms_installed already installed. Skipping download."
-    else
-        if [ -d "$OVMS_DIR" ]; then
-            echo "Replacing OVMS ${ovms_installed:-(unknown version)} with $ovms_wanted..."
-        else
-            echo "Downloading OpenVINO Model Server for Linux..."
-        fi
-
-        local ovms_log_file
-        ovms_log_file="$(get_service_log "ovms")"
-        echo "=== OVMS Setup Log - $(date) ===" > "$ovms_log_file"
-        
+    # Only Ubuntu 24's build is pinned; it matters only when there is something to download.
+    if ! check_install "$OVMS_DIR" "$OVMS_SHA256_UBUNTU24" quick >/dev/null; then
         UBUNTU_VERSION="$(lsb_release -rs | cut -d. -f1)"
-        if [ "$UBUNTU_VERSION" = "24" ]; then
-            OVMS_ZIP_URL="$OVMS_ZIP_URL_UBUNTU24"
-        else
+        if [ "$UBUNTU_VERSION" != "24" ]; then
             echo "❌ ERROR: Unsupported Ubuntu version: $UBUNTU_VERSION. Only 24 is supported."
             exit 1
         fi
-        
-        echo "Downloading from $OVMS_ZIP_URL..."
-        if [[ $VERBOSE -eq 1 ]]; then
-            if ! wget -O "$OVMS_ZIP_PATH" "$OVMS_ZIP_URL" 2>&1 | tee -a "$ovms_log_file"; then
-                echo "❌ ERROR: Failed to download OVMS"
-                exit 1
-            fi
-        else
-            if ! wget -q -O "$OVMS_ZIP_PATH" "$OVMS_ZIP_URL" >> "$ovms_log_file" 2>&1; then
-                echo "❌ ERROR: Failed to download OVMS"
-                echo "Check log file: $ovms_log_file"
-                exit 1
-            fi
-        fi
-        
-        # Extract beside the current install so a failure leaves it usable.
-        local ovms_staging="$OVMS_DIR.new"
-        rm -rf "$ovms_staging"
-        if ! mkdir -p "$ovms_staging"; then
-            echo "❌ ERROR: Failed to create OVMS directory"
-            rm -f "$OVMS_ZIP_PATH"
-            exit 1
-        fi
-
-        echo "Extracting OVMS..."
-        if [[ $VERBOSE -eq 1 ]]; then
-            if ! tar -xzf "$OVMS_ZIP_PATH" -C "$ovms_staging" --strip-components=1 2>&1 | tee -a "$ovms_log_file"; then
-                echo "❌ ERROR: Failed to extract OVMS archive"
-                rm -rf "$OVMS_ZIP_PATH" "$ovms_staging"
-                exit 1
-            fi
-        else
-            if ! tar -xzf "$OVMS_ZIP_PATH" -C "$ovms_staging" --strip-components=1 >> "$ovms_log_file" 2>&1; then
-                echo "❌ ERROR: Failed to extract OVMS archive"
-                echo "Check log file: $ovms_log_file"
-                rm -rf "$OVMS_ZIP_PATH" "$ovms_staging"
-                exit 1
-            fi
-        fi
-
-        rm -f "$OVMS_ZIP_PATH"
-        rm -rf "$OVMS_DIR"
-        mv "$ovms_staging" "$OVMS_DIR"
-        echo "$ovms_wanted" > "$OVMS_DIR/.installed-version"
-        echo "✅ OVMS $ovms_wanted downloaded and extracted successfully."
-        echo "OVMS setup completed successfully at $(date)" >> "$ovms_log_file"
     fi
+
+    # Replaced unless intact and from this download: a new one is extracted beside it, so a
+    # failure leaves it usable.
+    local ovms_log_file
+    ovms_log_file="$(get_service_log "ovms")"
+    echo "=== OVMS Setup Log - $(date) ===" > "$ovms_log_file"
+    if ! install_verified_archive --exclude "$OVMS_EXCLUDE" "OpenVINO Model Server" \
+        "$OVMS_ZIP_URL_UBUNTU24" "$OVMS_SHA256_UBUNTU24" "$OVMS_DIR" 2>&1 | tee -a "$ovms_log_file"; then
+        echo "❌ ERROR: Failed to install OVMS"
+        echo "Check log file: $ovms_log_file"
+        exit 1
+    fi
+    echo "OVMS setup completed successfully at $(date)" >> "$ovms_log_file"
 
     # OVMS needs these in its own Python directory for chat templates.
     local ovms_lib_python="$OVMS_DIR/lib/python"
@@ -257,6 +163,7 @@ setup_workers() {
     # With --continue-on-error a failed step doesn't stop the next one; the
     # function still returns non-zero at the end.
     local failed=0
+    local started=$SECONDS
 
     echo "Syncing shared worker packages into workers/.venv..."
     local ws_log
@@ -279,9 +186,10 @@ setup_workers() {
         fi
     fi
     if [ "$rc" -eq 0 ]; then
-        echo "✅ Shared worker environment ready: $SCRIPT_DIR/.venv"
+        echo "✅ Shared worker environment ready: $SCRIPT_DIR/.venv ($((SECONDS - started))s)"
     else
         echo "❌ Shared worker sync failed (exit $rc). See $ws_log"
+        [[ $VERBOSE -eq 1 ]] || show_log_tail "$ws_log"
         failed=1
         [[ $CONTINUE_ON_ERROR -eq 1 ]] || return 1
     fi
@@ -291,16 +199,24 @@ setup_workers() {
         local engine_log
         engine_log="$(get_service_log "engines")"
         echo "=== Engine Setup Log - $(date) ===" > "$engine_log"
+        echo "Setting up engine binaries..."
+        started=$SECONDS
         if [[ $VERBOSE -eq 1 ]]; then
-            if ! bash "$SCRIPT_DIR/engines/setup.sh" 2>&1 | tee -a "$engine_log"; then
+            if bash "$SCRIPT_DIR/engines/setup.sh" 2>&1 | tee -a "$engine_log"; then
+                echo "✅ Engine binaries ready ($((SECONDS - started))s)"
+            else
                 echo "❌ Engine setup failed. See $engine_log"
                 failed=1
             fi
         else
-            bash "$SCRIPT_DIR/engines/setup.sh" >> "$engine_log" 2>&1 || {
+            echo "Output is being logged to: $engine_log"
+            if bash "$SCRIPT_DIR/engines/setup.sh" >> "$engine_log" 2>&1; then
+                echo "✅ Engine binaries ready ($((SECONDS - started))s)"
+            else
                 echo "❌ Engine setup failed. See $engine_log"
+                show_log_tail "$engine_log"
                 failed=1
-            }
+            fi
         fi
     fi
     if [[ $failed -ne 0 ]]; then

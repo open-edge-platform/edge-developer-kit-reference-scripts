@@ -22,7 +22,7 @@
                       "description": "Display name of the first instance, unique per service (\"Speaker Diarization\" when this file adds the service). A different name renames it, as in the UI: its address stays"
                     },
                     "instanceId": {
-                      "description": "The instance's id, which its address is built on (/api/diarization@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                      "description": "The instance's id, which its address is built on (/api/diarization@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                       "type": "string",
                       "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                     },
@@ -68,7 +68,7 @@
                     "description": "Display name, unique per service (ignoring case). An entry without an instanceId is found again by it on every boot; a new instance's id is derived from it (\"CPU fallback\" → /api/diarization@cpu-fallback). A different name renames a matched instance: its address stays"
                   },
                   "instanceId": {
-                    "description": "The instance's id, which its address is built on (/api/diarization@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                    "description": "The instance's id, which its address is built on (/api/diarization@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                     "type": "string",
                     "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                   },
@@ -109,7 +109,7 @@
               },
               "minItems": 1,
               "maxItems": 5,
-              "description": "Speaker Diarization instances, first instance first (at most 5). Each entry is matched to an instance by its instanceId, then by its label; the first entry falls back to the service's oldest instance. A matched instance is updated in place (a new label renames it, its address stays); any other entry is created as a copy of the first instance. Instances no entry matches are deleted."
+              "description": "Speaker Diarization instances, first instance first (at most 5). Each entry is matched to an instance by its instanceId when it has one, else by its label; the first entry without an instanceId falls back to the service's oldest instance. A matched instance is updated in place (a new label renames it, its address stays); any other entry is created as a copy of the first instance. Instances no entry matches are deleted."
             },
             {
               "type": "object",
@@ -225,7 +225,7 @@
                       "description": "Display name of the first instance, unique per service (\"Text Embedding\" when this file adds the service). A different name renames it, as in the UI: its address stays"
                     },
                     "instanceId": {
-                      "description": "The instance's id, which its address is built on (/api/embeddings@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                      "description": "The instance's id, which its address is built on (/api/embeddings@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                       "type": "string",
                       "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                     },
@@ -272,7 +272,7 @@
                     "description": "Display name, unique per service (ignoring case). An entry without an instanceId is found again by it on every boot; a new instance's id is derived from it (\"CPU fallback\" → /api/embeddings@cpu-fallback). A different name renames a matched instance: its address stays"
                   },
                   "instanceId": {
-                    "description": "The instance's id, which its address is built on (/api/embeddings@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                    "description": "The instance's id, which its address is built on (/api/embeddings@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                     "type": "string",
                     "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                   },
@@ -314,7 +314,7 @@
               },
               "minItems": 1,
               "maxItems": 5,
-              "description": "Text Embedding instances, first instance first (at most 5). Each entry is matched to an instance by its instanceId, then by its label; the first entry falls back to the service's oldest instance. A matched instance is updated in place (a new label renames it, its address stays); any other entry is created as a copy of the first instance. Instances no entry matches are deleted."
+              "description": "Text Embedding instances, first instance first (at most 5). Each entry is matched to an instance by its instanceId when it has one, else by its label; the first entry without an instanceId falls back to the service's oldest instance. A matched instance is updated in place (a new label renames it, its address stays); any other entry is created as a copy of the first instance. Instances no entry matches are deleted."
             },
             {
               "type": "object",
@@ -432,7 +432,7 @@
                       "description": "Display name of the first instance, unique per service (\"Exam Marking Agent\" when this file adds the service). A different name renames it, as in the UI: its address stays"
                     },
                     "instanceId": {
-                      "description": "The instance's id, which its address is built on (/api/exam-marking-agent@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                      "description": "The instance's id, which its address is built on (/api/exam-marking-agent@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                       "type": "string",
                       "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                     },
@@ -478,7 +478,7 @@
                     "description": "Display name, unique per service (ignoring case). An entry without an instanceId is found again by it on every boot; a new instance's id is derived from it (\"CPU fallback\" → /api/exam-marking-agent@cpu-fallback). A different name renames a matched instance: its address stays"
                   },
                   "instanceId": {
-                    "description": "The instance's id, which its address is built on (/api/exam-marking-agent@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                    "description": "The instance's id, which its address is built on (/api/exam-marking-agent@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                     "type": "string",
                     "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                   },
@@ -585,7 +585,7 @@
                       "description": "Display name of the first instance, unique per service (\"Exam Marking Database\" when this file adds the service). A different name renames it, as in the UI: its address stays"
                     },
                     "instanceId": {
-                      "description": "The instance's id, which its address is built on (/api/exam-marking-database@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                      "description": "The instance's id, which its address is built on (/api/exam-marking-database@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                       "type": "string",
                       "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                     },
@@ -631,7 +631,7 @@
                     "description": "Display name, unique per service (ignoring case). An entry without an instanceId is found again by it on every boot; a new instance's id is derived from it (\"CPU fallback\" → /api/exam-marking-database@cpu-fallback). A different name renames a matched instance: its address stays"
                   },
                   "instanceId": {
-                    "description": "The instance's id, which its address is built on (/api/exam-marking-database@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                    "description": "The instance's id, which its address is built on (/api/exam-marking-database@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                     "type": "string",
                     "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                   },
@@ -738,7 +738,7 @@
                       "description": "Display name of the first instance, unique per service (\"Face Recognition\" when this file adds the service). A different name renames it, as in the UI: its address stays"
                     },
                     "instanceId": {
-                      "description": "The instance's id, which its address is built on (/api/face-recognition@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                      "description": "The instance's id, which its address is built on (/api/face-recognition@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                       "type": "string",
                       "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                     },
@@ -784,7 +784,7 @@
                     "description": "Display name, unique per service (ignoring case). An entry without an instanceId is found again by it on every boot; a new instance's id is derived from it (\"CPU fallback\" → /api/face-recognition@cpu-fallback). A different name renames a matched instance: its address stays"
                   },
                   "instanceId": {
-                    "description": "The instance's id, which its address is built on (/api/face-recognition@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                    "description": "The instance's id, which its address is built on (/api/face-recognition@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                     "type": "string",
                     "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                   },
@@ -825,7 +825,7 @@
               },
               "minItems": 1,
               "maxItems": 5,
-              "description": "Face Recognition instances, first instance first (at most 5). Each entry is matched to an instance by its instanceId, then by its label; the first entry falls back to the service's oldest instance. A matched instance is updated in place (a new label renames it, its address stays); any other entry is created as a copy of the first instance. Instances no entry matches are deleted."
+              "description": "Face Recognition instances, first instance first (at most 5). Each entry is matched to an instance by its instanceId when it has one, else by its label; the first entry without an instanceId falls back to the service's oldest instance. A matched instance is updated in place (a new label renames it, its address stays); any other entry is created as a copy of the first instance. Instances no entry matches are deleted."
             },
             {
               "type": "object",
@@ -941,7 +941,7 @@
                       "description": "Display name of the first instance, unique per service (\"File Watcher\" when this file adds the service). A different name renames it, as in the UI: its address stays"
                     },
                     "instanceId": {
-                      "description": "The instance's id, which its address is built on (/api/file-watcher@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                      "description": "The instance's id, which its address is built on (/api/file-watcher@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                       "type": "string",
                       "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                     },
@@ -987,7 +987,7 @@
                     "description": "Display name, unique per service (ignoring case). An entry without an instanceId is found again by it on every boot; a new instance's id is derived from it (\"CPU fallback\" → /api/file-watcher@cpu-fallback). A different name renames a matched instance: its address stays"
                   },
                   "instanceId": {
-                    "description": "The instance's id, which its address is built on (/api/file-watcher@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                    "description": "The instance's id, which its address is built on (/api/file-watcher@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                     "type": "string",
                     "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                   },
@@ -1094,7 +1094,7 @@
                       "description": "Display name of the first instance, unique per service (\"Frame Generation\" when this file adds the service). A different name renames it, as in the UI: its address stays"
                     },
                     "instanceId": {
-                      "description": "The instance's id, which its address is built on (/api/frame-generation@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                      "description": "The instance's id, which its address is built on (/api/frame-generation@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                       "type": "string",
                       "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                     },
@@ -1140,7 +1140,7 @@
                     "description": "Display name, unique per service (ignoring case). An entry without an instanceId is found again by it on every boot; a new instance's id is derived from it (\"CPU fallback\" → /api/frame-generation@cpu-fallback). A different name renames a matched instance: its address stays"
                   },
                   "instanceId": {
-                    "description": "The instance's id, which its address is built on (/api/frame-generation@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                    "description": "The instance's id, which its address is built on (/api/frame-generation@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                     "type": "string",
                     "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                   },
@@ -1181,7 +1181,7 @@
               },
               "minItems": 1,
               "maxItems": 5,
-              "description": "Frame Generation instances, first instance first (at most 5). Each entry is matched to an instance by its instanceId, then by its label; the first entry falls back to the service's oldest instance. A matched instance is updated in place (a new label renames it, its address stays); any other entry is created as a copy of the first instance. Instances no entry matches are deleted."
+              "description": "Frame Generation instances, first instance first (at most 5). Each entry is matched to an instance by its instanceId when it has one, else by its label; the first entry without an instanceId falls back to the service's oldest instance. A matched instance is updated in place (a new label renames it, its address stays); any other entry is created as a copy of the first instance. Instances no entry matches are deleted."
             },
             {
               "type": "object",
@@ -1297,7 +1297,7 @@
                       "description": "Display name of the first instance, unique per service (\"Geti Image Classifier\" when this file adds the service). A different name renames it, as in the UI: its address stays"
                     },
                     "instanceId": {
-                      "description": "The instance's id, which its address is built on (/api/geti-classifier@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                      "description": "The instance's id, which its address is built on (/api/geti-classifier@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                       "type": "string",
                       "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                     },
@@ -1343,7 +1343,7 @@
                     "description": "Display name, unique per service (ignoring case). An entry without an instanceId is found again by it on every boot; a new instance's id is derived from it (\"CPU fallback\" → /api/geti-classifier@cpu-fallback). A different name renames a matched instance: its address stays"
                   },
                   "instanceId": {
-                    "description": "The instance's id, which its address is built on (/api/geti-classifier@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                    "description": "The instance's id, which its address is built on (/api/geti-classifier@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                     "type": "string",
                     "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                   },
@@ -1450,7 +1450,7 @@
                       "description": "Display name of the first instance, unique per service (\"Image-Based Video Search\" when this file adds the service). A different name renames it, as in the UI: its address stays"
                     },
                     "instanceId": {
-                      "description": "The instance's id, which its address is built on (/api/image-based-video-search@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                      "description": "The instance's id, which its address is built on (/api/image-based-video-search@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                       "type": "string",
                       "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                     },
@@ -1496,7 +1496,7 @@
                     "description": "Display name, unique per service (ignoring case). An entry without an instanceId is found again by it on every boot; a new instance's id is derived from it (\"CPU fallback\" → /api/image-based-video-search@cpu-fallback). A different name renames a matched instance: its address stays"
                   },
                   "instanceId": {
-                    "description": "The instance's id, which its address is built on (/api/image-based-video-search@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                    "description": "The instance's id, which its address is built on (/api/image-based-video-search@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                     "type": "string",
                     "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                   },
@@ -1603,7 +1603,7 @@
                       "description": "Display name of the first instance, unique per service (\"Image Generation\" when this file adds the service). A different name renames it, as in the UI: its address stays"
                     },
                     "instanceId": {
-                      "description": "The instance's id, which its address is built on (/api/image-generation@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                      "description": "The instance's id, which its address is built on (/api/image-generation@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                       "type": "string",
                       "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                     },
@@ -1649,7 +1649,7 @@
                     "description": "Display name, unique per service (ignoring case). An entry without an instanceId is found again by it on every boot; a new instance's id is derived from it (\"CPU fallback\" → /api/image-generation@cpu-fallback). A different name renames a matched instance: its address stays"
                   },
                   "instanceId": {
-                    "description": "The instance's id, which its address is built on (/api/image-generation@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                    "description": "The instance's id, which its address is built on (/api/image-generation@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                     "type": "string",
                     "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                   },
@@ -1690,7 +1690,7 @@
               },
               "minItems": 1,
               "maxItems": 5,
-              "description": "Image Generation instances, first instance first (at most 5). Each entry is matched to an instance by its instanceId, then by its label; the first entry falls back to the service's oldest instance. A matched instance is updated in place (a new label renames it, its address stays); any other entry is created as a copy of the first instance. Instances no entry matches are deleted."
+              "description": "Image Generation instances, first instance first (at most 5). Each entry is matched to an instance by its instanceId when it has one, else by its label; the first entry without an instanceId falls back to the service's oldest instance. A matched instance is updated in place (a new label renames it, its address stays); any other entry is created as a copy of the first instance. Instances no entry matches are deleted."
             },
             {
               "type": "object",
@@ -1792,6 +1792,209 @@
           ],
           "description": "Generate images from text prompts using diffusion models accelerated with OpenVINO."
         },
+        "image-upscaling": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "Display name of the first instance, unique per service (\"Image Upscaling\" when this file adds the service). A different name renames it, as in the UI: its address stays"
+                    },
+                    "instanceId": {
+                      "description": "The instance's id, which its address is built on (/api/image-upscaling@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
+                      "type": "string",
+                      "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
+                    },
+                    "status": {
+                      "description": "'online' starts the instance when the app boots; 'offline' (default) leaves it stopped.",
+                      "type": "string",
+                      "enum": [
+                        "online",
+                        "offline"
+                      ]
+                    },
+                    "engine": {
+                      "description": "Execution engine for this instance",
+                      "type": "string",
+                      "enum": [
+                        "worker"
+                      ]
+                    },
+                    "models": {
+                      "allOf": [
+                        {
+                          "$ref": "#/definitions/image-upscaling-models"
+                        }
+                      ]
+                    },
+                    "metadata": {
+                      "allOf": [
+                        {
+                          "$ref": "#/definitions/image-upscaling-metadata"
+                        }
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              ],
+              "additionalItems": {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Display name, unique per service (ignoring case). An entry without an instanceId is found again by it on every boot; a new instance's id is derived from it (\"CPU fallback\" → /api/image-upscaling@cpu-fallback). A different name renames a matched instance: its address stays"
+                  },
+                  "instanceId": {
+                    "description": "The instance's id, which its address is built on (/api/image-upscaling@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
+                    "type": "string",
+                    "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
+                  },
+                  "status": {
+                    "description": "'online' starts the instance when the app boots; 'offline' (default) leaves it stopped.",
+                    "type": "string",
+                    "enum": [
+                      "online",
+                      "offline"
+                    ]
+                  },
+                  "engine": {
+                    "description": "Execution engine for this instance",
+                    "type": "string",
+                    "enum": [
+                      "worker"
+                    ]
+                  },
+                  "models": {
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/image-upscaling-models"
+                      }
+                    ]
+                  },
+                  "metadata": {
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/image-upscaling-metadata"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "label"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 1,
+              "maxItems": 5,
+              "description": "Image Upscaling instances, first instance first (at most 5). Each entry is matched to an instance by its instanceId when it has one, else by its label; the first entry without an instanceId falls back to the service's oldest instance. A matched instance is updated in place (a new label renames it, its address stays); any other entry is created as a copy of the first instance. Instances no entry matches are deleted."
+            },
+            {
+              "type": "object",
+              "properties": {
+                "label": {
+                  "description": "Display name of the first instance, unique per service (\"Image Upscaling\" when this file adds the service). A different name renames it: its address stays",
+                  "type": "string",
+                  "minLength": 1
+                },
+                "status": {
+                  "description": "'online' starts the instance when the app boots; 'offline' (default) leaves it stopped.",
+                  "type": "string",
+                  "enum": [
+                    "online",
+                    "offline"
+                  ]
+                },
+                "engine": {
+                  "description": "Execution engine for this instance",
+                  "type": "string",
+                  "enum": [
+                    "worker"
+                  ]
+                },
+                "models": {
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/image-upscaling-models"
+                    }
+                  ]
+                },
+                "metadata": {
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/image-upscaling-metadata"
+                    }
+                  ]
+                },
+                "port": {
+                  "description": "Ignored — ports are allocated from INSTANCE_PORT_RANGE when the service starts",
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 65535
+                },
+                "instances": {
+                  "maxProperties": 4,
+                  "description": "Extra Image Upscaling instances keyed by instance id (1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit; a key equal to the first instance's id is ignored). Each is created on startup if missing and copies the first instance's settings before its own overrides apply. At most 5 instances in total, the first included. Instances missing from this file are deleted.",
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
+                  },
+                  "additionalProperties": {
+                    "type": "object",
+                    "properties": {
+                      "label": {
+                        "description": "Display name of the instance, unique per service (defaults to the instance id)",
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "status": {
+                        "description": "'online' starts the instance when the app boots; 'offline' (default) leaves it stopped.",
+                        "type": "string",
+                        "enum": [
+                          "online",
+                          "offline"
+                        ]
+                      },
+                      "engine": {
+                        "description": "Execution engine for this instance",
+                        "type": "string",
+                        "enum": [
+                          "worker"
+                        ]
+                      },
+                      "models": {
+                        "allOf": [
+                          {
+                            "$ref": "#/definitions/image-upscaling-models"
+                          }
+                        ]
+                      },
+                      "metadata": {
+                        "allOf": [
+                          {
+                            "$ref": "#/definitions/image-upscaling-metadata"
+                          }
+                        ]
+                      }
+                    },
+                    "additionalProperties": false,
+                    "description": "An extra Image Upscaling instance, keyed by its instance id (the address becomes /api/image-upscaling@<id>)"
+                  }
+                }
+              },
+              "additionalProperties": false,
+              "description": "Older form, still read: the fields configure the first Image Upscaling instance. Saving from the UI writes the list form."
+            }
+          ],
+          "description": "Super-resolution: upscale images, videos and live webcam frames 2x-4x with Real-ESRGAN, SPAN, DAT2, AuraSR, Swin2SR or Intel OMZ, and photos with SeedVR2 diffusion."
+        },
         "lipsync": {
           "anyOf": [
             {
@@ -1806,7 +2009,7 @@
                       "description": "Display name of the first instance, unique per service (\"Lipsync\" when this file adds the service). A different name renames it, as in the UI: its address stays"
                     },
                     "instanceId": {
-                      "description": "The instance's id, which its address is built on (/api/lipsync@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                      "description": "The instance's id, which its address is built on (/api/lipsync@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                       "type": "string",
                       "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                     },
@@ -1852,7 +2055,7 @@
                     "description": "Display name, unique per service (ignoring case). An entry without an instanceId is found again by it on every boot; a new instance's id is derived from it (\"CPU fallback\" → /api/lipsync@cpu-fallback). A different name renames a matched instance: its address stays"
                   },
                   "instanceId": {
-                    "description": "The instance's id, which its address is built on (/api/lipsync@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                    "description": "The instance's id, which its address is built on (/api/lipsync@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                     "type": "string",
                     "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                   },
@@ -1893,7 +2096,7 @@
               },
               "minItems": 1,
               "maxItems": 5,
-              "description": "Lipsync instances, first instance first (at most 5). Each entry is matched to an instance by its instanceId, then by its label; the first entry falls back to the service's oldest instance. A matched instance is updated in place (a new label renames it, its address stays); any other entry is created as a copy of the first instance. Instances no entry matches are deleted."
+              "description": "Lipsync instances, first instance first (at most 5). Each entry is matched to an instance by its instanceId when it has one, else by its label; the first entry without an instanceId falls back to the service's oldest instance. A matched instance is updated in place (a new label renames it, its address stays); any other entry is created as a copy of the first instance. Instances no entry matches are deleted."
             },
             {
               "type": "object",
@@ -2009,7 +2212,7 @@
                       "description": "Display name of the first instance, unique per service (\"Loss Prevention\" when this file adds the service). A different name renames it, as in the UI: its address stays"
                     },
                     "instanceId": {
-                      "description": "The instance's id, which its address is built on (/api/loss-prevention@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                      "description": "The instance's id, which its address is built on (/api/loss-prevention@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                       "type": "string",
                       "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                     },
@@ -2055,7 +2258,7 @@
                     "description": "Display name, unique per service (ignoring case). An entry without an instanceId is found again by it on every boot; a new instance's id is derived from it (\"CPU fallback\" → /api/loss-prevention@cpu-fallback). A different name renames a matched instance: its address stays"
                   },
                   "instanceId": {
-                    "description": "The instance's id, which its address is built on (/api/loss-prevention@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                    "description": "The instance's id, which its address is built on (/api/loss-prevention@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                     "type": "string",
                     "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                   },
@@ -2162,7 +2365,7 @@
                       "description": "Display name of the first instance, unique per service (\"MCP Manager\" when this file adds the service). A different name renames it, as in the UI: its address stays"
                     },
                     "instanceId": {
-                      "description": "The instance's id, which its address is built on (/api/mcp@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                      "description": "The instance's id, which its address is built on (/api/mcp@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                       "type": "string",
                       "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                     },
@@ -2201,7 +2404,7 @@
                     "description": "Display name, unique per service (ignoring case). An entry without an instanceId is found again by it on every boot; a new instance's id is derived from it (\"CPU fallback\" → /api/mcp@cpu-fallback). A different name renames a matched instance: its address stays"
                   },
                   "instanceId": {
-                    "description": "The instance's id, which its address is built on (/api/mcp@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                    "description": "The instance's id, which its address is built on (/api/mcp@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                     "type": "string",
                     "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                   },
@@ -2294,7 +2497,7 @@
                       "description": "Display name of the first instance, unique per service (\"Medical Scribe Database\" when this file adds the service). A different name renames it, as in the UI: its address stays"
                     },
                     "instanceId": {
-                      "description": "The instance's id, which its address is built on (/api/medical-scribe-database@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                      "description": "The instance's id, which its address is built on (/api/medical-scribe-database@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                       "type": "string",
                       "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                     },
@@ -2340,7 +2543,7 @@
                     "description": "Display name, unique per service (ignoring case). An entry without an instanceId is found again by it on every boot; a new instance's id is derived from it (\"CPU fallback\" → /api/medical-scribe-database@cpu-fallback). A different name renames a matched instance: its address stays"
                   },
                   "instanceId": {
-                    "description": "The instance's id, which its address is built on (/api/medical-scribe-database@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                    "description": "The instance's id, which its address is built on (/api/medical-scribe-database@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                     "type": "string",
                     "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                   },
@@ -2447,7 +2650,7 @@
                       "description": "Display name of the first instance, unique per service (\"OCR\" when this file adds the service). A different name renames it, as in the UI: its address stays"
                     },
                     "instanceId": {
-                      "description": "The instance's id, which its address is built on (/api/ocr@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                      "description": "The instance's id, which its address is built on (/api/ocr@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                       "type": "string",
                       "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                     },
@@ -2493,7 +2696,7 @@
                     "description": "Display name, unique per service (ignoring case). An entry without an instanceId is found again by it on every boot; a new instance's id is derived from it (\"CPU fallback\" → /api/ocr@cpu-fallback). A different name renames a matched instance: its address stays"
                   },
                   "instanceId": {
-                    "description": "The instance's id, which its address is built on (/api/ocr@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                    "description": "The instance's id, which its address is built on (/api/ocr@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                     "type": "string",
                     "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                   },
@@ -2534,7 +2737,7 @@
               },
               "minItems": 1,
               "maxItems": 5,
-              "description": "OCR instances, first instance first (at most 5). Each entry is matched to an instance by its instanceId, then by its label; the first entry falls back to the service's oldest instance. A matched instance is updated in place (a new label renames it, its address stays); any other entry is created as a copy of the first instance. Instances no entry matches are deleted."
+              "description": "OCR instances, first instance first (at most 5). Each entry is matched to an instance by its instanceId when it has one, else by its label; the first entry without an instanceId falls back to the service's oldest instance. A matched instance is updated in place (a new label renames it, its address stays); any other entry is created as a copy of the first instance. Instances no entry matches are deleted."
             },
             {
               "type": "object",
@@ -2650,7 +2853,7 @@
                       "description": "Display name of the first instance, unique per service (\"Pallet Defect Detection\" when this file adds the service). A different name renames it, as in the UI: its address stays"
                     },
                     "instanceId": {
-                      "description": "The instance's id, which its address is built on (/api/pallet-defect-detection@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                      "description": "The instance's id, which its address is built on (/api/pallet-defect-detection@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                       "type": "string",
                       "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                     },
@@ -2696,7 +2899,7 @@
                     "description": "Display name, unique per service (ignoring case). An entry without an instanceId is found again by it on every boot; a new instance's id is derived from it (\"CPU fallback\" → /api/pallet-defect-detection@cpu-fallback). A different name renames a matched instance: its address stays"
                   },
                   "instanceId": {
-                    "description": "The instance's id, which its address is built on (/api/pallet-defect-detection@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                    "description": "The instance's id, which its address is built on (/api/pallet-defect-detection@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                     "type": "string",
                     "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                   },
@@ -2803,7 +3006,7 @@
                       "description": "Display name of the first instance, unique per service (\"PPT Translator\" when this file adds the service). A different name renames it, as in the UI: its address stays"
                     },
                     "instanceId": {
-                      "description": "The instance's id, which its address is built on (/api/ppt-translator@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                      "description": "The instance's id, which its address is built on (/api/ppt-translator@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                       "type": "string",
                       "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                     },
@@ -2849,7 +3052,7 @@
                     "description": "Display name, unique per service (ignoring case). An entry without an instanceId is found again by it on every boot; a new instance's id is derived from it (\"CPU fallback\" → /api/ppt-translator@cpu-fallback). A different name renames a matched instance: its address stays"
                   },
                   "instanceId": {
-                    "description": "The instance's id, which its address is built on (/api/ppt-translator@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                    "description": "The instance's id, which its address is built on (/api/ppt-translator@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                     "type": "string",
                     "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                   },
@@ -2956,7 +3159,7 @@
                       "description": "Display name of the first instance, unique per service (\"Reranker\" when this file adds the service). A different name renames it, as in the UI: its address stays"
                     },
                     "instanceId": {
-                      "description": "The instance's id, which its address is built on (/api/rerank@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                      "description": "The instance's id, which its address is built on (/api/rerank@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                       "type": "string",
                       "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                     },
@@ -3002,7 +3205,7 @@
                     "description": "Display name, unique per service (ignoring case). An entry without an instanceId is found again by it on every boot; a new instance's id is derived from it (\"CPU fallback\" → /api/rerank@cpu-fallback). A different name renames a matched instance: its address stays"
                   },
                   "instanceId": {
-                    "description": "The instance's id, which its address is built on (/api/rerank@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                    "description": "The instance's id, which its address is built on (/api/rerank@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                     "type": "string",
                     "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                   },
@@ -3043,7 +3246,7 @@
               },
               "minItems": 1,
               "maxItems": 5,
-              "description": "Reranker instances, first instance first (at most 5). Each entry is matched to an instance by its instanceId, then by its label; the first entry falls back to the service's oldest instance. A matched instance is updated in place (a new label renames it, its address stays); any other entry is created as a copy of the first instance. Instances no entry matches are deleted."
+              "description": "Reranker instances, first instance first (at most 5). Each entry is matched to an instance by its instanceId when it has one, else by its label; the first entry without an instanceId falls back to the service's oldest instance. A matched instance is updated in place (a new label renames it, its address stays); any other entry is created as a copy of the first instance. Instances no entry matches are deleted."
             },
             {
               "type": "object",
@@ -3159,7 +3362,7 @@
                       "description": "Display name of the first instance, unique per service (\"Robotics AI\" when this file adds the service). A different name renames it, as in the UI: its address stays"
                     },
                     "instanceId": {
-                      "description": "The instance's id, which its address is built on (/api/robotics-ai@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                      "description": "The instance's id, which its address is built on (/api/robotics-ai@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                       "type": "string",
                       "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                     },
@@ -3205,7 +3408,7 @@
                     "description": "Display name, unique per service (ignoring case). An entry without an instanceId is found again by it on every boot; a new instance's id is derived from it (\"CPU fallback\" → /api/robotics-ai@cpu-fallback). A different name renames a matched instance: its address stays"
                   },
                   "instanceId": {
-                    "description": "The instance's id, which its address is built on (/api/robotics-ai@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                    "description": "The instance's id, which its address is built on (/api/robotics-ai@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                     "type": "string",
                     "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                   },
@@ -3312,7 +3515,7 @@
                       "description": "Display name of the first instance, unique per service (\"Speech to Text\" when this file adds the service). A different name renames it, as in the UI: its address stays"
                     },
                     "instanceId": {
-                      "description": "The instance's id, which its address is built on (/api/speech-to-text@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                      "description": "The instance's id, which its address is built on (/api/speech-to-text@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                       "type": "string",
                       "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                     },
@@ -3358,7 +3561,7 @@
                     "description": "Display name, unique per service (ignoring case). An entry without an instanceId is found again by it on every boot; a new instance's id is derived from it (\"CPU fallback\" → /api/speech-to-text@cpu-fallback). A different name renames a matched instance: its address stays"
                   },
                   "instanceId": {
-                    "description": "The instance's id, which its address is built on (/api/speech-to-text@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                    "description": "The instance's id, which its address is built on (/api/speech-to-text@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                     "type": "string",
                     "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                   },
@@ -3399,7 +3602,7 @@
               },
               "minItems": 1,
               "maxItems": 5,
-              "description": "Speech to Text instances, first instance first (at most 5). Each entry is matched to an instance by its instanceId, then by its label; the first entry falls back to the service's oldest instance. A matched instance is updated in place (a new label renames it, its address stays); any other entry is created as a copy of the first instance. Instances no entry matches are deleted."
+              "description": "Speech to Text instances, first instance first (at most 5). Each entry is matched to an instance by its instanceId when it has one, else by its label; the first entry without an instanceId falls back to the service's oldest instance. A matched instance is updated in place (a new label renames it, its address stays); any other entry is created as a copy of the first instance. Instances no entry matches are deleted."
             },
             {
               "type": "object",
@@ -3499,7 +3702,7 @@
               "description": "Older form, still read: the fields configure the first Speech to Text instance. Saving from the UI writes the list form."
             }
           ],
-          "description": "Real-time speech recognition with low-latency transcription using Whisper models optimized for Intel hardware."
+          "description": "Real-time speech recognition with low-latency transcription using Whisper, Qwen3-ASR and MERaLiON models optimized for Intel hardware."
         },
         "synthetic-image-generation": {
           "anyOf": [
@@ -3515,7 +3718,7 @@
                       "description": "Display name of the first instance, unique per service (\"Synthetic Image Generation\" when this file adds the service). A different name renames it, as in the UI: its address stays"
                     },
                     "instanceId": {
-                      "description": "The instance's id, which its address is built on (/api/synthetic-image-generation@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                      "description": "The instance's id, which its address is built on (/api/synthetic-image-generation@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                       "type": "string",
                       "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                     },
@@ -3561,7 +3764,7 @@
                     "description": "Display name, unique per service (ignoring case). An entry without an instanceId is found again by it on every boot; a new instance's id is derived from it (\"CPU fallback\" → /api/synthetic-image-generation@cpu-fallback). A different name renames a matched instance: its address stays"
                   },
                   "instanceId": {
-                    "description": "The instance's id, which its address is built on (/api/synthetic-image-generation@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                    "description": "The instance's id, which its address is built on (/api/synthetic-image-generation@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                     "type": "string",
                     "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                   },
@@ -3668,7 +3871,7 @@
                       "description": "Display name of the first instance, unique per service (\"Text Generation\" when this file adds the service). A different name renames it, as in the UI: its address stays"
                     },
                     "instanceId": {
-                      "description": "The instance's id, which its address is built on (/api/text-generation@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                      "description": "The instance's id, which its address is built on (/api/text-generation@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                       "type": "string",
                       "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                     },
@@ -3714,7 +3917,7 @@
                     "description": "Display name, unique per service (ignoring case). An entry without an instanceId is found again by it on every boot; a new instance's id is derived from it (\"CPU fallback\" → /api/text-generation@cpu-fallback). A different name renames a matched instance: its address stays"
                   },
                   "instanceId": {
-                    "description": "The instance's id, which its address is built on (/api/text-generation@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                    "description": "The instance's id, which its address is built on (/api/text-generation@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                     "type": "string",
                     "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                   },
@@ -3755,7 +3958,7 @@
               },
               "minItems": 1,
               "maxItems": 5,
-              "description": "Text Generation instances, first instance first (at most 5). Each entry is matched to an instance by its instanceId, then by its label; the first entry falls back to the service's oldest instance. A matched instance is updated in place (a new label renames it, its address stays); any other entry is created as a copy of the first instance. Instances no entry matches are deleted."
+              "description": "Text Generation instances, first instance first (at most 5). Each entry is matched to an instance by its instanceId when it has one, else by its label; the first entry without an instanceId falls back to the service's oldest instance. A matched instance is updated in place (a new label renames it, its address stays); any other entry is created as a copy of the first instance. Instances no entry matches are deleted."
             },
             {
               "type": "object",
@@ -3871,7 +4074,7 @@
                       "description": "Display name of the first instance, unique per service (\"Text to Speech\" when this file adds the service). A different name renames it, as in the UI: its address stays"
                     },
                     "instanceId": {
-                      "description": "The instance's id, which its address is built on (/api/text-to-speech@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                      "description": "The instance's id, which its address is built on (/api/text-to-speech@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                       "type": "string",
                       "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                     },
@@ -3917,7 +4120,7 @@
                     "description": "Display name, unique per service (ignoring case). An entry without an instanceId is found again by it on every boot; a new instance's id is derived from it (\"CPU fallback\" → /api/text-to-speech@cpu-fallback). A different name renames a matched instance: its address stays"
                   },
                   "instanceId": {
-                    "description": "The instance's id, which its address is built on (/api/text-to-speech@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                    "description": "The instance's id, which its address is built on (/api/text-to-speech@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                     "type": "string",
                     "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                   },
@@ -3958,7 +4161,7 @@
               },
               "minItems": 1,
               "maxItems": 5,
-              "description": "Text to Speech instances, first instance first (at most 5). Each entry is matched to an instance by its instanceId, then by its label; the first entry falls back to the service's oldest instance. A matched instance is updated in place (a new label renames it, its address stays); any other entry is created as a copy of the first instance. Instances no entry matches are deleted."
+              "description": "Text to Speech instances, first instance first (at most 5). Each entry is matched to an instance by its instanceId when it has one, else by its label; the first entry without an instanceId falls back to the service's oldest instance. A matched instance is updated in place (a new label renames it, its address stays); any other entry is created as a copy of the first instance. Instances no entry matches are deleted."
             },
             {
               "type": "object",
@@ -4058,7 +4261,7 @@
               "description": "Older form, still read: the fields configure the first Text to Speech instance. Saving from the UI writes the list form."
             }
           ],
-          "description": "Natural-sounding speech synthesis with multiple voice options powered by Kokoro, Piper, Malaya, Pocket TTS, VieNeu-TTS, FastSpeech2 HS and SpeechT5 from the Open Edge Platform."
+          "description": "Natural-sounding speech synthesis with multiple voice options powered by Kokoro, Piper, Malaya, Pocket TTS, VieNeu-TTS, FastSpeech2 HS, CosyVoice 3 and SpeechT5 from the Open Edge Platform."
         },
         "vectordb": {
           "anyOf": [
@@ -4074,7 +4277,7 @@
                       "description": "Display name of the first instance, unique per service (\"Vector Database\" when this file adds the service). A different name renames it, as in the UI: its address stays"
                     },
                     "instanceId": {
-                      "description": "The instance's id, which its address is built on (/api/vectordb@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                      "description": "The instance's id, which its address is built on (/api/vectordb@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                       "type": "string",
                       "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                     },
@@ -4120,7 +4323,7 @@
                     "description": "Display name, unique per service (ignoring case). An entry without an instanceId is found again by it on every boot; a new instance's id is derived from it (\"CPU fallback\" → /api/vectordb@cpu-fallback). A different name renames a matched instance: its address stays"
                   },
                   "instanceId": {
-                    "description": "The instance's id, which its address is built on (/api/vectordb@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                    "description": "The instance's id, which its address is built on (/api/vectordb@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                     "type": "string",
                     "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                   },
@@ -4161,7 +4364,7 @@
               },
               "minItems": 1,
               "maxItems": 5,
-              "description": "Vector Database instances, first instance first (at most 5). Each entry is matched to an instance by its instanceId, then by its label; the first entry falls back to the service's oldest instance. A matched instance is updated in place (a new label renames it, its address stays); any other entry is created as a copy of the first instance. Instances no entry matches are deleted."
+              "description": "Vector Database instances, first instance first (at most 5). Each entry is matched to an instance by its instanceId when it has one, else by its label; the first entry without an instanceId falls back to the service's oldest instance. A matched instance is updated in place (a new label renames it, its address stays); any other entry is created as a copy of the first instance. Instances no entry matches are deleted."
             },
             {
               "type": "object",
@@ -4263,6 +4466,209 @@
           ],
           "description": "Vector storage for knowledge base management, semantic search, and RAG pipelines, backed by FAISS or PostgreSQL + pgvector."
         },
+        "video-generation": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "Display name of the first instance, unique per service (\"Video Generation\" when this file adds the service). A different name renames it, as in the UI: its address stays"
+                    },
+                    "instanceId": {
+                      "description": "The instance's id, which its address is built on (/api/video-generation@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
+                      "type": "string",
+                      "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
+                    },
+                    "status": {
+                      "description": "'online' starts the instance when the app boots; 'offline' (default) leaves it stopped.",
+                      "type": "string",
+                      "enum": [
+                        "online",
+                        "offline"
+                      ]
+                    },
+                    "engine": {
+                      "description": "Execution engine for this instance",
+                      "type": "string",
+                      "enum": [
+                        "worker"
+                      ]
+                    },
+                    "models": {
+                      "allOf": [
+                        {
+                          "$ref": "#/definitions/video-generation-models"
+                        }
+                      ]
+                    },
+                    "metadata": {
+                      "allOf": [
+                        {
+                          "$ref": "#/definitions/video-generation-metadata"
+                        }
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              ],
+              "additionalItems": {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Display name, unique per service (ignoring case). An entry without an instanceId is found again by it on every boot; a new instance's id is derived from it (\"CPU fallback\" → /api/video-generation@cpu-fallback). A different name renames a matched instance: its address stays"
+                  },
+                  "instanceId": {
+                    "description": "The instance's id, which its address is built on (/api/video-generation@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
+                    "type": "string",
+                    "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
+                  },
+                  "status": {
+                    "description": "'online' starts the instance when the app boots; 'offline' (default) leaves it stopped.",
+                    "type": "string",
+                    "enum": [
+                      "online",
+                      "offline"
+                    ]
+                  },
+                  "engine": {
+                    "description": "Execution engine for this instance",
+                    "type": "string",
+                    "enum": [
+                      "worker"
+                    ]
+                  },
+                  "models": {
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/video-generation-models"
+                      }
+                    ]
+                  },
+                  "metadata": {
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/video-generation-metadata"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "label"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 1,
+              "maxItems": 5,
+              "description": "Video Generation instances, first instance first (at most 5). Each entry is matched to an instance by its instanceId when it has one, else by its label; the first entry without an instanceId falls back to the service's oldest instance. A matched instance is updated in place (a new label renames it, its address stays); any other entry is created as a copy of the first instance. Instances no entry matches are deleted."
+            },
+            {
+              "type": "object",
+              "properties": {
+                "label": {
+                  "description": "Display name of the first instance, unique per service (\"Video Generation\" when this file adds the service). A different name renames it: its address stays",
+                  "type": "string",
+                  "minLength": 1
+                },
+                "status": {
+                  "description": "'online' starts the instance when the app boots; 'offline' (default) leaves it stopped.",
+                  "type": "string",
+                  "enum": [
+                    "online",
+                    "offline"
+                  ]
+                },
+                "engine": {
+                  "description": "Execution engine for this instance",
+                  "type": "string",
+                  "enum": [
+                    "worker"
+                  ]
+                },
+                "models": {
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/video-generation-models"
+                    }
+                  ]
+                },
+                "metadata": {
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/video-generation-metadata"
+                    }
+                  ]
+                },
+                "port": {
+                  "description": "Ignored — ports are allocated from INSTANCE_PORT_RANGE when the service starts",
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 65535
+                },
+                "instances": {
+                  "maxProperties": 4,
+                  "description": "Extra Video Generation instances keyed by instance id (1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit; a key equal to the first instance's id is ignored). Each is created on startup if missing and copies the first instance's settings before its own overrides apply. At most 5 instances in total, the first included. Instances missing from this file are deleted.",
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
+                  },
+                  "additionalProperties": {
+                    "type": "object",
+                    "properties": {
+                      "label": {
+                        "description": "Display name of the instance, unique per service (defaults to the instance id)",
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "status": {
+                        "description": "'online' starts the instance when the app boots; 'offline' (default) leaves it stopped.",
+                        "type": "string",
+                        "enum": [
+                          "online",
+                          "offline"
+                        ]
+                      },
+                      "engine": {
+                        "description": "Execution engine for this instance",
+                        "type": "string",
+                        "enum": [
+                          "worker"
+                        ]
+                      },
+                      "models": {
+                        "allOf": [
+                          {
+                            "$ref": "#/definitions/video-generation-models"
+                          }
+                        ]
+                      },
+                      "metadata": {
+                        "allOf": [
+                          {
+                            "$ref": "#/definitions/video-generation-metadata"
+                          }
+                        ]
+                      }
+                    },
+                    "additionalProperties": false,
+                    "description": "An extra Video Generation instance, keyed by its instance id (the address becomes /api/video-generation@<id>)"
+                  }
+                }
+              },
+              "additionalProperties": false,
+              "description": "Older form, still read: the fields configure the first Video Generation instance. Saving from the UI writes the list form."
+            }
+          ],
+          "description": "Generate short videos from a text prompt, a start image or the poses of a driving video, with Wan2.2 and Wan2.1 on OpenVINO or PyTorch."
+        },
         "wake-word-detection": {
           "anyOf": [
             {
@@ -4277,7 +4683,7 @@
                       "description": "Display name of the first instance, unique per service (\"Wake Word Detection\" when this file adds the service). A different name renames it, as in the UI: its address stays"
                     },
                     "instanceId": {
-                      "description": "The instance's id, which its address is built on (/api/wake-word-detection@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                      "description": "The instance's id, which its address is built on (/api/wake-word-detection@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                       "type": "string",
                       "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                     },
@@ -4323,7 +4729,7 @@
                     "description": "Display name, unique per service (ignoring case). An entry without an instanceId is found again by it on every boot; a new instance's id is derived from it (\"CPU fallback\" → /api/wake-word-detection@cpu-fallback). A different name renames a matched instance: its address stays"
                   },
                   "instanceId": {
-                    "description": "The instance's id, which its address is built on (/api/wake-word-detection@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it",
+                    "description": "The instance's id, which its address is built on (/api/wake-word-detection@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it",
                     "type": "string",
                     "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
                   },
@@ -4364,7 +4770,7 @@
               },
               "minItems": 1,
               "maxItems": 5,
-              "description": "Wake Word Detection instances, first instance first (at most 5). Each entry is matched to an instance by its instanceId, then by its label; the first entry falls back to the service's oldest instance. A matched instance is updated in place (a new label renames it, its address stays); any other entry is created as a copy of the first instance. Instances no entry matches are deleted."
+              "description": "Wake Word Detection instances, first instance first (at most 5). Each entry is matched to an instance by its instanceId when it has one, else by its label; the first entry without an instanceId falls back to the service's oldest instance. A matched instance is updated in place (a new label renames it, its address stays); any other entry is created as a copy of the first instance. Instances no entry matches are deleted."
             },
             {
               "type": "object",
@@ -5480,6 +5886,122 @@
       },
       "description": "Instance metadata, merged over existing values"
     },
+    "image-upscaling-models": {
+      "type": "object",
+      "properties": {
+        "default": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "description": "Model identifier (e.g. Hugging Face repo id)",
+              "type": "string",
+              "enum": [
+                "realesr-general-x4v3",
+                "realesr-animevideov3",
+                "RealESRGAN_x4plus",
+                "RealESRGAN_x2plus",
+                "RealESRGAN_x4plus_anime_6B",
+                "Swin2SR_RealworldSR_X4_64_BSRGAN_PSNR",
+                "4xNomosUni_span_multijpg",
+                "4xBHI_dat2_real",
+                "AuraSR-v2",
+                "single-image-super-resolution-1032",
+                "seedvr2-3b"
+              ]
+            },
+            "device": {
+              "description": "Accelerator to run on (e.g. CPU, GPU, NPU)",
+              "examples": [
+                "AUTO",
+                "CPU",
+                "GPU",
+                "NPU"
+              ],
+              "type": "string",
+              "minLength": 1
+            },
+            "source": {
+              "type": "string",
+              "enum": [
+                "huggingface",
+                "modelscope",
+                "custom"
+              ]
+            },
+            "quant": {
+              "description": "Weight format / quantization (precision the model is converted to; default fp16)",
+              "examples": [
+                "fp16",
+                "int8"
+              ],
+              "type": "string"
+            },
+            "params": {
+              "type": "string"
+            },
+            "backend": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "description": "Model identifier (e.g. Hugging Face repo id)",
+            "type": "string",
+            "minLength": 1
+          },
+          "device": {
+            "description": "Accelerator to run on (e.g. CPU, GPU, NPU)",
+            "type": "string",
+            "minLength": 1
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "huggingface",
+              "modelscope",
+              "custom"
+            ]
+          },
+          "quant": {
+            "description": "Weight format / quantization (precision the model is converted to; default fp16)",
+            "examples": [
+              "fp16",
+              "int8"
+            ],
+            "type": "string"
+          },
+          "params": {
+            "type": "string"
+          },
+          "backend": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "Partial per-model overrides, merged over the instance's current settings (a new instance starts from the first instance's). 'default' is the primary model."
+    },
+    "image-upscaling-metadata": {
+      "type": "object",
+      "properties": {
+        "cpuAffinity": {
+          "description": "CPU cores to pin this service to (numactl -C format, e.g. \"0-7\" or \"0,2,4\"). Empty / missing = all cores. Linux, and Windows for CPUs 0-63.",
+          "type": "string"
+        }
+      },
+      "description": "Instance metadata, merged over existing values"
+    },
     "lipsync-models": {
       "type": "object",
       "properties": {
@@ -5598,7 +6120,7 @@
           "type": "boolean"
         },
         "batchSize": {
-          "description": "Frames per lipsync inference. Empty / missing = automatic: 8 on the NPU, 16 on other devices. Smaller batches start talking sooner; larger ones can infer more frames per second.",
+          "description": "Frames per lipsync inference. Empty / missing = automatic: 1 on the NPU, 16 on other devices. Smaller batches start talking sooner; larger ones can infer more frames per second.",
           "type": "number"
         }
       },
@@ -6401,7 +6923,8 @@
                 "openai/whisper-medium",
                 "openai/whisper-small",
                 "openai/whisper-tiny",
-                "openai/whisper-base"
+                "openai/whisper-base",
+                "MERaLiON/MERaLiON-3-3B-ASR"
               ],
               "type": "string",
               "minLength": 1
@@ -6495,12 +7018,13 @@
           "type": "string"
         },
         "sttBackend": {
-          "description": "Backend of the Speech to Text service: \"oep\" runs the Open Edge Platform audio-analyzer natively (Whisper on OpenVINO GenAI, streaming and live /v1/realtime); \"ovms\" runs the built-in OpenVINO Model Server worker (batch transcription and translation, optional noise suppression).",
-          "default": "oep",
+          "description": "Backend of the Speech to Text service: \"oep\" runs the Open Edge Platform audio-analyzer natively (Whisper on OpenVINO GenAI, streaming and live /v1/realtime); \"ovms\" runs the built-in OpenVINO Model Server worker (batch transcription and translation, optional noise suppression); \"meralion\" runs the built-in MERaLiON worker, which serves MERaLiON/MERaLiON-3-3B-ASR only (set it as models.default.name; Singapore and Southeast Asian speech, language always detected, transcription only).",
+          "default": "ovms",
           "type": "string",
           "enum": [
             "oep",
-            "ovms"
+            "ovms",
+            "meralion"
           ]
         },
         "denoiseDevice": {
@@ -6754,6 +7278,7 @@
                 "pocket-tts",
                 "vieneu",
                 "fastspeech2-hs",
+                "cosyvoice3",
                 "piper",
                 "microsoft/speecht5_tts"
               ]
@@ -6951,6 +7476,112 @@
         },
         "pgConnectionString": {
           "description": "PostgreSQL URL for the pgvector backend. Empty / missing = embedded PostgreSQL managed by the worker.",
+          "type": "string"
+        }
+      },
+      "description": "Instance metadata, merged over existing values"
+    },
+    "video-generation-models": {
+      "type": "object",
+      "properties": {
+        "default": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "description": "Model identifier (e.g. Hugging Face repo id)",
+              "type": "string",
+              "enum": [
+                "FastVideo/FastWan2.2-TI2V-5B-FullAttn-Diffusers",
+                "Wan-AI/Wan2.2-TI2V-5B-Diffusers",
+                "Wan-AI/Wan2.1-T2V-1.3B-Diffusers",
+                "Wan-AI/Wan2.1-VACE-1.3B-diffusers",
+                "Wan-AI/Wan2.2-T2V-A14B-Diffusers"
+              ]
+            },
+            "device": {
+              "description": "Accelerator to run on (e.g. CPU, GPU, NPU)",
+              "type": "string",
+              "minLength": 1
+            },
+            "source": {
+              "type": "string",
+              "enum": [
+                "huggingface",
+                "modelscope",
+                "custom"
+              ]
+            },
+            "quant": {
+              "description": "Weight format / quantization (precision the model is converted to; default int8)",
+              "examples": [
+                "int8",
+                "fp16",
+                "int4"
+              ],
+              "type": "string"
+            },
+            "params": {
+              "type": "string"
+            },
+            "backend": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "description": "Model identifier (e.g. Hugging Face repo id)",
+            "type": "string",
+            "minLength": 1
+          },
+          "device": {
+            "description": "Accelerator to run on (e.g. CPU, GPU, NPU)",
+            "type": "string",
+            "minLength": 1
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "huggingface",
+              "modelscope",
+              "custom"
+            ]
+          },
+          "quant": {
+            "description": "Weight format / quantization (precision the model is converted to; default int8)",
+            "examples": [
+              "int8",
+              "fp16",
+              "int4"
+            ],
+            "type": "string"
+          },
+          "params": {
+            "type": "string"
+          },
+          "backend": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "Partial per-model overrides, merged over the instance's current settings (a new instance starts from the first instance's). 'default' is the primary model."
+    },
+    "video-generation-metadata": {
+      "type": "object",
+      "properties": {
+        "cpuAffinity": {
+          "description": "CPU cores to pin this service to (numactl -C format, e.g. \"0-7\" or \"0,2,4\"). Empty / missing = all cores. Linux, and Windows for CPUs 0-63.",
           "type": "string"
         }
       },

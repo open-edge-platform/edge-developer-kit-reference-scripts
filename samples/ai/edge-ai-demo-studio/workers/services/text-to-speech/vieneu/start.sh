@@ -12,7 +12,7 @@ done
 # shellcheck source=SCRIPTDIR/../../../scripts/worker-common.sh
 . "$WORKERS_ROOT/scripts/worker-common.sh"
 
-# vieneu and vieneu_utils are vendored here (pinned in workers/oep-services.json)
+# vieneu and vieneu_utils are vendored here (pinned in workers/upstream.json)
 # because the vieneu package requires gradio, which the worker does not use.
-oep_fetch services/text-to-speech/vieneu
+upstream_fetch services/text-to-speech/vieneu
 run_worker "$@"

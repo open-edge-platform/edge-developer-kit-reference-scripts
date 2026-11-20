@@ -11,7 +11,8 @@ import { LiveSession, type LiveStartOptions } from '../lib/live/live-session'
 /**
  * Streams live mic PCM to the STT worker, one `LiveSession` at a time. `start` rejects when the mic
  * or socket can't open, or with a cancellation if `stop` came first; `stop` resolves once the final
- * utterance is flushed. `stream` is the mic stream for a visualizer. Unmounting ends every session.
+ * utterance is flushed; `dispose` drops it unflushed. `stream` is the mic stream for a visualizer.
+ * Unmounting ends every session.
  */
 export function useLiveStream(service: Service | undefined) {
   const sessionRef = useRef<LiveSession | null>(null)
@@ -54,5 +55,13 @@ export function useLiveStream(service: Service | undefined) {
     return session.stop().finally(() => flushing.delete(session))
   }
 
-  return { start, stop, stream }
+  /** Ends the session at once, without waiting for (or asking the worker for) a final answer. */
+  const dispose = () => {
+    const session = sessionRef.current
+    sessionRef.current = null
+    setStream(null)
+    session?.dispose()
+  }
+
+  return { start, stop, dispose, stream }
 }

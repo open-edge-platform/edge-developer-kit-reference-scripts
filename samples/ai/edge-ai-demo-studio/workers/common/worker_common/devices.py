@@ -3,8 +3,9 @@
 """Device discovery shared by the workers, so they all report devices the same way.
 
 The default OpenVINO device is ``AUTO`` (dGPU, then iGPU, then CPU; an NPU only when named). Workers pass
-it through as is: per-device options go through :func:`openvino_compile_config`, and
-:func:`openvino_execution_device` reads back the device OpenVINO picked. ``openvino`` and ``torch`` are
+it through as is: per-device options go through :func:`openvino_compile_config` (an NPU compile is
+cached beside the model, :func:`openvino_npu_cache_config`), and :func:`openvino_execution_device`
+reads back the device OpenVINO picked. ``openvino`` and ``torch`` are
 imported lazily, so the module imports in an environment with neither.
 """
 
@@ -12,11 +13,14 @@ from __future__ import annotations
 
 import functools
 import logging
+import os
 import platform
+from pathlib import Path
 from typing import Any
 
 __all__ = [
     "AUTO_DEVICE",
+    "NPU_CACHE_DIR",
     "OPENVINO_DEVICE_TYPES",
     "default_openvino_device",
     "normalize_openvino_device",
@@ -25,6 +29,7 @@ __all__ = [
     "openvino_device_type",
     "openvino_devices",
     "openvino_execution_device",
+    "openvino_npu_cache_config",
     "openvino_pinned_cpu_config",
     "pinned_cpu_threads",
     "resolve_torch_device",
@@ -41,6 +46,9 @@ _AUTO_ENTRY = {"name": AUTO_DEVICE, "full_name": "Automatic (OpenVINO selects th
 #: OpenVINO device name prefix -> the type the UI groups by.
 OPENVINO_DEVICE_TYPES = {"GPU": "GPU", "NPU": "NPU", "AUTO": "AUTO"}
 _DEFAULT_DEVICE_TYPE = "CPU"
+#: Folder beside a model where OpenVINO keeps what it compiled for the NPU (the name
+#: ``model_downloader.ovms`` uses inside an OVMS model's folder).
+NPU_CACHE_DIR = ".ov_cache"
 
 
 # ── OpenVINO ──────────────────────────────────────────────────────────
@@ -176,14 +184,34 @@ def openvino_pinned_cpu_config() -> dict[str, Any]:
     return {"DEVICE_PROPERTIES": {"CPU": {"INFERENCE_NUM_THREADS": threads}}} if threads else {}
 
 
-def openvino_compile_config(device: str, gpu: dict[str, Any] | None = None) -> dict[str, Any]:
+def openvino_npu_cache_config(
+    device: str, model_dir: str | os.PathLike[str] | None
+) -> dict[str, Any]:
+    """``CACHE_DIR`` in ``model_dir``/:data:`NPU_CACHE_DIR` for a compile on the NPU, ``{}`` elsewhere.
+
+    The NPU compiles each model for seconds to minutes; a cached start imports the blob instead. A
+    GPU is left alone: its driver already caches compiled kernels, and a blob costs about the model's
+    size on disk.
+    """
+    if model_dir is None or openvino_device_type(device.split(":", 1)[0]) != "NPU":
+        return {}
+    return {"CACHE_DIR": str(Path(model_dir) / NPU_CACHE_DIR)}
+
+
+def openvino_compile_config(
+    device: str,
+    gpu: dict[str, Any] | None = None,
+    *,
+    model_dir: str | os.PathLike[str] | None = None,
+) -> dict[str, Any]:
     """``compile_model`` properties for ``device``, with ``gpu`` for a GPU only.
 
     A CPU gets one thread per pinned core when the process is pinned on Windows (see
     :func:`pinned_cpu_threads`). ``AUTO`` gets both under ``DEVICE_PROPERTIES`` and its CPU
     fallbacks off: with startup fallback on, the first inferences run on the CPU while the device compiles
     (skewing warm-up timings and :func:`openvino_execution_device`), and with either on a stateful model's
-    ``reset_state()`` raises.
+    ``reset_state()`` raises. An NPU caches what it compiles in ``model_dir``
+    (:func:`openvino_npu_cache_config`).
     """
     threads = pinned_cpu_threads()
     cpu = {"INFERENCE_NUM_THREADS": threads} if threads else {}
@@ -196,6 +224,8 @@ def openvino_compile_config(device: str, gpu: dict[str, Any] | None = None) -> d
         return config
     if kind == "GPU":
         return dict(gpu) if gpu else {}
+    if kind == "NPU":
+        return openvino_npu_cache_config(device, model_dir)
     return cpu if device.strip().upper() == "CPU" else {}
 
 

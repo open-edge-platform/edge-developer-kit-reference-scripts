@@ -105,7 +105,13 @@ export function WorkerConfigurePanel({
   const defaultPrecision = service.config?.defaultWeightFormat ?? ''
   const currentPrecision =
     getEffectivePrecision(service.config, current.quant) ?? ''
-  const [precision, setPrecision] = useState(currentPrecision)
+  const [draftedPrecision, setPrecision] = useState(currentPrecision)
+  // One drafted under another scope that this one lacks (FP16 on a backend with INT8 and INT4
+  // only) falls back to the saved one, else the default, which Save then sends.
+  const precisionCarriedOver =
+    choosesPrecision &&
+    !(service.config?.availableWeightFormats ?? []).includes(draftedPrecision)
+  const precision = precisionCarriedOver ? currentPrecision : draftedPrecision
   const precisionChanged = choosesPrecision && precision !== currentPrecision
 
   // A new scope brings a new model list: only the model drafts start over.
@@ -173,9 +179,10 @@ export function WorkerConfigurePanel({
                 name: resolvedModel,
                 device,
                 source: sources.length > 0 ? draft.source : undefined,
-                quant: precisionChanged
-                  ? precision
-                  : (service.currentQuant ?? undefined),
+                quant:
+                  precisionChanged || precisionCarriedOver
+                    ? precision
+                    : (service.currentQuant ?? undefined),
               }
             : undefined,
           extension: extension?.config,

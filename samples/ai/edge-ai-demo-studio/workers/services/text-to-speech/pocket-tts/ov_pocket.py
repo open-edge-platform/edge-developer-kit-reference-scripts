@@ -2,14 +2,16 @@
 # SPDX-License-Identifier: Apache-2.0
 """Pocket TTS on OpenVINO: ``flow_lm.xml`` is one FlowLM step (the next 80 ms latent; K/V caches as
 OpenVINO state; int8 weights, >2x faster on CPU), ``mimi_decoder.xml`` decodes a chunk of latents to
-24 kHz audio. Text embedding and latent projection are numpy lookups (``tables.npz``); voice prompts
-are Mimi-encoded once. Core Ultra 9 285K: 18x real time vs 8x PyTorch CPU, 7x on an Arc Pro B60.
+24 kHz audio. Text embedding and latent projection are numpy lookups (``tables.npz``); a voice is the
+K/V caches after its prompt (``voices/<id>.npz``), loaded into the state. Core Ultra 9 285K: 18x real
+time vs 8x PyTorch CPU, 7x on an Arc Pro B60.
 """
 
 from __future__ import annotations
 
 import json
 import math
+import re
 from functools import partial
 from pathlib import Path
 
@@ -21,8 +23,10 @@ from worker_common import get_logger, openvino_compile_config, shared_model_lock
 logger = get_logger(__name__)
 
 #: Bumped when the export changes, so an older one is redone.
-EXPORT_VERSION = 1
+EXPORT_VERSION = 3
 EXPORT_MARKER = "export.json"
+#: An OpenVINO state of flow_lm.xml: ``past_<key|value>.<layer>present_<key|value>.<layer>``.
+_STATE_NAME = re.compile(r"past_(key|value)\.(\d+)")
 
 
 def _flow_lm_step_module(flow_lm):
@@ -108,20 +112,41 @@ def _save(model: ov.Model, path: Path) -> None:
         ov.save_model(model, staged, compress_to_fp16=False)
 
 
-def _export(config_path: str, voices: dict[str, str], out_dir: Path) -> None:
+def _voice_state(tts, source: Path, layers: int) -> dict[str, np.ndarray]:
+    """The K/V caches after ``source``'s voice, as ``key.<layer>``/``value.<layer>`` (1, heads, T, dim):
+    TTSModel.get_state_for_audio_prompt's, from a recording or a state Kyutai precomputed (.safetensors).
+    """
+    import torch
+
+    with torch.no_grad():
+        state = tts.get_state_for_audio_prompt(source)
+    arrays = {}
+    for i in range(layers):
+        layer = state[f"transformer.layers.{i}.self_attn"]
+        length = int(layer["offset"].view(-1)[0])
+        if int(layer.get("pad", torch.zeros(1)).view(-1)[0]):
+            raise ValueError(f"{source}: a padded voice state")
+        # (2, batch, time, heads, dim), as many steps filled as the offset says.
+        cache = layer["cache"][:, :, :length].permute(0, 1, 3, 2, 4).numpy().astype(np.float32)
+        arrays[f"key.{i}"], arrays[f"value.{i}"] = cache[0], cache[1]
+    return arrays
+
+
+def _export(config_path: str, voices: dict[str, str], out_dir: Path, origin: str) -> None:
     import nncf
     import torch
     from openvino._offline_transformations import apply_make_stateful_transformation
     import pocket_tts.modules.transformer as transformer_module
     from pocket_tts import TTSModel
-    from pocket_tts.data.audio import audio_read
-    from pocket_tts.data.audio_utils import convert_audio
     from pocket_tts.modules.conv import StreamingConvTranspose1d
 
     tts = TTSModel.load_model(config=config_path)
     fl = tts.flow_lm
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    attn = fl.transformer.layers[0].self_attn
+    if attn.num_kv_heads != attn.num_heads:
+        raise NotImplementedError("grouped-query attention (num_kv_heads != num_heads)")
     step = _flow_lm_step_module(fl)
     layers = len(fl.transformer.layers)
     names_in, names_out = ["x", "noise"], ["latent", "eos_logit"]
@@ -160,51 +185,58 @@ def _export(config_path: str, voices: dict[str, str], out_dir: Path) -> None:
     mimi.outputs[0].get_tensor().set_names({"audio"})
     _save(mimi, out_dir / "mimi_decoder.xml")
 
+    conditioner = fl.conditioner
+    text_emb = conditioner.embed.weight
+    if conditioner.proj is not None:
+        # A low-rank table: its rows projected to the model's width once, here.
+        text_emb = conditioner.proj(text_emb)
     with staged_model_file(str(out_dir / "tables.npz")) as staged:
         with open(staged, "wb") as f:
             np.savez(
                 f,
-                text_emb=fl.conditioner.embed.weight.detach().numpy(),
+                text_emb=text_emb.detach().numpy(),
                 input_linear=fl.input_linear.weight.detach().numpy().T.copy(),
                 bos_emb=fl.bos_emb.detach().numpy(),
             )
 
-    # The voice prompts as the FlowLM sees them (TTSModel.get_state_for_audio_prompt
-    # before it runs the transformer): Mimi-encoded, projected, after the BOS.
     (out_dir / "voices").mkdir(exist_ok=True)
-    for voice_id, audio_path in voices.items():
-        audio, sample_rate = audio_read(Path(audio_path))
-        audio = convert_audio(audio, sample_rate, tts.config.mimi.sample_rate, 1)
-        with torch.no_grad():
-            prompt = tts._encode_audio(audio.unsqueeze(0))
-            if fl.insert_bos_before_voice:
-                prompt = torch.cat([fl.bos_before_voice, prompt], dim=1)
-        with staged_model_file(str(out_dir / "voices" / f"{voice_id}.npy")) as staged:
+    for voice_id, source in voices.items():
+        with staged_model_file(str(out_dir / "voices" / f"{voice_id}.npz")) as staged:
             with open(staged, "wb") as f:
-                np.save(f, prompt.numpy().astype(np.float32))
+                np.savez(f, **_voice_state(tts, Path(source), layers))
 
     (out_dir / EXPORT_MARKER).write_text(
-        json.dumps({"version": EXPORT_VERSION, "voices": sorted(voices)}), encoding="utf-8"
+        json.dumps({"version": EXPORT_VERSION, "origin": origin, "voices": sorted(voices)}),
+        encoding="utf-8",
     )
 
 
-def is_exported(out_dir: Path, voices: dict[str, str]) -> bool:
+def is_exported(out_dir: Path, voices, origin: str) -> bool:
+    """Whether ``out_dir`` holds this version's export of the weights at ``origin``, with ``voices``."""
     try:
         marker = json.loads((out_dir / EXPORT_MARKER).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return False
-    return marker.get("version") == EXPORT_VERSION and set(marker.get("voices", [])) >= set(voices)
+    return (
+        marker.get("version") == EXPORT_VERSION
+        and marker.get("origin") == origin
+        and set(marker.get("voices", [])) >= set(voices)
+    )
 
 
-def ensure_export(config_path: str, voices: dict[str, str], out_dir: Path) -> None:
-    """The IRs, tables and voice prompts in ``out_dir``, exported on first use."""
-    if is_exported(out_dir, voices):
+def ensure_export(config_path: str, voices: dict[str, str], out_dir: Path, origin: str) -> None:
+    """The IRs, tables and voice states in ``out_dir``, exported on first use.
+
+    ``voices`` maps each voice to a recording or a precomputed state (.safetensors); ``origin``
+    names the weights (an ``hf://`` URI at a revision), so other weights are exported anew.
+    """
+    if is_exported(out_dir, voices, origin):
         return
     # Another instance may be exporting right now; the marker is written last.
     with shared_model_lock(str(out_dir / EXPORT_MARKER)):
-        if not is_exported(out_dir, voices):
+        if not is_exported(out_dir, voices, origin):
             logger.info("Exporting Pocket TTS to OpenVINO IR in %s", out_dir)
-            _export(config_path, voices, out_dir)
+            _export(config_path, voices, out_dir, origin)
 
 
 class PocketTTS:
@@ -212,14 +244,16 @@ class PocketTTS:
 
     def __init__(self, config_path: str, out_dir: Path, voices: list[str], device: str):
         from pocket_tts.models.tts_model import TTSModel
-        from pocket_tts.modules.text_conditioner import SentencePieceTokenizer
+        from pocket_tts.modules.text_conditioner import build_tokenizer
         from pocket_tts.utils.config import load_config
 
         self.config = load_config(config_path)
         lookup = self.config.flow_lm.lookup_table
-        self.tokenizer = SentencePieceTokenizer(lookup.n_bins, lookup.tokenizer_path)
+        # SentencePiece or a tokenizer.json, whichever the config names.
+        self.tokenizer = build_tokenizer(lookup.n_bins, lookup.tokenizer_path, lookup.tokenizer)
         self.sample_rate = self.config.mimi.sample_rate
         self.temperature = self.config.default_temperature
+        self.eos_threshold = self.config.default_eos_threshold
         # TTSModel's generation constants, read off the class so they follow the library.
         self.tokens_per_second = TTSModel._TOKENS_PER_SECOND_ESTIMATE
         self.padding_seconds = TTSModel._GEN_SECONDS_PADDING
@@ -237,7 +271,13 @@ class PocketTTS:
         self.input_linear = tables["input_linear"]
         self.bos = (tables["bos_emb"] @ self.input_linear)[None, None].astype(np.float32)
         self.latent_dim = self.input_linear.shape[0]
-        self.voices = {v: np.load(out_dir / "voices" / f"{v}.npy") for v in voices}
+        # Each voice as the tensors its states take, in query_state's order.
+        self.states = self.request.query_state()
+        keys = ["{}.{}".format(*_STATE_NAME.match(state.name).groups()) for state in self.states]
+        self.voices = {}
+        for voice in voices:
+            with np.load(out_dir / "voices" / f"{voice}.npz") as arrays:
+                self.voices[voice] = [ov.Tensor(np.ascontiguousarray(arrays[key])) for key in keys]
         self.rng = np.random.default_rng()
 
     def _step(self, x: np.ndarray, noise: np.ndarray) -> tuple[np.ndarray, float]:
@@ -262,7 +302,7 @@ class PocketTTS:
             out.append((prompt, frames if frames is not None else guess + 2))
         return out
 
-    def generate(self, voice: str, text: str, frames_after_eos: int, eos_threshold: float) -> np.ndarray:
+    def generate(self, voice: str, text: str, frames_after_eos: int) -> np.ndarray:
         """One chunk of speech (TTSModel._generate_audio_stream_short_text)."""
         tokens = self.tokenizer.encode(text)
         gen_seconds = len(tokens) / self.tokens_per_second + self.padding_seconds
@@ -270,14 +310,15 @@ class PocketTTS:
         no_noise = np.zeros((1, self.latent_dim), np.float32)
         std = math.sqrt(self.temperature)
 
-        self.request.reset_state()
-        self._step(self.voices[voice], no_noise)
+        # The state after the voice's prompt, as TTSModel.get_state_for_audio_prompt leaves it.
+        for state, tensor in zip(self.states, self.voices[voice]):
+            state.state = tensor
         self._step(self.text_emb[tokens][None].astype(np.float32), no_noise)
         x, latents, eos_step = self.bos, [], None
         for step in range(max_frames):
             noise = (self.rng.standard_normal((1, self.latent_dim)) * std).astype(np.float32)
             latent, eos_logit = self._step(x, noise)
-            if eos_logit > eos_threshold and eos_step is None and step >= self.min_frames_before_eos:
+            if eos_logit > self.eos_threshold and eos_step is None and step >= self.min_frames_before_eos:
                 eos_step = step
             if eos_step is not None and step >= eos_step + frames_after_eos:
                 break
@@ -285,5 +326,9 @@ class PocketTTS:
             x = (latent @ self.input_linear)[None].astype(np.float32)
         if not latents:
             return np.zeros(0, np.float32)
-        audio = self.mimi({"latents": np.stack(latents, axis=1)})[0]
-        return np.asarray(audio[0], dtype=np.float32)
+        audio = np.array(self.mimi({"latents": np.stack(latents, axis=1)})[0][0], dtype=np.float32)
+        # Mimi decodes from a fresh state, whose first samples carry a small step heard as a click:
+        # faded in over 5 ms, as TTSModel._decode_audio_worker does.
+        fade = min(self.sample_rate // 200, audio.size)
+        audio[:fade] *= np.linspace(0, 1, self.sample_rate // 200, dtype=np.float32)[:fade]
+        return audio

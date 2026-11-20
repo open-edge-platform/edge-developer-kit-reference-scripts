@@ -364,9 +364,16 @@ def get_file_list(id: int):
 
 @v1_router.delete("/kb/{id}/files")
 def delete_file(id: int, file: KnowledgeFile):
-    if os.path.exists(f"{DATA_DIR}/{id}/{file.name}"):
-        os.remove(f"{DATA_DIR}/{id}/{file.name}")
-    return JSONResponse({"message": f"Successfully deleted {file.name}"})
+    # Only a file listed in the knowledge base's folder can go: the name removed is the listed one,
+    # so a requested "../x" matches nothing instead of reaching outside the folder.
+    folder = f"{DATA_DIR}/{id}"
+    for entry in os.listdir(folder) if os.path.isdir(folder) else []:
+        if entry == file.name:
+            path = os.path.join(folder, entry)
+            if os.path.isfile(path):
+                os.remove(path)
+                return JSONResponse({"message": f"Successfully deleted {entry}"})
+    raise HTTPException(status_code=404, detail="File not found")
 
 
 @v1_router.post("/kb/{id}/files")

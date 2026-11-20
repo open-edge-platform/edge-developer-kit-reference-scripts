@@ -8,7 +8,7 @@ This worker provides a Text-to-Speech (TTS) service using the Kokoro FastAPI ser
 ### Vendored kokoro package
 
 The `kokoro` package is not a uv dependency. `start.sh` copies it from
-`hexgrad/kokoro`, at the commit pinned in `workers/oep-services.json`
+`hexgrad/kokoro`, at the commit pinned in `workers/upstream.json`
 (`sources`), into `./kokoro` (gitignored) and applies `kokoro.patch`.
 `ov_kokoro.py` subclasses its `KModel` and `export.py` converts it to
 OpenVINO IR. The patch:

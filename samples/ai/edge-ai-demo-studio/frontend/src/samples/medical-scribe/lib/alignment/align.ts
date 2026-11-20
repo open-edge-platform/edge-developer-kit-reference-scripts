@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { TimedText } from '@/services/speech-to-text/lib/transcript-export'
-import type { DiarizationSeg, TranscriptEntry } from '../types'
+import type { DiarizationSeg, LiveUtterance, TranscriptEntry } from '../types'
 import { alignByDuration } from './by-duration'
 import { MIN_WORD_WEIGHT, SENTENCE_TERMINATOR, TIE_BREAK_BONUS } from './config'
 import { segmentsToTokens, wordsToTokens, type TimedToken } from './tokens'
@@ -146,6 +146,81 @@ function alignTimedTokens(
   }
 
   return merged
+}
+
+/**
+ * Aligns live utterances (cut at VAD pauses) with diarization segments. Each utterance's tokens
+ * come from its word timings when they reconcile with its text, else from its span split by
+ * length; its end is always a sentence boundary, so a speaker change at a pause is never
+ * outvoted by the words before it, while word timings still split a turn within an utterance.
+ * Falls back to the duration heuristic when no utterance has any timing.
+ */
+export function alignUtterancesWithSegments(
+  utterances: LiveUtterance[],
+  diarizationSegments: DiarizationSeg[],
+): TranscriptEntry[] {
+  const spoken = utterances.filter((u) => u.text.trim())
+  if (diarizationSegments.length === 0 || spoken.length === 0) return []
+
+  const tokens: TimedToken[] = []
+  for (const utterance of spoken) {
+    const text = utterance.text.trim()
+    const fromWords =
+      utterance.words && utterance.words.length > 0
+        ? wordsToTokens(text, utterance.words)
+        : null
+    const own = fromWords ?? segmentsToTokens([utterance])
+    if (own.length === 0) continue
+    own[own.length - 1] = { ...own[own.length - 1], boundary: true }
+    tokens.push(...own)
+  }
+  const result = alignTimedTokens(tokens, diarizationSegments)
+  if (result.length > 0) return result
+  return alignByDuration(
+    joinTokens(spoken.map((u) => u.text.trim())),
+    diarizationSegments,
+  )
+}
+
+/** How far an utterance may lie outside the diarized audio and still count as heard, seconds. */
+const LIVE_COVERAGE_TOLERANCE = 0.05
+
+/**
+ * The transcript while recording: the utterances the latest live diarization pass heard (between
+ * `coveredFrom` and `coveredUntil`), aligned with its segments. The others stay unlabelled rather
+ * than guessed as the nearest speaker: newer ones until a pass covers them, and ones from before
+ * a stream that joined late, which no pass ever hears (the recording's diarization labels them).
+ */
+export function alignLiveUtterances(
+  utterances: LiveUtterance[],
+  diarizationSegments: DiarizationSeg[],
+  coveredFrom: number,
+  coveredUntil: number,
+): TranscriptEntry[] {
+  const unlabelled = ({
+    text,
+    start,
+    end,
+  }: LiveUtterance): TranscriptEntry => ({
+    speaker: '',
+    text,
+    start,
+    end,
+  })
+  // Begun before the stream's audio (one straddling it was only half heard).
+  const early = (u: LiveUtterance) =>
+    u.start < coveredFrom - LIVE_COVERAGE_TOLERANCE
+  const late = (u: LiveUtterance) =>
+    u.end > coveredUntil + LIVE_COVERAGE_TOLERANCE
+  const heard = utterances.filter((u) => !early(u) && !late(u))
+  const aligned = alignUtterancesWithSegments(heard, diarizationSegments)
+  if (aligned.length === 0) return utterances.map(unlabelled)
+  // Utterances are in order: the heard ones sit between the early and the late.
+  return [
+    ...utterances.filter(early).map(unlabelled),
+    ...aligned,
+    ...utterances.filter((u) => !early(u) && late(u)).map(unlabelled),
+  ]
 }
 
 /**

@@ -17,8 +17,11 @@ THIRDPARTY_DIR="$WORKERS_ROOT/thirdparty"
 UV_CMD="$THIRDPARTY_DIR/uv/uv"
 OVMS_DIR="$THIRDPARTY_DIR/ovms"
 OVMS_PATH="$OVMS_DIR/bin/ovms"
-# The optimum-cli environment `ovms --pull` converts with, synced on the first OVMS worker start.
-OVMS_EXPORT_VENV="$WORKERS_ROOT/common/ovms-export/.venv"
+# The optimum-cli environment `ovms --pull` converts with, built on the first OVMS worker start from
+# OVMS's own conversion requirements at the release setup.sh installs: upstream owns those pins, as on
+# Windows (worker-common.ps1 installs the same file into OVMS's Python). Move the tag with OVMS.
+OVMS_EXPORT_VENV="${OVMS_EXPORT_VENV:-$WORKERS_ROOT/common/ovms-export/.venv}"
+OVMS_EXPORT_REQUIREMENTS_URL="https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/tags/v2026.4.1/demos/common/export_models/requirements.txt"
 # FFmpeg and git come from the project-root setup, one level above workers/.
 PROJECT_ROOT="$(cd "$WORKERS_ROOT/.." && pwd)"
 ROOT_THIRDPARTY_DIR="$PROJECT_ROOT/thirdparty"
@@ -75,14 +78,21 @@ git_cmd() {
     exit 1
 }
 
-# oep_fetch <worker> -- fetch what oep-services.json pins for <worker> (e.g. services/speech-to-text/oep),
-# with its patch and overlay/ applied. Cheap and idempotent, so call it on every start. See oep-setup.sh.
+# upstream_fetch <worker> -- fetch what upstream.json pins for <worker> (e.g. services/speech-to-text/oep),
+# with its patch and overlay/ applied. Cheap and idempotent, so call it on every start. See upstream-setup.sh.
+upstream_fetch() {
+    "$WORKERS_ROOT/upstream-setup.sh" fetch "$1"
+}
+
+# Old name of upstream_fetch, for start scripts written before the rename; delete once none use it.
 oep_fetch() {
-    "$WORKERS_ROOT/oep-setup.sh" fetch "$1"
+    upstream_fetch "$@"
 }
 
 # Install only this worker into the shared environment: --inexact keeps other workers' packages;
 # --frozen uses the committed lock without needing unrelated vendored sources (malaya) to exist yet.
+# A start from the app finds it installed: the app installs it first, while no other worker starts
+# (frontend/src/lib/workers/shared-env.ts). Keep the two installs the same.
 prepare_worker() {
     require_uv
     local project_file="$SCRIPT_DIR/pyproject.toml"
@@ -96,7 +106,7 @@ prepare_worker() {
 
     # The shared OEP model-download source is fetched only for workers that need model-downloader.
     if grep -q '"model-downloader' "$project_file"; then
-        if ! oep_fetch common/downloader; then
+        if ! upstream_fetch common/downloader; then
             startup_event '{"event":"failure","summary":"Could not fetch the model downloader sources"}'
             return 1
         fi
@@ -131,11 +141,40 @@ ovms_prepare() {
     fi
     echo "Preparing OVMS conversion environment..."
     startup_event '{"event":"stage","stage":"preparing","detail":"Installing the model conversion tools"}'
-    if ! "$UV_CMD" sync --frozen --project "$WORKERS_ROOT/common/ovms-export"; then
-        startup_event '{"event":"failure","summary":"Could not install the model conversion tools (uv sync failed)"}'
+    if ! ovms_export_install; then
+        startup_event '{"event":"failure","summary":"Could not install the model conversion tools (uv pip install failed)"}'
         return 1
     fi
     startup_event '{"event":"stage-end","stage":"preparing"}'
+}
+
+# ovms_export_install -- build $OVMS_EXPORT_VENV from $OVMS_EXPORT_REQUIREMENTS_URL plus
+# common/ovms-export/compat when that recipe changed; otherwise only check it, so starts stay offline.
+# Every OVMS worker calls this, so one install runs at a time and the others wait for it.
+ovms_export_install() {
+    local project="$WORKERS_ROOT/common/ovms-export"
+    local stamp="$OVMS_EXPORT_VENV/.export-requirements"
+    local recipe
+    recipe="$OVMS_EXPORT_REQUIREMENTS_URL compat:$(cd "$project/compat" \
+        && cat pyproject.toml ovms_export_compat.py ovms_export_compat.pth | sha256sum | cut -d' ' -f1)"
+    mkdir -p "$project/thirdparty" || return 1
+    (
+        if ! flock -w 3600 9; then
+            echo "ERROR: timed out waiting for another worker to install the model conversion tools." >&2
+            exit 1
+        fi
+        if [ -x "$OVMS_EXPORT_VENV/bin/optimum-cli" ] && [ "$(cat "$stamp" 2>/dev/null)" = "$recipe" ]; then
+            exit 0
+        fi
+        echo "Installing OVMS's model conversion requirements into $OVMS_EXPORT_VENV..."
+        # --no-config: uv would otherwise apply workers/pyproject.toml's [tool.uv] (the workspace's
+        # torch overrides and XPU index), found by walking up from here. unsafe-best-match merges the
+        # extra indexes the file names (CPU PyTorch, OpenVINO) as pip does.
+        "$UV_CMD" venv --no-config --clear --python 3.12 "$OVMS_EXPORT_VENV" \
+            && "$UV_CMD" pip install --no-config --python "$OVMS_EXPORT_VENV/bin/python" \
+                --index-strategy unsafe-best-match -r "$OVMS_EXPORT_REQUIREMENTS_URL" "$project/compat" \
+            && printf '%s\n' "$recipe" > "$stamp"
+    ) 9>"$project/thirdparty/.export-env.lock"
 }
 
 # run_worker [args...] -- cd into the worker directory and exec its entrypoint under uv. No --project:
@@ -147,7 +186,7 @@ run_worker() {
 }
 
 # run_oep_worker [args...] -- for a worker wrapping an OEP microservice (an "install" entry in
-# oep-services.json): build .venv from upstream's own dependency file at the fetched tag
+# upstream.json): build .venv from upstream's own dependency file at the fetched tag
 # (scripts/oep_env.py; only checks when nothing changed), then exec main.py in it.
 run_oep_worker() {
     require_uv

@@ -39,7 +39,7 @@ prepare_export_env() {
         return 0
     fi
     echo "$model converts with $project; checking that environment..."
-    oep_fetch "$project"
+    upstream_fetch "$project"
     if ! "$UV_CMD" sync --project "$WORKERS_ROOT/$project"; then
         if [ "$state" = "ready" ]; then
             echo "WARNING: could not sync $project; using the environment as it is." >&2

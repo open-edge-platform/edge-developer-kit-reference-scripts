@@ -95,6 +95,25 @@ function Test-NodeInstalled {
     }
 }
 
+# Warns, without stopping the start, when a tool setup installed is damaged, was changed since, or was
+# installed before setup checked its downloads (verify_thirdparty.ps1). Setup puts any of them right.
+function Test-ThirdpartyInstalls {
+    $verifyScript = Join-Path $SCRIPT_DIR "verify_thirdparty.ps1"
+    if (-not (Test-Path $verifyScript)) { return }
+    try {
+        $problems = @(& $verifyScript -ProjectRoot $PROJECT_ROOT)
+    } catch {
+        Write-Host "Could not check the installed tools: $($_.Exception.Message)" -ForegroundColor Yellow
+        return
+    }
+    if ($LASTEXITCODE -eq 0) { return }
+    Write-Host ""
+    Write-Host "WARNING: These installed tools are damaged, were changed since setup installed them, or were never checked:" -ForegroundColor Yellow
+    foreach ($problem in $problems) { Write-Host "  $problem" -ForegroundColor Yellow }
+    Write-Host "Run setup again (setup_win.bat) to download them again. Starting anyway..." -ForegroundColor Yellow
+    Write-Host ""
+}
+
 function Get-FrontendPort {
     $envPath = Join-Path $FRONTEND_DIR ".env"
     if (Test-Path $envPath) {
@@ -173,6 +192,7 @@ function Start-Frontend {
 try {
     Write-Host "Starting setup..." -ForegroundColor Green
     Add-FrontendEnv
+    Test-ThirdpartyInstalls
     Start-Frontend
     Write-Host "Setup completed successfully!" -ForegroundColor Green
     exit 0

@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * Which existing instance each deployment.json entry configures. List entries match by `instanceId`,
- * then `label` (ignoring case); an unmatched first entry takes the oldest unclaimed instance, so a
- * new name renames it. Other unmatched entries are created; unclaimed instances are deleted. In the
- * keyed form the top-level fields are the first instance and `instances.<id>` match by id alone.
+ * Which existing instance each deployment.json entry configures. A list entry with an `instanceId`
+ * matches that instance alone — the id is its address, so a missing one is created rather than
+ * another instance configured in its place. One without an id matches by `label` (ignoring case);
+ * an unmatched first entry without an id takes the oldest unclaimed instance, so a new name renames
+ * it. Other unmatched entries are created; unclaimed instances are deleted. In the keyed form the
+ * top-level fields are the first instance and `instances.<id>` match by id alone.
  */
 
 import { findInstanceWithLabel } from '@/lib/instances/instances'
@@ -87,15 +89,22 @@ export function matchDeploymentEntries<R extends MatchableRow>(
   })
 
   if (form === 'list') {
-    // By name, among the instances no id claimed.
-    entries.forEach(({ label }, index) => {
-      if (matches[index] || !label) return
+    // By name, among the instances no id claimed; an entry with an id is that instance or a new one.
+    entries.forEach(({ label, instanceId }, index) => {
+      if (matches[index] || !label || instanceId !== undefined) return
       const row = findInstanceWithLabel(label, unclaimed())
       if (row) claim(index, row, 'label')
     })
-    // The first entry falls back to the oldest instance left.
+    // The first entry without an id falls back to the oldest instance left.
     const oldest = unclaimed()[0]
-    if (entries.length > 0 && !matches[0] && oldest) claim(0, oldest, 'first')
+    if (
+      entries.length > 0 &&
+      !matches[0] &&
+      entries[0].instanceId === undefined &&
+      oldest
+    ) {
+      claim(0, oldest, 'first')
+    }
   }
 
   return {

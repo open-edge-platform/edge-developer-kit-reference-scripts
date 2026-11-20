@@ -7,8 +7,8 @@ import { SegmentedChoiceSection } from '@/services/common/configure/segmented-ch
 import { STT_BACKEND_OPTIONS, type SttBackendId } from '../config'
 
 /**
- * Backend choice (OEP audio-analyzer or OVMS worker). A draft field: choosing swaps the model list
- * and sends nothing; the saved backend applies on the instance's next (re)start.
+ * Backend choice (OEP audio-analyzer, OVMS or MERaLiON worker). A draft field: choosing swaps the
+ * model list and sends nothing; the saved backend applies on the instance's next (re)start.
  */
 export function SttBackendTabs({
   value,
@@ -32,7 +32,7 @@ export function SttBackendTabs({
       hint={
         isDraft
           ? 'Choose which backend this instance starts on.'
-          : 'Saved with the other settings. The model list follows the backend; a model the other backend cannot run is replaced by the default one.'
+          : 'Saved with the other settings. The model list follows the backend; a model the chosen backend cannot run is replaced by its default one.'
       }
       tooltips
     />

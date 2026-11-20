@@ -18,6 +18,7 @@ import { service as frameGenerationMeta } from '../frame-generation/data'
 import { service as getiClassifierMeta } from '../geti-classifier/data'
 import { service as imageBasedVideoSearchMeta } from '../suites/metro-ai-suite/image-based-video-search/data'
 import { service as imageGenerationMeta } from '../image-generation/data'
+import { service as imageUpscalingMeta } from '../image-upscaling/data'
 import { service as lipsyncMeta } from '../lipsync/data'
 import { service as lossPreventionMeta } from '../suites/retail-ai-suite/loss-prevention/data'
 import { service as mcpMeta } from '../mcp/data'
@@ -32,6 +33,7 @@ import { service as syntheticImageGenerationMeta } from '../synthetic-image-gene
 import { service as textGenerationMeta } from '../text-generation/data'
 import { service as textToSpeechMeta } from '../text-to-speech/data'
 import { service as vectordbMeta } from '../vectordb/data'
+import { service as videoGenerationMeta } from '../video-generation/data'
 import { service as wakeWordDetectionMeta } from '../wake-word-detection/data'
 
 // Demo imports
@@ -41,6 +43,7 @@ import { ExamMarkingAgentDemo } from '../exam-marking-agent/demo'
 import { FaceRecognitionDemo } from '../face-recognition/demo'
 import { FrameGenerationDemo } from '../frame-generation/demo'
 import { ImageGenerationDemo } from '../image-generation/demo'
+import { ImageUpscalingDemo } from '../image-upscaling/demo'
 import { LipsyncDemo } from '../lipsync/demo'
 import { McpDemo } from '../mcp/demo'
 import { OcrDemo } from '../ocr/demo'
@@ -49,6 +52,7 @@ import { SpeechToTextDemo } from '../speech-to-text/demo'
 import { TextGenerationDemo } from '../text-generation/demo'
 import { TextToSpeechDemo } from '../text-to-speech/demo'
 import { VectorDbDemo } from '../vectordb/demo'
+import { VideoGenerationDemo } from '../video-generation/demo'
 import { WakeWordDetectionDemo } from '../wake-word-detection/demo'
 
 import type { Service } from '../types'
@@ -100,6 +104,11 @@ export const serviceMap: Record<ServiceType['type'], Service> = {
     ...imageGenerationMeta,
     status: 'offline',
     demo: ImageGenerationDemo,
+  },
+  'image-upscaling': {
+    ...imageUpscalingMeta,
+    status: 'offline',
+    demo: ImageUpscalingDemo,
   },
   lipsync: {
     ...lipsyncMeta,
@@ -164,6 +173,11 @@ export const serviceMap: Record<ServiceType['type'], Service> = {
     ...vectordbMeta,
     status: 'offline',
     demo: VectorDbDemo,
+  },
+  'video-generation': {
+    ...videoGenerationMeta,
+    status: 'offline',
+    demo: VideoGenerationDemo,
   },
   'wake-word-detection': {
     ...wakeWordDetectionMeta,

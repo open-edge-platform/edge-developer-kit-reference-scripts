@@ -23,7 +23,7 @@ $UvCmd             = Join-Path $ThirdpartyDir "uv\uv.exe"
 $OvmsDir           = Join-Path $ThirdpartyDir "ovms"
 $OvmsPath          = Join-Path $OvmsDir "ovms.exe"
 # On Windows OVMS ships its own Python, which Initialize-Ovms installs optimum-cli into
-# (Linux keeps a separate uv project, common\ovms-export).
+# (Linux installs the same requirements into common\ovms-export\.venv).
 $OvmsPythonDir     = Join-Path $OvmsDir "python"
 $OptimumCli        = Join-Path $OvmsPythonDir "Scripts\optimum-cli.exe"
 # FFmpeg and git come from the project-root setup, one level above workers\.
@@ -45,7 +45,7 @@ if (-not $env:HF_HOME) {
     $env:HF_HOME = Join-Path $ModelsDir "huggingface"
 }
 
-# Put the project's MinGit first on PATH: oep-setup.ps1 and workers' source fetches look for git
+# Put the project's MinGit first on PATH: upstream-setup.ps1 and workers' source fetches look for git
 # there, and a machine may have none of its own.
 if (Test-Path $GitPath) {
     $env:Path = "$(Split-Path -Parent $GitPath);$env:Path"
@@ -96,17 +96,25 @@ function Get-GitCommand {
     exit 1
 }
 
-# Invoke-OepFetch <worker> -- fetch what oep-services.json pins for <worker> (e.g. services/speech-to-text/oep),
-# with its patch and overlay\ applied. Cheap and idempotent, so call it on every start. See oep-setup.ps1.
-function Invoke-OepFetch {
+# Invoke-UpstreamFetch <worker> -- fetch what upstream.json pins for <worker> (e.g. services/speech-to-text/oep),
+# with its patch and overlay\ applied. Cheap and idempotent, so call it on every start. See upstream-setup.ps1.
+function Invoke-UpstreamFetch {
     param([string]$Worker)
     $global:LASTEXITCODE = 0
-    & (Join-Path $WorkersRoot "oep-setup.ps1") -Mode fetch -Target $Worker
+    & (Join-Path $WorkersRoot "upstream-setup.ps1") -Mode fetch -Target $Worker
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+
+# Old name of Invoke-UpstreamFetch, for start scripts written before the rename; delete once none use it.
+function Invoke-OepFetch {
+    param([string]$Worker)
+    Invoke-UpstreamFetch $Worker
 }
 
 # Install the selected worker without removing packages used by other workers.
 # The committed lock also lets unrelated vendored sources wait for first start.
+# A start from the app finds it installed: the app installs it first, while no other worker starts
+# (frontend\src\lib\workers\shared-env.ts). Keep the two installs the same.
 function Sync-Worker {
     Test-UV
     $projectFile = Join-Path $ScriptDir "pyproject.toml"
@@ -119,14 +127,14 @@ function Sync-Worker {
     Send-StartupEvent '{"event":"stage","stage":"preparing","detail":"Installing dependencies"}'
 
     # The shared OEP model-download source is fetched only for workers that need model-downloader.
-    # oep-setup.ps1 fails by throwing or by its exit code; both are reported.
+    # upstream-setup.ps1 fails by throwing or by its exit code; both are reported.
     if (Select-String -Path $projectFile -Pattern '"model-downloader' -Quiet) {
         $fetchFailure = '{"event":"failure","summary":"Could not fetch the model downloader sources"}'
         # A fetch that finds the copy current runs no native command and
         # leaves $LASTEXITCODE as it was ($null in a fresh session).
         $global:LASTEXITCODE = 0
         try {
-            & (Join-Path $WorkersRoot "oep-setup.ps1") -Mode fetch -Target 'common/downloader'
+            & (Join-Path $WorkersRoot "upstream-setup.ps1") -Mode fetch -Target 'common/downloader'
         } catch {
             Send-StartupEvent $fetchFailure
             throw
@@ -181,11 +189,12 @@ function Initialize-Ovms {
             }
         }
         $ovmsPython = Join-Path $OvmsPythonDir "python.exe"
-        $requirementsUrl = 'https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/tags/v2026.4.0/demos/common/export_models/requirements.txt'
-        # The file installs optimum-intel from a git commit, whose build needs git. That commit is
-        # v2.2.0 in all but its version string, so the release wheel stands in for it.
-        # Recheck whenever $requirementsUrl moves to another tag.
-        $requirementsOverride = 'optimum-intel==2.2.0'
+        $requirementsUrl = 'https://raw.githubusercontent.com/openvinotoolkit/model_server/refs/tags/v2026.4.1/demos/common/export_models/requirements.txt'
+        # The file pins sentence_transformers 5.6.0, but 5.4 replaced the `_text_length` that
+        # optimum-intel 2.2.0's OVSentenceTransformer binds, which fails every int8 embeddings pull
+        # (common/ovms-export patches it back in compat/; this Python has no such patch). 5.3.0 is
+        # what the v2026.4.0 file pinned. Recheck whenever $requirementsUrl moves to another tag.
+        $requirementsOverride = 'sentence-transformers==5.3.0'
         # Kept next to the packages: a changed recipe installs them again.
         $installRecipe = "$requirementsUrl --overrides $requirementsOverride --prerelease if-necessary-or-explicit"
         $recipeFile = Join-Path $OvmsPythonDir ".export-requirements"
@@ -226,7 +235,7 @@ function Start-Worker {
 }
 
 # Start-OepWorker -- for a worker wrapping an OEP microservice (an "install" entry in
-# oep-services.json): build .venv from upstream's own dependency file at the fetched tag
+# upstream.json): build .venv from upstream's own dependency file at the fetched tag
 # (scripts\oep_env.py; only checks when nothing changed), then run main.py in it.
 function Start-OepWorker {
     param([Parameter(ValueFromRemainingArguments = $true)]$WorkerArgs)

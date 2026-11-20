@@ -10,7 +10,7 @@ The engine is upstream's (`vieneu._v3_turbo_engine.onnx_runtime_lite`, from
 [pnnbao97/VieNeu-TTS](https://github.com/pnnbao97/VieNeu-TTS)). The `vieneu`
 release on PyPI requires gradio for its web UI, so `start.sh` instead copies
 `src/vieneu` and `src/vieneu_utils` at the v3.8.3 commit pinned in
-`workers/oep-services.json` (`sources`) into this directory, and
+`workers/upstream.json` (`sources`) into this directory, and
 `pyproject.toml` lists what the engine and the text front end need. The text
 is normalized and phonemized by [sea-g2p](https://github.com/pnnbao97/sea-g2p)
 (Rust wheels, no espeak).

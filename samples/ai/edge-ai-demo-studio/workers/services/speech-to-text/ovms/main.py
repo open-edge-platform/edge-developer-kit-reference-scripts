@@ -12,9 +12,9 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+import threading
 import time
 import uuid
-import wave
 from contextlib import asynccontextmanager
 from typing import Any, Optional
 
@@ -53,13 +53,22 @@ from worker_common import (
     serve,
     startup_timeout,
 )
+from worker_common.transcripts import (
+    RESPONSE_FORMATS,
+    granularities,
+    normalize_words,
+    parse_bool,
+    segments_or_whole,
+    to_srt,
+    to_vtt,
+    wav_duration,
+)
 
 SERVICE_ID = "speech-to-text"
 BACKEND = "ovms"
 DEFAULT_PORT = 8023
 DEFAULT_MODEL = "openai/whisper-base"
 DEFAULT_DENOISE_MODEL = "noise-suppression-poconetlike-0001"
-RESPONSE_FORMATS = ("json", "text", "verbose_json", "srt", "vtt")
 
 WORKER_DIR = os.path.dirname(os.path.abspath(__file__))
 # Per-instance (WORKER_DIR/tmp standalone), so uploads never share a directory with a sibling.
@@ -91,6 +100,9 @@ OVMS_PROCESS = None
 # request (or at boot with --warm-start-aligner) and serving one request at a time.
 ALIGNER: Optional[Aligner] = None
 ALIGNER_LOCK = asyncio.Lock()
+# Held by the thread running an alignment: a cancelled caller releases ALIGNER_LOCK while that
+# thread still waits for the aligner's answer, which the next request must not read as its own.
+ALIGNER_THREAD_LOCK = threading.Lock()
 DENOISE_COMPILED_MODEL = None
 DENOISE_LOCK = asyncio.Lock()
 # Silero VAD for /v1/audio/stream; loaded at startup, retried on first use.
@@ -363,14 +375,46 @@ async def audio_stream(websocket: WebSocket) -> None:
         await websocket.send_json({"type": "error", "message": f"Voice activity detection unavailable: {exc}"})
         await websocket.close(code=1011)
         return
-    await handle_audio_stream(websocket, vad_model=vad_model, transcribe=_transcribe_utterance)
+    align = None
+    if is_qwen3_asr(CONFIG["stt_model_id"]):
+        align = _align_utterance
+        if _parse_bool(websocket.query_params.get("word_timestamps")):
+            # Start (or export) the aligner now rather than on the first utterance.
+            _warm_aligner()
+    await handle_audio_stream(
+        websocket, vad_model=vad_model, transcribe=_transcribe_utterance, align=align
+    )
+
+
+# The warm-up task, held so it is not garbage-collected mid-run.
+_ALIGNER_WARMUP: Optional[asyncio.Task] = None
+
+
+def _warm_aligner() -> None:
+    global _ALIGNER_WARMUP
+    if ALIGNER is not None or (_ALIGNER_WARMUP is not None and not _ALIGNER_WARMUP.done()):
+        return
+
+    async def warm() -> None:
+        try:
+            await _ensure_aligner(CONFIG["stt_model_id"], startup_timeout())
+        except Exception as exc:  # noqa: BLE001 - retried by the first alignment
+            logger.error("Forced aligner failed to start for live word timings: %s", exc)
+
+    _ALIGNER_WARMUP = asyncio.create_task(warm())
+
+
+async def _align_utterance(pcm: np.ndarray, language: str, text: str) -> list[dict[str, Any]]:
+    """Qwen3-ASR word timings for one live utterance, in seconds from its start."""
+    wav_path = os.path.join(TEMP_DIR, f"{uuid.uuid4()}.wav")
+    try:
+        await asyncio.to_thread(_write_bytes, wav_path, pcm_to_wav_bytes(pcm))
+        return await _align_words(text, language, wav_path)
+    finally:
+        await asyncio.to_thread(_cleanup_temp_files, wav_path)
 
 
 # OpenAI-compatible audio routes
-
-def _parse_bool(value: Optional[str]) -> bool:
-    return str(value).strip().lower() in ("1", "true", "yes", "on")
-
 
 # For these, OVMS translations return the source-language transcript: large-v3-turbo was tuned on
 # transcription only, and Qwen3-ASR has no translate task.
@@ -403,7 +447,7 @@ async def transcription(
             status_code=400,
             detail=f"response_format must be one of {', '.join(RESPONSE_FORMATS)}",
         )
-    if _parse_bool(stream):
+    if parse_bool(stream):
         raise HTTPException(
             status_code=400,
             detail="Streaming is not available on the OVMS backend; switch the "
@@ -413,18 +457,18 @@ async def transcription(
         raise HTTPException(
             status_code=400, detail="temperature must be between 0 and 1"
         )
-    granularities = _granularities(timestamp_granularities)
+    wanted = granularities(timestamp_granularities)
     # `timestamp_granularities[]` is only meaningful alongside verbose_json,
     # which is the rule OpenAI enforces too.
-    if granularities and fmt != "verbose_json":
+    if wanted and fmt != "verbose_json":
         raise HTTPException(
             status_code=400,
             detail="timestamp_granularities[] requires response_format=verbose_json",
         )
     want_segments = (
         fmt in ("verbose_json", "srt", "vtt")
-        or "segment" in granularities
-        or _parse_bool(return_timestamps)
+        or "segment" in wanted
+        or parse_bool(return_timestamps)
     )
 
     input_file_path = None
@@ -434,7 +478,7 @@ async def transcription(
         # soundfile/pydub/ffmpeg decode the whole upload: off the event loop.
         wav_path = await asyncio.to_thread(_convert_to_wav, input_file_path)
 
-        if _parse_bool(use_denoise):
+        if parse_bool(use_denoise):
             await _apply_denoise(wav_path)
 
         form_data = [("model", CONFIG["stt_model_id"]), *_language_form(language)]
@@ -443,9 +487,9 @@ async def transcription(
             form_data.append(("prompt", prompt))
         if temperature is not None:
             form_data.append(("temperature", str(temperature)))
-        want_words = "word" in granularities
+        want_words = "word" in wanted
         qwen3 = is_qwen3_asr(CONFIG["stt_model_id"])
-        for granularity in granularities or (["segment"] if want_segments else []):
+        for granularity in wanted or (["segment"] if want_segments else []):
             # Qwen3-ASR's word timings come from the forced aligner, not OVMS.
             if granularity == "word" and (qwen3 or STATE["ovms_word_timestamps"] is False):
                 continue
@@ -453,22 +497,22 @@ async def transcription(
 
         ovms_data = await _transcribe_with_ovms(wav_path, form_data, response)
         text = (ovms_data.get("text") or "").strip()
-        duration = await asyncio.to_thread(_wav_duration, wav_path)
+        duration = await asyncio.to_thread(wav_duration, wav_path)
         words = (
             (await _align_words(text, language, wav_path) if qwen3 else ovms_data.get("words") or [])
             if want_words
             else []
         )
         segments = (
-            _segments_or_whole(ovms_data.get("segments"), text, duration) if want_segments else []
+            segments_or_whole(ovms_data.get("segments"), text, duration) if want_segments else []
         )
 
         if fmt == "text":
             return PlainTextResponse(text)
         if fmt == "srt":
-            return PlainTextResponse(_to_srt(segments, text), media_type="text/plain; charset=utf-8")
+            return PlainTextResponse(to_srt(segments, text), media_type="text/plain; charset=utf-8")
         if fmt == "vtt":
-            return PlainTextResponse(_to_vtt(segments, text), media_type="text/vtt; charset=utf-8")
+            return PlainTextResponse(to_vtt(segments, text), media_type="text/vtt; charset=utf-8")
 
         # `status` isn't OpenAI's, but the demo reads it. `duration` (OpenAI's verbose_json field) is on
         # every JSON answer for the app's Live metrics.
@@ -487,10 +531,10 @@ async def transcription(
             }
             # OpenAI includes `segments` and `words` only for the granularity
             # that was asked for, defaulting to segment.
-            if not granularities or "segment" in granularities:
+            if not wanted or "segment" in wanted:
                 body["segments"] = segments
             if want_words:
-                body["words"] = _normalize_words(words)
+                body["words"] = normalize_words(words)
         elif want_segments:
             body["segments"] = segments
         return body
@@ -551,17 +595,17 @@ async def translation(
 
         ovms_data = await _post_audio_to_ovms("translations", wav_path, form_data, response)
         text = (ovms_data.get("text") or "").strip()
-        duration = await asyncio.to_thread(_wav_duration, wav_path)
+        duration = await asyncio.to_thread(wav_duration, wav_path)
         segments = (
-            _segments_or_whole(ovms_data.get("segments"), text, duration) if want_segments else []
+            segments_or_whole(ovms_data.get("segments"), text, duration) if want_segments else []
         )
 
         if fmt == "text":
             return PlainTextResponse(text)
         if fmt == "srt":
-            return PlainTextResponse(_to_srt(segments, text), media_type="text/plain; charset=utf-8")
+            return PlainTextResponse(to_srt(segments, text), media_type="text/plain; charset=utf-8")
         if fmt == "vtt":
-            return PlainTextResponse(_to_vtt(segments, text), media_type="text/vtt; charset=utf-8")
+            return PlainTextResponse(to_vtt(segments, text), media_type="text/vtt; charset=utf-8")
         if fmt == "verbose_json":
             return {
                 "task": "translate",
@@ -617,11 +661,17 @@ async def _align_words(text: str, language: Optional[str], wav_path: str) -> lis
     aligner = await _ensure_aligner(CONFIG["stt_model_id"], startup_timeout())
     try:
         async with ALIGNER_LOCK:
-            words = await asyncio.to_thread(aligner.align, text, to_aligner_language(language), wav_path)
+            words = await asyncio.to_thread(_align_serialized, aligner, text, to_aligner_language(language), wav_path)
     except Exception as exc:  # noqa: BLE001
         logger.error("Forced alignment failed; answering without word timestamps: %s", exc)
         return []
     return [{"word": w.get("text"), "start": w.get("start"), "end": w.get("end")} for w in words]
+
+
+def _align_serialized(aligner: Aligner, text: str, language: str, wav_path: str) -> list[dict]:
+    """``aligner.align``, one at a time even across cancelled callers (blocking)."""
+    with ALIGNER_THREAD_LOCK:
+        return aligner.align(text, language, wav_path)
 
 
 async def _apply_denoise(wav_path: str) -> None:
@@ -693,124 +743,6 @@ async def _post_audio_to_ovms(
     if response is not None:
         response.headers.update(server_timing(clock.seconds))
     return resp.json()
-
-
-def _granularities(raw: Optional[list[str]]) -> list[str]:
-    """Validated ``timestamp_granularities[]``; a comma-separated single value is split too."""
-    if not raw:
-        return []
-    out: list[str] = []
-    for entry in raw:
-        for value in str(entry).split(","):
-            value = value.strip().lower()
-            if not value:
-                continue
-            if value not in ("segment", "word"):
-                raise HTTPException(
-                    status_code=400,
-                    detail="timestamp_granularities[] must be 'segment' or 'word'",
-                )
-            if value not in out:
-                out.append(value)
-    return out
-
-
-def _normalize_words(raw: list) -> list[dict[str, Any]]:
-    """OVMS word timings in OpenAI's ``verbose_json`` word shape."""
-    words = []
-    for item in raw:
-        if not isinstance(item, dict):
-            continue
-        words.append(
-            {
-                "word": str(item.get("word") or "").strip(),
-                "start": float(item.get("start") or 0.0),
-                "end": float(item.get("end") or 0.0),
-            }
-        )
-    return words
-
-
-def _normalize_segments(raw: list) -> list[dict[str, Any]]:
-    """OVMS segments in OpenAI's ``verbose_json`` shape.
-
-    openai-python fails to parse a segment missing any typed field, so absent ones get neutral defaults.
-    """
-    segments = []
-    for index, seg in enumerate(raw):
-        if not isinstance(seg, dict):
-            continue
-        start = float(seg.get("start") or 0.0)
-        tokens = seg.get("tokens")
-        segments.append(
-            {
-                "id": seg.get("id", index),
-                # Whisper's decoder offset, in frames of 10 ms. OVMS omits it;
-                # deriving it from `start` keeps it consistent with the timings.
-                "seek": int(seg.get("seek", int(start * 100))),
-                "start": start,
-                "end": float(seg.get("end") or 0.0),
-                "text": str(seg.get("text") or "").strip(),
-                "tokens": list(tokens) if isinstance(tokens, (list, tuple)) else [],
-                "temperature": float(seg.get("temperature") or 0.0),
-                "avg_logprob": float(seg.get("avg_logprob") or 0.0),
-                "compression_ratio": float(seg.get("compression_ratio") or 0.0),
-                "no_speech_prob": float(seg.get("no_speech_prob") or 0.0),
-            }
-        )
-    return segments
-
-
-def _segments_or_whole(raw: Any, text: str, duration: float) -> list[dict[str, Any]]:
-    """OVMS segments in OpenAI's shape, or one segment spanning the audio.
-
-    Qwen3-ASR gives no timestamps, but verbose_json always carries segments and srt/vtt need cues.
-    """
-    segments = _normalize_segments(raw or [])
-    if segments or not text:
-        return segments
-    return _normalize_segments([{"start": 0.0, "end": duration, "text": text}])
-
-
-def _wav_duration(wav_path: str) -> float:
-    try:
-        with wave.open(wav_path, "rb") as wav:
-            return round(wav.getnframes() / float(wav.getframerate() or 1), 3)
-    except Exception:  # noqa: BLE001
-        return 0.0
-
-
-def _timestamp(seconds: float, separator: str) -> str:
-    total_ms = int(round(max(seconds, 0.0) * 1000))
-    hours, rem = divmod(total_ms, 3_600_000)
-    minutes, rem = divmod(rem, 60_000)
-    secs, millis = divmod(rem, 1000)
-    return f"{hours:02d}:{minutes:02d}:{secs:02d}{separator}{millis:03d}"
-
-
-def _cues(segments: list[dict[str, Any]], text: str) -> list[dict[str, Any]]:
-    if segments:
-        return [s for s in segments if s["text"]]
-    return [{"start": 0.0, "end": 0.0, "text": text}] if text else []
-
-
-def _to_srt(segments: list[dict[str, Any]], text: str) -> str:
-    lines = []
-    for index, cue in enumerate(_cues(segments, text), start=1):
-        lines.append(str(index))
-        lines.append(f"{_timestamp(cue['start'], ',')} --> {_timestamp(cue['end'], ',')}")
-        lines.append(cue["text"])
-        lines.append("")
-    return "\n".join(lines)
-
-
-def _to_vtt(segments: list[dict[str, Any]], text: str) -> str:
-    lines = ["WEBVTT", ""]
-    for cue in _cues(segments, text):
-        lines.append(f"{_timestamp(cue['start'], '.')} --> {_timestamp(cue['end'], '.')}")
-        lines.append(cue["text"])
-        lines.append("")
-    return "\n".join(lines)
 
 
 def _cleanup_temp_files(*paths: Optional[str]) -> None:

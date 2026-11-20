@@ -20,7 +20,7 @@ curl -s ${host}/v1/diarize/$JOB_ID`,
     },
   },
   overview:
-    'The Speaker Diarization service identifies and separates speakers in audio recordings. It exposes two endpoints: one for generating a speaker embedding (voice print) and one for running full speaker diarization. Diarization runs asynchronously: `POST /v1/diarize` submits a job and returns a job ID immediately; poll `GET /v1/diarize/{job_id}` for status and the final results, or follow `GET /v1/diarize/{job_id}/events` for the same statuses as Server-Sent Events. Jobs use the model one at a time, in the order they were submitted; a running job reports its stage and progress. Without a reference embedding, segments are returned with generic IDs (e.g. `SPEAKER_00`). When a reference embedding is provided, the best-matching speaker receives a custom label.\n\n**Model used** (unmodified, credit: [pyannote](https://huggingface.co/pyannote)):\n- [`pyannote/speaker-diarization-community-1`](https://huggingface.co/pyannote/speaker-diarization-community-1) — a single pipeline that produces both the speaker diarization segments and the per-speaker embeddings (voice prints) used for voice enrollment and speaker matching. © pyannote, licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).',
+    'The Speaker Diarization service identifies and separates speakers in audio recordings. It exposes two endpoints: one for generating a speaker embedding (voice print) and one for running full speaker diarization. Diarization runs asynchronously: `POST /v1/diarize` submits a job and returns a job ID immediately; poll `GET /v1/diarize/{job_id}` for status and the final results, or follow `GET /v1/diarize/{job_id}/events` for the same statuses as Server-Sent Events. Jobs use the model one at a time, in the order they were submitted; a running job reports its stage and progress. Without a reference embedding, segments are returned with generic IDs (e.g. `SPEAKER_00`). When a reference embedding is provided, the best-matching speaker receives a custom label.\n\nFor live microphone audio, the `/v1/audio/stream` WebSocket (on the worker\'s own port) speaks the Speech to Text OVMS backend\'s protocol: 16 kHz mono int16 PCM frames in, the same Silero VAD utterance cuts, and `{"event": "stop"}` to finish. Send `{"event": "config", ...}` with the `POST /v1/diarize` fields as JSON first. Each utterance is answered with `{"type": "speakers", "segments", "covered_until", "start", "end"}`: every speaker turn so far, re-clustered over the latest two minutes, with names kept stable from one answer to the next.\n\n**Model used** (unmodified, credit: [pyannote](https://huggingface.co/pyannote)):\n- [`pyannote/speaker-diarization-community-1`](https://huggingface.co/pyannote/speaker-diarization-community-1) — a single pipeline that produces both the speaker diarization segments and the per-speaker embeddings (voice prints) used for voice enrollment and speaker matching. © pyannote, licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).',
   endpoints: [
     {
       method: 'POST',
@@ -71,6 +71,18 @@ curl -s ${host}/v1/diarize/$JOB_ID`,
           type: 'integer',
           required: false,
           desc: 'Optional hint for the expected number of speakers.',
+        },
+        {
+          name: 'min_speakers',
+          type: 'integer',
+          required: false,
+          desc: 'Lower bound on the number of speakers, when num_speakers is not given.',
+        },
+        {
+          name: 'max_speakers',
+          type: 'integer',
+          required: false,
+          desc: 'Upper bound on the number of speakers, when num_speakers is not given.',
         },
       ],
     },

@@ -87,6 +87,13 @@ starts, not during setup.
 - **Links**: studio pages stay in the app; links to other sites (Hugging Face,
   documentation, a sample suite's own UI) open in the default browser.
 
+Before a later launch starts the server, `verify_thirdparty` checks the
+downloaded tools against the manifests setup wrote (see
+[Downloaded tools](../docs/DEVELOPMENT.md#downloaded-tools)). When one is
+damaged, was changed or was never checked, a dialog lists them: **Repair**
+runs setup again, which downloads them again; **Continue anyway** starts as
+usual.
+
 ## Where files go
 
 | Install | Setup output, models, database, logs |
@@ -174,7 +181,7 @@ autostart entry, which keeps it pointing at a moved AppImage.
 On Linux the tray icon needs a StatusNotifier host; stock GNOME needs the
 AppIndicator extension, Ubuntu ships one. Electron 43.3.0 through 43.5.x drop
 the tray icon on GNOME a few seconds after creating it
-(electron/electron#52674). The dependency is pinned to 43.8.1 or newer: before
+(electron/electron#52674). The dependency is pinned to 45.2.3 or newer, past both: before
 43.7.6 a Linux `dialog.showMessageBox` promise could stay pending while the
 app was idle (the app now uses the synchronous variant either way).
 

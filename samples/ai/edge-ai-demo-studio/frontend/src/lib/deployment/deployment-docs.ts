@@ -141,7 +141,7 @@ function buildInstanceEntrySchema(
       : `Display name, unique per service (ignoring case). An entry without an instanceId is found again by it on every boot; a new instance's id is derived from it ("CPU fallback" → /api/${meta.id}@cpu-fallback). A different name renames a matched instance: its address stays`,
   })
   const instanceId = instanceIdSchema.optional().meta({
-    description: `The instance's id, which its address is built on (/api/${meta.id}@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It finds the same instance on every boot ahead of the label, even after a rename, and a missing instance is created under it`,
+    description: `The instance's id, which its address is built on (/api/${meta.id}@<instanceId>); 1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit. Saved deployments write it. It alone finds the instance on every boot, even after a rename (the label is not tried), and a missing instance is created under it`,
   })
   return z
     .object({
@@ -213,7 +213,7 @@ function buildServiceSchema(meta: ServiceMeta) {
     .check(z.maxLength(max))
     .meta({
       description: meta.multiInstance
-        ? `${meta.name} instances, first instance first (at most ${max}). Each entry is matched to an instance by its instanceId, then by its label; the first entry falls back to the service's oldest instance. A matched instance is updated in place (a new label renames it, its address stays); any other entry is created as a copy of the first instance. Instances no entry matches are deleted.`
+        ? `${meta.name} instances, first instance first (at most ${max}). Each entry is matched to an instance by its instanceId when it has one, else by its label; the first entry without an instanceId falls back to the service's oldest instance. A matched instance is updated in place (a new label renames it, its address stays); any other entry is created as a copy of the first instance. Instances no entry matches are deleted.`
         : `The ${meta.name} instance (a single-instance service: one entry).`,
     })
   return z
@@ -495,7 +495,7 @@ function buildDeploymentMarkdown(): string {
     '| `label` | string | Display name shown in the UI, unique per service (ignoring case). Optional on the first entry, which keeps its current name without it (the service’s own name when this file adds the service); required on every later entry, which an entry without `instanceId` is found by. A different name renames the instance it matches; its address stays |',
   )
   lines.push(
-    '| `instanceId` | string | The instance’s id, which its address is built on: `/api/<type>@<instanceId>` (1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit). Optional; saved deployments write it. An entry with an id finds the same instance on every boot even after it was renamed, and a missing instance is created under that id. Without one, a new instance’s id is derived from its name: `"CPU fallback"` → `cpu-fallback` |',
+    '| `instanceId` | string | The instance’s id, which its address is built on: `/api/<type>@<instanceId>` (1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit). Optional; saved deployments write it. An entry with an id finds the same instance on every boot even after it was renamed, and a missing instance is created under that id — never another instance configured in its place. Without one, a new instance’s id is derived from its name: `"CPU fallback"` → `cpu-fallback` |',
   )
   lines.push(
     '| `status` | `"online"` \\| `"offline"` | `online` auto-starts the instance on boot; `offline` (default) leaves it stopped |',
@@ -588,13 +588,15 @@ function buildDeploymentMarkdown(): string {
   lines.push('')
   lines.push(
     '- **Every entry is matched to one of the service’s instances by its `instanceId`**,',
-    '  when it has one, **then by its `label`** (ignoring case). A matched instance is',
+    '  when it has one, **else by its `label`** (ignoring case). A matched instance is',
     '  **updated** in place: the overrides are merged over its current settings, and a',
     '  different `label` renames it — only its name: its address, data and sample',
     '  bindings stay, as when it is renamed in the UI.',
-    '- The **first entry**, when neither matches, configures the service’s oldest',
-    '  remaining instance, so giving the first instance a new name in the file renames',
-    '  it rather than replacing it.',
+    '- An entry with an `instanceId` is that instance and no other: when the service has',
+    '  none under that id, it is created under it, even if another instance has its name.',
+    '- The **first entry** without an `instanceId`, when its name matches nothing,',
+    '  configures the service’s oldest remaining instance, so giving the first instance',
+    '  a new name in the file renames it rather than replacing it.',
     '- Any other entry that matches nothing is **created**: it copies the first instance’s',
     '  engine, models, health check and metadata — after this file’s presets for the',
     '  first instance have been applied — then its own `models` / `metadata` / `engine`',

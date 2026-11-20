@@ -3,8 +3,8 @@
 
 """Locate, verify and import the upstream OEP ``document-ingestion/pgvector`` pipeline.
 
-``workers/oep-setup.sh`` copies it into ``thirdparty/document-ingestion`` at the tag pinned in
-``workers/oep-services.json``; this module puts it on ``sys.path`` and adapts it in memory only
+``workers/upstream-setup.sh`` copies it into ``thirdparty/document-ingestion`` at the tag pinned in
+``workers/upstream.json``; this module puts it on ``sys.path`` and adapts it in memory only
 (logger, settings, embeddings client, progress hooks), never modifying the copy.
 """
 
@@ -15,7 +15,7 @@ import logging
 import math
 import os
 import secrets
-import subprocess  # nosec B404 - oep-setup is invoked with a fixed argument list
+import subprocess  # nosec B404 - upstream-setup is invoked with a fixed argument list
 import sys
 import threading
 import types
@@ -34,7 +34,7 @@ logger = logging.getLogger("uvicorn.error")
 
 UPSTREAM_REPO = "https://github.com/open-edge-platform/edge-ai-libraries.git"
 UPSTREAM_SUBDIR = "microservices/document-ingestion/pgvector"
-#: Name of this worker's entry in ``workers/oep-services.json``.
+#: Name of this worker's entry in ``workers/upstream.json``.
 CATALOG_WORKER = "services/vectordb"
 
 #: Names a directory already holding the microservice (used as is, never
@@ -47,10 +47,10 @@ WORKER_DIR = Path(__file__).resolve().parents[1]  # workers/services/vectordb
 # Found by sentinel, never by counting ``..`` (see worker_common.paths).
 WORKERS_ROOT = workers_root()
 #: The catalogue: pinned tag plus one record per OEP microservice.
-CATALOG_JSON = WORKERS_ROOT / "oep-services.json"
+CATALOG_JSON = WORKERS_ROOT / "upstream.json"
 #: The scripts that fetch what the catalogue lists.
-CATALOG_SH = WORKERS_ROOT / "oep-setup.sh"
-CATALOG_PS1 = WORKERS_ROOT / "oep-setup.ps1"
+CATALOG_SH = WORKERS_ROOT / "upstream-setup.sh"
+CATALOG_PS1 = WORKERS_ROOT / "upstream-setup.ps1"
 
 _lock = threading.Lock()
 _document_module: types.ModuleType | None = None
@@ -61,10 +61,10 @@ class UpstreamMissingError(RuntimeError):
 
 
 def upstream_tag() -> str:
-    """The pinned edge-ai-libraries tag (``workers/oep-services.json``; ``EDGE_AI_LIBRARIES_REF`` wins)."""
+    """The pinned edge-ai-libraries tag (``workers/upstream.json``; ``EDGE_AI_LIBRARIES_REF`` wins)."""
     tag = pinned_tag(CATALOG_WORKER)
     if tag == "unknown":
-        raise UpstreamMissingError(f'"tag" not found in {CATALOG_JSON}')
+        raise UpstreamMissingError(f'"edge-ai-libraries" has no "tag" in {CATALOG_JSON}')
     return tag
 
 
@@ -83,7 +83,7 @@ def checked_out_tag(path: Path | None = None) -> str | None:
 
 
 def _setup_command(action: str, worker: str) -> list[str]:
-    """Command line that runs ``oep-setup`` on this platform."""
+    """Command line that runs ``upstream-setup`` on this platform."""
     if os.name == "nt":
         return [
             "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
@@ -93,7 +93,7 @@ def _setup_command(action: str, worker: str) -> list[str]:
 
 
 def clone_upstream(tag: str | None = None) -> Path:
-    """Fetch ``document-ingestion/pgvector`` by running ``workers/oep-setup``, which owns the logic.
+    """Fetch ``document-ingestion/pgvector`` by running ``workers/upstream-setup``, which owns the logic.
 
     Lets ``uv run main.py --db-backend pgvector`` work without ``start.sh``; ``tag`` goes through the
     script's ``EDGE_AI_LIBRARIES_REF`` override.
@@ -132,7 +132,7 @@ def ensure_upstream() -> Path:
         )
     logger.warning(
         "OEP document-ingestion source not found at %s; fetching it now. "
-        "start.sh (workers/oep-setup.sh fetch services/vectordb) does this ahead of time.",
+        "start.sh (workers/upstream-setup.sh fetch services/vectordb) does this ahead of time.",
         root,
     )
     try:

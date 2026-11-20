@@ -18,6 +18,8 @@ interface DialoguePanelProps {
   transcripts: TranscriptEntry[]
   dialogueCreatedAt: string
   isRecording: boolean
+  /** Recording, while the microphone is still being opened. */
+  isMicStarting?: boolean
   isProcessing: boolean
   audioDuration?: number
   recordingDuration?: number
@@ -29,6 +31,7 @@ export function DialoguePanel({
   transcripts,
   dialogueCreatedAt,
   isRecording,
+  isMicStarting = false,
   isProcessing,
   audioDuration,
   recordingDuration,
@@ -71,10 +74,17 @@ export function DialoguePanel({
           <h3 className="text-sm font-semibold">Transcript</h3>
           {isRecording && (
             <>
-              <span className="text-destructive flex items-center gap-1 text-xs">
-                <Mic className="h-3 w-3 animate-pulse" aria-hidden />
-                Recording
-              </span>
+              {isMicStarting ? (
+                <span className="text-muted-foreground flex items-center gap-1 text-xs">
+                  <Mic className="h-3 w-3" aria-hidden />
+                  Starting microphone…
+                </span>
+              ) : (
+                <span className="text-destructive flex items-center gap-1 text-xs">
+                  <Mic className="h-3 w-3 animate-pulse" aria-hidden />
+                  Recording
+                </span>
+              )}
               {recordingDuration != null && (
                 <Badge variant="outline" className="gap-1">
                   <Clock className="h-3 w-3" aria-hidden />

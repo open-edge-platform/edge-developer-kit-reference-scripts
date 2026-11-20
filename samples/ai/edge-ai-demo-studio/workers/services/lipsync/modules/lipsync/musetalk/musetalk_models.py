@@ -271,8 +271,10 @@ def _compile(model_path, device, reshape=None):
         # slower with dynamic shapes (see the Wav2Lip integration).
         model.reshape(reshape)
     # Under AUTO, no startup CPU fallback: the FPS measurement times the
-    # device OpenVINO selected.
-    compiled = core.compile_model(model, device, openvino_compile_config(device))
+    # device OpenVINO selected. The NPU caches its compile beside the IRs.
+    compiled = core.compile_model(
+        model, device, openvino_compile_config(device, model_dir=OV_DIR)
+    )
     return compiled, compiled.create_infer_request()
 
 

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Helpers for workers that wrap an Open Edge Platform (OEP) microservice from edge-ai-libraries.
 
-``workers/oep-setup.sh`` copies the microservice, at the pinned tag, into the worker's ``thirdparty/<name>/``;
+``workers/upstream-setup.sh`` copies the microservice, at the pinned tag, into the worker's ``thirdparty/<name>/``;
 the wrapper imports upstream's app unmodified and adds the worker contract through upstream's configuration.
 """
 
@@ -21,11 +21,11 @@ from typing import Any, Callable
 from worker_common.instance import async_shared_model_lock
 from worker_common.paths import workers_root
 
-#: The catalogue of OEP microservices, next to oep-setup.sh.
-CATALOG_JSON_NAME = "oep-services.json"
-#: Overrides the pinned tag for one run, in step with workers/oep-setup.sh.
+#: The catalogue of upstream code (OEP microservices are its "services"), next to upstream-setup.sh.
+CATALOG_JSON_NAME = "upstream.json"
+#: Overrides the pinned tag for one run, in step with workers/upstream-setup.sh.
 REF_ENV = "EDGE_AI_LIBRARIES_REF"
-#: Written by oep-setup.sh into every copy with the tag it was made from.
+#: Written by upstream-setup.sh into every copy with the tag it was made from.
 REF_FILE_NAME = ".demo-studio-edge-ai-libraries-ref"
 
 
@@ -41,19 +41,24 @@ def _catalog() -> dict[str, Any]:
         return {}
 
 
+def _libraries() -> dict[str, Any]:
+    """The catalogue's ``edge-ai-libraries`` block: its ``repository``, ``tag`` and ``services``."""
+    return _catalog().get("edge-ai-libraries") or {}
+
+
 def catalog_entry(worker: str) -> dict[str, Any] | None:
-    """The catalogue record whose ``worker`` is ``worker`` (a dir under workers/)."""
+    """The edge-ai-libraries service whose ``worker`` is ``worker`` (a dir under workers/)."""
     wanted = worker.strip("/")
-    for svc in _catalog().get("services", []):
+    for svc in _libraries().get("services", []):
         if str(svc.get("worker", "")).strip("/") == wanted:
             return svc
     return None
 
 
 def pinned_tag(worker: str) -> str:
-    """Release tag of edge-ai-libraries the worker is pinned to, read as ``workers/oep-setup.sh`` does.
+    """Release tag of edge-ai-libraries the worker is pinned to, read as ``workers/upstream-setup.sh`` does.
 
-    ``EDGE_AI_LIBRARIES_REF``, else the entry's ``tag``, else the catalogue's; ``"unknown"`` if unreadable.
+    ``EDGE_AI_LIBRARIES_REF``, else the entry's ``tag``, else edge-ai-libraries'; ``"unknown"`` if unreadable.
     """
     override = os.environ.get(REF_ENV, "").strip()
     if override:
@@ -61,16 +66,16 @@ def pinned_tag(worker: str) -> str:
     entry = catalog_entry(worker)
     if entry and entry.get("tag"):
         return str(entry["tag"])
-    return str(_catalog().get("tag") or "unknown")
+    return str(_libraries().get("tag") or "unknown")
 
 
 def upstream_app_dir(worker_dir: Path, worker: str) -> Path:
-    """The upstream microservice's directory for ``worker``; mirrors ``oep_load_record`` in oep-setup.sh."""
+    """The upstream microservice's directory for ``worker``; mirrors ``oep_load_record`` in upstream-setup.sh."""
     entry = catalog_entry(worker)
     if entry is None:
         raise RuntimeError(
             f"{worker!r} is not in {catalog_path()}; "
-            "add it to the catalogue so oep-setup.sh can fetch it."
+            "add it to the catalogue so upstream-setup.sh can fetch it."
         )
     home_env = entry.get("home_env")
     if home_env and os.environ.get(home_env):
@@ -110,7 +115,7 @@ def load_upstream_main(app_dir: Path, module_name: str, entry: str = "main.py"):
         raise FileNotFoundError(
             f"OEP upstream source not found at {app_dir}. Run the worker's "
             "start script (or start the service from the app) so "
-            "workers/oep-setup.sh fetches it at the pinned tag."
+            "workers/upstream-setup.sh fetches it at the pinned tag."
         )
     sys.path.insert(0, str(app_dir))
     os.chdir(app_dir)
@@ -129,7 +134,7 @@ def enter_upstream_dir(app_dir: Path, sentinel: str) -> None:
         raise FileNotFoundError(
             f"OEP upstream source not found at {app_dir}. Run the worker's "
             "start script (or start the service from the app) so "
-            "workers/oep-setup.sh fetches it at the pinned tag."
+            "workers/upstream-setup.sh fetches it at the pinned tag."
         )
     sys.path.insert(0, str(app_dir))
     os.chdir(app_dir)

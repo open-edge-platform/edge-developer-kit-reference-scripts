@@ -33,12 +33,15 @@ const MODEL_WEIGHT_HINTS: Record<ModelWeight, string> = {
 /** No fixed batch size: clears `metadata.batchSize` so the worker picks one for the device. */
 const AUTO_BATCH_SIZE = 'auto'
 
-const BATCH_SIZES = ['4', '8', '16', '32']
+const BATCH_SIZES = ['1', '2', '4', '8', '16', '32']
+
+const framesLabel = (size: string) =>
+  size === '1' ? '1 frame' : `${size} frames`
 
 const SETTING_DESCRIPTIONS: SettingDescriptions = {
   'metadata.batchSize': {
     label: 'Batch size',
-    format: (size) => `${size} frames`,
+    format: framesLabel,
     unset: 'Auto',
   },
 }
@@ -57,8 +60,8 @@ function BatchSizeSection({
       ? BATCH_SIZES
       : [...BATCH_SIZES, value]
   const options = [
-    { value: AUTO_BATCH_SIZE, label: 'Auto (8 on NPU, 16 otherwise)' },
-    ...sizes.map((size) => ({ value: size, label: `${size} frames` })),
+    { value: AUTO_BATCH_SIZE, label: 'Auto (1 on NPU, 16 otherwise)' },
+    ...sizes.map((size) => ({ value: size, label: framesLabel(size) })),
   ]
   return (
     <ConfigSection title="Batch size" className="space-y-2">
@@ -234,7 +237,7 @@ export function LipsyncConfigurePanel({ service }: { service: Service }) {
           value:
             current.batchSize === AUTO_BATCH_SIZE
               ? 'Auto'
-              : `${current.batchSize} frames`,
+              : framesLabel(current.batchSize),
         },
         {
           label: 'Frame generation',

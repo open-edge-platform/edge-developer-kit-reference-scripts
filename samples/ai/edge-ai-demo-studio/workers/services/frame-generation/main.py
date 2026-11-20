@@ -456,10 +456,12 @@ def setup_routes(app: FastAPI, args):
         output_path = (OUTPUT_DIR / f"{task_id}.mp4").resolve()
         if output_path.parent != OUTPUT_DIR.resolve() or not output_path.exists():
             raise HTTPException(status_code=404, detail="Result not found")
+        # The name comes from the file being served (its stem is the task id), not from the request:
+        # Coverity reads a request value in Content-Disposition as header injection.
         return FileResponse(
             output_path,
             media_type="video/mp4",
-            filename=f"interpolated_{task_id}.mp4",
+            filename=f"interpolated_{output_path.stem}.mp4",
         )
 
 

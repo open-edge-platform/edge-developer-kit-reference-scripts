@@ -15,7 +15,7 @@ The application workflow has three stages: input, processing, and output.
 ### Input
 
 - An RTSP video stream served by the bundled `rtsp-streamer` container (MediaMTX), which loops a sample retail video file (`obj_classification-1920-15-bench.mp4`) from `performance-tools/sample-media/`.
-- The camera-to-workload mapping is configured via `configs/camera_to_workload_asc_object_detection_classification.json`.
+- The camera-to-workload mapping is configured via `configs/camera_to_workload_asc_object_detection_classification_demostudio.json`, upstream's `camera_to_workload_asc_object_detection_classification.json` with the sample video fetched from the Pexels CDN, generated at start time.
 
 ### Processing
 
@@ -46,7 +46,7 @@ The application workflow has three stages: input, processing, and output.
    - Download the YOLO11n and EfficientNet-B0 models via the upstream `model-downloader` container.
    - Download the sample retail video via the upstream `download-sample-videos` script.
    - Generate a compose override that suppresses host port exposure and enables device access.
-   - Run `docker compose up -d` with `RENDER_MODE=1 DISPLAY=:0`, `CAMERA_STREAM=camera_to_workload_asc_object_detection_classification.json`, `WORKLOAD_DIST=workload_to_pipeline_asc_object_detection_classification_demostudio.json`, and `STREAM_LOOP=true`.
+   - Run `docker compose up -d` with `RENDER_MODE=1 DISPLAY=:0`, `CAMERA_STREAM=camera_to_workload_asc_object_detection_classification_demostudio.json`, `WORKLOAD_DIST=workload_to_pipeline_asc_object_detection_classification_demostudio.json`, and `STREAM_LOOP=true`.
    - Wait for all containers to become healthy.
 3. Once the service is **Online**, the GStreamer pipeline output window will appear on the host display (`:0`). It shows the retail video stream with bounding boxes and classification labels overlaid. If the window does not appear, see **Re-opening the display window** below.
 4. Use the **Reopen Display Window** button on the Launch Demo page to restart only the `lp-pipeline-runner` container and reopen the display window without tearing the whole stack down.

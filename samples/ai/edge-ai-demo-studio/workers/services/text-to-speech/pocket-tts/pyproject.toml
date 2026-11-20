@@ -1,21 +1,21 @@
 [project]
 name = "pockettts"
 version = "0.1.0"
-description = "Pocket TTS Indonesian worker on OpenVINO"
+description = "Pocket TTS worker on OpenVINO (Kyutai's seven languages and Indonesian)"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "worker-common[audio]",
     "model-downloader",
     "fastapi[standard]>=0.120.1",
-    "nncf==3.3.0",
+    "nncf==3.4.0",
     "numpy>=2.1",
-    "openvino==2026.2.1",
+    "openvino==2026.4.1",
     # Tokenizer, text chunking and the PyTorch model the first start exports
     # to OpenVINO IR; [audio] reads the mp3 voice prompts.
-    "pocket-tts[audio]==3.3.0",
+    "pocket-tts[audio]==4.0.1",
     "pyyaml>=6.0.2",
-    "torch==2.13.0",
+    "torch==2.15.0",
 ]
 
 [tool.uv.sources]

@@ -1,7 +1,7 @@
 # Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
-"""Fixes for packages ovms-export pins past what optimum-intel 2.2.0 was written against.
+"""Fixes for packages OVMS's export requirements install past what optimum-intel 2.2.0 expects.
 
 ``ovms_export_compat.pth`` imports this module whenever the environment's interpreter starts, so
 the ``optimum-cli`` OVMS launches gets the fixes too. Each one runs right after the module it

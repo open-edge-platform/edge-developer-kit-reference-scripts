@@ -23,7 +23,7 @@
 ./setup.sh
 ```
 
-This runs setup scripts for **Workers**, **Frontend**, and optionally **Electron**. Logs are written to `logs/setup/`. Use flags or environment variables to customize (run `./setup.sh --help` for the full list):
+This runs setup scripts for **Workers**, **Frontend**, and optionally **Electron**. Logs are written to `logs/setup/`: `Setup_<timestamp>.log` holds everything the terminal showed, under a header with the command, options, checkout, OS, CPU, memory, free disk, GPUs/NPU, `/dev/dri` and `/dev/accel` access and proxy settings (credentials masked); each step also has its own log beside it. The summary lists each step's duration and this run's log files, the ones to attach when reporting a setup problem. Use flags or environment variables to customize (run `./setup.sh --help` for the full list):
 
 ```bash
 ./setup.sh --skip-workers             # Skip worker setup
@@ -95,6 +95,34 @@ Each flag also has an environment-variable form (`SkipWorkers`, `SkipFrontend`,
 ```bash
 BackendChoice=vulkan SkipFrontend=1 ./setup.sh
 ```
+
+### Downloaded tools
+
+Setup downloads Node.js, Git and Git LFS (Windows), FFmpeg, uv, OpenVINO Model
+Server, llama.cpp and the GGUF parser. Each download must match the SHA-256
+pinned next to its URL in the script that fetches it, or it is deleted and
+setup stops before anything is extracted. The pinned value is in the repo, not
+fetched with the file, so a changed file on the download server cannot bring a
+matching checksum with it. To move to another release, update the URL and its
+SHA-256 together, from the project's own checksum list (`SHASUMS256.txt`,
+`*.sha256`, `checksums.sha256`, the release notes) or GitHub's digest of the
+release asset. The Visual C++ redistributable comes from a link that moves to
+every new release, so it is checked by its Microsoft signature instead.
+
+Every install then holds a `.install-manifest` (beside a single file:
+`<file>.install-manifest`) with the SHA-256 and size of each of its files and
+the download it came from. Running setup again compares them all and
+downloads anything missing, changed, from another release, or installed
+before these checks, into a folder beside the current one that is swapped in
+once complete. `start.sh`, `start_win.bat` and the Electron app compare sizes
+only (`scripts/*/verify_thirdparty`, well under a second) and warn without
+stopping the start; `verify_thirdparty --full` (`-Full` on Windows) compares
+SHA-256 too. OVMS's bundled Python packages (`python/Lib/site-packages` on
+Windows, `lib/python` on Linux) are left out, since starting an OVMS worker
+installs and upgrades packages there.
+
+The helpers live in `scripts/bash/thirdparty_integrity.sh` and
+`scripts/win/thirdparty_integrity.ps1`.
 
 ### Frontend Only
 
@@ -240,7 +268,7 @@ workers/
 ├── pyproject.toml             uv workspace root: one uv.lock, one .venv for every member
 ├── common/                    worker-common (shared FastAPI/argparse/devices/audio/OVMS helpers, see workers/common/README.md)
 │   ├── downloader/            model-downloader: model fetching (OEP model-download, ModelScope, URLs, ovms --pull)
-│   └── ovms-export/           the optimum-cli environment `ovms --pull` converts with (own .venv)
+│   └── ovms-export/           the optimum-cli environment `ovms --pull` converts with (OVMS's own requirements)
 ├── services/<name>/           One folder per worker service
 │   ├── main.py                FastAPI app entrypoint (built on worker_common)
 │   ├── pyproject.toml         UV-managed dependencies (workspace member)
@@ -249,8 +277,8 @@ workers/
 ├── engines/multiserve/        OpenVINO Model Server / llama.cpp integration
 ├── suites/                    Open Edge Platform suite apps (docker compose, Linux only)
 ├── scripts/                   worker-common.sh / .ps1, sourced by every start script
-├── oep-services.json          Catalogue of upstream code: OEP microservices + pinned tag, vendored git sources + pinned refs
-├── oep-setup.sh / .ps1        Fetches what the catalogue lists (list / check / fetch / pin)
+├── upstream.json              Catalogue of upstream code: OEP microservices + pinned tag, vendored git sources + pinned refs
+├── upstream-setup.sh / .ps1   Fetches what the catalogue lists (list / check / fetch / pin)
 ├── thirdparty/                Bundled tools (UV, OVMS), the edge-ai-libraries cache and the git/<name> source caches
 ├── setup.sh                   Master worker setup script
 └── setup.ps1                  Master worker setup (Windows)
@@ -258,36 +286,41 @@ workers/
 
 #### OEP-backed workers, vendored sources and custom workers
 
-A worker directory is one of four kinds. Run `workers/oep-setup.sh`
-(`oep-setup.ps1` on Windows) to list them; `check` also compares every pin
+A worker directory is one of four kinds. Run `workers/upstream-setup.sh`
+(`upstream-setup.ps1` on Windows) to list them; `check` also compares every pin
 with what is on disk.
 
 | Kind | Declared by | Upstream source | Runs as |
 |---|---|---|---|
 | Custom | nothing | code in this repository | native `uv` process |
-| OEP microservice | a `services` entry in [`workers/oep-services.json`](../workers/oep-services.json) | one service of [`open-edge-platform/edge-ai-libraries`](https://github.com/open-edge-platform/edge-ai-libraries), copied at the catalogue's `tag` into `<worker>/thirdparty/<name>/` (gitignored) by `workers/oep-setup.sh` from its one sparse clone under `workers/thirdparty/edge-ai-libraries` | native `uv` process, no container |
+| OEP microservice | an `edge-ai-libraries.services` entry in [`workers/upstream.json`](../workers/upstream.json) | one service of [`open-edge-platform/edge-ai-libraries`](https://github.com/open-edge-platform/edge-ai-libraries), copied at `edge-ai-libraries.tag` into `<worker>/thirdparty/<name>/` (gitignored) by `workers/upstream-setup.sh` from its one sparse clone under `workers/thirdparty/edge-ai-libraries` | native `uv` process, no container |
 | Custom worker with a vendored package | a `sources` entry in the same catalogue | a plain git repository (`hexgrad/kokoro`, `mesolitica/malaya`, `pnnbao97/VieNeu-TTS`) at a pinned commit or tag, sparse-cloned under `workers/thirdparty/git/<name>` and copied next to the worker, patched (`kokoro.patch`), taken by path in `pyproject.toml` (malaya) or imported from the worker directory without its package's dependencies (vieneu); never a uv git dependency, whose full clone would sit in the uv cache | native `uv` process |
 | OEP suite app | `suite.env` with `EDGE_AI_SUITES_REF` | one app of [`open-edge-platform/edge-ai-suites`](https://github.com/open-edge-platform/edge-ai-suites), sparse git clone at that tag into `<app>/src/` by the suite's `setup.sh`/`.ps1` | `docker compose`; docker only, so `supportedOS: ['linux']` and `requiresDocker: true` in `data.ts` gray the service out on Windows |
 
-`workers/oep-services.json` is the single place to maintain for the
-microservices: the pinned release tag and a list of services, one object each:
+`workers/upstream.json` is the single place to maintain for upstream code.
+`edge-ai-libraries` holds the OEP microservices and the one release tag they
+share; `sources` holds plain git repositories, each at its own repository and
+ref:
 
 ```json
 {
-  "$schema": "./oep-services.schema.json",
-  "repository": "https://github.com/open-edge-platform/edge-ai-libraries.git",
-  "tag": "2026.2.1",
-  "services": [
-    { "worker": "services/speech-to-text/oep", "name": "audio-analyzer",
-      "subdir": "microservices/audio-analyzer", "sentinel": "pipeline.py" },
-    { "worker": "services/vectordb", "name": "document-ingestion",
-      "subdir": "microservices/document-ingestion/pgvector",
-      "sentinel": "app/document.py", "home_env": "OEP_DOCUMENT_INGESTION_HOME" }
-  ]
+  "$schema": "./upstream.schema.json",
+  "edge-ai-libraries": {
+    "repository": "https://github.com/open-edge-platform/edge-ai-libraries.git",
+    "tag": "2026.2.1",
+    "services": [
+      { "worker": "services/speech-to-text/oep", "name": "audio-analyzer",
+        "subdir": "microservices/audio-analyzer", "sentinel": "pipeline.py" },
+      { "worker": "services/vectordb", "name": "document-ingestion",
+        "subdir": "microservices/document-ingestion/pgvector",
+        "sentinel": "app/document.py", "home_env": "OEP_DOCUMENT_INGESTION_HOME" }
+    ]
+  },
+  "sources": [ … ]
 }
 ```
 
-`worker` (the directory under `workers/`) and `subdir` are required; `name`,
+In a service entry, `worker` (the directory under `workers/`) and `subdir` are required; `name`,
 `sentinel`, `dir`, `home_env` and a per-service `tag` are optional. The copy
 lands in `<worker>/thirdparty/<name>` unless `dir` says otherwise, and carries
 the tag it was made from in `.demo-studio-edge-ai-libraries-ref`; `home_env`
@@ -309,18 +342,18 @@ copy):
 ```
 
 Every key is described in
-[`workers/oep-services.schema.json`](../workers/oep-services.schema.json).
-`oep-setup.sh` (via `python3`), `oep-setup.ps1` and `worker_common.oep` all
+[`workers/upstream.schema.json`](../workers/upstream.schema.json).
+`upstream-setup.sh` (via `python3`), `upstream-setup.ps1` and `worker_common.oep` all
 read this one file. Each worker start fetches its own source before syncing
 dependencies, so path dependencies exist when uv uses them. Each such
 worker's README lists what Demo Studio changes in its copy.
 
 ```bash
-workers/oep-setup.sh                    # list catalogued services, sources, suite apps, custom workers
-workers/oep-setup.sh check              # exit 1 if a copy is missing or at another pin
-workers/oep-setup.sh fetch <worker>     # what start scripts run (oep_fetch); also fetch --all
-workers/oep-setup.sh info <worker>      # resolved paths and pins
-workers/oep-setup.sh pin <tag>          # bump the edge-ai-libraries "tag" in oep-services.json, then fetch --all
+workers/upstream-setup.sh                    # list catalogued services, sources, suite apps, custom workers
+workers/upstream-setup.sh check              # exit 1 if a copy is missing or at another pin
+workers/upstream-setup.sh fetch <worker>     # what start scripts run (upstream_fetch); also fetch --all
+workers/upstream-setup.sh info <worker>      # resolved paths and pins
+workers/upstream-setup.sh pin <tag>          # bump the edge-ai-libraries "tag" in upstream.json, then fetch --all
 ```
 
 Rules for OEP-backed workers:
@@ -358,14 +391,14 @@ Rules for OEP-backed workers:
 Adding a worker that wraps an OEP microservice (the generic worker steps are
 in [`workers/README.md`](../workers/README.md#adding-a-worker)):
 
-1. Add an object to `services` in `workers/oep-services.json`.
+1. Add an object to `edge-ai-libraries.services` in `workers/upstream.json`.
 2. Create `workers/services/<name>/` with `main.py` (imports the upstream app
    through `worker_common.oep`, adds `--port/--model/--device` and
    `/healthcheck`), `pyproject.toml` (upstream `requirements.txt` on the
    workspace's standardized versions), an optional `overlay/`, and
    `.gitignore` with `/thirdparty`.
-3. In `start.sh` / `start.ps1`, call `oep_fetch <name>` /
-   `Invoke-OepFetch <name>` before `run_worker` / `Start-Worker`.
+3. In `start.sh` / `start.ps1`, call `upstream_fetch <name>` /
+   `Invoke-UpstreamFetch <name>` before `run_worker` / `Start-Worker`.
 4. Wire the frontend. A worker that sits next to built-in workers of the same
    service is picked by model (`workerSubDir: (doc) => ...`, text-to-speech)
    or by a backend stored in the service metadata and switched with a button
@@ -484,6 +517,8 @@ Where each is used:
 | synthetic-image-generation | job status events (`queued` → `running` with stage and step → `completed`) | `GET /image-gen/job/{id}/events` |
 | diarization | job status events (`pending` with queue position → `running` with pyannote stage and progress → `completed`) | `GET /v1/diarize/{job_id}/events` |
 | frame-generation | job status events (progress, frames done of total) | `GET /v1/tasks/{id}/events` |
+| video-generation | job status events, OpenAI's Video object plus `phase` (`pose` for a VACE driving video → `prepare` → `text` → `denoise` with `step`/`steps` → `decode` → `encode`), `progress`, queue `position` and `estimated_time` from per-size step rates learned on this device; one video at a time; finished MP4s are read from `/content` | `GET /v1/videos/{id}/events` |
+| image-upscaling | job status events (queue position → progress, tiles or frames done of total) | `GET /v1/tasks/{id}/events` |
 | lipsync | job status events for avatar creation (stage, per-frame progress) | `GET /v1/tasks/{taskId}/events` |
 | ocr | job status events | `GET /ocr/jobs/{id}/events` |
 | geti-classifier | job status events for model setup (connecting → preparing → downloading with bytes → extracting → compiling) | `POST /setup-{cls,seg}/jobs`, `GET /setup-jobs/{id}/events` |
@@ -514,7 +549,7 @@ A service without `metrics.tsx` shows no panel. Codegen collects the figures in 
 |---|---|---|
 | `fetchWork(apiBase, path, init, measure)` | a JSON answer: `fetchJson` timed from sending to the parsed body, with the worker's `Server-Timing` and the quantities `measure` returns (`{ items: input.length }`, `{ audioSeconds: body.duration }`) | embeddings, rerank, face-recognition, speech-to-text (batch) |
 | `startWork(apiBase)` | a call the hook reads itself: `firstOutput()` at the first token, then `finish({ inferenceMs?, quantities? })`, `failed()` or `aborted()` (`settleError(signal)` picks) | text-to-speech (to the WAV's last byte, `audioSeconds` from `WavStreamReader.seconds`), text-generation |
-| `recordJob(apiBase, jobId, perf)` | a background job followed to its end: the `perf` block of its final status (below); a job followed again counts once | OCR, diarization, frame-generation, image-generation |
+| `recordJob(apiBase, jobId, perf)` | a background job followed to its end: the `perf` block of its final status (below); a job followed again counts once | OCR, diarization, frame-generation, image-generation, image-upscaling, video-generation |
 | `recordWork(apiBase, { inferenceMs?, responseMs?, quantities })` | work that is not one call | speech-to-text (live) |
 
 Text generation: `useTextGenChat` wraps the chat transport's `fetch`, takes the first `text-delta`, `reasoning-delta` or `tool-input-start` event of the stream as the first token, and finishes with the token counts the chat route sends as the answer's message metadata (`chatUsageMetadata` in `lib/llm/chat-usage.ts`): `inputTokens`, `outputTokens` and `prefillTokens`, the prompt less the `prompt_tokens_details.cached_tokens` OVMS and llama.cpp report, which the prefill speed is over. An answer that used MCP tools sums every step, the tool calls in its time. Live transcription runs on a WebSocket straight to the worker: the OVMS backend's `transcript` message carries the utterance's audio span (`start`, `end`) and model time (`latency.stt_ms`); on the OEP backend the demo times an utterance from its `input_audio_buffer.committed` event to its transcript.
@@ -527,7 +562,7 @@ A hook that samples share (`useTranscribe`, `useDiarize`, `useTextGenChat` with 
 |---|---|---|
 | `rtfx()` | seconds of audio per second of processing, with the RTF and the audio length | speech-to-text, text-to-speech, diarization |
 | `fps()` | frames (`items`) per second of processing, with the frames and time | face-recognition, OCR, frame-generation |
-| `throughput({ unit })` | `items` per second of processing, with the items and time | embeddings, rerank |
+| `throughput({ unit })` | `items` per second of processing, with the items and time | embeddings, rerank, image-upscaling (output megapixels) |
 | `latency({ label?, source? })` | the model time the worker reports ("Inference time"), a job's processing time ("Processing time"), else the response time ("Latency"); `source: 'response'` always the response time, end to end | all but image-generation (text-generation's "E2E latency" with `source: 'response'`) |
 
 A figure only one service shows lives in that service's `metrics.tsx` — TPS (with TPOT and the tokens generated), TTFT and prefill TPS in text-generation's, generation time per image and it/s in image-generation's — and moves to `figures.tsx` once a second service needs it. A new service times its model calls in its hooks and lists its figures in `metrics.tsx`.
@@ -538,7 +573,7 @@ A figure only one service shows lives in that service's `metrics.tsx` — TPS (w
 "perf": { "seconds": 26.1, "items": 1, "steps": 30, "audio_seconds": 42.5, "started": 1726380000.5 }
 ```
 
-`seconds` is the processing time (required); every other number says what it produced, as a quantity of that name in camelCase (`audio_seconds` → `audioSeconds`) — the workers use `items`, `steps` and `audio_seconds` — except `started` (epoch seconds). A job's status event stream carries the same body in its final `status` event, `perf` included. The image-generation, synthetic-image-generation, frame-generation, OCR and diarization workers add it.
+`seconds` is the processing time (required); every other number says what it produced, as a quantity of that name in camelCase (`audio_seconds` → `audioSeconds`) — the workers use `items`, `steps` and `audio_seconds` — except `started` (epoch seconds). A job's status event stream carries the same body in its final `status` event, `perf` included. The image-generation, synthetic-image-generation, frame-generation, image-upscaling, video-generation, OCR and diarization workers add it.
 
 **Where the time comes from.** The response time a demo measures includes the hop through the app, so a worker that knows how long its model call took reports that with a standard header, which the figures prefer ("Inference time") and which browsers show in their developer tools:
 
@@ -552,7 +587,7 @@ Server-Timing: inference;dur=123.4
 
 ### Service Instances
 
-A service type can run several **instances** at once when its `data.ts` sets `multiInstance: true`. Each instance is one row in the `services` collection (`type` + `instanceId`), with its own model, device, port, process, log file and writable data directory. The rule: every **visible** service is multi-instance, so the flag is set on `text-generation`, `embeddings`, `rerank`, `vectordb`, `text-to-speech`, `ocr`, `diarization`, `face-recognition`, `frame-generation`, `image-generation`, `speech-to-text`, `lipsync` and `wake-word-detection` (one instance per microphone: `metadata.audioDevice` becomes the instance's default input device via `--audio-device`, and the demo can still pick a device at runtime). **Hidden** services back a sample, samples are not multi-instance, so those stay single (`file-watcher`, `geti-classifier`, `medical-scribe-database`, `ppt-translator`, `synthetic-image-generation`, `robotics-ai` and the docker suites) — their workers still honour the instance contract below, so flipping the flag later is a one-line change. `mcp` has no process (`mode: 'none'`), so there is nothing to instantiate.
+A service type can run several **instances** at once when its `data.ts` sets `multiInstance: true`. Each instance is one row in the `services` collection (`type` + `instanceId`), with its own model, device, port, process, log file and writable data directory. The rule: every **visible** service is multi-instance, so the flag is set on `text-generation`, `embeddings`, `rerank`, `vectordb`, `text-to-speech`, `ocr`, `diarization`, `face-recognition`, `frame-generation`, `image-generation`, `image-upscaling`, `video-generation`, `speech-to-text`, `lipsync` and `wake-word-detection` (one instance per microphone: `metadata.audioDevice` becomes the instance's default input device via `--audio-device`, and the demo can still pick a device at runtime). **Hidden** services back a sample, samples are not multi-instance, so those stay single (`file-watcher`, `geti-classifier`, `medical-scribe-database`, `ppt-translator`, `synthetic-image-generation`, `robotics-ai` and the docker suites) — their workers still honour the instance contract below, so flipping the flag later is a one-line change. `mcp` has no process (`mode: 'none'`), so there is nothing to instantiate.
 
 Every instance is handled the same way and none is marked special. Where a caller names only a type (a sample, a worker calling a sibling service, `startService(type)`), `pickPrimaryInstance` in `lib/instances/instances.ts` picks the running instance — a started one over one still starting — or, while none runs, the first instance in creation order:
 
@@ -587,7 +622,7 @@ Every worker roots its temp files, uploads, outputs, databases and indexes in `I
 
 Instances of one type are started one at a time: "Start selected" in the service page's Manage instances sheet (`useStartInstances`) and the boot autostart from `deployment.json` both wait for an instance to leave `prepare` before starting the next of the same type. A row that reaches `error` releases its port and has its process stopped, so a retry or a sibling can use the port.
 
-`deployment.json` can declare extra instances too: `services.<type>` lists a type's instances, first instance first. Every entry is matched to an instance by its `instanceId` first, then by `label` (`lib/deployment/deployment-match.ts`); the first entry otherwise takes the oldest instance left, and a differing `label` renames only the display name — the address, data and sample bindings stay. An entry that matches nothing is created as a copy of the first instance under its `instanceId`, or the id derived from its name. Saved deployments write each instance's `instanceId`, so a renamed instance is found again on every boot. The file is the whole setup: before applying a listed type, every instance its entries do not name is deleted (`deleteUndeclaredInstance`, through `payload.delete`, so the afterDelete hook stops it and removes its data directory), and after the listed types every unlisted type with an added row is reset the way deleting its last instance is (`removeUnlistedServices`); a file that fails validation, or a type whose first entry does, changes nothing. The repository ships `deployment.example.json`, not a `deployment.json`. `lib/deployment/` (`deployment-schema.ts`, `deployment-file.ts`, `deployment-apply.ts`, `deployment-snapshot.ts`) applies the first entry first, then the rest in file order, honours `multiInstance` / `maxInstances`, and queues every `"status": "online"` row into the per-type serial autostart. The older object form (`services.<type>.instances.<instanceId>`, matched by id) is still read; the Settings export writes lists. `lib/deployment/deployment-docs.ts` emits both forms into `docs/deployment.schema.json`. See [deployment-config.md](deployment-config.md#multiple-instances).
+`deployment.json` can declare extra instances too: `services.<type>` lists a type's instances, first instance first. Every entry is matched to an instance by its `instanceId` when it has one, else by `label` (`lib/deployment/deployment-match.ts`); an entry with an id never configures another instance — the id is the address the file promises, so a missing one is created — the first entry without one otherwise takes the oldest instance left, and a differing `label` renames only the display name — the address, data and sample bindings stay. An entry that matches nothing is created as a copy of the first instance under its `instanceId`, or the id derived from its name. Saved deployments write each instance's `instanceId`, so a renamed instance is found again on every boot. The file is the whole setup: before applying a listed type, every instance its entries do not name is deleted (`deleteUndeclaredInstance`, through `payload.delete`, so the afterDelete hook stops it and removes its data directory), and after the listed types every unlisted type with an added row is reset the way deleting its last instance is (`removeUnlistedServices`); a file that fails validation, or a type whose first entry does, changes nothing. The repository ships `deployment.example.json`, not a `deployment.json`. `lib/deployment/` (`deployment-schema.ts`, `deployment-file.ts`, `deployment-apply.ts`, `deployment-snapshot.ts`) applies the first entry first, then the rest in file order, honours `multiInstance` / `maxInstances`, and queues every `"status": "online"` row into the per-type serial autostart. The older object form (`services.<type>.instances.<instanceId>`, matched by id) is still read; the Settings export writes lists. `lib/deployment/deployment-docs.ts` emits both forms into `docs/deployment.schema.json`. See [deployment-config.md](deployment-config.md#multiple-instances).
 
 
 #### Startup reports
@@ -626,11 +661,14 @@ Services with a choice:
 |---|---|---|---|---|---|
 | Speech to Text (OEP backend) | Whisper presets, custom ids | fp32, fp16, int8, int4 | int8 | `--precision` → upstream `weight_format` | `models/stt/openvino/<name>-<precision>/` (fp32: `<name>/`) |
 | Speech to Text (OVMS backend) | Whisper, Qwen3-ASR, custom ids (pre-converted `OpenVINO/*`, `*-ov` keep their own) | fp32, fp16, int8, int4 | int8 | `--precision` → `ovms --pull --weight-format` | `models/stt/ovms-<precision>/` (fp32 and pre-converted: `models/stt/ovms/`) |
+| Speech to Text (MERaLiON backend) | MERaLiON-3-3B-ASR only | int8, int4 (the decoder; the speech encoder is always INT8) | int8 | `--precision` → NNCF weight compression at export | `models/stt/meralion/MERaLiON/MERaLiON-3-3B-ASR/openvino-<precision>/` |
 | Text to Speech | SpeechT5 (OEP worker) | fp32, fp16, int8, int4 | int8 | `--dtype` | `models/tts/oep-tts/openvino/<model>__<precision>/` |
 | Image Generation | Stable Diffusion XL, custom ids that are not OpenVINO IR | fp32, fp16, int8, int4 | int8 | `--precision` → `ovms --pull --weight-format` | `models/ovms/` (int8 and pre-converted), `models/ovms/precision-<precision>/` |
 | Lipsync | Wav2Lip | auto, fp16, int8 | auto: INT8 on CPU, NPU and integrated GPUs, FP16 elsewhere | `--int8` / `--no-int8` (auto sends neither) | `models/wav2lip/checkpoints/wav2lipv2_ov/`, `…/wav2lipv2_ov_int8/` |
 | Embeddings | Qwen3 Embedding | fp16, int8 | int8 | `--precision` → upstream `MODEL_CONFIGS` `weight_format` | `models/embeddings/ov-models/<model>/<PRECISION>/` |
 | OCR | PaddleOCR-VL, PaddleOCR-VL-1.5 (the language model) | fp16, int8, int4 | int8 | `--precision` → load options `llm_int8` / `llm_int4` | `models/ocr/paddleocr_vl/<model>/llm_stateful{,_int8,_int4}.xml` |
+| Image Upscaling | Real-ESRGAN presets | fp16, int8 (weights and activations, NNCF calibrated on generated images) | fp16 | `--precision` | `models/upscaling/<preset>/openvino-<precision>/` |
+| Video Generation | Wan presets on OpenVINO (the 5B models run bf16 with PyTorch on XPU) | fp16, int8, int4 (the transformer and text encoder; NNCF weight compression at export) | int8 | `--precision` | `models/video-generation/transformer/<repo>/<precision>/`, `…/text-encoder/umt5-xxl/<precision>/` |
 
 Models at a fixed precision, measured from the files on disk on 2026-10-14 (weight bytes by element type in the IR or ONNX graph):
 
@@ -639,9 +677,10 @@ Models at a fixed precision, measured from the files on disk on 2026-10-14 (weig
 | Text to Speech | Kokoro | FP16 (about 30% of the weights kept FP32) | converted from PyTorch with `ov.save_model`'s FP16 compression |
 | Text to Speech | Piper | FP16 | ONNX converted with `ov.save_model` |
 | Text to Speech | Malaya | FP32 | converted from PyTorch to OpenVINO IR without FP16 compression (2026-10-19) |
-| Text to Speech | Pocket TTS (Indonesian) | INT8 (the transformer; the codec decoder FP32) | the transformer's weights compressed by NNCF at export, more than twice as fast on the CPU as FP32 (2026-10-19) |
+| Text to Speech | Pocket TTS | INT8 (the transformer; the codec decoder FP32) | the transformer's weights compressed by NNCF at export, more than twice as fast on the CPU as FP32 (2026-10-19) |
 | Text to Speech | VieNeu-TTS v3 Turbo | INT8 (embeddings and heads FP32) | upstream's int8 ONNX graphs, run on ONNX Runtime (2026-10-19) |
-| Text to Speech | FastSpeech2 HS (Tamil) | FP32 | converted from PyTorch to OpenVINO IR without FP16 compression (2026-10-19) |
+| Text to Speech | FastSpeech2 HS | FP32 | converted from PyTorch to OpenVINO IR without FP16 compression (2026-10-19) |
+| Text to Speech | CosyVoice 3 | INT8 (the speech-token LLM; the flow-matching DiT FP16 on a discrete GPU, INT8 weights and activations on a CPU or integrated GPU; the HiFT vocoder FP32) | the LLM's weights compressed by NNCF at export, the DiT's ONNX saved with FP16 compression and, for a CPU or integrated GPU, quantized by NNCF on the first start; the app lists the LLM's INT8 as the model's one precision |
 | Image Generation | Stable Diffusion 1.5 INT8, SDXL Turbo | INT8 | downloaded as OpenVINO IR with an INT8 UNet (SDXL Turbo's text encoders and VAE are FP32) |
 | Lipsync | MuseTalk | FP16 | the worker has no INT8 MuseTalk |
 | Embeddings | CLIP presets | FP32 | optimum export, uncompressed |
@@ -650,6 +689,7 @@ Models at a fixed precision, measured from the files on disk on 2026-10-14 (weig
 | Face Recognition | Open Model Zoo pipelines (`omz-retail`, `omz-adas`) | FP16 | IR downloaded at FP16 (FP32 and FP16-INT8 also exist upstream) |
 | Face Recognition | YuNet + SFace | FP32 | OpenCV Zoo ONNX (INT8 versions also exist upstream) |
 | Frame Generation | RIFE | FP16 | converted with `compress_to_fp16` |
+| Image Upscaling | Swin2SR, SPAN, DAT2, AuraSR, Open Model Zoo single-image-super-resolution-1032 | FP16 | converted with `compress_to_fp16` (the transformers' attention is not quantized; SPAN and AuraSR have no INT8 export yet); the OMZ IR downloaded at FP16 |
 | Diarization | pyannote Speaker Diarization Community-1 | FP32 | PyTorch weights |
 
 Caveats:
