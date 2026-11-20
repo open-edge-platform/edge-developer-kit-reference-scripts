@@ -378,7 +378,7 @@ async def audio_stream(websocket: WebSocket) -> None:
     align = None
     if is_qwen3_asr(CONFIG["stt_model_id"]):
         align = _align_utterance
-        if _parse_bool(websocket.query_params.get("word_timestamps")):
+        if parse_bool(websocket.query_params.get("word_timestamps")):
             # Start (or export) the aligner now rather than on the first utterance.
             _warm_aligner()
     await handle_audio_stream(
