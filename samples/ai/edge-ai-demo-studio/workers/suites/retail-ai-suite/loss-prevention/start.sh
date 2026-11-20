@@ -84,6 +84,34 @@ EOF
   log "  Classification: device=$classify_device  precision=$classify_precision"
 }
 
+# Camera config: upstream's at the pinned commit fetches the sample video from
+# www.pexels.com/download/, which now answers scripts with a Cloudflare challenge (HTTP 403), and
+# rtsp-streamer exits without a video. This copy has the Pexels CDN URL upstream switched to in
+# intel-retail/loss-prevention#387; drop it once EDGE_AI_SUITES_REF pins a commit with that change.
+GENERATED_CAMERA_CONFIG_NAME="camera_to_workload_asc_object_detection_classification_demostudio.json"
+
+generate_camera_config() {
+  local configs_dir="$1"
+  mkdir -p "$configs_dir"
+  cat > "$configs_dir/$GENERATED_CAMERA_CONFIG_NAME" <<'EOF'
+{
+  "lane_config": {
+    "cameras": [
+      {
+        "camera_id": "cam1",
+        "fps": 15,
+        "width": 1920,
+        "height": 1080,
+        "fileSrc": "obj_classification-1920-15-bench.mp4|https://videos.pexels.com/video-files/6891009/6891009-hd_1920_1080_30fps.mp4",
+        "workloads": ["asc_object_detection_yolo11n_classification_effnetb0"]
+      }
+    ]
+  }
+}
+EOF
+  log "Generated camera config: $configs_dir/$GENERATED_CAMERA_CONFIG_NAME"
+}
+
 # Step 1: clone the upstream loss-prevention repo
 log "Running suite setup ($SETUP_SCRIPT $APP_NAME)"
 bash "$SETUP_SCRIPT" "$APP_NAME"
@@ -96,9 +124,9 @@ fi
 # Step 2: bring up the stack with upstream's `make run-lp`, which sets the env vars, inits the
 # submodule, downloads the video and models, and runs docker compose up.
 
-CAMERA_STREAM="camera_to_workload_asc_object_detection_classification.json"
-
 # Needs $SUITE_DIR/configs/, which suite setup creates.
+generate_camera_config "$SUITE_DIR/configs"
+CAMERA_STREAM="$GENERATED_CAMERA_CONFIG_NAME"
 generate_workload_config "$SUITE_DIR/configs" "$LP_DETECT_DEVICE" "$LP_CLASSIFY_DEVICE"
 WORKLOAD_DIST="$GENERATED_WORKLOAD_CONFIG_NAME"
 
@@ -153,7 +181,15 @@ make run-lp \
   WORKLOAD_DIST="$WORKLOAD_DIST" \
   RENDER_MODE="$RENDER_MODE" \
   DISPLAY="$DISPLAY" \
-  STREAM_LOOP=true
+  STREAM_LOOP=true || {
+  rc=$?
+  # Upstream's downloader only prints a failed download, and compose then reports the unhealthy
+  # rtsp-streamer instead; say what is missing.
+  if ! compgen -G "$SUITE_DIR/performance-tools/sample-media/*.mp4" >/dev/null; then
+    log "ERROR: the sample video did not download (see the curl error above), so rtsp-streamer had nothing to stream"
+  fi
+  exit "$rc"
+}
 
 if [ "$RENDER_MODE" = "1" ]; then
   log "Stack is up — pipeline output window should appear on display $DISPLAY"

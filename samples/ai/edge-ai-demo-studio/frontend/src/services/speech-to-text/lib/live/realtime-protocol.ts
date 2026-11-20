@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { logger } from '@/lib/logger'
-import type { LiveProtocol, ProtocolContext } from './protocol'
+import type {
+  LiveProtocol,
+  ProtocolContext,
+  SttStreamSettings,
+} from './protocol'
 
 interface RealtimeEvent {
   type: string
@@ -34,7 +38,10 @@ function toBase64(buffer: ArrayBuffer): string {
  * transcribes inline, so an empty `session.update` sent on `committed` is answered
  * (`transcription_session.updated`) only once that utterance is done: that clears `transcribing`.
  */
-export function realtimeProtocol(ctx: ProtocolContext): LiveProtocol {
+export function realtimeProtocol(
+  { language, vad, onTranscript }: SttStreamSettings,
+  ctx: ProtocolContext,
+): LiveProtocol {
   let prefixPaddingSec = DEFAULT_PREFIX_PADDING_MS / 1000
   let pendingStart: number | null = null
   let lastSpeechStop: number | null = null
@@ -54,7 +61,7 @@ export function realtimeProtocol(ctx: ProtocolContext): LiveProtocol {
     path: '/v1/realtime',
     params: new URLSearchParams({
       intent: 'transcription',
-      language: ctx.language,
+      language,
     }),
     binary: false,
     encodeFrame: (pcm) =>
@@ -62,14 +69,14 @@ export function realtimeProtocol(ctx: ProtocolContext): LiveProtocol {
         type: 'input_audio_buffer.append',
         audio: toBase64(pcm),
       }),
-    openMessages: ctx.vad
+    openMessages: vad
       ? [
           JSON.stringify({
             type: 'session.update',
             session: {
               turn_detection: {
-                threshold: ctx.vad.threshold,
-                silence_duration_ms: Math.round(ctx.vad.pauseSeconds * 1000),
+                threshold: vad.threshold,
+                silence_duration_ms: Math.round(vad.pauseSeconds * 1000),
               },
             },
           }),
@@ -158,7 +165,7 @@ export function realtimeProtocol(ctx: ProtocolContext): LiveProtocol {
                 `audio=${(end - start).toFixed(2)}s chars=${text.length}`,
             )
           }
-          ctx.emit({
+          onTranscript?.({
             text,
             start: start + ctx.timeOffset(),
             end: end + ctx.timeOffset(),

@@ -4,15 +4,24 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Checked downloads and install manifests.
+# shellcheck source=SCRIPTDIR/thirdparty_integrity.sh
+source "$SCRIPT_DIR/thirdparty_integrity.sh"
+
+# Each download is checked against the SHA-256 beside its URL (see thirdparty_integrity.sh). Moving
+# to another release means updating both, from the project's own checksum list where it has one.
 THIRDPARTY_DIR="${1:-$SCRIPT_DIR/../../thirdparty}"
-NODE_ZIP_PATH="$THIRDPARTY_DIR/node.tar.xz"
-NODE_VERSION="v24.22.1"
+NODE_VERSION="v24.22.2"
 NODE_URL="https://nodejs.org/dist/$NODE_VERSION/node-$NODE_VERSION-linux-x64.tar.xz"
+# From https://nodejs.org/dist/v24.22.2/SHASUMS256.txt
+NODE_SHA256="48cc0e21e048790e54c0cf5749c2725005313d652651c40b7a21feb9697aaf75"
 NODE_DIR="$THIRDPARTY_DIR/node"
 NODE_PATH="$NODE_DIR/bin/node"
 
-FFMPEG_TAR_PATH="$THIRDPARTY_DIR/ffmpeg-linux64-gpl.tar.xz"
 FFMPEG_TAR_URL="https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-31-13-27/ffmpeg-n9.0.1-11-ge47273f4d9-linux64-gpl-9.0.tar.xz"
+# From the release's checksums.sha256
+FFMPEG_SHA256="182c1b509720e939bb47bfb47dc29cc0c298640401128e3dce8627d10707eb5a"
 FFMPEG_DIR="$THIRDPARTY_DIR/ffmpeg"
 FFMPEG_PATH="$FFMPEG_DIR/bin/ffmpeg"
 
@@ -40,7 +49,6 @@ PCI_IDS_SHA256="5061033a8c13354302ef9f01e8c439fa5221655aca4132dd85866efc52412634
 PCI_IDS_PATH="$THIRDPARTY_DIR/pci.ids"
 
 cleanup_temp_files() {
-    rm -f "$NODE_ZIP_PATH" "$FFMPEG_TAR_PATH" 2>/dev/null
     rm -rf "$QMASSA_BUILD_DIR" 2>/dev/null
 }
 trap cleanup_temp_files EXIT INT TERM
@@ -73,109 +81,44 @@ setup_thirdparty() {
   echo "✅ Thirdparty setup completed successfully"
 }
 
-# Install Node.js unless the pinned version is already present
+# Install Node.js unless the pinned release is installed and intact
 install_node() {
-  local installed=""
-  if [ -f "$NODE_PATH" ]; then
-    installed="$("$NODE_PATH" --version 2>/dev/null || true)"
-    if [ "$installed" != "$NODE_VERSION" ]; then
-      echo "Replacing Node.js ${installed:-(unknown version)} with $NODE_VERSION ..."
-      rm -rf "$NODE_DIR"
-    fi
+  if ! install_verified_archive "Node.js $NODE_VERSION" "$NODE_URL" "$NODE_SHA256" "$NODE_DIR"; then
+    echo "Please check your internet connection and try again."
+    return 1
   fi
 
   if [ ! -f "$NODE_PATH" ]; then
-    echo "Installing Node.js $NODE_VERSION ..."
-    
-    if ! mkdir -p "$NODE_DIR"; then
-      echo "❌ ERROR: Failed to create Node.js directory at $NODE_DIR"
-      return 1
-    fi
-    
-    echo "Downloading Node.js from $NODE_URL ..."
-    if ! wget -nv -O "$NODE_ZIP_PATH" "$NODE_URL"; then
-      echo "❌ ERROR: Failed to download Node.js from $NODE_URL"
-      echo "Please check your internet connection and try again."
-      return 1
-    fi
-    
-    echo "Extracting Node.js..."
-    if ! tar -xJf "$NODE_ZIP_PATH" -C "$NODE_DIR" --strip-components=1; then
-      echo "❌ ERROR: Failed to extract Node.js archive"
-      rm -f "$NODE_ZIP_PATH"
-      return 1
-    fi
-    
-    rm "$NODE_ZIP_PATH"
-    
-    if [ ! -f "$NODE_PATH" ]; then
-      echo "❌ ERROR: Node.js binary not found at $NODE_PATH after extraction"
-      return 1
-    fi
-    
-    if ! "$NODE_PATH" --version >/dev/null 2>&1; then
-      echo "❌ ERROR: Node.js installation verification failed"
-      return 1
-    fi
-    
-    echo "✅ Node.js installed successfully at $NODE_PATH"
-  else
-    echo "Node.js already installed at $NODE_PATH"
+    echo "❌ ERROR: Node.js binary not found at $NODE_PATH after extraction"
+    return 1
   fi
-  
+
+  if ! "$NODE_PATH" --version >/dev/null 2>&1; then
+    echo "❌ ERROR: Node.js installation verification failed"
+    return 1
+  fi
+
   return 0
 }
 
+# ffmpeg_keep_binaries <dir> -- keep only the two binaries the app runs from the extracted build
+# (BtbN builds put them under bin/).
+ffmpeg_keep_binaries() {
+  local dir="$1"
+  if [ ! -f "$dir/bin/ffmpeg" ] || [ ! -f "$dir/bin/ffprobe" ]; then
+    echo "❌ ERROR: ffmpeg or ffprobe not found in the FFmpeg archive"
+    return 1
+  fi
+  find "$dir" -mindepth 1 -maxdepth 1 ! -name bin -exec rm -rf {} + &&
+    find "$dir/bin" -mindepth 1 ! -name ffmpeg ! -name ffprobe -exec rm -rf {} + &&
+    chmod +x "$dir/bin/ffmpeg" "$dir/bin/ffprobe"
+}
+
 install_ffmpeg() {
-  if [ -d "$FFMPEG_DIR" ]; then
-    echo "✅ FFmpeg directory already exists at $FFMPEG_DIR. Skipping download."
-    return 0
-  fi
-  
-  echo "Downloading FFmpeg for Linux..."
-  echo "Downloading from $FFMPEG_TAR_URL..."
-  if ! wget -nv -O "$FFMPEG_TAR_PATH" "$FFMPEG_TAR_URL"; then
-    echo "❌ ERROR: Failed to download FFmpeg"
+  if ! install_verified_archive --after ffmpeg_keep_binaries "FFmpeg" "$FFMPEG_TAR_URL" "$FFMPEG_SHA256" "$FFMPEG_DIR"; then
     return 1
   fi
-  
-  echo "Extracting FFmpeg..."
-  if ! tar -xf "$FFMPEG_TAR_PATH" -C "$THIRDPARTY_DIR"; then
-    echo "❌ ERROR: Failed to extract FFmpeg archive"
-    rm -f "$FFMPEG_TAR_PATH"
-    return 1
-  fi
-  
-  EXTRACTED_DIR=$(find "$THIRDPARTY_DIR" -maxdepth 1 -type d -name "ffmpeg-*" | head -1)
-  if [ -z "$EXTRACTED_DIR" ]; then
-    echo "❌ ERROR: Could not find extracted FFmpeg directory"
-    rm -f "$FFMPEG_TAR_PATH"
-    return 1
-  fi
-  
-  if ! mkdir -p "$FFMPEG_DIR/bin"; then
-    echo "❌ ERROR: Failed to create FFmpeg bin directory"
-    rm -rf "$EXTRACTED_DIR"
-    rm -f "$FFMPEG_TAR_PATH"
-    return 1
-  fi
-  
-  # BtbN builds put the binaries under bin/.
-  if ! cp "$EXTRACTED_DIR/bin/ffmpeg" "$FFMPEG_DIR/bin/" || \
-     ! cp "$EXTRACTED_DIR/bin/ffprobe" "$FFMPEG_DIR/bin/"; then
-    echo "❌ ERROR: Failed to copy FFmpeg binaries"
-    rm -rf "$EXTRACTED_DIR"
-    rm -f "$FFMPEG_TAR_PATH"
-    return 1
-  fi
-  
-  chmod +x "$FFMPEG_DIR/bin/ffmpeg"
-  chmod +x "$FFMPEG_DIR/bin/ffprobe"
-  
-  rm -rf "$EXTRACTED_DIR"
-  
-  rm -f "$FFMPEG_TAR_PATH"
-  
+
   if [ ! -x "$FFMPEG_PATH" ]; then
     echo "❌ ERROR: FFmpeg installation verification failed - binary not found or not executable"
     return 1
@@ -188,19 +131,6 @@ install_ffmpeg() {
   
   echo "✅ FFmpeg downloaded and extracted successfully."
   return 0
-}
-
-# Download $1 to $2 and check it against the sha256 $3
-download_verified() {
-  local url="$1" dest="$2" sha256="$3"
-  if ! wget -nv -O "$dest" "$url"; then
-    echo "❌ ERROR: Failed to download $url"
-    return 1
-  fi
-  if ! echo "$sha256  $dest" | sha256sum -c --status -; then
-    echo "❌ ERROR: Checksum mismatch for $url"
-    return 1
-  fi
 }
 
 # The runtime libudev every systemd distribution ships. The build links
@@ -216,16 +146,15 @@ find_libudev() {
   return 1
 }
 
-# Build qmassa unless the pinned version is already installed
+# Build qmassa unless the build of the pinned source is installed and intact
 install_qmassa() {
-  local installed=""
-  if [ -x "$QMASSA_PATH" ]; then
-    installed="$("$QMASSA_PATH" --version 2>/dev/null || true)"
-    if [ "$installed" = "qmassa $QMASSA_VERSION" ]; then
-      echo "qmassa $QMASSA_VERSION already installed at $QMASSA_PATH"
+  local problems
+  if [ -e "$QMASSA_DIR" ]; then
+    if problems="$(check_install "$QMASSA_DIR" "$QMASSA_SRC_SHA256")"; then
+      echo "qmassa $QMASSA_VERSION already installed at $QMASSA_PATH and intact"
       return 0
     fi
-    echo "Replacing ${installed:-qmassa (unknown version)} with qmassa $QMASSA_VERSION ..."
+    echo "Rebuilding qmassa $QMASSA_VERSION: $(summarize_problems "$problems")"
   fi
 
   local status=0
@@ -315,6 +244,11 @@ EOF
   fi
   if [ "$("$QMASSA_PATH" --version 2>/dev/null)" != "qmassa $QMASSA_VERSION" ]; then
     echo "❌ ERROR: qmassa installed but does not run"
+    return 1
+  fi
+  # Built here, so its manifest records the source it was built from.
+  if ! write_install_manifest "$QMASSA_DIR" "$QMASSA_SRC_SHA256"; then
+    echo "❌ ERROR: Failed to write the install manifest of qmassa"
     return 1
   fi
 

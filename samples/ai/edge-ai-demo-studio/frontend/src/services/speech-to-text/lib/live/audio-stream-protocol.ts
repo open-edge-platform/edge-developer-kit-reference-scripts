@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { logger } from '@/lib/logger'
-import type { LiveProtocol, ProtocolContext } from './protocol'
+import type {
+  LiveProtocol,
+  ProtocolContext,
+  SttStreamSettings,
+} from './protocol'
 
 /** Per-stage timings the OVMS worker reports for a transcribed utterance, in ms. */
 interface StreamLatency {
@@ -18,6 +22,7 @@ interface AudioStreamMessage {
     | 'speech_start'
     | 'speech_end'
     | 'transcript'
+    | 'words'
     | 'error'
     | 'done'
     | string
@@ -27,6 +32,8 @@ interface AudioStreamMessage {
   start?: number
   end?: number
   latency?: StreamLatency
+  /** `words`: the utterance's word timings, seconds of received audio. */
+  words?: { word?: string; start?: number; end?: number }[]
   message?: string
 }
 
@@ -35,12 +42,17 @@ interface AudioStreamMessage {
  * out (`start`/`end` in seconds of received audio). Every queued utterance gets exactly one
  * `transcript` or `error`, so the outstanding ones are counted.
  */
-export function audioStreamProtocol(ctx: ProtocolContext): LiveProtocol {
-  const params = new URLSearchParams({ language: ctx.language })
+export function audioStreamProtocol(
+  settings: SttStreamSettings,
+  ctx: ProtocolContext,
+): LiveProtocol {
+  const { language, vad, wordTimestamps, onTranscript, onWords } = settings
+  const params = new URLSearchParams({ language })
   if (ctx.latencyLog) params.set('latency_log', 'true')
-  if (ctx.vad) {
-    params.set('pause_duration', String(ctx.vad.pauseSeconds))
-    params.set('vad_threshold', String(ctx.vad.threshold))
+  if (wordTimestamps) params.set('word_timestamps', 'true')
+  if (vad) {
+    params.set('pause_duration', String(vad.pauseSeconds))
+    params.set('vad_threshold', String(vad.threshold))
   }
   let speaking = false
   let queued = 0
@@ -89,10 +101,32 @@ export function audioStreamProtocol(ctx: ProtocolContext): LiveProtocol {
                 `audio=${(end - start).toFixed(2)}s chars=${text.length}`,
             )
           }
-          ctx.emit({
+          onTranscript?.({
             text,
             start: start + ctx.timeOffset(),
             end: end + ctx.timeOffset(),
+          })
+          break
+        }
+        case 'words': {
+          // Follows its utterance's transcript; not one of the counted answers.
+          const offset = ctx.timeOffset()
+          const words = (data.words ?? []).flatMap((w) =>
+            w.word && w.start != null && w.end != null
+              ? [
+                  {
+                    text: w.word,
+                    start: Number(w.start) + offset,
+                    end: Number(w.end) + offset,
+                  },
+                ]
+              : [],
+          )
+          if (words.length === 0) break
+          onWords?.({
+            start: Number(data.start ?? 0) + offset,
+            end: Number(data.end ?? 0) + offset,
+            words,
           })
           break
         }

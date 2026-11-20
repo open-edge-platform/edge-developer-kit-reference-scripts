@@ -14,6 +14,7 @@ import cv2
 import numpy as np
 
 from glob import glob
+from itertools import islice
 from queue import Full, Queue
 from threading import Event, Lock, Thread
 from typing import Optional
@@ -124,12 +125,60 @@ def safe_pickle_load(file_path):
 
 
 def default_batch_size(device: str) -> int:
-    """Frames per lipsync inference when the config sets none: 8 on the NPU, 16 elsewhere.
+    """Frames per lipsync inference when the config sets none: 1 on the NPU, 16 elsewhere.
 
-    Core Ultra X7 358H NPU, Wav2Lip INT8: ~10 ms/frame at 8 vs ~30 ms at 16, and the first talking
-    frame comes sooner. (A 285K NPU is too slow at either size and plays smoother at 16.)
+    Core Ultra 9 285K NPU, Wav2Lip INT8: ~12 ms/frame at 1, ~47 ms at 2-16 (the compiler can't
+    split a batch across its tiles and falls back), so only batch 1 keeps up with 25 fps. On a
+    Core Ultra X7 358H NPU it was ~10 ms/frame at 8 vs ~30 ms at 16.
     """
-    return 8 if device.upper().split(".")[0] == "NPU" else 16
+    return 1 if device.upper().split(".")[0] == "NPU" else 16
+
+
+# The last avatar read, shared by every session: reading its full-size frames takes seconds, and
+# each new connection (a kiosk reconnecting, a page reload) read the same ones again before it
+# could answer. The frames are never written: talking frames are composed on a deepcopy, and the
+# one in-place write, webrtc()'s first-row LSB clear on idle frames, is the same for every session.
+_avatar_cache = {"key": None, "avatar": None}
+_avatar_cache_lock = Lock()
+
+
+def cached_avatar(avatar_path):
+    """``read_avatar(avatar_path)``, or what was already read from the same, unchanged avatar.
+
+    The worker reads the default avatar at startup through this too, so even the first
+    connection finds it read.
+    """
+    try:
+        # The mtimes change when the avatar is regenerated in place: a stale copy is never served.
+        key = (os.path.normcase(os.path.abspath(avatar_path)),) + tuple(
+            os.stat(os.path.join(avatar_path, name)).st_mtime_ns
+            for name in ("full_images", "face_images", "coords.pkl")
+        )
+    except OSError:
+        return read_avatar(avatar_path)
+    with _avatar_cache_lock:
+        if _avatar_cache["key"] == key:
+            getLogger(__file__).info("Reusing the avatar images already read")
+            return _avatar_cache["avatar"]
+        avatar = read_avatar(avatar_path)
+        # An avatar with no faces fails the session; it is not kept to fail the next one too.
+        if avatar[2] > 0:
+            _avatar_cache["key"], _avatar_cache["avatar"] = key, avatar
+        return avatar
+
+
+def read_avatar(avatar_path):
+    """(full frames, face frames, face frame count, coords) of a wav2lip-generated avatar dir."""
+    getLogger(__file__).info("Reading Avatar Images")
+    full_cv_frame_list = LipsyncAvatar._read_cv_images(f"{avatar_path}/full_images")
+    face_cv_frame_list = LipsyncAvatar._read_cv_images(f"{avatar_path}/face_images")
+    coords_list = safe_pickle_load(f"{avatar_path}/coords.pkl")
+    return (
+        full_cv_frame_list,
+        face_cv_frame_list,
+        len(face_cv_frame_list),
+        coords_list,
+    )
 
 
 class LipsyncAvatar(Avatar):
@@ -139,6 +188,10 @@ class LipsyncAvatar(Avatar):
     # extraction; subclasses match their model's receptive field.
     audio_left_stride = 2
     audio_right_stride = 2
+
+    # Chunks after a batch that its last frames' features look ahead to: peeked from the input
+    # queue (silence where none is queued yet) and taken by the next batch.
+    audio_lookahead_chunks = 0
 
     # Batch size while no speech is queued, for models whose features carry no state across
     # batches: arriving speech waits behind at most one. None keeps full batches.
@@ -300,24 +353,10 @@ class LipsyncAvatar(Avatar):
         return [cv2.imread(image_path) for image_path in tqdm(input_images_list)]
 
     def load_avatar(self, avatar_path):
-        getLogger(__file__).info("Reading Avatar Images")
-
-        _read_cv_images = self._read_cv_images
-
         self.full_images_path = f"{avatar_path}/full_images"
         self.face_images_path = f"{avatar_path}/face_images"
         self.coords_path = f"{avatar_path}/coords.pkl"
-
-        full_cv_frame_list = _read_cv_images(self.full_images_path)
-        face_cv_frame_list = _read_cv_images(self.face_images_path)
-        coords_list = safe_pickle_load(self.coords_path)
-
-        return (
-            full_cv_frame_list,
-            face_cv_frame_list,
-            len(face_cv_frame_list),
-            coords_list,
-        )
+        return cached_avatar(avatar_path)
 
     def reload_avatar(self, avatar_path):
         """Hot-swap the avatar skin on a running session.
@@ -425,7 +464,9 @@ class LipsyncAvatar(Avatar):
             self.chunks_queued += 1
             self.audio_frames.append(audio_frame)
 
-        features = self.extract_audio_features(self.audio_frames)
+        features = self.extract_audio_features(
+            self.audio_frames + self._peek_audio(self.audio_lookahead_chunks)
+        )
 
         if features:
             if not put_unless_stopped(
@@ -435,6 +476,17 @@ class LipsyncAvatar(Avatar):
             self.audio_frames = self.audio_frames[
                 -(self.audio_left_stride + self.audio_right_stride) :
             ]
+
+    def _peek_audio(self, n_chunks):
+        """The next ``n_chunks`` input chunks without taking them, padded with silence."""
+        if n_chunks == 0:
+            return []
+        with self.audio_input_queue.mutex:
+            chunks = [
+                chunk for chunk, _ in islice(self.audio_input_queue.queue, n_chunks)
+            ]
+        silence = np.zeros(self.audio_chunk_size, dtype=np.float32)
+        return chunks + [silence] * (n_chunks - len(chunks))
 
     def _queue_idle_batch(self, signal_event):
         """Queue idle_batch_frames silent frames (no features; they aren't inferred).

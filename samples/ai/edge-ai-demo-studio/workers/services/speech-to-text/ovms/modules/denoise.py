@@ -17,7 +17,7 @@ import openvino as ov
 import openvino.properties.hint as hints
 from model_downloader import fetch_omz_ir
 from pydub import AudioSegment
-from worker_common import openvino_pinned_cpu_config
+from worker_common import openvino_npu_cache_config, openvino_pinned_cpu_config
 
 from modules.audio import wav_read, wav_write
 
@@ -34,7 +34,11 @@ def download_omz_model(models_root: str, model_id: str, model_precision: str = "
 
 def load_denoise_model(model_xml: str, device: str):
     core = ov.Core()
-    config = {hints.performance_mode: hints.PerformanceMode.LATENCY, **openvino_pinned_cpu_config()}
+    config = {
+        hints.performance_mode: hints.PerformanceMode.LATENCY,
+        **openvino_pinned_cpu_config(),
+        **openvino_npu_cache_config(device, os.path.dirname(model_xml)),
+    }
     if not os.path.exists(model_xml):
         raise FileNotFoundError(f"Model file not found: {model_xml}")
     compiled_model = core.compile_model(model_xml, device, config)

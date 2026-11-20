@@ -11,8 +11,8 @@ Edge AI Demo Studio is a modern toolkit for deploying, managing, and serving AI 
 - **Edge Optimized:** Built for Intel hardware and edge environments.
 - **AI Services:** AI Services that users can use for their applications
   - **Text Generation** — Generate coherent text using large language models optimized for Intel hardware, served by OpenVINO Model Server or llama.cpp.
-  - **Text to Speech** — Natural-sounding speech synthesis with multiple voice options powered by Kokoro, Piper, Malaya (Malay), Pocket TTS (Indonesian), VieNeu-TTS (Vietnamese), FastSpeech2 HS (Tamil) and SpeechT5 from the Open Edge Platform text-to-speech microservice.
-  - **Speech to Text** — Real-time speech recognition with low-latency transcription using Whisper and Qwen3-ASR models optimized for Intel hardware, including live transcription from the microphone.
+  - **Text to Speech** — Natural-sounding speech synthesis with multiple voice options powered by Kokoro, Piper, Malaya, Pocket TTS, VieNeu-TTS, FastSpeech2 HS, CosyVoice 3 (zero-shot voice cloning) and SpeechT5 from the Open Edge Platform text-to-speech microservice.
+  - **Speech to Text** — Real-time speech recognition with low-latency transcription using Whisper, Qwen3-ASR and MERaLiON-3 (Singapore and Southeast Asian speech) models optimized for Intel hardware, including live transcription from the microphone.
   - **Speaker Diarization** — Identify and label speakers in audio recordings using pyannote.audio speaker diarization models.
   - **Wake Word Detection** — Detect custom wake words from microphone input and send webhook notifications on detection events.
   - **Text Embedding** — Generate dense vector embeddings for semantic search and RAG pipelines, with optional image embeddings through the Open Edge Platform multimodal models.

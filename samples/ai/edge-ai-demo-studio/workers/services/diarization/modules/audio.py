@@ -60,6 +60,12 @@ def load_audio_to_array(audio_bytes: bytes) -> tuple[np.ndarray, int]:
     return data, sample_rate
 
 
+def prepare_pcm_input(pcm: np.ndarray, sample_rate: int) -> dict:
+    """int16 mono PCM as the waveform dict expected by pyannote pipelines."""
+    waveform = torch.from_numpy(pcm.astype(np.float32) / 32768.0).unsqueeze(0)
+    return {"waveform": waveform, "sample_rate": sample_rate}
+
+
 def prepare_audio_input(audio_bytes: bytes) -> dict:
     """Decode raw audio bytes into the waveform dict expected by pyannote pipelines."""
     audio_array, sample_rate = load_audio_to_array(audio_bytes)

@@ -11,7 +11,6 @@ import {
 } from '@/context/service-status-context'
 import { logger } from '@/lib/logger'
 import {
-  DIARIZATION_DEFAULTS,
   DiarizationCancelledError,
   useDiarize,
 } from '@/services/diarization/hooks'
@@ -21,10 +20,15 @@ import {
 } from '@/services/speech-to-text/config'
 import { useTranscribe } from '@/services/speech-to-text/hooks/use-transcribe'
 import { timestampNow } from '../lib/timestamps'
-import { alignTranscriptWithSegments } from '../lib/alignment'
+import {
+  alignTranscriptWithSegments,
+  alignUtterancesWithSegments,
+} from '../lib/alignment'
 import { joinTokens } from '../lib/alignment/text'
+import { speakerNaming } from '../lib/speaker-naming'
 import type {
   DoctorProfile,
+  LiveUtterance,
   Session,
   SessionUpdate,
   TranscriptEntry,
@@ -82,7 +86,7 @@ export function useAudioProcessing({
     sessionId: string,
     audio: Blob,
     knownDuration?: number,
-    liveSegments?: TranscriptEntry[],
+    liveUtterances?: LiveUtterance[],
   ) => {
     const session = sessions.find((s) => s.id === sessionId)
     if (!session) return
@@ -99,16 +103,18 @@ export function useAudioProcessing({
       )
 
       // Reuse the live pass's utterances rather than transcribing the recording a second time.
-      const reusable = (liveSegments ?? []).filter((s) => s.text.trim())
+      const reusable = (liveUtterances ?? [])
+        .filter((u) => u.text.trim())
+        .map((u) => ({ ...u, text: u.text.trim() }))
       const liveResult =
         reusable.length > 0
           ? {
-              text: joinTokens(reusable.map((s) => s.text.trim())),
+              text: joinTokens(reusable.map((u) => u.text)),
               words: undefined,
-              segments: reusable.map((s) => ({
-                start: s.start,
-                end: s.end,
-                text: s.text.trim(),
+              segments: reusable.map(({ start, end, text }) => ({
+                start,
+                end,
+                text,
               })),
             }
           : null
@@ -129,29 +135,25 @@ export function useAudioProcessing({
           ? diarize.mutateAsync({
               file: audio,
               signal: controller.signal,
-              speakerMatchThreshold: DIARIZATION_DEFAULTS.speakerMatchThreshold,
-              ...(doctorProfile?.embedding
-                ? {
-                    referenceEmbedding: doctorProfile.embedding,
-                    referenceLabel: 'Doctor',
-                    otherLabel: 'Patient',
-                  }
-                : { numSpeakers: 2 }),
+              ...speakerNaming(doctorProfile, { live: false }),
             })
           : Promise.resolve(null),
       ])
       // The session was deleted meanwhile: nothing to save the result to.
       if (controller.signal.aborted) return
 
-      const transcripts = diarizeResult
-        ? alignTranscriptWithSegments(
-            transcriptResult.text,
-            diarizeResult.segments,
-            {
-              words: transcriptResult.words,
-              segments: transcriptResult.segments,
-            },
-          )
+      const transcripts: TranscriptEntry[] = diarizeResult
+        ? liveResult
+          ? // Per VAD utterance, with the forced aligner's word timings where they came.
+            alignUtterancesWithSegments(reusable, diarizeResult.segments)
+          : alignTranscriptWithSegments(
+              transcriptResult.text,
+              diarizeResult.segments,
+              {
+                words: transcriptResult.words,
+                segments: transcriptResult.segments,
+              },
+            )
         : liveResult
           ? // No diarization: keep the live pass's per-utterance split, not one block.
             liveResult.segments.map((s) => ({ speaker: 'Speaker', ...s }))

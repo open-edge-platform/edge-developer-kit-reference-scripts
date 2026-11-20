@@ -1,0 +1,44 @@
+[project]
+name = "image-upscaling"
+version = "0.1.0"
+description = "Image and video super-resolution (Real-ESRGAN, Swin2SR, SPAN, DAT2, AuraSR) on OpenVINO, and SeedVR2 on PyTorch XPU"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "worker-common",
+    "model-downloader",
+    "av>=13.0.0",
+    "fastapi[standard]>=0.120.1",
+    "nncf>=3.1.0",
+    "numpy>=2.2.6",
+    "openvino==2026.4.1",
+    "pillow>=13.0.0",
+    "python-multipart>=0.0.22",
+    # Builds each checkpoint's network from its weights for the OpenVINO export (MIT). It imports
+    # torchvision for architectures this worker does not use.
+    "spandrel>=0.4.2",
+    "torch==2.15.0",
+    "torchvision==0.29.2",
+    "uvicorn>=0.34.3",
+    # SeedVR2 (seedvr2.py): what numz's pipeline imports on the path this worker runs, from its
+    # requirements.txt. gguf (quantized checkpoints), peft and matplotlib are never imported there.
+    "diffusers>=0.40.0",
+    "einops>=0.8.1",
+    "omegaconf>=2.3.0",
+    "opencv-python>=4.11.0.86",
+    "psutil>=6.0.0",
+    "rotary-embedding-torch>=0.5.3",
+    "safetensors>=0.5.0",
+    "tqdm>=4.67.1",
+]
+
+[tool.uv.sources]
+worker-common = { workspace = true }
+model-downloader = { workspace = true }
+torch = { index = "pytorch" }
+torchvision = { index = "pytorch" }
+
+[[tool.uv.index]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/xpu"
+explicit = true

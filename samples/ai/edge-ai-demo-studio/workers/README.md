@@ -14,15 +14,16 @@ workers/
 ├── common/               worker-common: the shared library (see common/README.md)
 │   ├── downloader/             model-downloader: Hugging Face, ModelScope, URLs, ovms --pull
 │   ├── audio-input-stream/     live-microphone VAD segmentation for workers that transcribe in-process
-│   ├── ovms-export/            the optimum-cli environment `ovms --pull` converts with (own .venv)
+│   ├── ovms-export/            the optimum-cli environment `ovms --pull` converts with (OVMS's own requirements)
 │   └── ovms-export-qwen3-asr/  the same for Qwen3-ASR (own .venv)
 ├── services/<name>/      one directory per worker; services with several backends nest one level
-│                         deeper (ocr/paddleocr, speech-to-text/{ovms,oep}, text-to-speech/{kokoro,piper,...})
+│                         deeper (ocr/paddleocr, speech-to-text/{ovms,oep,meralion}, text-to-speech/{kokoro,piper,...})
 ├── engines/multiserve/   the OVMS / llama.cpp model server behind Text Generation, Embeddings, Rerank
 ├── suites/               docker-compose apps from edge-ai-suites (shell only, not uv members)
 ├── scripts/              worker-common.sh / .ps1, sourced by every start script
-├── oep-services.json     catalogue of upstream code fetched at a pinned release (see "Upstream code")
-├── oep-setup.sh / .ps1   fetches what the catalogue lists
+├── upstream.json         catalogue of upstream code fetched at a pinned release (see "Upstream code")
+├── upstream-setup.sh / .ps1
+│                         fetches what the catalogue lists
 └── thirdparty/           uv, OVMS, upstream source caches (gitignored)
 ```
 
@@ -38,15 +39,27 @@ and `.venv` and takes `worker-common` / `model-downloader` by path instead of
 `{ workspace = true }`. Start scripts need no special casing: `run_worker`
 uses the worker's own `uv.lock` when it has one.
 
-**The OEP wrappers install upstream's own files.** `services/speech-to-text/oep`,
-`services/text-to-speech/oep-tts` and `services/embeddings` are excluded too, but
-have no `pyproject.toml` or `uv.lock`: their start scripts call `run_oep_worker` /
-`Start-OepWorker`, which build `.venv` from the dependency file upstream ships at
-the tag in `oep-services.json` (`"install"`, read by `scripts/oep_env.py`) plus
-`worker-common`, then run `main.py` in it. Bumping the tag is the whole upgrade;
-upstream owns those pins and their security fixes. `<worker>/overrides.txt` holds
-the only deviations, each for something that does not install or run on our
-platforms.
+**Environments that run upstream's code take upstream's pins.** The
+workspace's pins (one torch and OpenVINO for every worker, the CVE floors in
+`common/tests/test_dependency_cves.py`) are for the workers written here. An
+environment that exists to run someone else's tool installs what that tool
+declares; bumping its release is the whole upgrade, and upstream owns those pins
+and their security fixes. Deviations are only for something that does not
+install or run on our platforms.
+
+- The OEP wrappers (`services/speech-to-text/oep`, `services/text-to-speech/oep-tts`,
+  `services/embeddings`) are excluded too, but have no `pyproject.toml` or
+  `uv.lock`: their start scripts call `run_oep_worker` / `Start-OepWorker`, which
+  build `.venv` from the dependency file upstream ships at the tag in
+  `upstream.json` (`"install"`, read by `scripts/oep_env.py`) plus
+  `worker-common`, then run `main.py` in it. `<worker>/overrides.txt` holds the
+  deviations.
+- `common/ovms-export` is OVMS's own conversion `requirements.txt` at the OVMS
+  release (`OVMS_EXPORT_REQUIREMENTS_URL` in `scripts/worker-common.sh`;
+  Windows installs the same file into OVMS's bundled Python), built by
+  `ovms_prepare` when an OVMS worker starts. See its README.
+- `common/ovms-export-qwen3-asr` takes the optimum-intel fork by path and pins
+  only what Qwen3-ASR and OVMS need on top of what the fork declares.
 
 ## How the app runs a worker
 
@@ -89,7 +102,7 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     "worker-common",          # brings fastapi and uvicorn; worker-common[audio] adds pydub + soundfile
     "model-downloader",       # only if the worker downloads weights
-    "openvino==2026.2.1",
+    "openvino==2026.4.1",
 ]
 
 [tool.uv.sources]
@@ -103,7 +116,7 @@ declared in the member itself because uv reads a member's sources only from
 that member:
 
 ```toml
-dependencies = [..., "torch==2.13.0"]
+dependencies = [..., "torch==2.15.0"]
 
 [tool.uv.sources]
 torch = { index = "pytorch" }
@@ -124,7 +137,7 @@ Use the versions the other members use, or the workspace stops resolving:
 Don't add `triton-xpu` or `opencv-python-headless` (the root removes both;
 use `opencv-python`). Don't add git dependencies either: uv keeps a full clone
 of each in its cache, so a package with no usable release is vendored through
-`oep-services.json` beside `main.py`, with its requirements listed in the
+`upstream.json` beside `main.py`, with its requirements listed in the
 worker's `pyproject.toml` (see [Upstream code](#upstream-code)). Don't take the
 copy by path: it is gitignored, and `uv run` or `uv lock` anywhere in the
 workspace would fail with `Distribution not found` until it was fetched.
@@ -244,7 +257,7 @@ Start-Worker @args
 The loop finds `workers/` at any depth, so the same lines work in
 `services/<name>/` and `services/<group>/<backend>/`; never count `../`. Before
 `run_worker`, add what the worker needs: `require_ffmpeg`, `ovms_prepare` for
-an OVMS-backed worker, `oep_fetch <worker>` for catalogued upstream code. The
+an OVMS-backed worker, `upstream_fetch <worker>` for catalogued upstream code. The
 script exports `WORKERS_ROOT`, `PROJECT_ROOT`, `UV_CMD`, `OVMS_PATH`,
 `FFMPEG_PATH`, `MODELS_DIR` and `HF_HOME` (the shared Hugging Face cache,
 `<repo>/models/huggingface`, unless one is already set).
@@ -298,7 +311,7 @@ describes each module.
 | FastAPI app, CORS, `/healthcheck` | `create_app(title, lifespan=...)`; `healthcheck=False` to serve your own route (503 until ready), `allow_origins=lan_origins(port)` when the browser calls the worker directly |
 | `--port`, `--device`, `--source`, `--instance-id`, `--data-dir` | `base_parser(...)`, then `serve(app, args)` (binds `127.0.0.1`) |
 | Logging | `get_logger(__name__)` |
-| Devices | `AUTO_DEVICE`, `openvino_devices()`, `resolve_torch_device()`. Hand `AUTO` to OpenVINO as it is, never pick the device yourself: GPU-only compile options go through `openvino_compile_config(device, gpu=...)`, and `openvino_execution_device(compiled)` names the device OpenVINO selected |
+| Devices | `AUTO_DEVICE`, `openvino_devices()`, `resolve_torch_device()`. Hand `AUTO` to OpenVINO as it is, never pick the device yourself: GPU-only compile options go through `openvino_compile_config(device, gpu=...)`, and `openvino_execution_device(compiled)` names the device OpenVINO selected. Pass `model_dir=` (or merge `openvino_npu_cache_config(device, model_dir)` into your own config) so an NPU compile is cached in `<model_dir>/.ov_cache` instead of repeated on every start |
 | Where models go | `models_dir("<name>", ...)`, which is `<repo>/models/<name>/...` |
 | Hugging Face hub cache | the one every worker shares, `hf_home()` (`<repo>/models/huggingface`). Never point `HF_HOME` at a folder of your own: two workers needing one repository would download it twice. A worker started without the launcher calls `use_shared_hf_cache()` before anything imports `huggingface_hub`. If the worker loads weights from the hub cache, add `'models/huggingface'` to its `modelDirectories` |
 | Downloading weights | `from model_downloader import fetch_snapshot, fetch_file, fetch_url, fetch_omz_ir, ovms_pull`. Never call `huggingface_hub`, `modelscope` or `ovms --pull` directly |
@@ -322,9 +335,9 @@ works against the worker unchanged.
 A worker that wraps an
 [edge-ai-libraries](https://github.com/open-edge-platform/edge-ai-libraries)
 microservice, or needs a package with no usable release (kokoro, malaya, vieneu),
-gets that code from a git clone at the pin in `oep-services.json`. Nothing upstream
+gets that code from a git clone at the pin in `upstream.json`. Nothing upstream
 is committed or edited in place: the start script calls
-`oep_fetch <worker>`, which copies the source into the worker's gitignored
+`upstream_fetch <worker>`, which copies the source into the worker's gitignored
 `thirdparty/`, or beside `main.py` for a package the worker imports. Each
 such worker's README lists what it changes in the copy (overlay files, a
 patch, environment settings, in-memory replacements).
@@ -332,10 +345,10 @@ patch, environment settings, in-memory replacements).
 has the catalogue format and the steps for adding one.
 
 ```bash
-./oep-setup.sh                  # list catalogued services, sources, suites, custom workers
-./oep-setup.sh check            # exit 1 when a copy is missing or at another pin
-./oep-setup.sh fetch <worker>   # what start scripts run; also fetch --all
-./oep-setup.sh pin <tag>        # bump the edge-ai-libraries tag, then fetch --all
+./upstream-setup.sh                  # list catalogued services, sources, suites, custom workers
+./upstream-setup.sh check            # exit 1 when a copy is missing or at another pin
+./upstream-setup.sh fetch <worker>   # what start scripts run; also fetch --all
+./upstream-setup.sh pin <tag>        # bump the edge-ai-libraries tag, then fetch --all
 ```
 
 ## Commands

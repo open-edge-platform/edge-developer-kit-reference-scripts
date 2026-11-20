@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Builds the .venv of a worker that wraps an OEP microservice from upstream's own dependency file.
 
-The worker's entry in oep-services.json says how upstream installs it ("install": its
+The worker's entry in upstream.json says how upstream installs it ("install": its
 requirements.txt, or its Poetry pyproject.toml with poetry.lock as constraints), so bumping the tag
 needs no dependency change here: upstream owns the pins. <worker>/overrides.txt, when present,
 replaces only what would not install or run on our platforms. The wrapper's shared library
@@ -30,7 +30,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 WORKERS = Path(__file__).resolve().parent.parent
-CATALOG = WORKERS / "oep-services.json"
+CATALOG = WORKERS / "upstream.json"
 # Bump to rebuild every environment after a change to how they are built.
 RECIPE_VERSION = 1
 STAMP = ".oep-env"
@@ -56,14 +56,14 @@ def _requirement_name(line: str) -> str | None:
 
 def _entry(worker: str) -> dict:
     catalog = json.loads(CATALOG.read_text(encoding="utf-8"))
-    for entry in catalog.get("services", []):
+    for entry in (catalog.get("edge-ai-libraries") or {}).get("services", []):
         if entry["worker"] == worker and "install" in entry:
             return entry
-    sys.exit(f'{worker}: no "services" entry with an "install" recipe in {CATALOG}')
+    sys.exit(f'{worker}: no edge-ai-libraries "services" entry with an "install" recipe in {CATALOG}')
 
 
 def _upstream_dir(worker_dir: Path, entry: dict) -> Path:
-    """Where oep-setup fetched the microservice: $<home_env>, else <worker>/<dir>."""
+    """Where upstream-setup fetched the microservice: $<home_env>, else <worker>/<dir>."""
     home = os.environ.get(entry["home_env"], "") if entry.get("home_env") else ""
     if home:
         return Path(home)
@@ -143,7 +143,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--uv", required=True, help="uv executable")
-    parser.add_argument("worker", help="worker directory under workers/, as in oep-services.json")
+    parser.add_argument("worker", help="worker directory under workers/, as in upstream.json")
     args = parser.parse_args()
 
     # Rebuild the path from allowed characters and exec only the matching UV_NAMES element: the
@@ -173,7 +173,7 @@ def main() -> int:
 
     requirements = upstream / recipe["requirements"]
     if not requirements.is_file():
-        sys.exit(f"{requirements} not found: fetch the worker first (oep-setup fetch {args.worker})")
+        sys.exit(f"{requirements} not found: fetch the worker first (upstream-setup fetch {args.worker})")
     constraints_file = upstream / recipe["constraints"] if recipe.get("constraints") else None
     if constraints_file and not constraints_file.is_file():
         sys.exit(f"{constraints_file} not found at this tag; update \"constraints\" in {CATALOG.name}")

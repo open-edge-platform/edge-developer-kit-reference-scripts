@@ -31,6 +31,7 @@ tmp
 
 /tests/coverity/*
 !/tests/coverity/coverity_scan.sh
+!/tests/coverity/coverity_scan.ps1
 /tests/shellcheck/*
 !/tests/shellcheck/shellcheck_scan.sh
 

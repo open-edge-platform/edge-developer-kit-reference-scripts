@@ -117,6 +117,18 @@ The worker that serves those models provisions the profile in its start
 script, using `python -m model_downloader ovms-export-env <model>` to learn
 which project (if any) a model needs.
 
+An NPU graph's `plugin_config` gets `CACHE_DIR` = `<model folder>/.ov_cache`
+(`npu_cache_config`), from the pull and from the serve arguments of the OVMS
+workers (`plugin_config_args`), so OpenVINO compiles a model for the NPU once
+and later starts import the blob. Measured with OVMS 2026.4 on a Core Ultra 9
+285K: Qwen3-Embedding-0.6B 170 s cold, 7 s cached; Whisper base 7.5 s, 1.4 s.
+OVMS's own `--cache_dir` is not enough: the embeddings and rerank graphs
+compile through their own OpenVINO Core and never see it. The blobs live in
+the model's folder, so deleting the model deletes them; they are written
+read-only, and about 0.4-4× the model's size (the NPU keeps fp16 weights).
+Other devices are not cached here: the GPU driver caches compiled kernels
+itself, and a GPU blob costs about the model's size.
+
 #### Fix-ups before serving (`model_downloader.ovms.fixups`)
 
 `ovms --pull` takes a pre-converted OpenVINO repository as it is, and gets
@@ -141,9 +153,9 @@ start (a pull keeps the files of a model it already has, so they stick):
 ## How the OEP upstream source gets here
 
 `workers/setup.sh` (and `setup.ps1`) run
-`workers/oep-setup.sh fetch common/downloader`. That script reads
-`workers/oep-services.json`, the catalogue of OEP microservices Demo Studio
-uses together with the pinned release `tag`, and copies
+`workers/upstream-setup.sh fetch common/downloader`. That script reads
+`workers/upstream.json`, the catalogue of upstream code Demo Studio
+fetches, with the pinned edge-ai-libraries `tag`, and copies
 `microservices/model-download` at that tag out of the one sparse clone of
 `edge-ai-libraries` it keeps under `workers/thirdparty/edge-ai-libraries`.
 Like every other catalogued worker, the copy lands in this package's own
@@ -157,10 +169,10 @@ workers/common/downloader/
     └── src/                                 the package model_downloader.oep imports
 ```
 
-`tag` in `workers/oep-services.json` is the single place the release tag
-lives; bump it (`workers/oep-setup.sh pin <tag>`) and re-run
+`edge-ai-libraries.tag` in `workers/upstream.json` is the single place the
+release tag lives; bump it (`workers/upstream-setup.sh pin <tag>`) and re-run
 `workers/setup.sh` to move to a newer upstream (`EDGE_AI_LIBRARIES_REF=<tag>`
-overrides it for one run; `workers/oep-setup.sh check` verifies every pin).
+overrides it for one run; `workers/upstream-setup.sh check` verifies every pin).
 If a worker starts before setup ran, the package fetches on demand (disable
 with `OEP_MODEL_DOWNLOAD_AUTO_CLONE=0`), and `OEP_MODEL_DOWNLOAD_HOME` points
 it at a directory that already holds the microservice (e.g.

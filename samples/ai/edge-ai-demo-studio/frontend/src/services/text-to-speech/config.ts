@@ -25,14 +25,16 @@ export const ttsConfig: ServiceConfig = {
     },
     {
       value: 'malaya',
-      label: 'Malaya (Malay, OpenVINO)',
+      label: 'Malaya (OpenVINO)',
       availableDevices: ['CPU'],
       availableWeightFormats: ['fp32'],
       backend: 'openvino',
     },
     {
       value: 'pocket-tts',
-      label: 'Pocket TTS (Indonesian, OpenVINO)',
+      // A checkpoint per language, picked by the voice: Kyutai's seven, loaded on first use, and an
+      // Indonesian fine-tune, loaded at start.
+      label: 'Pocket TTS (Multilingual, OpenVINO)',
       availableDevices: ['CPU'],
       availableWeightFormats: ['int8'],
       backend: 'openvino',
@@ -40,15 +42,26 @@ export const ttsConfig: ServiceConfig = {
     {
       // ONNX Runtime on CPU outran OpenVINO and PyTorch XPU here (see the vieneu worker README).
       value: 'vieneu',
-      label: 'VieNeu-TTS v3 Turbo (Vietnamese, ONNX Runtime)',
+      label: 'VieNeu-TTS v3 Turbo (ONNX Runtime)',
       availableDevices: ['CPU'],
       availableWeightFormats: ['int8'],
     },
     {
       value: 'fastspeech2-hs',
-      label: 'FastSpeech2 HS (Tamil, OpenVINO)',
+      label: 'FastSpeech2 HS (OpenVINO)',
       availableDevices: ['CPU'],
       availableWeightFormats: ['fp32'],
+      backend: 'openvino',
+    },
+    {
+      // Fun-CosyVoice3-0.5B (FunAudioLLM): voices cloned from recordings in models/tts/cosyvoice3/voices.
+      // About real time everywhere: 1.9x on an Arc Pro B60 (AUTO's pick), 1.5x on a CPU or an
+      // integrated GPU, where the worker runs fewer flow steps on an int8 DiT. Listed by its
+      // speech-token LLM's INT8; the DiT is FP16 on a discrete GPU, and the vocoder FP32.
+      value: 'cosyvoice3',
+      label: 'CosyVoice 3 (Multilingual, cloned voices, OpenVINO)',
+      availableDevices: ['AUTO', 'CPU', 'GPU'],
+      availableWeightFormats: ['int8'],
       backend: 'openvino',
     },
     {

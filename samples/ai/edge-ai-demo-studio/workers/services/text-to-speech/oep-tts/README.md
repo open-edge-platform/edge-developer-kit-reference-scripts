@@ -28,7 +28,7 @@ leaves out `qwen-tts` and `parler-tts`, which those two import (see
 | | |
 |---|---|
 | Upstream | `microservices/text-to-speech` |
-| Pinned tag | `tag` in [`workers/oep-services.json`](../../../oep-services.json) |
+| Pinned tag | `edge-ai-libraries.tag` in [`workers/upstream.json`](../../../upstream.json) |
 | Port | `8020` (the Text to Speech service port) |
 | Backend | OpenVINO (`openvino-genai`) on CPU or GPU |
 | API | OpenAI-compatible `POST /v1/audio/speech` (OpenAI's six formats, or JSON+base64), `GET /v1/audio/voices`, `GET /v1/model-info`, `GET /v1/performance`, `GET /health` |
@@ -36,10 +36,10 @@ leaves out `qwen-tts` and `parler-tts`, which those two import (see
 ## How the upstream source gets here
 
 The service source is **not committed** to this repository. `start.sh` and
-`start.ps1` call `oep_fetch services/text-to-speech/oep-tts`, which runs
-`workers/oep-setup.sh fetch services/text-to-speech/oep-tts`. That script
-reads `workers/oep-services.json`, the catalogue of OEP microservices Edge AI
-Studio uses together with the pinned release `tag` (this worker's entry names
+`start.ps1` call `upstream_fetch services/text-to-speech/oep-tts`, which runs
+`workers/upstream-setup.sh fetch services/text-to-speech/oep-tts`. That script
+reads `workers/upstream.json`, the catalogue of upstream code Edge AI
+Studio fetches, with the pinned edge-ai-libraries `tag` (this worker's entry names
 `microservices/text-to-speech`), and copies that directory at that release
 tag into `thirdparty/text-to-speech` (gitignored) out of the one sparse clone
 of `edge-ai-libraries` the script keeps under `workers/thirdparty/`. The copy
@@ -48,10 +48,10 @@ is skipped when it already carries that exact tag
 native adaptation is an environment override or, for session storage, a
 setting `main.py` makes after importing upstream (see "Instances" below).
 
-Bump the tag (`workers/oep-setup.sh pin <tag>`) to move to a newer upstream;
+Bump the tag (`workers/upstream-setup.sh pin <tag>`) to move to a newer upstream;
 the next start remakes the copy. To try a different release without editing
 the repository, set `EDGE_AI_LIBRARIES_REF=<tag>` for one start.
-`workers/oep-setup.sh` lists every OEP-backed worker with its pin, `check`
+`workers/upstream-setup.sh` lists every OEP-backed worker with its pin, `check`
 verifies the copies, and `info services/text-to-speech/oep-tts` shows what
 this entry resolves to.
 
@@ -117,7 +117,7 @@ adds only (through `worker_common.oep`):
   request is one upstream synthesis, as before.
 
 **Dependencies** — upstream's `requirements.txt` at the pinned tag, installed
-the way its Dockerfile does (`"install"` in `workers/oep-services.json`, with
+the way its Dockerfile does (`"install"` in `workers/upstream.json`, with
 pip's handling of the CPU torch index the file names), with no deviations.
 Upstream owns those pins and their security fixes: a tag bump needs no change
 here. An `overrides.txt` beside this README would hold one, only for something

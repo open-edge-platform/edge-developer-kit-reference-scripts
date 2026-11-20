@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea'
 export function PromptForm({
   id,
   promptLabel,
+  promptOptional = false,
   prompt,
   onPromptChange,
   promptPlaceholder,
@@ -18,6 +19,7 @@ export function PromptForm({
   promptTestId,
   negativePrompt,
   onNegativePromptChange,
+  negativePromptPlaceholder = 'What to keep out of the image: blurry, low quality, watermark…',
   submitLabel,
   pendingLabel,
   pending,
@@ -29,6 +31,8 @@ export function PromptForm({
   /** Prefix of the fields' ids, unique per tab. */
   id: string
   promptLabel: string
+  /** Marks the prompt "(optional)", as the negative prompt is. */
+  promptOptional?: boolean
   prompt: string
   onPromptChange: (value: string) => void
   promptPlaceholder: string
@@ -36,6 +40,7 @@ export function PromptForm({
   promptTestId?: string
   negativePrompt: string
   onNegativePromptChange: (value: string) => void
+  negativePromptPlaceholder?: string
   submitLabel: string
   pendingLabel: string
   pending: boolean
@@ -52,6 +57,9 @@ export function PromptForm({
         className="text-foreground text-sm font-medium"
       >
         {promptLabel}
+        {promptOptional && (
+          <span className="text-muted-foreground font-normal">(optional)</span>
+        )}
       </Label>
       <Textarea
         id={`${id}-prompt`}
@@ -73,7 +81,7 @@ export function PromptForm({
         id={`${id}-negative-prompt`}
         value={negativePrompt}
         onChange={(e) => onNegativePromptChange(e.target.value)}
-        placeholder="What to keep out of the image: blurry, low quality, watermark…"
+        placeholder={negativePromptPlaceholder}
         rows={2}
         className="bg-muted/30 resize-none"
       />

@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Text-to-speech worker for models without a built-in worker: the OEP text-to-speech
-# microservice, fetched at the tag pinned in workers/oep-services.json.
+# microservice, fetched at the tag pinned in workers/upstream.json.
 
 set -euo pipefail
 
@@ -16,6 +16,6 @@ done
 . "$WORKERS_ROOT/scripts/worker-common.sh"
 
 require_uv
-oep_fetch services/text-to-speech/oep-tts
+upstream_fetch services/text-to-speech/oep-tts
 
 run_oep_worker "$@"

@@ -35,7 +35,8 @@ export function SearchPanel({
   results,
   knowledgeBaseName,
 }: SearchPanelProps) {
-  const hasResults = results !== undefined && results.length > 0
+  const shown = results ?? []
+  const hasResults = shown.length > 0
   const canSearch = !isSearching && !disabled && query.trim() !== ''
 
   return (
@@ -86,10 +87,10 @@ export function SearchPanel({
         {hasResults ? (
           <div className="space-y-2">
             <p className="text-muted-foreground text-xs font-medium">
-              Results ({results.length})
+              Results ({shown.length})
             </p>
             <ul className="max-h-[300px] space-y-2 overflow-auto">
-              {results.map((result, i) => (
+              {shown.map((result, i) => (
                 <li
                   key={`result-${i}`}
                   data-testid="vectordb-search-result"

@@ -10,7 +10,10 @@ import { globalSingleton } from '@/lib/global-singleton'
 import type { StartupTelemetry } from '@/lib/instances/runtime-fields'
 import type { PayloadStatus } from '@/lib/instances/service-status'
 import { describeStartupStep } from '@/lib/instances/startup-presentation'
-import { appendProcessLog } from '@/lib/workers/process-handler'
+import {
+  appendProcessLog,
+  markProcessStarted,
+} from '@/lib/workers/process-handler'
 import {
   createStartupTracker,
   sanitizeStartupText,
@@ -76,6 +79,7 @@ export function failStartupAttempt(processName: string): void {
 /** The instance is running: its start is over. */
 export function completeStartupAttempt(processName: string): void {
   tracker.complete(processName)
+  markProcessStarted(processName)
 }
 
 /** A stop ended the start in progress (a failed attempt stays). */

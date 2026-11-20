@@ -20,7 +20,7 @@
     "description": "Edge AI Demo Studio - Electron Builder Version",
     "devDependencies": {
         "@electron/fuses": "^2.0.0",
-        "electron": "^43.8.1",
+        "electron": "^45.2.3",
         "electron-builder": "^26.2.0"
     },
     "dependencies": {
@@ -91,6 +91,7 @@
         ]
     },
     "overrides": {
-        "glob": ">=14.0.2"
+        "glob": ">=14.0.2",
+        "minimatch@>=7.0.0 <11.0.1": "^11.0.1"
     }
 }

@@ -14,6 +14,7 @@ import {
   appendProcessLog,
   getStatus,
   listProcesses,
+  markProcessStarted,
   removeDeadProcess,
   spawnProcess,
   stopProcess,
@@ -511,6 +512,7 @@ const initializeModel = async (
  */
 const startMultiserveServer = async (
   service: MultiserveEngineTarget,
+  report: StartupReport = noReport,
 ): Promise<boolean> => {
   const device = service.models.default.device
   const port = service.port
@@ -561,6 +563,7 @@ const startMultiserveServer = async (
     return false
   }
 
+  let reportedPrepare = false
   const spawned = await spawnProcess(processName, command, {
     cwd: MULTISERVE_REPO_PATH,
     // spawnProcess builds the rest of the environment. INSTANCE_KEY names the engine in every
@@ -574,10 +577,24 @@ const startMultiserveServer = async (
     // The model servers' logs: a failed run's stay readable as the
     // previous run once the engine starts again.
     logDir: logsDir,
+    // Waiting for or installing its dependencies, before the spawn.
+    onPrepareEvent: (event) => {
+      reportedPrepare = true
+      report(event)
+    },
   })
   if (spawned.kind === 'failed') {
     logger.error(`${processName}: ${spawned.error}`)
     return false
+  }
+  // A stop came while it waited to start.
+  if (spawned.kind === 'cancelled') return false
+  if (reportedPrepare) {
+    report({
+      type: 'stage',
+      stage: 'preparing',
+      detail: 'Starting the inference engine',
+    })
   }
 
   const hcController = new AbortController()
@@ -590,7 +607,11 @@ const startMultiserveServer = async (
   if (activeHealthCheckControllers.get(processName) === hcController) {
     activeHealthCheckControllers.delete(processName)
   }
-  if (healthCheckPassed) return true
+  if (healthCheckPassed) {
+    // Its Python is up; the model servers it starts next are not Python.
+    markProcessStarted(processName)
+    return true
+  }
   // Cancelled by a stop or a newer start, which own the process now: the
   // newer start may already be reusing it.
   if (hcController.signal.aborted) return false
@@ -716,7 +737,7 @@ export const startMultiserveModel = async (
       stage: 'preparing',
       detail: 'Starting the inference engine',
     })
-    const engineUp = await startMultiserveServer(service)
+    const engineUp = await startMultiserveServer(service, report)
     if (controller.signal.aborted) return
     if (!engineUp) {
       report({

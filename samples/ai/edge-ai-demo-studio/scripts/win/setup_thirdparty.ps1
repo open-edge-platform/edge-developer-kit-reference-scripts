@@ -13,23 +13,33 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 
 $SCRIPT_DIR = Split-Path -Parent $MyInvocation.MyCommand.Definition
 
+# Checked downloads and install manifests.
+. (Join-Path $SCRIPT_DIR 'thirdparty_integrity.ps1')
+
+# Each download is checked against the SHA-256 beside its URL (see thirdparty_integrity.ps1). Moving
+# to another release means updating both, from the project's own checksum list where it has one.
 $THIRDPARTY_DIR = if ($args.Count -ge 1) { $args[0] } else { Join-Path $SCRIPT_DIR '..\..\thirdparty' }
-$NODE_ZIP_PATH = Join-Path $THIRDPARTY_DIR 'node.tar.xz'
-$NODE_VERSION = "v24.22.1"
-$NODE_FILE_NAME = "node-$NODE_VERSION-win-x64.zip"
-$NODE_URL = "https://nodejs.org/dist/$NODE_VERSION/$NODE_FILE_NAME"
+$NODE_VERSION = "v24.22.2"
+$NODE_URL = "https://nodejs.org/dist/$NODE_VERSION/node-$NODE_VERSION-win-x64.zip"
+# From https://nodejs.org/dist/v24.22.2/SHASUMS256.txt
+$NODE_SHA256 = "ca1bff5d8ead13c9f2ea404a176db46bd430704d5b5113734049fa365e7799e2"
 $NODE_DIR = Join-Path $THIRDPARTY_DIR 'node'
 $NODE_PATH = Join-Path $NODE_DIR 'node.exe'
 
 $GIT_URL = "https://github.com/git-for-windows/git/releases/download/v2.51.0.windows.2/MinGit-2.51.0.2-64-bit.zip"
+# From the release notes of v2.51.0.windows.2
+$GIT_SHA256 = "314fc2b7425ca116ea201e493fcb72008376c64997e866e6c8b8a5b360b3b8a9"
 $GIT_DIR = Join-Path $THIRDPARTY_DIR 'git'
 $GIT_PATH = Join-Path $GIT_DIR 'cmd\git.exe'
 
 $GIT_LFS_URL = "https://github.com/git-lfs/git-lfs/releases/download/v3.7.1/git-lfs-windows-amd64-v3.7.1.zip"
+# From the release's sha256sums.asc
+$GIT_LFS_SHA256 = "8683cdc3d6c029b49393dcebbaa6265bd6efd9abdcf837be855b4cd42e5e80b6"
 $GIT_LFS_PATH = Join-Path $GIT_DIR 'cmd\git-lfs.exe'
 
-$FFMPEG_ZIP_PATH = Join-Path $THIRDPARTY_DIR 'ffmpeg-win64-gpl.zip'
 $FFMPEG_ZIP_URL = "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-31-13-27/ffmpeg-n9.0.1-11-ge47273f4d9-win64-gpl-9.0.zip"
+# From the release's checksums.sha256
+$FFMPEG_SHA256 = "ec9db2cda1f5894ab95446076ad8bf49379db4b53c02e778ad3b49adf91fec83"
 $FFMPEG_DIR = Join-Path $THIRDPARTY_DIR 'ffmpeg'
 $FFMPEG_PATH = Join-Path $FFMPEG_DIR 'bin\ffmpeg.exe'
 
@@ -42,7 +52,7 @@ function Setup-Thirdparty {
         Write-Host $_.Exception.Message -ForegroundColor Red
         exit 1
     }
-    
+
     try {
         Install-Node | Out-Null
     } catch {
@@ -50,7 +60,7 @@ function Setup-Thirdparty {
         Write-Host $_.Exception.Message -ForegroundColor Red
         exit 1
     }
-    
+
     try {
         Install-Git | Out-Null
     } catch {
@@ -60,107 +70,59 @@ function Setup-Thirdparty {
     }
 
     try {
-        Install-GitLfs | Out-Null
-    } catch {
-        Write-Host "ERROR: Git LFS installation failed" -ForegroundColor Red
-        Write-Host $_.Exception.Message -ForegroundColor Red
-        exit 1
-    }
-    
-    try {
         Install-FFmpeg | Out-Null
     } catch {
         Write-Host "ERROR: FFmpeg installation failed" -ForegroundColor Red
         Write-Host $_.Exception.Message -ForegroundColor Red
         exit 1
     }
-    
+
     Write-Host "Thirdparty setup completed successfully" -ForegroundColor Green
 }
 
+# MinGit with Git LFS beside it: one install, so its manifest covers both and the LFS filters it registers.
 function Install-Git {
     Write-Host "Setting up Git..."
-    if (Test-Path $GIT_PATH) {
-        Write-Host "Git already installed at $GIT_PATH" -ForegroundColor Green
-        return $GIT_PATH
-    }
-
-    if (-not (Test-Path $THIRDPARTY_DIR)) {
-        try {
-            New-Item -ItemType Directory -Path $THIRDPARTY_DIR -Force | Out-Null
-            Write-Host "Created thirdparty directory."
-        } catch {
-            Write-Host "ERROR: Failed to create thirdparty directory" -ForegroundColor Red
-            throw
-        }
-    }
-
-    if (Test-Path $GIT_DIR) {
-        Remove-Item $GIT_DIR -Recurse -Force
-    }
-    
     try {
-        New-Item -ItemType Directory -Path $GIT_DIR -Force | Out-Null
-    } catch {
-        Write-Host "ERROR: Failed to create Git directory" -ForegroundColor Red
-        throw
-    }
+        $null = Install-VerifiedArchive -Label "Git" -Url $GIT_URL -Sha256 $GIT_SHA256 -Destination $GIT_DIR `
+            -Source "$GIT_SHA256+$GIT_LFS_SHA256" -AfterExtract { param($dir) Add-GitLfs $dir }
 
-    $fileName = "git.zip"
-    $downloadPath = Join-Path $GIT_DIR $fileName
-
-    try {
-        Write-Host "Downloading Git from $GIT_URL ..."
-        Write-Host "This may take a few minutes depending on your internet connection..."
-        Invoke-WebRequest -Uri $GIT_URL -OutFile $downloadPath -UseBasicParsing -ErrorAction Stop
-        Write-Host "Git downloaded successfully."
-
-        Write-Host "Extracting Git ..."
-        Expand-Archive -Path $downloadPath -DestinationPath $GIT_DIR -Force -ErrorAction Stop
-
-        Remove-Item $downloadPath -Force -ErrorAction SilentlyContinue
-        Write-Host "Cleaned up downloaded archive."
-
-        if (-not (Test-Path $GIT_PATH)) {
-            Write-Host "ERROR: Git executable not found at $GIT_PATH after extraction" -ForegroundColor Red
+        if (-not (Test-Path $GIT_PATH) -or -not (Test-Path $GIT_LFS_PATH)) {
+            Write-Host "ERROR: Git or Git LFS not found in $GIT_DIR after installation" -ForegroundColor Red
             throw "Git installation verification failed"
         }
-        
+
         $gitVersion = & $GIT_PATH --version 2>&1
         if ($LASTEXITCODE -ne 0) {
             Write-Host "ERROR: Git installation verification failed" -ForegroundColor Red
             throw "Git binary found but not working properly"
         }
-        
+
+        $lfsVersion = & $GIT_LFS_PATH --version 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "ERROR: Git LFS installation verification failed" -ForegroundColor Red
+            throw "Git LFS binary found but not working properly"
+        }
+
         Write-Host "Git installed successfully at $GIT_PATH" -ForegroundColor Green
         return $GIT_PATH
     } catch {
-        Write-Host "ERROR: Failed to download or extract Git: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "ERROR: Failed to download or install Git: $($_.Exception.Message)" -ForegroundColor Red
         Write-Host "Please check your internet connection and try again." -ForegroundColor Yellow
         throw
     }
 }
 
-function Install-GitLfs {
+# Add-GitLfs <git dir> -- put Git LFS into the MinGit extracted at <git dir> and register its filters there.
+function Add-GitLfs {
+    param([string]$GitDir)
     Write-Host "Setting up Git LFS..."
-    if (-not (Test-Path $GIT_PATH)) {
-        Write-Host "ERROR: Git must be installed before Git LFS" -ForegroundColor Red
-        throw "Git not found at $GIT_PATH"
-    }
-    if (Test-Path $GIT_LFS_PATH) {
-        Write-Host "Git LFS already installed at $GIT_LFS_PATH" -ForegroundColor Green
-        return $GIT_LFS_PATH
-    }
-
-    $downloadPath = Join-Path $GIT_DIR 'git-lfs.zip'
-    $tempExtract = Join-Path $GIT_DIR 'git-lfs-tmp'
+    $downloadPath = Join-Path $GitDir 'git-lfs.zip'
+    $tempExtract = Join-Path $GitDir 'git-lfs-tmp'
     try {
         Write-Host "Downloading Git LFS from $GIT_LFS_URL ..."
-        Invoke-WebRequest -Uri $GIT_LFS_URL -OutFile $downloadPath -UseBasicParsing -ErrorAction Stop
-        Write-Host "Git LFS downloaded successfully."
-
-        if (Test-Path $tempExtract) { Remove-Item $tempExtract -Recurse -Force }
-        Write-Host "Extracting Git LFS ..."
+        Save-VerifiedDownload -Url $GIT_LFS_URL -OutFile $downloadPath -Sha256 $GIT_LFS_SHA256
+        Write-Host "Checksum verified. Extracting Git LFS ..."
         Expand-Archive -Path $downloadPath -DestinationPath $tempExtract -Force -ErrorAction Stop
 
         $lfsExe = Get-ChildItem -Path $tempExtract -Recurse -Filter 'git-lfs.exe' | Select-Object -First 1
@@ -170,104 +132,39 @@ function Install-GitLfs {
 
         # Place git-lfs next to git.exe (cmd\) so it is always found on PATH, and
         # in mingw64\bin so git's internal filter lookup resolves it too.
-        Copy-Item $lfsExe.FullName -Destination $GIT_LFS_PATH -Force
-        $mingwBin = Join-Path $GIT_DIR 'mingw64\bin'
+        Copy-Item $lfsExe.FullName -Destination (Join-Path $GitDir 'cmd\git-lfs.exe') -Force
+        $mingwBin = Join-Path $GitDir 'mingw64\bin'
         if (Test-Path $mingwBin) {
             Copy-Item $lfsExe.FullName -Destination (Join-Path $mingwBin 'git-lfs.exe') -Force
         }
-
+    } finally {
         Remove-Item $downloadPath -Force -ErrorAction SilentlyContinue
         Remove-Item $tempExtract -Recurse -Force -ErrorAction SilentlyContinue
-        Write-Host "Cleaned up downloaded archive."
-
-        if (-not (Test-Path $GIT_LFS_PATH)) {
-            Write-Host "ERROR: Git LFS executable not found at $GIT_LFS_PATH after extraction" -ForegroundColor Red
-            throw "Git LFS installation verification failed"
-        }
-
-        # Register the LFS filters in the bundled git's system config, for every process using it.
-        # --skip-repo: no hooks in the surrounding repository. Continue: under Stop, Windows
-        # PowerShell 5.1 throws on redirected stderr.
-        & { $ErrorActionPreference = 'Continue'; & $GIT_PATH lfs install --system --skip-repo 2>&1 | Out-Null }
-
-        $lfsVersion = & $GIT_LFS_PATH --version 2>&1
-        if ($LASTEXITCODE -ne 0) {
-            Write-Host "ERROR: Git LFS installation verification failed" -ForegroundColor Red
-            throw "Git LFS binary found but not working properly"
-        }
-
-        Write-Host "Git LFS installed successfully at $GIT_LFS_PATH" -ForegroundColor Green
-        return $GIT_LFS_PATH
-    } catch {
-        Write-Host "ERROR: Failed to download or install Git LFS: $($_.Exception.Message)" -ForegroundColor Red
-        Remove-Item $downloadPath -Force -ErrorAction SilentlyContinue
-        Remove-Item $tempExtract -Recurse -Force -ErrorAction SilentlyContinue
-        Write-Host "Please check your internet connection and try again." -ForegroundColor Yellow
-        throw
     }
+
+    # Register the LFS filters in the bundled git's system config, for every process using it.
+    # --skip-repo: no hooks in the surrounding repository. Continue: under Stop, Windows
+    # PowerShell 5.1 throws on redirected stderr.
+    $git = Join-Path $GitDir 'cmd\git.exe'
+    & { $ErrorActionPreference = 'Continue'; & $git lfs install --system --skip-repo 2>&1 | Out-Null }
 }
 
 function Install-Node {
     Write-Host "Setting up Node.js..."
-    if (Test-Path $NODE_PATH) {
-        $installedVersion = (& $NODE_PATH --version 2>$null | Out-String).Trim()
-        if ($installedVersion -eq $NODE_VERSION) {
-            Write-Host "Node.js $NODE_VERSION already installed at $NODE_PATH" -ForegroundColor Green
-            return $NODE_PATH
-        }
-        # The old folder is removed before the new one is moved in, below.
-        Write-Host "Replacing Node.js $installedVersion with $NODE_VERSION ..." -ForegroundColor Yellow
-    }
-
-    if (-not (Test-Path $THIRDPARTY_DIR)) {
-        try {
-            New-Item -ItemType Directory -Path $THIRDPARTY_DIR -Force | Out-Null
-            Write-Host "Created thirdparty directory."
-        } catch {
-            Write-Host "ERROR: Failed to create thirdparty directory" -ForegroundColor Red
-            throw
-        }
-    }
-
-    $fileName = $NODE_FILE_NAME
-    $extractedFolder = [System.IO.Path]::GetFileNameWithoutExtension($fileName)
-    $downloadPath = Join-Path $THIRDPARTY_DIR $fileName
-
     try {
-        Write-Host "Downloading Node.js from $NODE_URL ..."
-        Write-Host "This may take a few minutes depending on your internet connection..."
-        Invoke-WebRequest -Uri $NODE_URL -OutFile $downloadPath -UseBasicParsing -ErrorAction Stop
-        Write-Host "Node.js downloaded successfully."
-
-        Write-Host "Extracting Node.js ..."
-        Expand-Archive -Path $downloadPath -DestinationPath $THIRDPARTY_DIR -Force -ErrorAction Stop
-
-        $extractedPath = Join-Path $THIRDPARTY_DIR $extractedFolder
-        if (-not (Test-Path $extractedPath)) {
-            Write-Host "ERROR: Extracted Node.js folder not found at $extractedPath" -ForegroundColor Red
-            throw "Node.js extraction failed"
-        }
-        
-        if (Test-Path $NODE_DIR) {
-            Remove-Item $NODE_DIR -Recurse -Force
-        }
-        Move-Item $extractedPath $NODE_DIR
-        Write-Host "Node.js extracted and moved to thirdparty/node."
-
-        Remove-Item $downloadPath -Force -ErrorAction SilentlyContinue
-        Write-Host "Cleaned up downloaded archive."
+        $null = Install-VerifiedArchive -Label "Node.js $NODE_VERSION" -Url $NODE_URL -Sha256 $NODE_SHA256 -Destination $NODE_DIR
 
         if (-not (Test-Path $NODE_PATH)) {
             Write-Host "ERROR: Node.js executable not found at $NODE_PATH after extraction" -ForegroundColor Red
             throw "Node.js installation verification failed"
         }
-        
+
         $nodeVersion = & $NODE_PATH --version 2>&1
         if ($LASTEXITCODE -ne 0) {
             Write-Host "ERROR: Node.js installation verification failed" -ForegroundColor Red
             throw "Node.js binary found but not working properly"
         }
-        
+
         Write-Host "Node.js installed successfully at $NODE_PATH" -ForegroundColor Green
         return $NODE_PATH
     } catch {
@@ -279,45 +176,8 @@ function Install-Node {
 
 function Install-FFmpeg {
     Write-Host "Setting up FFmpeg..."
-    if (Test-Path $FFMPEG_DIR) {
-        Write-Host "FFmpeg directory already exists at $FFMPEG_DIR. Skipping download." -ForegroundColor Green
-        return $FFMPEG_PATH
-    }
-
-    if (-not (Test-Path $THIRDPARTY_DIR)) {
-        try {
-            New-Item -ItemType Directory -Path $THIRDPARTY_DIR -Force | Out-Null
-            Write-Host "Created thirdparty directory."
-        } catch {
-            Write-Host "ERROR: Failed to create thirdparty directory" -ForegroundColor Red
-            throw
-        }
-    }
-
     try {
-        Write-Host "Downloading FFmpeg from $FFMPEG_ZIP_URL ..."
-        Write-Host "This may take a few minutes depending on your internet connection..."
-        Invoke-WebRequest -Uri $FFMPEG_ZIP_URL -OutFile $FFMPEG_ZIP_PATH -UseBasicParsing -ErrorAction Stop
-        Write-Host "FFmpeg downloaded successfully."
-
-        Write-Host "Extracting FFmpeg ..."
-        Expand-Archive -Path $FFMPEG_ZIP_PATH -DestinationPath $THIRDPARTY_DIR -Force -ErrorAction Stop
-
-        $extractedDir = Get-ChildItem -Path $THIRDPARTY_DIR -Directory | Where-Object { $_.Name -like "ffmpeg-*" } | Select-Object -First 1
-
-        if (-not $extractedDir) {
-            Write-Host "ERROR: Could not find extracted FFmpeg directory" -ForegroundColor Red
-            Remove-Item $FFMPEG_ZIP_PATH -Force -ErrorAction SilentlyContinue
-            throw "FFmpeg extraction failed"
-        }
-
-        if (Test-Path $FFMPEG_DIR) {
-            Remove-Item $FFMPEG_DIR -Recurse -Force
-        }
-        Rename-Item -Path $extractedDir.FullName -NewName "ffmpeg" -ErrorAction Stop
-
-        Remove-Item $FFMPEG_ZIP_PATH -Force -ErrorAction SilentlyContinue
-        Write-Host "Cleaned up downloaded archive."
+        $null = Install-VerifiedArchive -Label "FFmpeg" -Url $FFMPEG_ZIP_URL -Sha256 $FFMPEG_SHA256 -Destination $FFMPEG_DIR
 
         if (-not (Test-Path $FFMPEG_PATH)) {
             Write-Host "ERROR: FFmpeg executable not found at $FFMPEG_PATH after extraction" -ForegroundColor Red

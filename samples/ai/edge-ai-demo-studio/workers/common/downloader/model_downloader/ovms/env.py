@@ -4,10 +4,10 @@
 """Where OpenVINO Model Server lives and the environment it must run in.
 
 In ``--pull`` mode OVMS converts non-IR models with ``optimum-cli`` from the first Python on PATH:
-the ``workers/common/ovms-export`` project on Linux, the OVMS-bundled Python on Windows. Serving
-needs the same PATH and library setup, so pull and serve both build it with :func:`ovms_env` and
-cannot drift. Models in :data:`EXPORT_PROFILES` convert in their own pinned project, chosen by
-``source_model``. This module only finds the binary; it installs nothing.
+``workers/common/ovms-export/.venv`` on Linux, the OVMS-bundled Python on Windows (both hold OVMS's
+own conversion requirements). Serving needs the same PATH and library setup, so pull and serve both
+build it with :func:`ovms_env` and cannot drift. Models in :data:`EXPORT_PROFILES` convert in their
+own pinned project, chosen by ``source_model``. This module only finds the binary; it installs nothing.
 """
 
 from __future__ import annotations

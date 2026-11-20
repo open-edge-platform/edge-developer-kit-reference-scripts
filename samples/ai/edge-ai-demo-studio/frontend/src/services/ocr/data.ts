@@ -5,7 +5,7 @@ import { ScanText } from 'lucide-react'
 import type { Service as PayloadService } from '@/payload-types'
 import { getEffectivePrecision } from '@/services/model-config'
 import type { ServiceMeta, WorkerConfig } from '@/services/types'
-import { describeOcrModel, serviceConfig } from './config'
+import { ocrModelKind, serviceConfig } from './config'
 
 // Each engine lives in workers/services/ocr/<backend>, picked from the model key.
 type OcrBackend = 'paddleocr' | 'tesseract'
@@ -50,7 +50,7 @@ export const worker: WorkerConfig = {
     const model = doc.models?.default?.name ?? DEFAULT_MODEL
     const device = doc.models?.default?.device ?? DEFAULT_DEVICE
     const precision =
-      describeOcrModel(model).kind === 'vl'
+      ocrModelKind(model) === 'vl'
         ? getEffectivePrecision(serviceConfig, doc.models?.default?.quant)
         : undefined
     return [

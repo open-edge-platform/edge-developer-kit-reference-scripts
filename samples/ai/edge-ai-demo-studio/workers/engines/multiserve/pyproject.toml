@@ -11,7 +11,7 @@ dependencies = [
     "huggingface-hub>=1.0.1",
     "modelscope>=1.35.3",
     "openai>=2.6.1",
-    "openvino-genai==2026.2.1.0",
+    "openvino-genai==2026.4.1.0",
     "pandas>=2.3.3",
     "pillow>=13.0.0",
     "pydantic>=2.12.3",

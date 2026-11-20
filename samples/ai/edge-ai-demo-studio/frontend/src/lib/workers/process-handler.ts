@@ -3,7 +3,8 @@
 
 /**
  * Registry of the app's worker and engine processes by `type@instanceId`: spawns them with the
- * app's environment, pipes output into `logs/<name>.log`, stops them with their process group.
+ * app's environment (once `workers/.venv` is ready for them, see `shared-env.ts`), pipes output into
+ * `logs/<name>.log`, stops them with their process group.
  */
 
 import { type ChildProcess, spawn } from 'node:child_process'
@@ -24,6 +25,7 @@ import { formatLogLine } from '@/lib/log-line'
 import { logger } from '@/lib/logger'
 import { APP_SETTINGS_DEFAULTS } from '@/lib/settings/app-settings'
 import { readAppSettingsSafe } from '@/lib/settings/app-settings-store'
+import { prepareSharedEnv, type Release } from '@/lib/workers/shared-env'
 import { withLoopbackNoProxy } from '@/lib/workers/spawn-env'
 import {
   parseStartupLine,
@@ -60,6 +62,8 @@ interface ProcessEntry {
   startTime: Date
   status: ProcessStatus
   logStream?: LogStream
+  /** Ends its start's hold on `workers/.venv` (see `markProcessStarted`). */
+  releaseStart?: Release
 }
 
 export interface ProcessInfo {
@@ -76,17 +80,27 @@ export type SpawnResult =
   | { kind: 'already-running' }
   /** Nothing was started, e.g. the worker has no start script. */
   | { kind: 'failed'; error: string }
+  /** A stop came while it waited to start: nothing was started. */
+  | { kind: 'cancelled' }
+
+/** A spawn between the "already running" check and `processes.set()`. */
+interface PendingSpawn {
+  /** Aborted by a stop: the spawn gives up once it may (an install runs to its end). */
+  controller: AbortController
+  /** Settles when the spawn returns. */
+  done: Promise<void>
+}
 
 // Kept across hot reloads and the separately bundled routes of `next dev`.
 const processes = globalSingleton(
   'processHandlerProcesses',
   () => new Map<string, ProcessEntry>(),
 )
-// Names between the "already running" check and `processes.set()`, so a concurrent call cannot
-// pass the check during the async work before registration.
+// So a concurrent call cannot pass the check during the async work before registration, which may
+// wait for another worker's install (`prepareSharedEnv`).
 const pendingSpawns = globalSingleton(
   'processHandlerPendingSpawns',
-  () => new Set<string>(),
+  () => new Map<string, PendingSpawn>(),
 )
 const logStreams = globalSingleton(
   'processHandlerLogStreams',
@@ -410,16 +424,28 @@ export async function spawnProcess(
     cpuAffinity?: string
     /** Receives the process's structured startup reports instead of the log; unset disables them. */
     onStartupEvent?: (event: StartupEvent) => void
+    /** Receives the steps before the spawn (waiting for or installing dependencies); default `onStartupEvent`. */
+    onPrepareEvent?: (event: StartupEvent) => void
     /** Where the process writes its own `*.log` files, archived with its log on each new run. */
     logDir?: string
   },
 ): Promise<SpawnResult> {
+  // A stopped spawn may still be finishing an install; this start follows it.
+  const stopped = pendingSpawns.get(name)
+  if (stopped && stopped.controller.signal.aborted) await stopped.done
+
   if (processes.has(name) || pendingSpawns.has(name)) {
     logger.warn(`[${name}] is already running.`)
     return { kind: 'already-running' }
   }
 
-  pendingSpawns.add(name)
+  const controller = new AbortController()
+  let settle = () => {}
+  const done = new Promise<void>((resolve) => {
+    settle = resolve
+  })
+  pendingSpawns.set(name, { controller, done })
+  let releaseStart: Release | null = null
   try {
     const launch = resolveLaunch(name, args, options)
     if ('error' in launch) {
@@ -433,6 +459,25 @@ export async function spawnProcess(
       'info',
       `Starting process: ${name} with args: ${args.join(' ')}`,
     )
+
+    if (!options.command) {
+      const report = options.onPrepareEvent ?? options.onStartupEvent
+      try {
+        releaseStart = await prepareSharedEnv(options.cwd, {
+          signal: controller.signal,
+          log: (type, line) => writeToLog(name, type, line),
+          step: (detail) =>
+            report?.({ type: 'stage', stage: 'preparing', detail }),
+        })
+      } catch (error) {
+        if (controller.signal.aborted) return { kind: 'cancelled' }
+        const message = error instanceof Error ? error.message : String(error)
+        logger.error(`[${name}] ${message}`)
+        return { kind: 'failed', error: message }
+      }
+      // A stop during the install: `finally` lets the next one through.
+      if (controller.signal.aborted) return { kind: 'cancelled' }
+    }
 
     const proc = spawn(
       /* turbopackIgnore: true */ launch.command,
@@ -454,7 +499,11 @@ export async function spawnProcess(
 
     attachLogPipes(proc, name, options.onStartupEvent)
 
+    // The process holds the start from here on; its exit ends the hold at the latest.
+    const release = releaseStart ?? undefined
+    releaseStart = null
     proc.on('exit', (code) => {
+      release?.()
       writeToLog(name, 'out', `Process exited with code ${code}`, proc.pid)
       logger.log(`[${name}] exited with code ${code}`)
       const entry = processes.get(name)
@@ -462,6 +511,7 @@ export async function spawnProcess(
     })
 
     proc.on('error', (err) => {
+      release?.()
       writeToLog(name, 'error', `Failed to start: ${err.message}`, proc.pid)
       logger.error(`[${name}] failed to start:`, err)
       const entry = processes.get(name)
@@ -473,11 +523,25 @@ export async function spawnProcess(
       startTime: new Date(),
       status: 'active',
       logStream: getLogStream(name),
+      releaseStart: release,
     })
     return { kind: 'spawned', pid: proc.pid }
   } finally {
-    pendingSpawns.delete(name)
+    // Still set only when it failed before a process took the hold over.
+    releaseStart?.()
+    if (pendingSpawns.get(name)?.controller === controller) {
+      pendingSpawns.delete(name)
+    }
+    settle()
   }
+}
+
+/**
+ * The process is up (its health check passed): its start no longer holds back installs into
+ * `workers/.venv`. Exiting ends the hold too.
+ */
+export function markProcessStarted(name: string): void {
+  processes.get(name)?.releaseStart?.()
 }
 
 /** Runs a one-off command (a stop script) to completion, logging into `name`'s log. True on exit 0. */
@@ -540,6 +604,8 @@ export function getStatus(name: string): Omit<ProcessInfo, 'name'> | null {
 
 export async function stopProcess(name: string): Promise<boolean> {
   logger.log('Stopping process:', name)
+  // One still waiting to start never starts.
+  pendingSpawns.get(name)?.controller.abort()
   const entry = processes.get(name)
   if (!entry) return false
 
@@ -596,6 +662,7 @@ export function listProcesses(): ProcessInfo[] {
 
 export async function killAllProcesses(): Promise<void> {
   logger.log('Killing all processes...')
+  for (const pending of pendingSpawns.values()) pending.controller.abort()
   for (const [name, entry] of processes.entries()) {
     if (entry.proc.killed || entry.proc.exitCode !== null) continue
     await stopProcess(name)

@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Start the embeddings worker: the OEP multimodal-embedding-serving microservice, at the tag
-# pinned in workers/oep-services.json (the Text Embedding service's "worker" engine).
+# pinned in workers/upstream.json (the Text Embedding service's "worker" engine).
 
 set -euo pipefail
 
@@ -16,6 +16,6 @@ done
 . "$WORKERS_ROOT/scripts/worker-common.sh"
 
 require_uv
-oep_fetch services/embeddings
+upstream_fetch services/embeddings
 
 run_oep_worker "$@"

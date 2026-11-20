@@ -327,16 +327,8 @@ async function applyToExisting(
   match: Extract<EntryMatch<Service>, { kind: 'existing' }>,
   live: LiveRows,
 ): Promise<Service | undefined> {
-  const { where, settings, instanceId } = entry
+  const { where, settings } = entry
   const { row } = match
-  if (instanceId !== undefined && instanceId !== row.instanceId) {
-    logger.log(
-      `🛠️  deployment.json: there is no ${serviceType} instance "${instanceId}" — ` +
-        `${where} configures ${getInstanceKey(row)} instead (` +
-        `${match.by === 'label' ? 'same name' : 'the first instance'}), ` +
-        `which keeps its address`,
-    )
-  }
   const data = buildInstanceData(serviceType, row, settings, where)
   if (settings.label && settings.label !== getInstanceLabel(row)) {
     const others = [...live.values()].filter((d) => d.id !== row.id)

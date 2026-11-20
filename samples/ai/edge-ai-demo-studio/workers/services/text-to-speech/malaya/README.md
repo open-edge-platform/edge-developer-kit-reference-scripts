@@ -5,7 +5,7 @@
 
 Neither `mesolitica/malaya` nor `mesolitica/malaya-speech` has a release with
 the VITS code this worker uses. `start.sh` copies both at the commits pinned
-in `workers/oep-services.json` (`sources`) into `malaya/` and `malaya_speech/`
+in `workers/upstream.json` (`sources`) into `malaya/` and `malaya_speech/`
 beside `main.py`, which imports them from there; `pyproject.toml` lists their
 requirements. The copies are not changed. Instead, the `overrides/` package replaces three functions at
 call time: `malaya_speech.tts.load_text_ids`, `malaya.normalizer.rules.load`

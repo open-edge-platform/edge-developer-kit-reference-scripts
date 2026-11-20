@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # With `--db-backend pgvector`, first fetches the OEP document-ingestion microservice (pinned in
-# workers/oep-services.json); the default FAISS backend needs nothing extra.
+# workers/upstream.json); the default FAISS backend needs nothing extra.
 
 set -euo pipefail
 
@@ -36,7 +36,7 @@ wants_pgvector() {
 require_uv
 
 if wants_pgvector "$@"; then
-    oep_fetch services/vectordb
+    upstream_fetch services/vectordb
 fi
 
 run_worker "$@"

@@ -107,7 +107,7 @@ Every instance in a `services.<type>` list supports:
 | Field | Type | Description |
 | --- | --- | --- |
 | `label` | string | Display name shown in the UI, unique per service (ignoring case). Optional on the first entry, which keeps its current name without it (the service’s own name when this file adds the service); required on every later entry, which an entry without `instanceId` is found by. A different name renames the instance it matches; its address stays |
-| `instanceId` | string | The instance’s id, which its address is built on: `/api/<type>@<instanceId>` (1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit). Optional; saved deployments write it. An entry with an id finds the same instance on every boot even after it was renamed, and a missing instance is created under that id. Without one, a new instance’s id is derived from its name: `"CPU fallback"` → `cpu-fallback` |
+| `instanceId` | string | The instance’s id, which its address is built on: `/api/<type>@<instanceId>` (1–32 lowercase letters, digits or dashes, starting and ending with a letter or digit). Optional; saved deployments write it. An entry with an id finds the same instance on every boot even after it was renamed, and a missing instance is created under that id — never another instance configured in its place. Without one, a new instance’s id is derived from its name: `"CPU fallback"` → `cpu-fallback` |
 | `status` | `"online"` \| `"offline"` | `online` auto-starts the instance on boot; `offline` (default) leaves it stopped |
 | `engine` | string | Execution engine — only for services listing more than one engine |
 | `models` | object | Partial per-model overrides merged over the current settings; `models.default` is the primary model (`name`, `device`, `source`, `quant`, `params`, `backend`, `type`) |
@@ -124,8 +124,8 @@ Metadata keys:
 | `vadThreshold` | VAD Threshold for Wake Word Detection |
 | `cpuAffinity` | CPU cores to pin this service to (numactl -C format, e.g. "0-7" or "0,2,4"). Empty / missing = all cores. Linux, and Windows for CPUs 0-63. |
 | `frameGeneration` | Allow lipsync frame generation (interpolation). Only activates when the accelerator cannot infer enough frames per second on its own. |
-| `batchSize` | Frames per lipsync inference. Empty / missing = automatic: 8 on the NPU, 16 on other devices. Smaller batches start talking sooner; larger ones can infer more frames per second. |
-| `sttBackend` | Backend of the Speech to Text service: "oep" runs the Open Edge Platform audio-analyzer natively (Whisper on OpenVINO GenAI, streaming and live /v1/realtime); "ovms" runs the built-in OpenVINO Model Server worker (batch transcription and translation, optional noise suppression). |
+| `batchSize` | Frames per lipsync inference. Empty / missing = automatic: 1 on the NPU, 16 on other devices. Smaller batches start talking sooner; larger ones can infer more frames per second. |
+| `sttBackend` | Backend of the Speech to Text service: "oep" runs the Open Edge Platform audio-analyzer natively (Whisper on OpenVINO GenAI, streaming and live /v1/realtime); "ovms" runs the built-in OpenVINO Model Server worker (batch transcription and translation, optional noise suppression); "meralion" runs the built-in MERaLiON worker, which serves MERaLiON/MERaLiON-3-3B-ASR only (set it as models.default.name; Singapore and Southeast Asian speech, language always detected, transcription only). |
 | `vectorDbBackend` | Vector store for the Vector Database service: "faiss" keeps an index per knowledge base on disk; "pgvector" stores vectors in PostgreSQL + pgvector through the OEP document-ingestion pipeline. |
 | `pgConnectionString` | PostgreSQL URL for the pgvector backend. Empty / missing = embedded PostgreSQL managed by the worker. |
 | `embeddingBatchSize` | Inputs per inference of the Open Edge Platform embeddings worker (INFER_BATCH_SIZE). Empty / missing = 64 on GPU, 16 on other devices; the NPU keeps its static batch of 16. |
@@ -192,13 +192,15 @@ bindings stay.
 On every startup, for each `services.<type>` list:
 
 - **Every entry is matched to one of the service’s instances by its `instanceId`**,
-  when it has one, **then by its `label`** (ignoring case). A matched instance is
+  when it has one, **else by its `label`** (ignoring case). A matched instance is
   **updated** in place: the overrides are merged over its current settings, and a
   different `label` renames it — only its name: its address, data and sample
   bindings stay, as when it is renamed in the UI.
-- The **first entry**, when neither matches, configures the service’s oldest
-  remaining instance, so giving the first instance a new name in the file renames
-  it rather than replacing it.
+- An entry with an `instanceId` is that instance and no other: when the service has
+  none under that id, it is created under it, even if another instance has its name.
+- The **first entry** without an `instanceId`, when its name matches nothing,
+  configures the service’s oldest remaining instance, so giving the first instance
+  a new name in the file renames it rather than replacing it.
 - Any other entry that matches nothing is **created**: it copies the first instance’s
   engine, models, health check and metadata — after this file’s presets for the
   first instance have been applied — then its own `models` / `metadata` / `engine`
@@ -425,6 +427,37 @@ Known models:
 | `stabilityai/stable-diffusion-xl` | `AUTO`, `GPU`, `CPU`, `NPU` | `openvino` |
 | `Aminfri/sdxl-turbo-openvino` | `AUTO`, `GPU`, `CPU`, `NPU` | `openvino` |
 
+### `image-upscaling` — Image Upscaling
+
+Super-resolution: upscale images, videos and live webcam frames 2x-4x with Real-ESRGAN, SPAN, DAT2, AuraSR, Swin2SR or Intel OMZ, and photos with SeedVR2 diffusion.
+
+| Field | Value |
+| --- | --- |
+| Port | allocated from `INSTANCE_PORT_RANGE` when the service starts |
+| Instances | up to 5 in total |
+| Engines | `worker` |
+| Default model | `realesr-general-x4v3` on `AUTO` |
+| Devices | `AUTO`, `CPU`, `GPU`, `NPU` |
+| Custom models | no |
+| Weight formats (`quant`) | `fp16`, `int8` (default `fp16`) |
+| Supported OS | `linux`, `windows` |
+
+Known models:
+
+| Model (`models.default.name`) | Devices | Backend |
+| --- | --- | --- |
+| `realesr-general-x4v3` | `AUTO`, `CPU`, `GPU`, `NPU` | `openvino` |
+| `realesr-animevideov3` | `AUTO`, `CPU`, `GPU`, `NPU` | `openvino` |
+| `RealESRGAN_x4plus` | `AUTO`, `CPU`, `GPU`, `NPU` | `openvino` |
+| `RealESRGAN_x2plus` | `AUTO`, `CPU`, `GPU`, `NPU` | `openvino` |
+| `RealESRGAN_x4plus_anime_6B` | `AUTO`, `CPU`, `GPU`, `NPU` | `openvino` |
+| `Swin2SR_RealworldSR_X4_64_BSRGAN_PSNR` | `AUTO`, `CPU`, `GPU` | `openvino` |
+| `4xNomosUni_span_multijpg` | `AUTO`, `CPU`, `GPU`, `NPU` | `openvino` |
+| `4xBHI_dat2_real` | `AUTO`, `CPU`, `GPU` | `openvino` |
+| `AuraSR-v2` | `AUTO`, `CPU`, `GPU` | `openvino` |
+| `single-image-super-resolution-1032` | `AUTO`, `CPU`, `GPU`, `NPU` | `openvino` |
+| `seedvr2-3b` | `XPU` | `pytorch` |
+
 ### `lipsync` — Lipsync
 
 Real-time avatar lip-syncing with Wav2Lip or MuseTalk, streamed over WebRTC.
@@ -582,7 +615,7 @@ A demo showcasing the capabilities of Robotics AI, including real-time object de
 
 ### `speech-to-text` — Speech to Text
 
-Real-time speech recognition with low-latency transcription using Whisper models optimized for Intel hardware.
+Real-time speech recognition with low-latency transcription using Whisper, Qwen3-ASR and MERaLiON models optimized for Intel hardware.
 
 | Field | Value |
 | --- | --- |
@@ -607,6 +640,7 @@ Known models:
 | `openai/whisper-small` | `AUTO`, `CPU`, `GPU`, `NPU` | `openvino` |
 | `openai/whisper-tiny` | `AUTO`, `CPU`, `GPU`, `NPU` | `openvino` |
 | `openai/whisper-base` | `AUTO`, `CPU`, `GPU`, `NPU` | `openvino` |
+| `MERaLiON/MERaLiON-3-3B-ASR` | `AUTO`, `CPU`, `GPU`, `NPU` | `openvino` |
 
 ### `synthetic-image-generation` — Synthetic Image Generation
 
@@ -651,7 +685,7 @@ Known models:
 
 ### `text-to-speech` — Text to Speech
 
-Natural-sounding speech synthesis with multiple voice options powered by Kokoro, Piper, Malaya, Pocket TTS, VieNeu-TTS, FastSpeech2 HS and SpeechT5 from the Open Edge Platform.
+Natural-sounding speech synthesis with multiple voice options powered by Kokoro, Piper, Malaya, Pocket TTS, VieNeu-TTS, FastSpeech2 HS, CosyVoice 3 and SpeechT5 from the Open Edge Platform.
 
 | Field | Value |
 | --- | --- |
@@ -673,6 +707,7 @@ Known models:
 | `pocket-tts` | `CPU` | `openvino` |
 | `vieneu` | `CPU` | — |
 | `fastspeech2-hs` | `CPU` | `openvino` |
+| `cosyvoice3` | `AUTO`, `CPU`, `GPU` | `openvino` |
 | `piper` | `AUTO`, `CPU`, `GPU` | `openvino` |
 | `microsoft/speecht5_tts` | `AUTO`, `CPU`, `GPU` | `openvino` |
 
@@ -689,6 +724,32 @@ Vector storage for knowledge base management, semantic search, and RAG pipelines
 | Devices | — |
 | Custom models | no |
 | Supported OS | `linux`, `windows` |
+
+### `video-generation` — Video Generation
+
+Generate short videos from a text prompt, a start image or the poses of a driving video, with Wan2.2 and Wan2.1 on OpenVINO or PyTorch.
+
+| Field | Value |
+| --- | --- |
+| Port | allocated from `INSTANCE_PORT_RANGE` when the service starts |
+| Instances | up to 5 in total |
+| Engines | `worker` |
+| Default model | `FastVideo/FastWan2.2-TI2V-5B-FullAttn-Diffusers` on `XPU` |
+| Devices | — |
+| Custom models | no |
+| Weight formats (`quant`) | `int8`, `fp16`, `int4` (default `int8`) |
+| Model sources | `huggingface` |
+| Supported OS | `linux`, `windows` |
+
+Known models:
+
+| Model (`models.default.name`) | Devices | Backend |
+| --- | --- | --- |
+| `FastVideo/FastWan2.2-TI2V-5B-FullAttn-Diffusers` | `XPU` | `pytorch` |
+| `Wan-AI/Wan2.2-TI2V-5B-Diffusers` | `XPU` | `pytorch` |
+| `Wan-AI/Wan2.1-T2V-1.3B-Diffusers` | `AUTO`, `GPU`, `CPU` | `openvino` |
+| `Wan-AI/Wan2.1-VACE-1.3B-diffusers` | `AUTO`, `GPU`, `CPU` | `openvino` |
+| `Wan-AI/Wan2.2-T2V-A14B-Diffusers` | `AUTO`, `GPU` | `openvino` |
 
 ### `wake-word-detection` — Wake Word Detection
 

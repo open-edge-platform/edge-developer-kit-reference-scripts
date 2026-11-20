@@ -631,19 +631,19 @@ copyTrackedFiles(frontendFiles, outDir)
 
 // 2) Workers: the needed worker dirs plus the workspace root, lock and shared helpers (without
 //    them the bundle has no workspace), and the upstream-code catalogue and fetch script setup uses.
+//    All of workers/scripts/: besides the helpers every start script sources, the frontend runs
+//    the Windows ones there (GPU/NPU monitoring, CPU topology, CPU pinning).
 const workerSetupFiles = [
   'workers/setup.sh',
   'workers/setup.ps1',
   'workers/pyproject.toml',
   'workers/uv.lock',
   'workers/.python-version',
-  'workers/scripts/worker-common.sh',
-  'workers/scripts/worker-common.ps1',
-  'workers/scripts/oep_env.py',
-  'workers/oep-setup.sh',
-  'workers/oep-setup.ps1',
-  'workers/oep-services.json',
-  'workers/oep-services.schema.json',
+  ...gitTrackedFiles('workers/scripts'),
+  'workers/upstream-setup.sh',
+  'workers/upstream-setup.ps1',
+  'workers/upstream.json',
+  'workers/upstream.schema.json',
 ]
 copyTrackedFiles(workerSetupFiles, outDir)
 
@@ -690,8 +690,12 @@ copyTrackedFiles(
   [
     'scripts/bash/setup_thirdparty.sh',
     'scripts/bash/llamacpp_backend.sh',
+    'scripts/bash/thirdparty_integrity.sh',
+    'scripts/bash/verify_thirdparty.sh',
     'scripts/win/install_visual_cpp_redistributable.ps1',
     'scripts/win/setup_thirdparty.ps1',
+    'scripts/win/thirdparty_integrity.ps1',
+    'scripts/win/verify_thirdparty.ps1',
     'scripts/win/setup.ps1',
     'scripts/win/start.ps1',
   ],

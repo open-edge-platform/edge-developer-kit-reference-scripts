@@ -75,7 +75,7 @@ class OVRunner:
                 "OpenVINO; falling back to CPU."
             )
             target = "CPU"
-        config = openvino_compile_config(target, gpu=_GPU_CONFIG)
+        config = openvino_compile_config(target, gpu=_GPU_CONFIG, model_dir=model_path.parent)
         try:
             self.compiled = core.compile_model(model, target, config)
         except Exception as exc:

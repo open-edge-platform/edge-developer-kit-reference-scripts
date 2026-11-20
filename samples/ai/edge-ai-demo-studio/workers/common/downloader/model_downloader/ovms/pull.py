@@ -29,11 +29,13 @@ from ..sources import hf_endpoint_for_source
 from .env import OvmsEnv, export_profile_for, has_optimum_cli, ovms_env
 
 __all__ = [
+    "NPU_CACHE_DIR",
     "PROGRESS_PREFIXES",
     "OvmsPuller",
     "build_pull_command",
     "drop_lfs_pointers",
-    "pinned_cpu_args",
+    "npu_cache_config",
+    "plugin_config_args",
     "pull",
     "pull_device",
     "serve_lock_path",
@@ -166,27 +168,52 @@ def pull_device(device: str | None, task: str | None = None) -> str | None:
     return device
 
 
-def pinned_cpu_args(device: str | None) -> list[str]:
-    """``--plugin_config`` with this process's pinned CPU thread count, for a graph on ``device``.
+#: Folder in a model's directory where OpenVINO keeps what it compiled for the NPU.
+NPU_CACHE_DIR = ".ov_cache"
 
-    OpenVINO on Windows ignores the CPU affinity OVMS inherits (``worker_common.pinned_cpu_threads``).
-    Nothing when unpinned, for an NPU graph (untested there), or without ``worker-common``.
+
+def _is_npu(device: str | None) -> bool:
+    return bool(device) and "NPU" in device.upper()
+
+
+def npu_cache_config(device: str | None, model_dir: str | os.PathLike[str] | None) -> dict:
+    """``CACHE_DIR`` for a graph on the NPU: ``model_dir``/:data:`NPU_CACHE_DIR`, ``{}`` elsewhere.
+
+    The NPU compiles for minutes, and a cached start imports the blob instead (Qwen3-Embedding-0.6B:
+    170 s, then 7 s). OVMS's ``--cache_dir`` never reaches the embeddings and rerank graphs, which
+    compile through their own Core, so every graph carries it. Forward slashes: the path is written
+    into graph.pbtxt, whose string escapes would eat a backslash.
     """
-    if device and "NPU" in device.upper():
-        return []
-    try:
-        from worker_common import openvino_pinned_cpu_config
-    except ImportError:
-        return []
-    config = openvino_pinned_cpu_config()
-    return ["--plugin_config", json.dumps(config)] if config else []
+    if not _is_npu(device) or model_dir is None:
+        return {}
+    return {"CACHE_DIR": (Path(model_dir).absolute() / NPU_CACHE_DIR).as_posix()}
+
+
+def plugin_config_args(
+    device: str | None, model_dir: str | os.PathLike[str] | None = None
+) -> list[str]:
+    """``--plugin_config`` for a graph on ``device``, nothing when there is nothing to set.
+
+    An NPU graph gets :func:`npu_cache_config`; every other one this process's pinned CPU thread
+    count, since OpenVINO on Windows ignores the CPU affinity OVMS inherits
+    (``worker_common.pinned_cpu_threads``; nothing when unpinned or without ``worker-common``).
+    """
+    if _is_npu(device):
+        config = npu_cache_config(device, model_dir)
+    else:
+        try:
+            from worker_common import openvino_pinned_cpu_config
+        except ImportError:
+            return []
+        config = openvino_pinned_cpu_config()
+    return [PLUGIN_CONFIG_FLAG, json.dumps(config)] if config else []
 
 
 PLUGIN_CONFIG_FLAG = "--plugin_config"
 
 
-def _with_pinned_plugin_config(extra_args: list[str], pinned: dict) -> list[str]:
-    """``extra_args`` with the pinned thread count merged into their own ``--plugin_config``.
+def _merged_plugin_config(extra_args: list[str], base: dict) -> list[str]:
+    """``extra_args`` with ``base`` merged into their own ``--plugin_config``.
 
     OVMS keeps only the last ``--plugin_config``; the caller's keys win. A value that is not a JSON
     object is left for OVMS to reject.
@@ -201,7 +228,7 @@ def _with_pinned_plugin_config(extra_args: list[str], pinned: dict) -> list[str]
     if not isinstance(config, dict):
         return extra_args
     merged = list(extra_args)
-    merged[index] = json.dumps({**pinned, **config})
+    merged[index] = json.dumps({**base, **config})
     return merged
 
 
@@ -231,12 +258,12 @@ def build_pull_command(
     device = pull_device(target_device, task)
     if device:
         command += ["--target_device", device]
-    pinned = pinned_cpu_args(device)
+    base = plugin_config_args(device, Path(model_repository_path) / source_model)
     extra_args = list(extra_args)
-    if pinned and PLUGIN_CONFIG_FLAG in extra_args:
-        extra_args = _with_pinned_plugin_config(extra_args, json.loads(pinned[1]))
+    if base and PLUGIN_CONFIG_FLAG in extra_args:
+        extra_args = _merged_plugin_config(extra_args, json.loads(base[1]))
     else:
-        command += pinned
+        command += base
     if pipeline_type:
         command += ["--pipeline_type", pipeline_type]
     if weight_format:
@@ -287,7 +314,7 @@ class OvmsPuller:
             raise OvmsError(
                 f"{source_model} is converted with its own optimum environment "
                 f"({profile.project}), which is not provisioned at {venv}. "
-                f"From workers/: ./oep-setup.sh fetch {profile.project} && "
+                f"From workers/: ./upstream-setup.sh fetch {profile.project} && "
                 f"thirdparty/uv/uv sync --project {profile.project} "
                 f"(the start script of the worker serving it does this on first use)."
             )

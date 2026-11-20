@@ -15,7 +15,7 @@ dependencies = [
     # Use opencv-python (not headless) so it works on Windows desktop too.
     "opencv-python>=4.10",
     "numpy>=2.1",
-    "openvino==2026.2.1",
+    "openvino==2026.4.1",
 ]
 
 [tool.uv.sources]

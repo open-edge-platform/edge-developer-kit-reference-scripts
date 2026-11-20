@@ -1,13 +1,13 @@
 # Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 #
-# Installed into common/ovms-export only. The .pth lands in site-packages, where every interpreter
+# Installed into common/ovms-export/.venv only, beside OVMS's requirements (ovms_prepare). The .pth lands in site-packages, where every interpreter
 # start of that venv imports the module (see its docstring).
 
 [project]
 name = "ovms-export-compat"
 version = "0.1.0"
-description = "Import-time fixes for the optimum-intel release common/ovms-export pins"
+description = "Import-time fixes for the optimum-intel release OVMS's export requirements install"
 requires-python = ">=3.12"
 
 [build-system]

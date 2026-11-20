@@ -2,28 +2,30 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { logger } from '@/lib/logger'
-import type { SttBackendId } from '../../config'
-import { audioStreamProtocol } from './audio-stream-protocol'
-import { loadPcmWorklet, PCM_WORKLET, SAMPLE_RATE } from './pcm-worklet'
+import { type CaptureSubscription, LiveCapture } from './live-capture'
 import type {
   LiveProtocol,
-  LiveTranscript,
-  LiveVadSettings,
+  LiveProtocolFactory,
   ProtocolContext,
   VoiceActivity,
 } from './protocol'
-import { realtimeProtocol } from './realtime-protocol'
 
 // How long to wait for the worker to flush its final utterance after stop.
 const FLUSH_TIMEOUT_MS = 15000
 
 export interface LiveStartOptions {
-  language: string
-  /** `oep` streams over `/v1/realtime` (JSON events), `ovms` over `/v1/audio/stream` (raw PCM). */
-  backend: SttBackendId
-  /** Unset keeps the worker's VAD settings. */
-  vad?: LiveVadSettings
-  onTranscript?: (transcript: LiveTranscript) => void
+  /**
+   * What the socket speaks, and what it is asked for: `sttProtocol` for transcription,
+   * `diarizationStreamProtocol` for speakers. Its context's `timeOffset` puts its times on the
+   * reference timeline.
+   */
+  protocol: LiveProtocolFactory
+  /**
+   * A microphone capture shared with other sessions, so every worker gets the same samples on one
+   * timeline. Its owner starts it once the sessions have opened. Unset, the session opens its own
+   * and starts it when its socket is ready.
+   */
+  capture?: LiveCapture
   /** Not called once `stop`, `dispose` or a disconnect has ended listening. */
   onVoiceActivity?: (activity: VoiceActivity) => void
   onError?: (message: string) => void
@@ -70,21 +72,16 @@ function opened(ws: WebSocket): Promise<void> {
 }
 
 /**
- * One-shot live transcription: mic captured as 16 kHz PCM via an AudioWorklet and streamed over
- * either backend's protocol. `stop()` flushes the last utterance, `dispose()` drops everything.
+ * One-shot live session: the microphone's 16 kHz PCM (`LiveCapture`) streamed over the given
+ * protocol. `stop()` flushes the last utterance, `dispose()` drops everything.
  * If either comes while `open()` still waits, `open()` releases what it holds and rejects.
  */
 export class LiveSession {
   private ws: WebSocket | null = null
-  private audioCtx: AudioContext | null = null
-  private source: MediaStreamAudioSourceNode | null = null
-  private node: AudioWorkletNode | null = null
-  private stream: MediaStream | null = null
-  private moduleUrl: string | null = null
+  private capture: LiveCapture | null = null
+  /** Kept after the capture is released: the final utterances still need its timeline. */
+  private subscription: CaptureSubscription | null = null
   private stopMessage: string | null = null
-  private captureStart = 0
-  // Offset from capture time to the reference recording timeline, seconds.
-  private timeOffset = 0
   private streaming = false
   /** `stop()` or `dispose()` was called: nothing new may start. */
   private ended = false
@@ -104,10 +101,7 @@ export class LiveSession {
   /** Rejects, holding nothing, when the mic or socket can't open or the session was stopped first. */
   async open(): Promise<void> {
     const {
-      language,
-      backend,
-      vad,
-      onTranscript,
+      protocol: protocolFor,
       onVoiceActivity,
       onError,
       onDisconnect,
@@ -116,42 +110,44 @@ export class LiveSession {
     } = this.options
     // The WebSocket bypasses the HTTP proxy and connects to the worker port directly.
     const port = this.target.port
-    if (!port) throw new Error('Speech to Text is not running')
+    if (!port) throw new Error('The worker is not running')
 
     const tStart = performance.now()
+    const shared = this.options.capture
+    // `performance.now()` at this session's first sample, once its capture has started.
+    const sessionStart = () => this.subscription?.startedAt() ?? null
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { channelCount: 1 },
-      })
-      if (this.ended) {
-        for (const track of stream.getTracks()) track.stop()
-        throw new Error(CANCELLED_MESSAGE)
+      // Held before any wait, so the owner may start or release it meanwhile.
+      if (shared) {
+        shared.acquire()
+        this.capture = shared
+      } else {
+        const own = await LiveCapture.open()
+        this.capture = own
+        if (this.ended) throw new Error(CANCELLED_MESSAGE)
       }
-      this.stream = stream
-      this.target.onCapture(stream)
-
-      const AudioCtx =
-        window.AudioContext ??
-        (window as unknown as { webkitAudioContext: typeof AudioContext })
-          .webkitAudioContext
-      const audioCtx = new AudioCtx({ sampleRate: SAMPLE_RATE })
-      this.audioCtx = audioCtx
+      const capture = this.capture
+      this.target.onCapture(capture.stream)
 
       const ctx: ProtocolContext = {
-        language,
-        vad,
         latencyLog,
-        elapsed: () => (performance.now() - this.captureStart) / 1000,
-        timeOffset: () => this.timeOffset,
-        emit: (transcript) => onTranscript?.(transcript),
+        elapsed: () => {
+          const start = sessionStart()
+          return start === null ? 0 : (performance.now() - start) / 1000
+        },
+        timeOffset: () => {
+          const start = sessionStart()
+          return start === null || timeOrigin == null
+            ? 0
+            : (start - timeOrigin) / 1000
+        },
         voice: (activity) => {
           if (this.streaming) onVoiceActivity?.(activity)
         },
         measured: this.target.measured,
         onError,
       }
-      const protocol: LiveProtocol =
-        backend === 'ovms' ? audioStreamProtocol(ctx) : realtimeProtocol(ctx)
+      const protocol: LiveProtocol = protocolFor(ctx)
       this.stopMessage = protocol.stopMessage
 
       // Resolving "localhost" costs an extra lookup (and an IPv6-first attempt) per connection.
@@ -197,42 +193,22 @@ export class LiveSession {
         `[latency] stream socket open in ${Math.round(performance.now() - tStart)}ms`,
       )
 
-      this.moduleUrl = await loadPcmWorklet(audioCtx)
-      if (this.ended) throw new Error(CANCELLED_MESSAGE)
-      if (ws.readyState !== WebSocket.OPEN) {
-        throw new Error('WebSocket closed before capture started')
-      }
+      this.subscription = capture.subscribe((pcm) => {
+        if (ws.readyState === WebSocket.OPEN) ws.send(protocol.encodeFrame(pcm))
+      })
+      if (!shared) capture.start()
 
-      const source = audioCtx.createMediaStreamSource(stream)
-      this.source = source
-      const node = new AudioWorkletNode(audioCtx, PCM_WORKLET)
-      this.node = node
-
-      node.port.onmessage = (event: MessageEvent<ArrayBuffer>) => {
-        if (ws.readyState !== WebSocket.OPEN) return
-        ws.send(protocol.encodeFrame(event.data))
-      }
-
-      source.connect(node)
-      // Connected so the worklet keeps processing; it outputs nothing, so nothing plays back.
-      node.connect(audioCtx.destination)
+      this.streaming = true
+      logger.debug(
+        `[latency] capture pipeline ready in ${Math.round(
+          performance.now() - tStart,
+        )}ms on ${protocol.path}${shared ? ' (shared capture)' : ''}`,
+      )
     } catch (error) {
       this.releaseCapture()
       this.closeSocket()
       throw this.ended ? new Error(CANCELLED_MESSAGE) : error
     }
-
-    this.streaming = true
-    this.captureStart = performance.now()
-    this.timeOffset =
-      timeOrigin != null ? (this.captureStart - timeOrigin) / 1000 : 0
-    logger.debug(
-      `[latency] capture pipeline ready in ${Math.round(
-        this.captureStart - tStart,
-      )}ms on ${backend}, timeline offset ${Math.round(
-        this.timeOffset * 1000,
-      )}ms`,
-    )
   }
 
   /** Resolves once the worker has transcribed the final utterance and closed the socket. */
@@ -290,30 +266,13 @@ export class LiveSession {
     this.closeSocket()
   }
 
+  /** Stops sending audio; the microphone closes with the capture's last reference. */
   private releaseCapture() {
-    try {
-      this.node?.disconnect()
-      this.source?.disconnect()
-    } catch {
-      // nodes may already be disconnected
-    }
-    this.node = null
-    this.source = null
-
-    if (this.stream) {
-      for (const track of this.stream.getTracks()) track.stop()
-      this.stream = null
+    this.subscription?.unsubscribe()
+    if (this.capture) {
+      this.capture.release()
+      this.capture = null
       this.target.onCapture(null)
-    }
-
-    if (this.audioCtx && this.audioCtx.state !== 'closed') {
-      this.audioCtx.close().catch(() => {})
-    }
-    this.audioCtx = null
-
-    if (this.moduleUrl) {
-      URL.revokeObjectURL(this.moduleUrl)
-      this.moduleUrl = null
     }
   }
 

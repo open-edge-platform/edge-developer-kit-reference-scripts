@@ -1,6 +1,8 @@
 // Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
+import type { TimedText } from '@/services/speech-to-text/lib/transcript-export'
+
 export type SessionStatus =
   'idle' | 'recording' | 'processing' | 'completed' | 'error'
 
@@ -9,6 +11,14 @@ export interface TranscriptEntry {
   text: string
   start: number
   end: number
+}
+
+/** One VAD-cut utterance of a live recording, with its word timings once they arrive. */
+export interface LiveUtterance {
+  text: string
+  start: number
+  end: number
+  words?: TimedText[]
 }
 
 /**

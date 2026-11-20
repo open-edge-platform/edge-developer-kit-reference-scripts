@@ -1,0 +1,40 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+#
+# Speech to Text backend for MERaLiON-3-3B-ASR on OpenVINO. torch, transformers and nncf export the
+# checkpoint on first start; serving needs OpenVINO, tokenizers and transformers' Whisper feature
+# extractor. audio-input-stream serves /v1/audio/stream.
+
+[project]
+name = "speech-to-text-meralion"
+version = "0.1.0"
+description = "Edge AI Studio speech-to-text worker: MERaLiON-3-3B-ASR on OpenVINO"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "worker-common[audio]",
+    "model-downloader",
+    "audio-input-stream",
+    "fastapi[all]>=0.128.0",
+    "nncf==3.4.0",
+    "numpy>=1.26.0",
+    "openvino==2026.4.1",
+    "safetensors>=0.4",
+    "scipy>=1.13.0",
+    "soundfile>=0.12",
+    "tokenizers>=0.22",
+    "torch==2.15.0",
+    # 5.x: Gemma-2 scales embeddings inside embed_tokens, which meralion_export relies on.
+    "transformers>=5.15.1,<6",
+    "uvicorn>=0.32.1",
+]
+
+[tool.uv.sources]
+worker-common = { workspace = true }
+model-downloader = { workspace = true }
+audio-input-stream = { workspace = true }
+torch = { index = "pytorch" }
+
+[[tool.uv.index]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/xpu"
+explicit = true

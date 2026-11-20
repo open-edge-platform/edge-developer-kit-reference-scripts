@@ -3,8 +3,8 @@
 
 """Locate, verify and import the upstream OEP ``model-download`` source.
 
-``workers/oep-setup.sh`` (``.ps1`` on Windows) copies ``microservices/model-download`` of
-edge-ai-libraries, at the tag pinned in ``workers/oep-services.json``, into this package's
+``workers/upstream-setup.sh`` (``.ps1`` on Windows) copies ``microservices/model-download`` of
+edge-ai-libraries, at the tag pinned in ``workers/upstream.json``, into this package's
 gitignored ``thirdparty/model-download``. This module puts the copy on ``sys.path`` so upstream's
 ``src`` package imports unchanged, defaults ``ENABLED_PLUGINS`` to ``huggingface`` (other plugins
 need dependencies no worker installs) and swaps ``src.utils.logging`` for a stdlib adapter.
@@ -17,7 +17,7 @@ import importlib
 import json
 import logging
 import os
-import subprocess  # nosec B404 - oep-setup is invoked with a fixed argument list
+import subprocess  # nosec B404 - upstream-setup is invoked with a fixed argument list
 import sys
 import threading
 from pathlib import Path
@@ -29,7 +29,7 @@ logger = logging.getLogger("model_downloader.oep")
 
 UPSTREAM_REPO = "https://github.com/open-edge-platform/edge-ai-libraries.git"
 UPSTREAM_SUBDIR = "microservices/model-download"
-#: Name of this package's entry in ``workers/oep-services.json``.
+#: Name of this package's entry in ``workers/upstream.json``.
 CATALOG_WORKER = "common/downloader"
 
 #: Names a directory already holding the microservice (used as is, never
@@ -37,13 +37,13 @@ CATALOG_WORKER = "common/downloader"
 HOME_ENV = "OEP_MODEL_DOWNLOAD_HOME"
 #: ``0`` disables fetching on demand when the copy is missing.
 AUTO_CLONE_ENV = "OEP_MODEL_DOWNLOAD_AUTO_CLONE"
-#: Overrides the pinned tag for one run, in step with ``workers/oep-setup.sh``.
+#: Overrides the pinned tag for one run, in step with ``workers/upstream-setup.sh``.
 REF_ENV = "EDGE_AI_LIBRARIES_REF"
-#: Written by oep-setup.sh into the copy with the tag it was made from.
+#: Written by upstream-setup.sh into the copy with the tag it was made from.
 REF_FILE_NAME = ".demo-studio-edge-ai-libraries-ref"
 
 #: ``workers/common/downloader`` -- the catalogue's ``worker`` directory, under
-#: which oep-setup makes the copy (``thirdparty/<name>``, the default ``dir``).
+#: which upstream-setup makes the copy (``thirdparty/<name>``, the default ``dir``).
 PACKAGE_DIR = Path(__file__).resolve().parents[2]
 
 # Present only at workers/ (the sentinel worker_common.paths uses). Found without importing
@@ -64,10 +64,10 @@ def _workers_root() -> Path:
 
 _WORKERS_ROOT = _workers_root()
 #: The catalogue: pinned tag plus one record per OEP microservice.
-CATALOG_JSON = _WORKERS_ROOT / "oep-services.json"
+CATALOG_JSON = _WORKERS_ROOT / "upstream.json"
 #: The scripts that fetch what the catalogue lists.
-CATALOG_SH = _WORKERS_ROOT / "oep-setup.sh"
-CATALOG_PS1 = _WORKERS_ROOT / "oep-setup.ps1"
+CATALOG_SH = _WORKERS_ROOT / "upstream-setup.sh"
+CATALOG_PS1 = _WORKERS_ROOT / "upstream-setup.ps1"
 
 _lock = threading.Lock()
 _bootstrapped = False
@@ -76,28 +76,28 @@ _bootstrapped = False
 def upstream_tag() -> str:
     """Release tag of edge-ai-libraries this adapter is pinned to.
 
-    ``"tag"`` in ``workers/oep-services.json`` is the pin (a per-service
-    ``"tag"`` on this package's entry wins over it); ``EDGE_AI_LIBRARIES_REF``
-    overrides both for one run, the same way ``workers/oep-setup.sh`` reads it.
+    ``edge-ai-libraries.tag`` in ``workers/upstream.json`` is the pin (a
+    per-service ``"tag"`` on this package's entry wins over it); ``EDGE_AI_LIBRARIES_REF``
+    overrides both for one run, the same way ``workers/upstream-setup.sh`` reads it.
     """
     override = os.environ.get(REF_ENV, "").strip()
     if override:
         return override
     with CATALOG_JSON.open(encoding="utf-8") as fh:
-        doc = json.load(fh)
-    for svc in doc.get("services", []):
+        libraries = json.load(fh).get("edge-ai-libraries") or {}
+    for svc in libraries.get("services", []):
         if svc.get("worker") == CATALOG_WORKER and svc.get("tag"):
             return str(svc["tag"])
-    tag = str(doc.get("tag", "")).strip()
+    tag = str(libraries.get("tag", "")).strip()
     if not tag:
-        raise UpstreamMissingError(f'"tag" not found in {CATALOG_JSON}')
+        raise UpstreamMissingError(f'"edge-ai-libraries" has no "tag" in {CATALOG_JSON}')
     return tag
 
 
 def upstream_root() -> Path:
     """Root of the upstream ``model-download`` microservice (contains ``src/``).
 
-    ``OEP_MODEL_DOWNLOAD_HOME`` wins when set; otherwise the copy oep-setup
+    ``OEP_MODEL_DOWNLOAD_HOME`` wins when set; otherwise the copy upstream-setup
     makes at ``common/downloader/thirdparty/model-download`` (the catalogue's
     default ``dir`` for this package's entry).
     """
@@ -121,7 +121,7 @@ def checked_out_tag(path: Path | None = None) -> str | None:
 
 
 def _setup_command(action: str, worker: str) -> list[str]:
-    """Command line that runs ``oep-setup`` on this platform."""
+    """Command line that runs ``upstream-setup`` on this platform."""
     if os.name == "nt":
         return [
             "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
@@ -131,7 +131,7 @@ def _setup_command(action: str, worker: str) -> list[str]:
 
 
 def clone_upstream(tag: str | None = None) -> Path:
-    """Fetch ``microservices/model-download`` through ``workers/oep-setup.sh``.
+    """Fetch ``microservices/model-download`` through ``workers/upstream-setup.sh``.
 
     The script owns the fetch logic and resolves the destination as this module does; running it
     here lets a worker recover when setup has not fetched it. ``tag`` goes through the script's
@@ -171,7 +171,7 @@ def ensure_upstream() -> Path:
         )
     logger.warning(
         "OEP model-download source not found at %s; fetching it now. "
-        "Run workers/setup.sh (or workers/oep-setup.sh fetch %s) to do this ahead of time.",
+        "Run workers/setup.sh (or workers/upstream-setup.sh fetch %s) to do this ahead of time.",
         root,
         CATALOG_WORKER,
     )
@@ -223,7 +223,7 @@ def bootstrap() -> Path:
         if tag is not None and tag != upstream_tag():
             logger.warning(
                 "OEP model-download copy at %s is at %s, expected %s; "
-                "run workers/oep-setup.sh fetch %s to update it.",
+                "run workers/upstream-setup.sh fetch %s to update it.",
                 root,
                 tag,
                 upstream_tag(),

@@ -74,6 +74,14 @@ foreach ($pkg in $MissingPackages) {
         Invoke-WebRequest -Uri $pkg.Url -OutFile $InstallerPath -UseBasicParsing -ErrorAction Stop
         Write-Host "[DOWNLOAD COMPLETE] Installer saved to TEMP directory." -ForegroundColor Green
 
+        # The aka.ms link moves to each new release, so no SHA-256 can be pinned: it runs as
+        # Administrator only with a valid signature from Microsoft.
+        $Signature = Get-AuthenticodeSignature -FilePath $InstallerPath
+        if ($Signature.Status -ne 'Valid' -or $Signature.SignerCertificate.Subject -notmatch '(^|, )O=Microsoft Corporation(,|$)') {
+            throw "The downloaded installer is not signed by Microsoft (signature: $($Signature.Status), signer: $($Signature.SignerCertificate.Subject)). It was not run."
+        }
+        Write-Host "[SIGNATURE OK] Signed by $($Signature.SignerCertificate.Subject)" -ForegroundColor Green
+
         Write-Host "Installing... please wait..." -ForegroundColor Yellow
         $Process = Start-Process -FilePath $InstallerPath -ArgumentList "/install", "/quiet", "/norestart" -Wait -PassThru
 

@@ -1,0 +1,71 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+#
+# CosyVoice 3 worker. Its own lock and .venv (excluded from the workers/ workspace): the vendored upstream
+# code (workers/upstream.json "sources": cosyvoice, Matcha-TTS's matcha) imports a training stack
+# (Lightning, Hydra, rich, gdown, wget, matplotlib, diffusers) that no other worker needs. PyTorch runs on
+# the CPU only (frontend, sampling, the flow's token encoder); OpenVINO runs the heavy parts.
+
+[project]
+name = "cosyvoice3-tts"
+version = "0.1.0"
+description = "Multilingual TTS with cloned voices: Fun-CosyVoice3-0.5B on OpenVINO"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "worker-common[audio]",
+    "model-downloader",
+    "fastapi[standard]>=0.120.1",
+    "nncf==3.4.0",
+    "numpy>=2.1,<2.3",
+    "openvino==2026.4.1",
+    "soundfile>=0.12",
+    "torch==2.15.0",
+    "torchaudio==2.11.1",
+    # 5.x for its CVE fixes; ov_cosyvoice patches the two behaviours CosyVoice (written for 4.51) relies on.
+    "transformers==5.15.1",
+    # What the vendored cosyvoice / matcha modules import on the inference path.
+    "conformer==0.3.2",
+    "diffusers==0.40.0",
+    "einops==0.8.2",
+    "gdown==6.4.2",
+    "hydra-core==1.3.8",
+    "hyperpyyaml==1.2.3",
+    "inflect==7.6.0",
+    "librosa==0.11.0",
+    "lightning==2.6.6",
+    "matplotlib==3.11.2",
+    "omegaconf==2.3.1",
+    "onnxruntime==1.29.0",
+    "openai-whisper==20250625",
+    "pyyaml>=6.0.2",
+    "regex>=2024.11.6",
+    "rich==15.0.0",
+    "tiktoken==0.14.0",
+    "wetext==0.1.8",
+    "wget==3.2",
+    "x-transformers==2.31.10",
+]
+
+[tool.uv]
+override-dependencies = [
+    # openai-whisper wants CUDA Triton for its GPU timing kernels; only its log-mel is used here.
+    "triton ; sys_platform == 'never'",
+    # Through torch; CVEs fixed in 83.0.0 and 84.1.0.
+    "setuptools>=84.1.0",
+]
+environments = [
+    "sys_platform == 'win32'",
+    "sys_platform == 'linux'",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+worker-common = { path = "../../../common", editable = true }
+model-downloader = { path = "../../../common/downloader", editable = true }
+torch = { index = "pytorch-cpu" }
+torchaudio = { index = "pytorch-cpu" }

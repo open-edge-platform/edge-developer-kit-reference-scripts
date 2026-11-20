@@ -10,8 +10,8 @@ while (-not (Test-Path (Join-Path $WorkersRoot "scripts\worker-common.ps1"))) {
 . (Join-Path $WorkersRoot "scripts\worker-common.ps1")
 
 $ScriptDir = $SCRIPT_DIR
-# malaya and malaya_speech are vendored here (pinned in workers\oep-services.json)
+# malaya and malaya_speech are vendored here (pinned in workers\upstream.json)
 # because no release has the VITS code the worker uses.
-Invoke-OepFetch services/text-to-speech/malaya
+Invoke-UpstreamFetch services/text-to-speech/malaya
 Start-Worker @args
 exit $LASTEXITCODE

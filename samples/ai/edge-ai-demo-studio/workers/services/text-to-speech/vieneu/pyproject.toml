@@ -1,4 +1,4 @@
-# vieneu and vieneu_utils are vendored here (workers/oep-services.json "sources") since the
+# vieneu and vieneu_utils are vendored here (workers/upstream.json "sources") since the
 # release requires gradio; these are the deps of the ONNX Runtime engine and text front end.
 [project]
 name = "vieneutts"

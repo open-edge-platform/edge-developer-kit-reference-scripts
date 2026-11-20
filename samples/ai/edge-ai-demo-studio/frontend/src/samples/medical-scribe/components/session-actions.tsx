@@ -25,6 +25,13 @@ function busyProps(busy: boolean, onClick: () => void) {
   }
 }
 
+interface RecordingStatus {
+  sessionName: string
+  seconds: number
+  /** The microphone is still being opened. */
+  starting: boolean
+}
+
 /**
  * The selected session's actions, reachable from every view. The status line names the session
  * acted on, since the list may be out of sight; Stop ends the recording whichever session is selected.
@@ -44,7 +51,7 @@ export function SessionActions({
   /** The selected session; without one only the status line shows. */
   session: Session | undefined
   /** The recording in progress, of whichever session; `null` when none is. */
-  recording: { sessionName: string; seconds: number } | null
+  recording: RecordingStatus | null
   onStartRecording: () => void
   onStopRecording: () => void
   onUploadAudio: (file: File) => void
@@ -124,7 +131,7 @@ function SessionStatusLine({
   className,
 }: {
   session: Session | undefined
-  recording: { sessionName: string; seconds: number } | null
+  recording: RecordingStatus | null
   className?: string
 }) {
   if (recording) {
@@ -133,11 +140,27 @@ function SessionStatusLine({
         className={cn('flex min-w-0 items-center gap-2 text-sm', className)}
         data-testid="scribe-controls-status"
       >
-        <Mic
-          className="text-destructive h-4 w-4 shrink-0 animate-pulse"
-          aria-hidden
-        />
-        <span className="text-destructive shrink-0 font-medium">Recording</span>
+        {recording.starting ? (
+          <>
+            <Mic
+              className="text-muted-foreground h-4 w-4 shrink-0"
+              aria-hidden
+            />
+            <span className="text-muted-foreground shrink-0 font-medium">
+              Starting microphone…
+            </span>
+          </>
+        ) : (
+          <>
+            <Mic
+              className="text-destructive h-4 w-4 shrink-0 animate-pulse"
+              aria-hidden
+            />
+            <span className="text-destructive shrink-0 font-medium">
+              Recording
+            </span>
+          </>
+        )}
         <TruncatedText text={recording.sessionName} className="min-w-0" />
         <Badge variant="outline" className="ml-auto shrink-0 gap-1">
           <Clock className="h-3 w-3" aria-hidden />

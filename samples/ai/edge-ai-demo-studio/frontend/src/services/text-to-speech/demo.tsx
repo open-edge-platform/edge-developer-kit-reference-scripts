@@ -31,8 +31,13 @@ import type { Service } from '@/services/types'
 import type { DemoParam } from '@/types/demo-params'
 import { getEffectiveModel } from '@/types/service'
 import { SpeechPlayer } from './components/speech-player'
+import { VoiceClonePanel } from './components/voice-clone-panel'
 import { DEFAULT_TTS_MODEL } from './config'
-import { getVoicesForModel } from './lib/tts-models'
+import {
+  getAddedVoiceIds,
+  getVoicesForModel,
+  supportsVoiceCloning,
+} from './lib/tts-models'
 import { useTtsDemoParams } from './hooks/use-params'
 import { useStreamedSpeech } from './hooks/use-streamed-speech'
 import { useTtsVoiceStatus } from './hooks/use-voice-status'
@@ -41,11 +46,13 @@ const DEFAULT_TEXT =
   'Welcome to the Edge AI Demo Studio. This text is being converted to natural sounding speech by the selected text to speech model.'
 
 /** Shown with the text before Synthesize; the rest stay in the parameter column. */
-const VOICE_PARAM_IDS = new Set(['language', 'voice'])
+const VOICE_PARAM_IDS = new Set(['language', 'voice', 'dialect'])
 
-/** Drops the select's "not cached" hint: the demo shows its own notice. */
+/** Drops the voice's "not cached" hint: the demo shows its own notice. */
 function withoutHint(param: DemoParam): DemoParam {
-  return param.type === 'select' ? { ...param, hint: undefined } : param
+  return param.type === 'select' && param.id === 'voice'
+    ? { ...param, hint: undefined }
+    : param
 }
 
 export function TextToSpeechDemo({ service }: { service: Service }) {
@@ -68,11 +75,14 @@ export function TextToSpeechDemo({ service }: { service: Service }) {
     model: currentModel,
     enabled: available,
   })
-  const { values: ttsValues, params } = useTtsDemoParams(
-    currentModel,
-    voiceMap,
-    { sessionKey: demoStateKey(service, 'tts:params') },
-  )
+  const {
+    values: ttsValues,
+    params,
+    selectVoice,
+  } = useTtsDemoParams(currentModel, voiceMap, {
+    sessionKey: demoStateKey(service, 'tts:params'),
+    dialects: true,
+  })
 
   // Speech cannot keep playing for an instance that is not shown.
   useSessionLeaveNotice(
@@ -105,6 +115,7 @@ export function TextToSpeechDemo({ service }: { service: Service }) {
         speed: ttsValues.speed,
         responseFormat: ttsValues.format,
         volumeMultiplier: ttsValues.volume,
+        dialect: ttsValues.dialect,
       })
       .then((file) => {
         // It has spoken, so it is downloaded now.
@@ -154,6 +165,16 @@ export function TextToSpeechDemo({ service }: { service: Service }) {
             <div data-testid="tts-voice-settings">
               <DemoParameterSidebar params={voiceParams} variant="plain" />
             </div>
+          )}
+
+          {supportsVoiceCloning(currentModel) && (
+            <VoiceClonePanel
+              apiBase={service.apiBase}
+              model={currentModel}
+              addedVoices={getAddedVoiceIds(currentModel, voiceMap)}
+              onAdded={selectVoice}
+              disabled={!available}
+            />
           )}
 
           {isCold(ttsValues.voice) && !preparing && (

@@ -11,7 +11,7 @@ dependencies = [
     "fastapi[standard]>=0.120.1",
     "cohere>=5.18.0",
     "numpy>=2.1",
-    "faiss-cpu==1.11.0",
+    "faiss-cpu==1.15.1",
     "langchain-classic>=1.0.0",
     "langchain-text-splitters>=0.3.0",
     "langchain-openai>=1.0.0a4",

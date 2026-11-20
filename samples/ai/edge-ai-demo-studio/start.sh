@@ -27,6 +27,20 @@ setup_node_env() {
     echo " npm version: $(npm -v)"
 }
 
+# Warns, without stopping the start, when a tool setup installed is damaged, was changed since, or was
+# installed before setup checked its downloads (verify_thirdparty.sh). Setup puts any of them right.
+check_thirdparty() {
+    local verify="$SCRIPT_DIR/scripts/bash/verify_thirdparty.sh" problems
+    [ -f "$verify" ] || return 0
+    if ! problems="$(bash "$verify" "$SCRIPT_DIR")"; then
+        echo ""
+        echo "⚠️  WARNING: These installed tools are damaged, were changed since setup installed them, or were never checked:"
+        echo "   ${problems//$'\n'/$'\n'   }"
+        echo "   Run ./setup.sh again to download them again. Starting anyway..."
+        echo ""
+    fi
+}
+
 reset_env() {
     echo "Resetting environment variables..."
     export PATH="$OLD_PATH"
@@ -65,6 +79,7 @@ wait_for_frontend() {
     return 1
 }
 
+check_thirdparty
 setup_node_env
 cd "$FRONTEND_DIR" || exit
 

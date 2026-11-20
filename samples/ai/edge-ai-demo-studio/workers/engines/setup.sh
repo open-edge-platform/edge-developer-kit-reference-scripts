@@ -23,7 +23,10 @@ run_child_setup() {
         echo "ERROR: Failed to cd into $child_dir"
         return 1
     }
-    ./setup.sh
+    if ! ./setup.sh; then
+        echo "ERROR: Setup failed for: $child_name"
+        return 1
+    fi
     cd "$SCRIPT_DIR" || {
         echo "ERROR: Failed to return to $SCRIPT_DIR"
         return 1

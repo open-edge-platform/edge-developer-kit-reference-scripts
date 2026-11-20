@@ -33,6 +33,9 @@ export interface DiarizeRequest {
   otherLabel?: string
   unknownLabel?: string
   numSpeakers?: number
+  /** Bounds on the speaker count when `numSpeakers` does not fix it. */
+  minSpeakers?: number
+  maxSpeakers?: number
   speakerMatchThreshold?: number
 }
 
@@ -102,6 +105,12 @@ function diarizeForm(request: DiarizeRequest): FormData {
   }
   if (request.numSpeakers !== undefined) {
     formData.append('num_speakers', String(request.numSpeakers))
+  }
+  if (request.minSpeakers !== undefined) {
+    formData.append('min_speakers', String(request.minSpeakers))
+  }
+  if (request.maxSpeakers !== undefined) {
+    formData.append('max_speakers', String(request.maxSpeakers))
   }
   if (request.speakerMatchThreshold !== undefined) {
     formData.append(

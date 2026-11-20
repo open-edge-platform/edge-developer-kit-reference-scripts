@@ -24,7 +24,7 @@ so the vectordb worker and the RAG samples (`rag-chatbot`, `ai-exam-marking`,
 | | |
 |---|---|
 | Upstream | `microservices/multimodal-embedding-serving` |
-| Pinned tag | `tag` in [`workers/oep-services.json`](../../oep-services.json) |
+| Pinned tag | `edge-ai-libraries.tag` in [`workers/upstream.json`](../../upstream.json) |
 | Port | `8007` (the Text Embedding service port) |
 | Backend | OpenVINO on CPU, GPU or NPU (NPU for the CLIP / SigLIP models; the Qwen text model fails to compile on the NPU driver) |
 | API | OpenAI-compatible `POST /v1/embeddings`, `GET /v1/models` (added by the wrapper) plus every upstream route: `POST /embeddings` (typed text / image / video input), `GET /models`, `GET /model/current`, `GET /model/capabilities`, `GET /health` |
@@ -32,10 +32,10 @@ so the vectordb worker and the RAG samples (`rag-chatbot`, `ai-exam-marking`,
 ## How the upstream source gets here
 
 The service source is **not committed** to this repository. `start.sh` and
-`start.ps1` call `oep_fetch services/embeddings`, which runs
-`workers/oep-setup.sh fetch services/embeddings`. That script reads
-`workers/oep-services.json`, the catalogue of OEP microservices Edge AI Studio
-uses together with the pinned release `tag` (this worker's entry names
+`start.ps1` call `upstream_fetch services/embeddings`, which runs
+`workers/upstream-setup.sh fetch services/embeddings`. That script reads
+`workers/upstream.json`, the catalogue of upstream code Edge AI Studio
+fetches, with the pinned edge-ai-libraries `tag` (this worker's entry names
 `microservices/multimodal-embedding-serving`), and copies that directory at
 that release tag into `thirdparty/multimodal-embedding-serving` (gitignored)
 out of the one sparse clone of `edge-ai-libraries` the script keeps under
@@ -44,10 +44,10 @@ tag (`.demo-studio-edge-ai-libraries-ref`). There is no `overlay/`: every
 native adaptation is an environment variable or an in-memory stub, so
 upstream files are never replaced.
 
-Bump the tag (`workers/oep-setup.sh pin <tag>`) to move to a newer upstream;
+Bump the tag (`workers/upstream-setup.sh pin <tag>`) to move to a newer upstream;
 the next start remakes the copy. To try a different release without editing
 the repository, set `EDGE_AI_LIBRARIES_REF=<tag>` for one start.
-`workers/oep-setup.sh` lists every OEP-backed worker with its pin, `check`
+`workers/upstream-setup.sh` lists every OEP-backed worker with its pin, `check`
 verifies the copies, and `info services/embeddings` shows what this entry
 resolves to.
 
@@ -125,7 +125,7 @@ adds only (through `worker_common.oep`):
 
 **Dependencies** — upstream's Poetry project at the pinned tag with its
 `poetry.lock` as constraints, the way its Dockerfile runs `poetry install`
-(`"install"` in `workers/oep-services.json`): torch/torchvision come from its
+(`"install"` in `workers/upstream.json`): torch/torchvision come from its
 `pytorch-cpu` source, and its git packages (optimum-intel at `41640b8f9`, optimum)
 at the commits the lock records, so `git` must be on `PATH` (the project setup
 puts MinGit there on Windows). Upstream owns those pins and their security

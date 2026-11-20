@@ -42,6 +42,8 @@ exclude = [
     "services/speech-to-text/oep",
     "services/embeddings",
     "services/text-to-speech/oep-tts",
+    # CosyVoice 3's vendored code imports a training stack (Lightning, Hydra, ...) only it needs.
+    "services/text-to-speech/cosyvoice3",
     # Not Python projects -- docker-compose reference apps driven by shell.
     "suites/*",
 ]
@@ -55,9 +57,9 @@ environments = [
 index-strategy = "unsafe-best-match"
 override-dependencies = [
     # lerobot (robotics-ai) caps torchvision <0.27.0 and setuptools <81.
-    "torch==2.13.0",
-    "torchvision==0.28.0",
-    "torchaudio==2.11.0",
+    "torch==2.15.0",
+    "torchvision==0.29.2",
+    "torchaudio==2.11.1",
     "setuptools>=83.0.0",
     "cryptography>=48.0.1",
     "pillow>=13.0.0",
@@ -89,7 +91,7 @@ llamacpp-sycl = [
 
 # For the override-dependencies above, not the members. Without them the torch overrides resolve
 # from PyPI as the CUDA build (+cu130), outranking every member's XPU source.
-# Guard: `grep -A2 '^name = "torch"' uv.lock` must read 2.13.0+xpu.
+# Guard: `grep -A2 '^name = "torch"' uv.lock` must read 2.15.0+xpu.
 [tool.uv.sources]
 torch = { index = "pytorch" }
 torchaudio = { index = "pytorch" }

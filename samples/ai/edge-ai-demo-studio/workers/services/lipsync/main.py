@@ -21,6 +21,32 @@ from aiortc import (
 )
 from aiortc.rtcrtpsender import RTCRtpSender
 
+# aioice leaves 127.0.0.1 out of its host candidates, so with no network up a client on
+# the same machine (which offers loopback, e.g. Chromium with allow-loopback-in-peer-connection)
+# had nothing to pair with and never connected. Loopback is gathered too, without a STUN
+# query: from loopback that only times out and holds up gathering for 5 s.
+import aioice.ice as _aioice_ice
+
+_host_addresses = _aioice_ice.get_host_addresses
+_server_reflexive_candidate = _aioice_ice.server_reflexive_candidate
+
+
+def _host_addresses_with_loopback(use_ipv4: bool, use_ipv6: bool) -> list:
+    addresses = _host_addresses(use_ipv4=use_ipv4, use_ipv6=use_ipv6)
+    if use_ipv4 and "127.0.0.1" not in addresses:
+        addresses = addresses + ["127.0.0.1"]
+    return addresses
+
+
+async def _server_reflexive_candidate_off_loopback(protocol, stun_server):
+    if protocol.local_candidate.host == "127.0.0.1":
+        raise ConnectionError("no STUN from loopback")
+    return await _server_reflexive_candidate(protocol, stun_server)
+
+
+_aioice_ice.get_host_addresses = _host_addresses_with_loopback
+_aioice_ice.server_reflexive_candidate = _server_reflexive_candidate_off_loopback
+
 from fastapi import (
     FastAPI,
     Request,
@@ -164,7 +190,7 @@ def parse_arguments():
         default=None,
         help=(
             "Frames per lipsync inference (default: the config file's "
-            "batch_size, else 8 on the NPU and 16 on other devices). Smaller "
+            "batch_size, else 1 on the NPU and 16 on other devices). Smaller "
             "batches start talking sooner; larger ones can infer more frames "
             "per second."
         ),
@@ -337,6 +363,17 @@ def preload_ov_model(args):
         "Precompiling Wav2Lip model for faster first connection..."
     )
     compile_wav2lip_model(model_path, args.device, batch_size, image_size)
+
+
+def preload_avatar(avatar_path):
+    """Read the default avatar's frames now, which every session shares: the first connection
+    would otherwise wait seconds on them before it is answered."""
+    from modules.lipsync.lipsync_avatar import cached_avatar
+
+    try:
+        cached_avatar(avatar_path)
+    except Exception as e:
+        getLogger(__name__).warning(f"Skipping avatar preload: {e}")
 
 
 def setup_frame_generation(args):
@@ -637,6 +674,9 @@ def initialize_models(args):
         preload_ov_model(args)
 
         setup_frame_generation(args)
+
+    if avatar_path:
+        preload_avatar(avatar_path)
 
 
 def create_app(args):
@@ -1349,7 +1389,11 @@ def setup_routes(
                 configuration=RTCConfiguration(iceServers=[ice_server])
             )
         else:
-            pc = RTCPeerConnection()
+            # No ICE server means none, as the app's settings say: left out, aiortc falls back to
+            # Google's public STUN server and holds the answer until it replies on every interface
+            # (5 s where the network blocks it). Host candidates are all a client on this machine
+            # or the LAN needs; one across a NAT gets --ice_server.
+            pc = RTCPeerConnection(configuration=RTCConfiguration(iceServers=[]))
 
         pcs.add(pc)
 

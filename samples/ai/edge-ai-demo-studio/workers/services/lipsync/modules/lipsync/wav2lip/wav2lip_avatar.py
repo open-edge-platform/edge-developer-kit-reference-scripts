@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import time
+import cv2
 import numpy as np
 
 import openvino as ov
@@ -56,9 +57,12 @@ def compile_wav2lip_model(model_path, ov_device, batch_size, image_size):
         faces.model().set_layout(ov.Layout("NCHW"))
         ov_model = ppp.build()
         # Under AUTO, no startup CPU fallback: the warm-up and the FPS
-        # measurement time the device OpenVINO selected.
+        # measurement time the device OpenVINO selected. The NPU caches its
+        # compile beside the IR.
         compiled = core.compile_model(
-            ov_model, ov_device, openvino_compile_config(ov_device)
+            ov_model,
+            ov_device,
+            openvino_compile_config(ov_device, model_dir=Path(model_path).parent),
         )
         infer_request = compiled.create_infer_request()
         _warm_up_request(infer_request, batch_size, image_size)
@@ -131,6 +135,10 @@ class Wav2lipAvatar(LipsyncAvatar):
     # 2 audio chunks (one video frame) of mel context on each side.
     audio_left_stride = 2
     audio_right_stride = 2
+    # A frame's 16-step mel window spans 10 chunks from one video frame before it, so the last
+    # frame of a batch needs 6 chunks past the batch. Without them its window was cut short: the
+    # last 3 frames of every batch got the same mouth, and a batch of 1 or 2 couldn't infer.
+    audio_lookahead_chunks = 6
 
     # Mel features are cut from the audio window alone (no state), so idle
     # batches can be short.
@@ -150,6 +158,8 @@ class Wav2lipAvatar(LipsyncAvatar):
         self.ov_compiled_model = None
         self.infer_request = None
         self.infer_lock = None
+        # Feathered paste-back masks, cached per bbox size.
+        self._blend_masks = {}
 
         super().__init__(
             avatar_id=avatar_id,
@@ -160,7 +170,7 @@ class Wav2lipAvatar(LipsyncAvatar):
         # A process's first mel spectrogram sets librosa up (~0.2 s): here
         # rather than on the first sentence spoken (idle batches make none).
         self.extract_audio_features(
-            [np.zeros(self.audio_chunk_size, dtype=np.float32)] * 8
+            [np.zeros(self.audio_chunk_size, dtype=np.float32)] * 16
         )
 
     def unload_models(self):
@@ -255,6 +265,36 @@ class Wav2lipAvatar(LipsyncAvatar):
             self.image_size,
         )
 
+    def _compose_frame(self, combine_frame, res_frame, bbox):
+        """Feathered blend of only the generated mouth/jaw region, like MuseTalkAvatar.
+
+        The avatar's own eyes stay sharp, the crop leaves no seam, and its edges stay the
+        avatar's: on the NPU, Wav2Lip's last ~12 of 256 output rows come out wrong (a dark
+        band across the neck). Clipped first, since astype(uint8) wraps values out of range.
+        """
+        y1, y2, x1, x2 = bbox
+        w, h = x2 - x1, y2 - y1
+        face = cv2.resize(np.clip(res_frame, 0, 255).astype(np.uint8), (w, h))
+        mask = self._get_blend_mask(h, w)
+        region = combine_frame[y1:y2, x1:x2].astype(np.float32)
+        combine_frame[y1:y2, x1:x2] = (
+            region * (1.0 - mask) + face.astype(np.float32) * mask + 0.5
+        ).astype(np.uint8)
+        return combine_frame
+
+    def _get_blend_mask(self, h, w):
+        mask = self._blend_masks.get((h, w))
+        if mask is None:
+            margin = max(2, h // 12)
+            mask = np.zeros((h, w), dtype=np.float32)
+            # The nose sits at the crop midline; keep the original video above
+            # it (eyes stay sharp) and fade the generated region in below.
+            mask[int(h * 0.45) : h - margin, margin : w - margin] = 1.0
+            k = 2 * margin + 1
+            mask = cv2.GaussianBlur(mask, (k, k), 0)[..., None]
+            self._blend_masks[(h, w)] = mask
+        return mask
+
     def _run_lipsync_inference(self, feature_batch, start_index, debug=False, positions=None):
         if positions is None:
             positions = range(self.batch_size)
@@ -309,7 +349,12 @@ class Wav2lipAvatar(LipsyncAvatar):
         return pred
 
     def extract_audio_features(self, audio_frames):
-        if len(audio_frames) <= self.audio_left_stride + self.audio_right_stride:
+        context = (
+            self.audio_left_stride
+            + self.audio_right_stride
+            + self.audio_lookahead_chunks
+        )
+        if len(audio_frames) <= context:
             return []
 
         inputs = np.concatenate(audio_frames)
@@ -319,10 +364,7 @@ class Wav2lipAvatar(LipsyncAvatar):
         mel_idx_multiplier = 80.0 * 2 / self.audio_fps
 
         mel_step_size, i, mel_chunks = 16, 0, []
-        while (
-            i
-            < (len(audio_frames) - self.audio_left_stride - self.audio_right_stride) / 2
-        ):
+        while i < (len(audio_frames) - context) / 2:
             start_idx = int(left + i * mel_idx_multiplier)
             if start_idx + mel_step_size > len(mel[0]):
                 mel_chunks.append(mel[:, len(mel[0]) - mel_step_size :])

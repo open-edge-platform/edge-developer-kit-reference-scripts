@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Start the speech-to-text worker: the OEP audio-analyzer microservice, fetched at the tag
-# pinned in workers/oep-services.json and run unmodified.
+# pinned in workers/upstream.json and run unmodified.
 
 set -euo pipefail
 
@@ -28,6 +28,6 @@ if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; 
     exit 1
 fi
 
-oep_fetch services/speech-to-text/oep
+upstream_fetch services/speech-to-text/oep
 
 run_oep_worker "$@"

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """Embeddings worker: the OEP ``multimodal-embedding-serving`` app (fetched into thirdparty/ by
-oep-setup.sh) plus the worker contract and an OpenAI-compatible ``POST /v1/embeddings``.
+upstream-setup.sh) plus the worker contract and an OpenAI-compatible ``POST /v1/embeddings``.
 
 Upstream's ``POST /embeddings`` writes video inputs to ``<tmp>/videoQnA`` (uuid4 names), shared by
 all instances; the path is fixed at import, baked into default arguments, so it isn't redirected.

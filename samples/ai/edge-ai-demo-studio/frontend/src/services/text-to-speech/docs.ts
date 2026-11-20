@@ -19,7 +19,7 @@ export const getDocsData = ({ host }: { host: string }): ServiceDocsData => ({
     },
   },
   overview:
-    'The Text to Speech (TTS) service converts text into natural-sounding speech behind one OpenAI-compatible API. Every model answers POST /v1/audio/speech with OpenAI’s request fields and all six of its response formats (mp3, opus, aac, flac, wav, pcm), so an OpenAI SDK pointed at this base URL works unchanged — including the default, mp3. The built-in workers (Kokoro, Piper, Malaya for Malay, Pocket TTS for Indonesian, VieNeu-TTS for Vietnamese and FastSpeech2 HS for Tamil) support many voices and languages and adjustable speed. Selecting SpeechT5 instead runs the Open Edge Platform text-to-speech microservice natively: English only, voices bundled with the model, and the same routes plus upstream’s /v1/model-info and /v1/performance. That microservice synthesises WAV; the worker re-encodes it to whichever format was asked for and applies `speed`, neither of which upstream handles itself.',
+    'The Text to Speech (TTS) service converts text into natural-sounding speech behind one OpenAI-compatible API. Every model answers POST /v1/audio/speech with OpenAI’s request fields and all six of its response formats (mp3, opus, aac, flac, wav, pcm), so an OpenAI SDK pointed at this base URL works unchanged — including the default, mp3. The built-in workers (Kokoro, Piper, Malaya, Pocket TTS, VieNeu-TTS, FastSpeech2 HS, and CosyVoice 3 with zero-shot voice cloning) support many voices and languages and adjustable speed. Selecting SpeechT5 instead runs the Open Edge Platform text-to-speech microservice natively: English only, voices bundled with the model, and the same routes plus upstream’s /v1/model-info and /v1/performance. That microservice synthesises WAV; the worker re-encodes it to whichever format was asked for and applies `speed`, neither of which upstream handles itself.',
   endpoints: [
     {
       method: 'POST',
@@ -36,7 +36,7 @@ export const getDocsData = ({ host }: { host: string }): ServiceDocsData => ({
           name: 'voice',
           type: 'string',
           required: false,
-          desc: "Voice ID for generation (Kokoro default 'af_heart'; SpeechT5 'Ryan', 'Miles', 'Aaron', 'Nora', 'Elena', 'Kabir', 'Angus')",
+          desc: "Voice ID for generation (Kokoro default 'af_heart'; SpeechT5 'Ryan', 'Miles', 'Aaron', 'Nora', 'Elena', 'Kabir', 'Angus'; CosyVoice 3 'zh_female', or the name of a recording added to models/tts/cosyvoice3/voices)",
         },
         {
           name: 'model',
@@ -54,7 +54,7 @@ export const getDocsData = ({ host }: { host: string }): ServiceDocsData => ({
           name: 'response_format',
           type: 'string',
           required: false,
-          desc: "One of OpenAI's six: 'mp3' (default), 'opus', 'aac', 'flac', 'wav', 'pcm' (signed 16-bit mono at the model's own sample rate: 24 kHz for Kokoro and Pocket TTS, 48 kHz for VieNeu-TTS, 22.05 kHz for Malaya and FastSpeech2 HS). The OEP models additionally accept 'json' for upstream's base64 WAV + metadata envelope.",
+          desc: "One of OpenAI's six: 'mp3' (default), 'opus', 'aac', 'flac', 'wav', 'pcm' (signed 16-bit mono at the model's own sample rate: 24 kHz for Kokoro, Pocket TTS and CosyVoice 3, 48 kHz for VieNeu-TTS, 22.05 kHz for Malaya and FastSpeech2 HS). The OEP models additionally accept 'json' for upstream's base64 WAV + metadata envelope.",
         },
         {
           name: 'stream',
@@ -74,6 +74,12 @@ export const getDocsData = ({ host }: { host: string }): ServiceDocsData => ({
           required: false,
           desc: "Language code for text processing (default: 'a' for auto). Kokoro only.",
         },
+        {
+          name: 'dialect',
+          type: 'string',
+          required: false,
+          desc: "CosyVoice 3 only: read Chinese text in a dialect, in the voice picked — 'cantonese', 'minnan' (Hokkien), 'sichuan', 'shanghai', 'dongbei', 'tianjin', 'shandong', 'henan', 'hubei', 'hunan', 'jiangxi', 'guizhou', 'yunnan', 'gansu', 'ningxia', 'shanxi' or 'shaanxi' (the dialects the model was trained to speak on instruction). Omitted, the text is read as written; an unknown dialect answers 400.",
+        },
       ],
     },
     {
@@ -86,7 +92,39 @@ export const getDocsData = ({ host }: { host: string }): ServiceDocsData => ({
       method: 'GET',
       path: '/v1/audio/voices',
       description:
-        'List voices. Built-in workers return { voiceId: downloaded }; the OEP models return the upstream model-info document with supported_speakers.',
+        'List voices. Built-in workers return { voiceId: downloaded }; the OEP models return the upstream model-info document with supported_speakers. CosyVoice 3 clones every voice from a recording in models/tts/cosyvoice3/voices, added with POST /v1/audio/voices or dropped in by hand: `<name>.wav` (3–10 s, one speaker) and, for a closer likeness, `<name>.txt` with what it says, which the next read of this list picks up as voice `<name>`.',
+    },
+    {
+      method: 'POST',
+      path: '/v1/audio/voices',
+      description:
+        'CosyVoice 3 only: clone a voice zero-shot from a recording, sent as multipart/form-data. It is encoded at once (about a second), kept in models/tts/cosyvoice3/voices and usable as `voice` straight away; a voice of the same name is replaced. Answers 201 with { voice, transcript, seconds }, or 400 for a bad name or a recording that is not 1–30 s of audio.',
+      params: [
+        {
+          name: 'name',
+          type: 'string',
+          required: true,
+          desc: "The voice's id: 1–40 letters, digits, '-' or '_', starting with a letter or digit ('zh_female' is taken)",
+        },
+        {
+          name: 'file',
+          type: 'file',
+          required: true,
+          desc: 'A recording of one speaker in any format ffmpeg reads (WAV, MP3, WebM, ...); 3–10 s works best',
+        },
+        {
+          name: 'transcript',
+          type: 'string',
+          required: false,
+          desc: 'What the recording says, word for word: the closest likeness. Without it the voice is cloned cross-lingually and the recording may be in any language',
+        },
+      ],
+    },
+    {
+      method: 'DELETE',
+      path: '/v1/audio/voices/{name}',
+      description:
+        'CosyVoice 3 only: remove a voice and its recording. The built-in voice cannot be removed (400); an unknown name answers 404.',
     },
   ],
   sampleCode: [

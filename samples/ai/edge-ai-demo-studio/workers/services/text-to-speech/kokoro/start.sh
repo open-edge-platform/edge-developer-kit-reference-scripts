@@ -12,11 +12,11 @@ done
 # shellcheck source=SCRIPTDIR/../../../scripts/worker-common.sh
 . "$WORKERS_ROOT/scripts/worker-common.sh"
 
-# Vendors hexgrad/kokoro (pinned in workers/oep-services.json, kokoro.patch applied) into ./kokoro;
+# Vendors hexgrad/kokoro (pinned in workers/upstream.json, kokoro.patch applied) into ./kokoro;
 # cheap when it is already there.
 require_uv
-oep_fetch services/text-to-speech/kokoro
-oep_fetch common/downloader
+upstream_fetch services/text-to-speech/kokoro
+upstream_fetch common/downloader
 
 # Same directory main.py uses: <app_root>/models/tts/kokoro.
 MODEL_DIR="$(realpath -m "$MODELS_DIR/tts/kokoro")"

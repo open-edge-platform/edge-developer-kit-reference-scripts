@@ -7,15 +7,16 @@ model converts in [`../ovms-export`](../ovms-export).
 No optimum-intel release exports the Hugging Face-native Qwen3-ASR yet. The
 export lives on the `add-qwen3-asr-hf-and-forced-aligner` branch of
 [openvino-dev-samples/optimum-intel](https://github.com/openvino-dev-samples/optimum-intel)
-and needs transformers 5.13, while `ovms-export` stays on optimum-intel 2.1.0
-and transformers 5.5. Rather than swapping packages in and out of one
-environment per selected model, this is a second pinned environment:
+and needs transformers 5.13, while `ovms-export` runs OVMS's own requirements:
+optimum-intel 2.2.0 on transformers 5.5. Rather than swapping packages in and
+out of one environment per selected model, this is a second environment:
 
 | | |
 |---|---|
-| optimum-intel | the fork at the commit pinned in `workers/oep-services.json` (`sources`, `keep_root`), copied into `./thirdparty/optimum-intel` and taken by path — no git dependency |
+| optimum-intel | the fork at the commit pinned in `workers/upstream.json` (`sources`, `keep_root`), copied into `./thirdparty/optimum-intel` and taken by path — no git dependency |
 | transformers | `>=5.13.1,<5.14` (the fork's ceiling), optimum 2.2 |
-| shared builds | torch 2.13.0+cpu, torchvision 0.28.0, openvino / openvino-tokenizers 2026.2.1, nncf 3.2.0, numpy 2.4.6 — the same as `ovms-export`, so uv hard-links them and only ~100 MB is really added |
+| openvino | openvino / openvino-tokenizers at the OVMS release (2026.4.1), which loads the tokenizer IR they write |
+| everything else | as the fork declares it (torch from the CPU index); `uv.lock` holds the versions and the weekly `uv lock --upgrade` moves them |
 
 `model_downloader.ovms` picks this environment from the model id
 (`EXPORT_PROFILES` in `common/downloader/model_downloader/ovms/env.py`;
@@ -30,7 +31,7 @@ repository that is *this* repository's commit, so the version (and `uv.lock`)
 would change on every commit here, and the build fails where git is absent.
 
 ```bash
-./oep-setup.sh fetch common/ovms-export-qwen3-asr          # from workers/
+./upstream-setup.sh fetch common/ovms-export-qwen3-asr          # from workers/
 thirdparty/uv/uv sync --project common/ovms-export-qwen3-asr
 python -m model_downloader ovms-export-env Qwen/Qwen3-ASR-1.7B-hf
 ```

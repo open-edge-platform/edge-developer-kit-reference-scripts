@@ -9,11 +9,11 @@ while (-not (Test-Path (Join-Path $WorkersRoot "scripts\worker-common.ps1"))) {
 }
 . (Join-Path $WorkersRoot "scripts\worker-common.ps1")
 
-# Vendors hexgrad/kokoro (pinned in workers\oep-services.json, kokoro.patch applied) into .\kokoro;
+# Vendors hexgrad/kokoro (pinned in workers\upstream.json, kokoro.patch applied) into .\kokoro;
 # cheap when it is already there.
 Test-UV
-Invoke-OepFetch services/text-to-speech/kokoro
-Invoke-OepFetch common/downloader
+Invoke-UpstreamFetch services/text-to-speech/kokoro
+Invoke-UpstreamFetch common/downloader
 
 # Same directory main.py uses: <app_root>\models\tts\kokoro.
 $MODEL_DIR = [System.IO.Path]::GetFullPath((Join-Path $ModelsDir "\tts\kokoro"))

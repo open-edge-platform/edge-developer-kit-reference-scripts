@@ -69,7 +69,7 @@ function Initialize-ExportEnv {
         return
     }
     Write-Host "$Model converts with $Project; checking that environment..."
-    Invoke-OepFetch $Project
+    Invoke-UpstreamFetch $Project
     & $UvCmd sync --project $ProjectDir
     if ($LASTEXITCODE -ne 0) {
         if ($State -eq "ready") {

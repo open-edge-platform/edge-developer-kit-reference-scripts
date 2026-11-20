@@ -6,9 +6,12 @@
 import type { DemoParam } from '@/types/demo-params'
 import { useDemoParams } from '@/services/common/demo/use-demo-params'
 import {
+  getDialectsForModel,
+  getLanguageHint,
   getLanguagesForModel,
   getTtsCapabilities,
   getVoicesForModel,
+  getVoicesWithAdded,
   ttsFormatLabel,
 } from '../lib/tts-models'
 
@@ -24,26 +27,40 @@ export interface TtsParamValues {
   speed: number
   format: string
   volume: number
+  /** A dialect of the model's to read the text in; absent reads it as written. */
+  dialect?: string
 }
 
 interface UseTtsDemoParamsOptions {
   /** Keeps the settings per instance across demo remounts under a `DemoSessionProvider`. */
   sessionKey?: string
+  /** Offers the model's dialects: only for callers that send `dialect` with each request. */
+  dialects?: boolean
 }
 
-/** Records which model the language and voice were chosen for. */
-interface ParamState extends TtsParamValues {
+/** The dialect option that sends none. */
+const AS_WRITTEN = 'as-written'
+
+/** Records which model the language, voice and dialect were chosen for. */
+interface ParamState extends Omit<TtsParamValues, 'dialect'> {
   model: string
+  dialect: string
 }
 
-function modelStart(model: string): Pick<ParamState, 'language' | 'voice'> {
+function modelStart(
+  model: string,
+): Pick<ParamState, 'language' | 'voice' | 'dialect'> {
   return {
     language: getLanguagesForModel(model)[0]?.value ?? '',
     voice: getVoicesForModel(model)[0]?.id ?? '',
+    dialect: AS_WRITTEN,
   }
 }
 
-/** The TTS settings `model` supports and their controls; `voiceDownloadMap` marks uncached voices. */
+/**
+ * The TTS settings `model` supports and their controls. `voiceDownloadMap` (the worker's voice list)
+ * marks uncached voices and adds the voices cloned on a cloning model's worker.
+ */
 export function useTtsDemoParams(
   model: string,
   voiceDownloadMap?: Record<string, boolean> | null,
@@ -51,9 +68,11 @@ export function useTtsDemoParams(
 ): {
   values: TtsParamValues
   params: DemoParam[]
+  /** Picks `voice`, also one the worker does not list yet (it is used once it does). */
+  selectVoice: (voice: string) => void
 } {
   const languages = getLanguagesForModel(model)
-  const allVoices = getVoicesForModel(model)
+  const allVoices = getVoicesWithAdded(model, voiceDownloadMap)
   const capabilities = getTtsCapabilities(model)
 
   const { values: state, set } = useDemoParams<ParamState>(
@@ -74,6 +93,7 @@ export function useTtsDemoParams(
     set('model', model)
     set('language', start.language)
     set('voice', start.voice)
+    set('dialect', start.dialect)
   }
 
   const voiceOptions = (
@@ -100,12 +120,19 @@ export function useTtsDemoParams(
     ? format
     : capabilities.formats[0]
 
+  // A dialect the model lacks (or none kept from an older session) reads the text as written.
+  const dialects = options?.dialects ? getDialectsForModel(model, language) : []
+  const effectiveDialect = dialects.some((d) => d.id === state.dialect)
+    ? state.dialect
+    : AS_WRITTEN
+
   const values: TtsParamValues = {
     language,
     voice: effectiveVoice,
     speed: capabilities.speed ? speed : TTS_DEFAULTS.speed,
     format: effectiveFormat,
     volume: capabilities.volume ? volume : TTS_DEFAULTS.volume,
+    ...(effectiveDialect !== AS_WRITTEN && { dialect: effectiveDialect }),
   }
 
   const selectedVoiceNotCached =
@@ -123,6 +150,7 @@ export function useTtsDemoParams(
             value: language,
             options: languages,
             onChange: (v: string) => set('language', v),
+            hint: getLanguageHint(model, language),
           },
         ]
       : []),
@@ -138,6 +166,23 @@ export function useTtsDemoParams(
             hint: selectedVoiceNotCached
               ? 'Voice not cached — first synthesis may be slow while the model downloads.'
               : undefined,
+          },
+        ]
+      : []),
+    ...(dialects.length > 0
+      ? [
+          {
+            type: 'select' as const,
+            id: 'dialect',
+            label: 'Dialect',
+            tooltip:
+              'Reads Chinese text in this dialect, in the voice picked. As written reads every language the way the text has it.',
+            value: effectiveDialect,
+            options: [
+              { value: AS_WRITTEN, label: 'As written' },
+              ...dialects.map((d) => ({ value: d.id, label: d.label })),
+            ],
+            onChange: (v: string) => set('dialect', v),
           },
         ]
       : []),
@@ -183,5 +228,5 @@ export function useTtsDemoParams(
       : []),
   ]
 
-  return { values, params }
+  return { values, params, selectVoice: (v: string) => set('voice', v) }
 }

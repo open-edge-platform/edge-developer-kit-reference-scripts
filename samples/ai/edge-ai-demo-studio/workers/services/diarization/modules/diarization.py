@@ -176,22 +176,61 @@ def compute_diarization(
     unknown_label: str,
     num_speakers: Optional[int],
     speaker_match_threshold: Optional[float] = None,
+    min_speakers: Optional[int] = None,
+    max_speakers: Optional[int] = None,
     progress: Optional[Callable[[str, float], None]] = None,
 ) -> dict:
     """Diarization on the pipeline thread; ``progress(stage, fraction)`` gets the job's fraction."""
+    tracker = PipelineProgress(progress) if progress else None
+    if tracker:
+        tracker.stage("decoding")
+    return diarize_input(
+        pipeline,
+        prepare_audio_input(audio_bytes),
+        reference_embedding,
+        reference_label,
+        other_label,
+        speaker_profiles,
+        unknown_label,
+        num_speakers,
+        speaker_match_threshold,
+        min_speakers,
+        max_speakers,
+        progress,
+    )
+
+
+def diarize_input(
+    pipeline,
+    audio_input: dict,
+    reference_embedding: Optional[str],
+    reference_label: str,
+    other_label: str,
+    speaker_profiles: Optional[str],
+    unknown_label: str,
+    num_speakers: Optional[int],
+    speaker_match_threshold: Optional[float] = None,
+    min_speakers: Optional[int] = None,
+    max_speakers: Optional[int] = None,
+    progress: Optional[Callable[[str, float], None]] = None,
+) -> dict:
+    """``compute_diarization`` of decoded audio (pyannote's ``{"waveform", "sample_rate"}``)."""
     threshold = (
         speaker_match_threshold
         if speaker_match_threshold is not None
         else SPEAKER_MATCH_THRESHOLD
     )
     tracker = PipelineProgress(progress) if progress else None
-    if tracker:
-        tracker.stage("decoding")
-    audio_input = prepare_audio_input(audio_bytes)
 
     diarize_kwargs = {}
+    # A fixed count overrides the bounds.
     if num_speakers is not None:
         diarize_kwargs["num_speakers"] = num_speakers
+    else:
+        if min_speakers is not None:
+            diarize_kwargs["min_speakers"] = min_speakers
+        if max_speakers is not None:
+            diarize_kwargs["max_speakers"] = max_speakers
     if tracker:
         tracker.stage("segmentation")
         diarize_kwargs["hook"] = tracker

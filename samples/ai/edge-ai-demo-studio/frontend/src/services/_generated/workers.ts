@@ -18,6 +18,7 @@ import { worker as frameGenerationWorker } from '../frame-generation/data'
 import { worker as getiClassifierWorker } from '../geti-classifier/data'
 import { worker as imageBasedVideoSearchWorker } from '../suites/metro-ai-suite/image-based-video-search/data'
 import { worker as imageGenerationWorker } from '../image-generation/data'
+import { worker as imageUpscalingWorker } from '../image-upscaling/data'
 import { worker as lipsyncWorker } from '../lipsync/data'
 import { worker as lossPreventionWorker } from '../suites/retail-ai-suite/loss-prevention/data'
 import { worker as medicalScribeDatabaseWorker } from '../medical-scribe-database/data'
@@ -29,6 +30,7 @@ import { worker as speechToTextWorker } from '../speech-to-text/data'
 import { worker as syntheticImageGenerationWorker } from '../synthetic-image-generation/data'
 import { worker as textToSpeechWorker } from '../text-to-speech/data'
 import { worker as vectordbWorker } from '../vectordb/data'
+import { worker as videoGenerationWorker } from '../video-generation/data'
 import { worker as wakeWordDetectionWorker } from '../wake-word-detection/data'
 
 /** Worker configuration registry keyed by Payload service type. */
@@ -43,6 +45,7 @@ const workerRegistry: Partial<Record<Service['type'], WorkerConfig>> = {
   'geti-classifier': getiClassifierWorker,
   'image-based-video-search': imageBasedVideoSearchWorker,
   'image-generation': imageGenerationWorker,
+  'image-upscaling': imageUpscalingWorker,
   lipsync: lipsyncWorker,
   'loss-prevention': lossPreventionWorker,
   'medical-scribe-database': medicalScribeDatabaseWorker,
@@ -54,6 +57,7 @@ const workerRegistry: Partial<Record<Service['type'], WorkerConfig>> = {
   'synthetic-image-generation': syntheticImageGenerationWorker,
   'text-to-speech': textToSpeechWorker,
   vectordb: vectordbWorker,
+  'video-generation': videoGenerationWorker,
   'wake-word-detection': wakeWordDetectionWorker,
 }
 

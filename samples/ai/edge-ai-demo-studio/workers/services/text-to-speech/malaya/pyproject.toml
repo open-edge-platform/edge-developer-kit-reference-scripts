@@ -1,4 +1,4 @@
-# malaya and malaya_speech are vendored here (workers/oep-services.json "sources") since no PyPI
+# malaya and malaya_speech are vendored here (workers/upstream.json "sources") since no PyPI
 # release has the VITS code used here; their dependencies are listed below instead.
 [project]
 name = "malayatts"
@@ -12,12 +12,12 @@ dependencies = [
     "fastapi[standard]>=0.120.1",
     "markupsafe>=2.1.5",
     "modelscope>=1.34.0",
-    "openvino==2026.2.1",
+    "openvino==2026.4.1",
     "psutil>=7.1.0",
     "pysastrawi>=1.2.0",
-    "torch==2.13.0",
-    "torchaudio==2.11.0",
-    "torchvision==0.28.0",
+    "torch==2.15.0",
+    "torchaudio==2.11.1",
+    "torchvision==0.29.2",
     # The vendored packages' setup.py requirements, without the dataclasses backport.
     "dateparser",
     "ftfy",

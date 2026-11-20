@@ -13,6 +13,7 @@ import type { Service } from '@/services/types'
 import { getEffectiveModel } from '@/types/service'
 import {
   getSttBackend,
+  getSttDefaultModel,
   getSttServiceConfig,
   isSttModelSupported,
   STT_BACKEND_OPTIONS,
@@ -35,7 +36,7 @@ const SETTING_DESCRIPTIONS: SettingDescriptions = {
 
 /**
  * Starting model draft on a backend other than the saved one: keeps the saved model and source
- * where that backend supports them, else the default model and Hugging Face.
+ * where that backend supports them, else the backend's default model and Hugging Face.
  */
 function startModelOn(
   service: Service,
@@ -49,7 +50,7 @@ function startModelOn(
   const keepSource = !saved.source || sources.includes(saved.source)
   if (keepModel && keepSource) return undefined
   return {
-    ...(!keepModel && { name: service.defaultModel?.name }),
+    ...(!keepModel && { name: getSttDefaultModel(backend) }),
     ...(!keepSource && { source: 'huggingface' as const }),
   }
 }

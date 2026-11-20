@@ -13,9 +13,9 @@ export const service: ServiceMeta = {
   name: 'Text to Speech',
   multiInstance: true,
   description:
-    'Natural-sounding speech synthesis with multiple voice options powered by Kokoro, Piper, Malaya, Pocket TTS, VieNeu-TTS, FastSpeech2 HS and SpeechT5 from the Open Edge Platform.',
+    'Natural-sounding speech synthesis with multiple voice options powered by Kokoro, Piper, Malaya, Pocket TTS, VieNeu-TTS, FastSpeech2 HS, CosyVoice 3 and SpeechT5 from the Open Edge Platform.',
   longDescription:
-    'Neural text-to-speech engine producing natural, expressive speech. Supports Kokoro (Multilingual, OpenVINO), Piper (Multilingual, OpenVINO), Malaya (Malay, OpenVINO), Pocket TTS (Indonesian, OpenVINO), VieNeu-TTS v3 Turbo (Vietnamese, ONNX Runtime) and FastSpeech2 HS (Tamil, OpenVINO) as built-in workers, plus SpeechT5 (English, OpenVINO) from the Open Edge Platform text-to-speech microservice, run natively. Offers multiple voices, adjustable speed, streaming audio output and multiple audio formats where the selected model supports them.',
+    'Neural text-to-speech engine producing natural, expressive speech. Supports Kokoro (Multilingual, OpenVINO), Piper (Multilingual, OpenVINO), Malaya (OpenVINO), Pocket TTS (Multilingual, OpenVINO), VieNeu-TTS v3 Turbo (ONNX Runtime), FastSpeech2 HS (OpenVINO) and CosyVoice 3 (Multilingual, languages also mixed in one sentence, Chinese also read in 17 dialects such as Cantonese and Hokkien, with zero-shot voice cloning from a short recording: a built-in voice, the Mandarin-speaking sample speaker CosyVoice ships, plus any added in the demo, over the API or to models/tts/cosyvoice3/voices; OpenVINO, faster than real time on a discrete GPU, a CPU or an integrated GPU) as built-in workers, plus SpeechT5 (English, OpenVINO) from the Open Edge Platform text-to-speech microservice, run natively. Offers multiple voices, adjustable speed, streaming audio output and multiple audio formats where the selected model supports them.',
   icon: Volume2,
   supportedOS: ['linux', 'windows'],
   // Text and the last audio stay usable while stopped; there is no live device to release.

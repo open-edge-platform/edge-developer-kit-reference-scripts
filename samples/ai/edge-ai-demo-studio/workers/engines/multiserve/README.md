@@ -179,12 +179,19 @@ Advanced → Server Arguments (`metadata.serverArgs`):
   pulls the model again on every start, which rewrites its `graph.pbtxt` with
   them. A pull that rejects them fails the start with OVMS's reason, instead
   of serving the old graph. A `--plugin_config` is merged with the pinned CPU
-  thread count; a `--tool_parser`, `--pooling` or `--pipeline_type` replaces
-  the engine's own.
+  thread count, or on the NPU with the compile cache (its keys win); a
+  `--tool_parser`, `--pooling` or `--pipeline_type` replaces the engine's own.
 
 Flags the engine sets itself are refused with HTTP 400:
 `modules/extra_args.py` lists them (the port, host and model of llama-server;
 the model, repository, task and device of `ovms --pull`).
+
+Speculative decoding goes in the same field. Gemma 4 E4B's MTP drafter
+(`mtp-gemma-4-E4B-it-Q8_0.gguf` from `ggml-org/gemma-4-E4B-it-GGUF`), for
+instance, takes `-md <its absolute path> --spec-type draft-mtp
+--spec-draft-n-max 3`. The engine does not download a draft model
+(`--hf-repo-draft` is refused), and a path that does not exist stops the
+model from starting.
 
 ## Configuration
 

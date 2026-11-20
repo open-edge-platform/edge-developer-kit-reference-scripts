@@ -5,20 +5,28 @@ import type { ModelOption, Service, ServiceConfig } from '@/services/types'
 import { getEffectiveModel } from '@/types/service'
 
 /**
- * Speech to Text runs on one of two workers under workers/services/speech-to-text/: `oep` (OEP
- * audio-analyzer, Whisper on OpenVINO GenAI) or `ovms` (Whisper and Qwen3-ASR on OVMS). The choice
- * is `metadata.sttBackend` and applies on (re)start; both answer `POST /v1/audio/transcriptions`.
+ * Speech to Text runs on one of three workers under workers/services/speech-to-text/: `oep` (OEP
+ * audio-analyzer, Whisper on OpenVINO GenAI), `ovms` (Whisper and Qwen3-ASR on OVMS) or `meralion`
+ * (MERaLiON-3-3B-ASR on OpenVINO). The choice is `metadata.sttBackend` and applies on (re)start;
+ * all answer `POST /v1/audio/transcriptions`.
  */
 
-export type SttBackendId = 'oep' | 'ovms'
+export type SttBackendId = 'oep' | 'ovms' | 'meralion'
 
 /**
- * Auto-detect language, OVMS only: the worker lets the model detect it (`verbose_json` language is
- * `null`). Upstream OEP takes a missing language as English, so it is not offered there.
+ * Auto-detect language: the model detects it. The OEP worker reports which in `verbose_json`
+ * (`language: "ms"`); OVMS and MERaLiON do not (`language: null`). Upstream OEP takes a missing
+ * language as English, so the app sends this one explicitly.
  */
 export const STT_AUTO_LANGUAGE = 'auto'
 
-const DEFAULT_STT_BACKEND: SttBackendId = 'oep'
+const DEFAULT_STT_BACKEND: SttBackendId = 'ovms'
+
+/** The model a new instance starts on (Whisper runs on the OEP and OVMS backends). */
+export const DEFAULT_STT_MODEL = 'openai/whisper-base'
+
+/** The MERaLiON backend's one model; it serves no other. */
+const MERALION_ASR_MODEL = 'MERaLiON/MERaLiON-3-3B-ASR'
 
 export interface SttBackendOption {
   value: SttBackendId
@@ -39,10 +47,16 @@ export const STT_BACKEND_OPTIONS: SttBackendOption[] = [
     description:
       'Built-in worker: Whisper and Qwen3-ASR served by OpenVINO Model Server. Batch transcription and translation to English with optional noise suppression, and live microphone transcription over /v1/audio/stream.',
   },
+  {
+    value: 'meralion',
+    label: 'MERaLiON',
+    description:
+      'Built-in worker: MERaLiON-3-3B-ASR (A*STAR) on OpenVINO for Singapore and Southeast Asian speech: English with Singlish, Mandarin, Malay, Tamil, Indonesian, Thai, Vietnamese, Cantonese, Hokkien and code-switching between them. It detects the language itself. Batch transcription only (no translation or streaming responses), and live microphone transcription over /v1/audio/stream.',
+  },
 ]
 
 function isSttBackend(value: unknown): value is SttBackendId {
-  return value === 'oep' || value === 'ovms'
+  return value === 'oep' || value === 'ovms' || value === 'meralion'
 }
 
 export function getSttBackend(
@@ -105,13 +119,41 @@ const OVMS_ONLY_MODELS: ModelOption[] = [
   },
 ]
 
-/** Rules out only the OVMS-only presets on OEP; custom ids are left to the worker. */
+/**
+ * MERaLiON-3-3B-ASR (A*STAR I2R, MERaLiON Public Licence), exported to OpenVINO on first start: a
+ * 6.6 GB download, then about 2 minutes and 20 GB of RAM. Measured int8 on a Core Ultra 9 285K: an
+ * Arc Pro B60 transcribes about 22x real time, the CPU 1.9x, the iGPU 1.6x. On the NPU only the speech
+ * encoder runs there (about 70 s to compile on the first start, cached after) and the decoder on
+ * the CPU, about 1.9x.
+ */
+const MERALION_MODELS: ModelOption[] = [
+  {
+    value: MERALION_ASR_MODEL,
+    label: 'MERaLiON-3 3B ASR',
+    availableDevices: ['AUTO', 'CPU', 'GPU', 'NPU'],
+    availableWeightFormats: ['int8', 'int4'],
+    backend: 'openvino',
+  },
+]
+
+/**
+ * The MERaLiON backend runs MERaLiON-3-3B-ASR alone, which no other backend runs. Otherwise rules
+ * out only the OVMS-only presets on OEP; custom ids are left to the worker.
+ */
 export function isSttModelSupported(
   backend: SttBackendId,
   model: string | undefined | null,
 ): boolean {
-  if (!model || backend === 'ovms') return true
+  if (!model) return true
+  if (backend === 'meralion') return model === MERALION_ASR_MODEL
+  if (model === MERALION_ASR_MODEL) return false
+  if (backend === 'ovms') return true
   return !OVMS_ONLY_MODELS.some((m) => m.value === model)
+}
+
+/** The model a backend starts on when it cannot run the saved one. */
+export function getSttDefaultModel(backend: SttBackendId): string {
+  return backend === 'meralion' ? MERALION_ASR_MODEL : DEFAULT_STT_MODEL
 }
 
 /** First-start `--weight-format`; int8 is a quarter of fp32's size, near-identical transcripts. */
@@ -124,6 +166,16 @@ const STT_PRECISIONS: Pick<
 }
 
 export function getSttServiceConfig(backend: SttBackendId): ServiceConfig {
+  if (backend === 'meralion') {
+    // int4 decoder weights are faster on a GPU and less accurate.
+    return {
+      availableModels: MERALION_MODELS,
+      availableModelSources: [{ value: 'huggingface', label: 'Hugging Face' }],
+      supportsCustomModel: false,
+      availableWeightFormats: ['int8', 'int4'],
+      defaultWeightFormat: 'int8',
+    }
+  }
   if (backend === 'ovms') {
     return {
       availableModels: [...OVMS_ONLY_MODELS, ...WHISPER_MODEL_OPTIONS],
@@ -143,15 +195,19 @@ export function getSttServiceConfig(backend: SttBackendId): ServiceConfig {
   }
 }
 
-/** Static config (deployment.json docs, seeding): the union of both backends. */
+/** Static config (deployment.json docs, seeding): the union of the backends. */
 export const serviceConfig: ServiceConfig = {
-  availableModels: [...OVMS_ONLY_MODELS, ...WHISPER_MODEL_OPTIONS],
+  availableModels: [
+    ...OVMS_ONLY_MODELS,
+    ...WHISPER_MODEL_OPTIONS,
+    ...MERALION_MODELS,
+  ],
   availableModelSources: [{ value: 'huggingface', label: 'Hugging Face' }],
   supportsCustomModel: true,
   ...STT_PRECISIONS,
 }
 
-/** What a backend adds to batch transcription (both also offer live transcription). */
+/** What a backend adds to batch transcription (all also offer live transcription). */
 export interface SttCapabilities {
   backend: SttBackendId
   /** `stream=true` SSE and the NDJSON `/v1/audio/transcriptions/stream`. */
@@ -175,6 +231,16 @@ export function getSttCapabilities(
   service: Pick<Service, 'metadata' | 'applied'> | undefined,
 ): SttCapabilities {
   const backend = getRunningSttBackend(service)
+  if (backend === 'meralion') {
+    // The model always detects the language; `language` is accepted and ignored.
+    return {
+      backend,
+      streaming: false,
+      denoise: false,
+      translation: false,
+      autoLanguage: true,
+    }
+  }
   if (backend === 'ovms') {
     return {
       backend,
@@ -184,12 +250,13 @@ export function getSttCapabilities(
       autoLanguage: true,
     }
   }
+  // The worker turns `auto` into Whisper's own detection (oep/main.py), which upstream lacks.
   return {
     backend,
     streaming: true,
     denoise: false,
     translation: false,
-    autoLanguage: false,
+    autoLanguage: true,
   }
 }
 
@@ -214,14 +281,22 @@ export function isSttVadSensitivity(value: string): value is SttVadSensitivity {
 
 /**
  * VAD threshold per sensitivity; `normal` is the worker default. OEP compares a 30 ms frame's RMS
- * (0–1), OVMS's Silero a speech probability (0–1). Lower hears quieter speech, and more noise.
+ * (0–1), the OVMS and MERaLiON workers' Silero a speech probability (0–1). Lower hears quieter
+ * speech, and more noise.
  */
+const SILERO_VAD_THRESHOLDS: Record<SttVadSensitivity, number> = {
+  low: 0.65,
+  normal: 0.5,
+  high: 0.35,
+}
+
 const STT_VAD_THRESHOLDS: Record<
   SttBackendId,
   Record<SttVadSensitivity, number>
 > = {
   oep: { low: 0.04, normal: 0.02, high: 0.01 },
-  ovms: { low: 0.65, normal: 0.5, high: 0.35 },
+  ovms: SILERO_VAD_THRESHOLDS,
+  meralion: SILERO_VAD_THRESHOLDS,
 }
 
 export function getSttVadThreshold(
@@ -381,18 +456,22 @@ export interface SttLanguageOption {
 
 /**
  * Languages `model` transcribes, sorted by name, after Auto-detect when `autoLanguage`; a custom
- * model id counts as Whisper.
+ * model id counts as Whisper. None for MERaLiON-3-3B-ASR, which always detects the language
+ * (Auto-detect is its only choice).
  */
 export function getSttLanguageOptions(
   model: string | undefined,
   autoLanguage = false,
 ): SttLanguageOption[] {
   const id = (model ?? '').toLowerCase()
-  const codes = id.includes('qwen3-asr')
-    ? QWEN3_ASR_LANGUAGES
-    : id.includes('large-v3')
-      ? [...WHISPER_LANGUAGES, 'yue']
-      : WHISPER_LANGUAGES
+  const codes =
+    model === MERALION_ASR_MODEL
+      ? []
+      : id.includes('qwen3-asr')
+        ? QWEN3_ASR_LANGUAGES
+        : id.includes('large-v3')
+          ? [...WHISPER_LANGUAGES, 'yue']
+          : WHISPER_LANGUAGES
   const languages = codes
     .map((code) => ({ value: code, label: LANGUAGE_NAMES[code] }))
     .sort((a, b) => a.label.localeCompare(b.label))
@@ -412,7 +491,7 @@ export function getServiceSttLanguageOptions(
 }
 
 /**
- * `language` if offered, else Auto-detect where offered, else English (every model knows it; both
+ * `language` if offered, else Auto-detect where offered, else English (every model knows it; the
  * workers default to it). With no `language`, the default.
  */
 export function resolveSttLanguage(

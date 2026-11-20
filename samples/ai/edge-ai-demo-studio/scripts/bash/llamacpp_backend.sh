@@ -13,8 +13,9 @@ LLAMACPP_RELEASE_BASE_URL="https://github.com/ggml-org/llama.cpp/releases/downlo
 
 # The SYCL build links against the Intel SYCL runtime, which this workers/pyproject.toml
 # group installs from wheels into workers/.venv/lib (not the oneAPI Toolkit). b11540 was
-# linked against oneAPI 2026.1 and runs on those 2026.0 wheels. When bumping
-# LLAMACPP_VERSION, re-read `readelf -d libggml-sycl.so` and update SYCL_RUNTIME_LIBS.
+# linked against oneAPI 2026.1, the wheels' release since torch 2.15 (it ran on 2026.0 too).
+# When bumping LLAMACPP_VERSION, re-read `readelf -d libggml-sycl.so` and update
+# SYCL_RUNTIME_LIBS, and add the new release's hashes to lb_llamacpp_sha256.
 LLAMACPP_SYCL_GROUP="llamacpp-sycl"
 
 # Runtime libraries libggml-sycl.so links against (from `readelf -d`).
@@ -233,6 +234,22 @@ lb_llamacpp_asset() {
 # lb_llamacpp_url <backend> [precision]
 lb_llamacpp_url() {
     echo "$LLAMACPP_RELEASE_BASE_URL/$LLAMACPP_VERSION/$(lb_llamacpp_asset "$@")"
+}
+
+# lb_llamacpp_sha256 <backend> [precision] - the SHA-256 the download must match (GitHub's digest of
+# the release asset, see thirdparty_integrity.sh). A LLAMACPP_VERSION without its hashes here is not
+# installed: add them when bumping it.
+lb_llamacpp_sha256() {
+    case "$(lb_llamacpp_asset "$@")" in
+        llama-b11540-bin-ubuntu-vulkan-x64.tar.gz)
+            echo "d639b4b98d0c028e17ace64caaa9b881937b98da433840efd0316d560ee92e8f" ;;
+        llama-b11540-bin-ubuntu-sycl-fp16-x64.tar.gz)
+            echo "057077b39971dde1ddf30f345e2c0a9138f1452e5df45280adfa2b644d60459d" ;;
+        llama-b11540-bin-ubuntu-sycl-fp32-x64.tar.gz)
+            echo "26a8f87b51add33be73ad7d94f0c942f6cc8336d2f38170f66438113803f6ca1" ;;
+        *)
+            return 1 ;;
+    esac
 }
 
 # lb_engine_dir <backend> - directory name expected by multiserve's
