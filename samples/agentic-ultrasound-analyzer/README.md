@@ -9,7 +9,8 @@
   - [Validated Hardware](#validated-hardware)  
   - [Validated Software](#validated-software)  
   - [Latency Benchmark Summary](#latency-benchmark-summary)  
-- [Get Started](#get-started)  
+- [Get Started](#get-started)
+  - [Prerequisites](#prerequisites)  
   - [Windows](#windows)  
   - [Linux](#linux)
 
@@ -77,8 +78,50 @@ The system is deployed within a **Intel® Core™ Ultra-based edge device**.
 ### Prerequisites
 | OS | Tools |
 |--------------|-------------------------------------------|
-| Windows 11   | Docker Desktop or WSL2, Python: 3.12-3.14 |
+| Windows 11   | [Docker Desktop](https://docs.docker.com/desktop/setup/install/windows-install/) or WSL2, Python: 3.12-3.14 |
 | Ubuntu 24.04 | Docker, Python: 3.12-3.14 |  
+
+#### Preparing Models
+##### Report Generation Model
+Run the following steps after installing the application dependencies.
+- Accept MedGemma's license on Hugging Face using your account   
+To access [MedGemma-1.5-4b-it](https://huggingface.co/google/medgemma-1.5-4b-it) model, make sure that you have an account on Hugging Face, accept the license on the model card and create your access token. Login with your Hugging Face account using the access token as below.
+```
+hf auth login
+``` 
+- Convert model into OpenVINO's intermediate represenation format with INT4 precision
+```
+cd scripts
+optimum-cli export openvino --model google/medgemma-1.5-4b-it --weight-format int4 --ratio 1.0 --group-size 128 models/medgemma-1.5-4b-it-ov-int4
+```
+##### Fetal Ultrasound Analysis Model
+- Download FetalCLIP model weights
+```
+hf download numansaeed/fetalclip-model FetalCLIP_weights.pt --local-dir common/fetalclip
+```
+- Convert FetalCLIP into OpenVINO's intermediate representation format
+```
+python common/fetalclip/export_openvino.py --output-model-path models/fetalclip-ov-fp16/fetalclip_image_encoder.xml
+```
+##### Ultrasound Analysis Model
+- Download EchoVLM_v2 model
+```
+hf download chaoyinshe/EchoVLM_v2 --local-dir models/echovlm-v2
+```
+- Set mtp_num_hidden_layers to 0 in models/echovlm-v2/config.json
+
+- Install model-specific depdencies in the existing virtual environment
+```
+pip install --force-reinstall "optimum[openvino]==2.3.0" "transformers==5.2.0"
+```
+- Convert EchoVLM_v2 into OpenVINO's intermediate represenation format with INT4 precision
+```
+optimum-cli export openvino --model models/echovlm-v2 --weight-format int4 --ratio 1.0 --group-size 128 --task image-text-to-text models/echovlm-v2-ov-int4
+```
+- Revert back optimum and transformers to the latest version
+```
+pip install --force-reinstall "optimum-intel[openvino] @ git+https://github.com/huggingface/optimum-intel.git@2092b03709e72a73ec097c7ef61da620cced6963" "transformers>=5.15,<5.16"
+```
 
 ### Installation 
 #### Windows  
@@ -87,7 +130,7 @@ Follow the setup steps in sequence:
 1) Install dependencies
 ```
 .\install_dependencies.bat
-```   
+```
 2) Start backend server
 ```
 cd scripts
