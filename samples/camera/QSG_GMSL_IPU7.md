@@ -56,6 +56,10 @@ BIOS options are platform-specific. Configure the platform BIOS to enable the IP
 
 1. Ensure you follow this guide [Intel® Core™ Ultra Processors (Series 3) RDC](https://cdrdv2.intel.com/v1/dl/getContent/858119/view) to boot up the system. 
 
+### Optional: Custom SSDT Overlay
+For Innodisk Panther Island + Servoss Mountain with RealSense D457 GMSL, follow the zero-touch setup and verification guide here::
+- [GMSL Custom ACPI SSDT Overlay Guide (RealSense D457)](./GMSL_SSDT_OVERLAY_GUIDE.md)
+
 After reboot, perform basic checks:
 
 ```bash
