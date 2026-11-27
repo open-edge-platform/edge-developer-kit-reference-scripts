@@ -13,6 +13,17 @@ export const MCP_SKILLS = {
     title: 'Replicate a scene from photos',
     description:
       'Build and check a scene that matches photos of a real robot workspace for a task, using the scene-builder tools.',
+    photosArgument: 'Which attached photos to match, and anything they do not show.',
+    missingInput: 'Ask the user for the photo(s) and the task before starting.',
+  },
+  replicate_from_dataset: {
+    file: 'replicate-from-dataset',
+    title: 'Replicate a scene from a robot recording',
+    description:
+      'Rebuild the workspace of a real robot recording (a shared LeRobot v3 dataset) in simulation: cameras, layout, objects, and start pose, scored against the recorded frames.',
+    photosArgument: 'Anything the recording does not show, such as object sizes or the table size.',
+    missingInput:
+      'Call list_datasets; if no dataset is shared, ask the user to share the recording zip in the MCP dialog.',
   },
 } as const;
 
@@ -31,8 +42,13 @@ export async function readSkill(name: McpSkillName, root = integrationPath()): P
     .trim();
 }
 
-/** The prompt text: the skill, then the user's task and photo notes when given. */
-export function skillPrompt(skill: string, task?: string, photos?: string): string {
+/** The prompt text: the skill, then the user's task and notes when given. */
+export function skillPrompt(
+  skill: string,
+  task?: string,
+  photos?: string,
+  missingInput: string = MCP_SKILLS.replicate_scene.missingInput,
+): string {
   const trimmedTask = task?.trim();
   const trimmedPhotos = photos?.trim();
   const request = [
@@ -41,5 +57,5 @@ export function skillPrompt(skill: string, task?: string, photos?: string): stri
   ].filter(Boolean);
   return request.length
     ? `${skill}\n\n## This request\n\n${request.join('\n')}`
-    : `${skill}\n\n## This request\n\nAsk the user for the photo(s) and the task before starting.`;
+    : `${skill}\n\n## This request\n\n${missingInput}`;
 }

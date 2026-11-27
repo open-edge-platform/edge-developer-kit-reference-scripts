@@ -137,7 +137,7 @@ function floorHeight(z: Float64Array): number {
 }
 
 /** Root bodies with at least two non-free joints: robot arms, by their first joint's position. */
-function robotBases(simulation: Simulation): [number, number][] {
+export function robotBases(simulation: Simulation): [number, number][] {
   const model = simulation.model;
   const rootOf = model.body_rootid as Int32Array;
   const jointBody = model.jnt_bodyid as Int32Array;

@@ -23,7 +23,7 @@ readonly ENV_FILE='.env'
 readonly ENV_TEMPLATE='.env.example'
 readonly MIN_PASSWORD_LENGTH=12
 readonly PYTHON_PROJECT='integrations/python'
-readonly PYTHON_EXTRAS=(--extra teleoperation --extra test --extra obj2mjcf)
+readonly PYTHON_EXTRAS=(--extra teleoperation --extra test --extra obj2mjcf --extra usd)
 readonly TRELLIS_REPOSITORY='https://github.com/microsoft/trellis.2.git'
 readonly TRELLIS_COMMIT='75fbf0183001ed9876c8dbb35de6b68552ee08bd'
 readonly TRELLIS_PROJECT='services/trellis2-runtime'
@@ -324,11 +324,11 @@ NODE
 
 # Fills an empty or missing PAYLOAD_SECRET in an existing root .env.
 ensure_payload_secret() {
-  ENV_FILE="$ENV_FILE" node <<'NODE'
+  SETUP_ENV_FILE="$ENV_FILE" node <<'NODE'
 const fs = require('node:fs');
 const { randomBytes } = require('node:crypto');
 
-const file = process.env.ENV_FILE;
+const file = process.env.SETUP_ENV_FILE;
 const env = fs.readFileSync(file, 'utf8');
 if (/^PAYLOAD_SECRET=[ \t]*\S/m.test(env)) process.exit(0);
 

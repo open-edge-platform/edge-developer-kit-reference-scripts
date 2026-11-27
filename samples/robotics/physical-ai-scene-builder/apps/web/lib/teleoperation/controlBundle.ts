@@ -95,6 +95,8 @@ export async function readControlBundle(
         ['README.md', path.join(examplesRoot, 'README.md')],
         ['pyproject.toml', path.join(integrationRoot, 'pyproject.toml')],
         ['uv.lock', path.join(integrationRoot, 'uv.lock')],
+        // Makes uv pick Python 3.13 (see the requires-python comment in pyproject.toml).
+        ['.python-version', path.join(integrationRoot, '.python-version')],
         ...CONTROL_EXAMPLE_FILES.map((name) => [name, path.join(examplesRoot, name)]),
       ].map(async ([name, source]) => {
         const contents = await readFile(/* turbopackIgnore: true */ source, 'utf8');

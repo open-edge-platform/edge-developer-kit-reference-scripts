@@ -51,6 +51,7 @@ from robotic_studio.robots.so101 import (
     EpisodeOutcome,
     PickPlaceTask,
     PickPlaceTuning,
+    REST_POSE_DEGREES,
     check_reachability,
     check_scene,
     record_episode,
@@ -60,15 +61,8 @@ from robotic_studio.robots.so101 import (
 # the task. The Generate panel shows the same number.
 RECOMMENDED_TRAINING_STATES = 100
 
-# Joint angles in degrees.
-DEFAULT_HOME_POSE = {
-    "shoulder_pan": 0.0,
-    "shoulder_lift": -100.0,
-    "elbow_flex": 86.85,
-    "wrist_flex": 70.92,
-    "wrist_roll": -90.00,
-    "gripper": 0.0,
-}
+# Joint angles in degrees; --workers batches always use this pose.
+DEFAULT_HOME_POSE = dict(REST_POSE_DEGREES)
 
 
 def parse_home_pose(text: str) -> dict[str, float]:

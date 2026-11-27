@@ -5,6 +5,7 @@ import { z } from 'zod';
 
 import { connectEditor, disconnect, pollEditor, setExposedTools } from '@/lib/mcp/bridge';
 import { exposedToolsSchema } from '@/lib/mcp/contracts';
+import { listDatasets } from '@/lib/mcp/datasets';
 import { listImageJobs, listImages } from '@/lib/mcp/imageJobs';
 import { bearerToken, checkMcpOrigin } from '@/lib/mcp/http';
 
@@ -39,6 +40,7 @@ export async function POST(request: Request) {
         command: pollEditor(editorToken, body.data.completion),
         images: listImages(editorToken),
         jobs: listImageJobs(editorToken),
+        datasets: listDatasets(editorToken),
       },
       { headers: { 'Cache-Control': 'no-store' } },
     );

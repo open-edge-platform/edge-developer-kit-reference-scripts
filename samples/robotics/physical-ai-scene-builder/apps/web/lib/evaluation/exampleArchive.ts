@@ -22,20 +22,24 @@ const EXAMPLE_SCRIPTS = [
 
 export async function buildEvaluationExampleArchive(): Promise<Uint8Array<ArrayBuffer>> {
   const projectRoot = integrationPath();
-  const [readme, exampleSources, projectManifest, lockfile, projectSources] = await Promise.all([
-    readFile(path.join(projectRoot, 'examples', README_FILE), 'utf8'),
-    Promise.all(
-      EXAMPLE_SCRIPTS.map((name) => readFile(path.join(projectRoot, 'examples', name), 'utf8')),
-    ),
-    readFile(path.join(projectRoot, 'pyproject.toml'), 'utf8'),
-    readFile(path.join(projectRoot, 'uv.lock'), 'utf8'),
-    readPythonProjectSources(path.join(projectRoot, 'robotic_studio')),
-  ]);
+  const [readme, exampleSources, projectManifest, lockfile, pythonVersion, projectSources] =
+    await Promise.all([
+      readFile(path.join(projectRoot, 'examples', README_FILE), 'utf8'),
+      Promise.all(
+        EXAMPLE_SCRIPTS.map((name) => readFile(path.join(projectRoot, 'examples', name), 'utf8')),
+      ),
+      readFile(path.join(projectRoot, 'pyproject.toml'), 'utf8'),
+      readFile(path.join(projectRoot, 'uv.lock'), 'utf8'),
+      // Makes uv pick Python 3.13 (see the requires-python comment in pyproject.toml).
+      readFile(path.join(projectRoot, '.python-version'), 'utf8'),
+      readPythonProjectSources(path.join(projectRoot, 'robotic_studio')),
+    ]);
   const encoder = new TextEncoder();
   const files: Zippable = {
     'README.md': encoder.encode(readme),
     'pyproject.toml': encoder.encode(projectManifest),
     'uv.lock': encoder.encode(lockfile),
+    '.python-version': encoder.encode(pythonVersion),
   };
   EXAMPLE_SCRIPTS.forEach((name, index) => {
     files[name] = encoder.encode(exampleSources[index]);

@@ -22,7 +22,7 @@ machine. There is one script for each framework and model type:
 2. Turn on **Stream to external app**. This starts the native worker that runs the scene physics.
    Keep streaming on while evaluating; the script connects to this worker.
 3. Extract the full evaluation archive next to your checkpoint and keep its files together. Run
-   commands from the extracted archive root. The project requires Python 3.12 and `uv`.
+   commands from the extracted archive root. The project requires Linux x86-64, Python 3.12 to 3.14 (uv picks 3.13), and `uv`.
 4. For a server on another LAN machine, use its app address with `--studio-url`. The SDK relays
    commands and camera observations through the app port, so no native worker ports need to be
    opened. The app has no user authentication; use only a trusted LAN.
@@ -90,8 +90,13 @@ uv run --locked python lerobot_evaluate_pi05.py --checkpoint /path/to/pretrained
 uv run --locked python lerobot_evaluate_act.py --checkpoint /path/to/pretrained_model --episodes 10
 ```
 
+Episodes are scored only when the scene streams with a task. Before **Stream to external app**,
+open **Simulate > Task**, turn on **Score episodes**, and choose the object and the target. Without
+a task the scripts stop before the first episode and say so; add `--unscored` to run anyway and
+just watch the policy.
+
 ACT predicts 100 actions (about 3 seconds) at a time. Both ACT scripts use the first
-10, then looks at the cameras again and predicts a fresh chunk, so the arm can correct a grasp that
+10, then look at the cameras again and predicts a fresh chunk, so the arm can correct a grasp that
 starts slightly off. `--temporal-ensemble 0.01` re-plans at every step and blends the overlapping
 predictions (slower); `--action-steps 100` runs each whole chunk without looking.
 

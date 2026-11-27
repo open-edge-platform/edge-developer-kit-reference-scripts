@@ -33,6 +33,7 @@ apps/web/public/mujoco
 /data
 # Local scratch: downloaded archives, training runs, checkpoints
 /temp
+/runs
 
 # Python
 __pycache__

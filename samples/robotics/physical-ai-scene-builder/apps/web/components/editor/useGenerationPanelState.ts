@@ -37,6 +37,7 @@ import {
   readBackdropRenderProgress,
 } from '@/lib/teleoperation/backdropRender';
 import { backdropNotReady } from '@/lib/editor/backdropProfile';
+import { isSessionBusyError } from '@/lib/teleoperation/sessionBusy';
 import { generationSessionProfile, teleoperationProfilesMatch } from '@/lib/teleoperation/profile';
 import { useTeleoperationRuntime } from '../teleoperation/TeleoperationRuntimeProvider';
 import {
@@ -115,7 +116,11 @@ export function useGenerationPanelState({
   const [preparationFailure, setPreparationFailure] = useState<{
     key: string;
     message: string;
+    /** Another session is in use; the user can end it and start here. */
+    busy?: boolean;
   } | null>(null);
+  // Set by "End it and start here": the next preparation may end a session that is in use.
+  const replaceBusyRef = useRef(false);
   const [streamingMessage, setStreamingMessage] = useState<string | null>(null);
   const [deleteStateDialogOpen, setDeleteStateDialogOpen] = useState(false);
   const [deleteStateTarget, setDeleteStateTarget] = useState<Pick<
@@ -187,8 +192,9 @@ export function useGenerationPanelState({
   const removeExtraObject = (body: string) =>
     setExtraObjects(extraObjects.filter((object) => object.body !== body));
   const preparationKey = `${sceneId ?? ''}|${inputConvention}|${activeSourceBody ?? ''}|${sceneXml}`;
-  const generationError =
-    preparationFailure?.key === preparationKey ? preparationFailure.message : null;
+  const currentFailure = preparationFailure?.key === preparationKey ? preparationFailure : null;
+  const generationError = currentFailure && !currentFailure.busy ? currentFailure.message : null;
+  const busySessionWarning = currentFailure?.busy ? currentFailure.message : null;
   const sceneStates = session?.states ?? [];
   const generatedStateCount = sceneStates.filter((state) => state.index > 0).length;
   const generatedCountHint = sceneCountHint(generatedStateCount);
@@ -346,8 +352,10 @@ export function useGenerationPanelState({
     form.append('sceneBundle', new File([archive], `${sceneName}.mujoco-scene`));
     form.append('profile', JSON.stringify(profile));
     setStartingWorker(true);
+    const replaceBusy = replaceBusyRef.current;
+    replaceBusyRef.current = false;
     try {
-      await prepareSession(form);
+      await prepareSession(form, { replaceBusy });
     } finally {
       setStartingWorker(false);
     }
@@ -363,7 +371,7 @@ export function useGenerationPanelState({
       !template ||
       sceneFingerprint === null ||
       sessionMatchesTemplate ||
-      generationError ||
+      currentFailure ||
       isRecording ||
       batchActive ||
       (!session && sessionStartSceneRef.current === sceneId) ||
@@ -393,12 +401,18 @@ export function useGenerationPanelState({
           key,
           message:
             reason instanceof Error ? reason.message : 'Generated scenes could not be loaded.',
+          busy: isSessionBusyError(reason),
         });
       })
       .finally(() => setBusy(false));
   });
 
   function retryPreparation(): void {
+    setPreparationFailure(null);
+  }
+
+  function replaceBusySession(): void {
+    replaceBusyRef.current = true;
     setPreparationFailure(null);
   }
 
@@ -418,7 +432,7 @@ export function useGenerationPanelState({
     sessionMatchesTemplate,
     streaming,
     template,
-    generationError,
+    currentFailure,
     runtimeFiles,
   ]);
 
@@ -453,6 +467,10 @@ export function useGenerationPanelState({
             }; ${label} is shown in the viewport.`,
       );
     } catch (reason) {
+      if (isSessionBusyError(reason)) {
+        setPreparationFailure({ key: preparationKey, message: reason.message, busy: true });
+        return;
+      }
       if (generated > 0) setGenerationMessage(`${generated} of ${count} scenes generated.`);
       showNotice(
         noticeFromError(
@@ -691,6 +709,8 @@ export function useGenerationPanelState({
     generationMessage,
     generationError,
     retryPreparation,
+    busySessionWarning,
+    replaceBusySession,
     templateError,
     streamingMessage,
     deleteStateDialogOpen,

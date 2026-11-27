@@ -24,3 +24,4 @@ next-env.d.ts
 apps/web/public/mujoco
 apps/web/app/(payload)/admin/importMap.js
 services/trellis2 # Vendored third-party source, kept as-is from upstream.
+internal/tests/unit/fixtures/splat-cleanup.json

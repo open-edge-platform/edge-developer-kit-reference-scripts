@@ -5,7 +5,10 @@
 name = "robotic-studio"
 version = "0.1.1"
 description = "Synchronous Python SDK for Physical AI Scene Builder external evaluation."
-requires-python = ">=3.12"
+# A fresh uv picks the newest Python it can: 3.15 has no PyTorch wheels, hence the bound. 3.14
+# stays allowed for the ROS 2 workspace (Pixi installs this project there); .python-version picks
+# 3.13 for uv, because LeRobot 0.6's argument parsing (draccus) fails on 3.14.
+requires-python = ">=3.12,<3.15"
 dependencies = [
     "numpy>=1.24",
     "pyzmq>=26.0.0",
@@ -55,6 +58,8 @@ test = ["pytest>=8.0", "jsonschema>=4.0"]
 hardware = ["lerobot[feetech]==0.6.0", "mujoco>=3.10.0", "opencv-python-headless"]
 # Converts an uploaded OBJ+MTL+texture into an MJCF asset (web/app/api/assets/obj2mjcf).
 obj2mjcf = ["obj2mjcf>=0.0.25"]
+# Converts an uploaded USD/USDZ asset into a GLB (robotic_studio.usd_import, web/app/api/assets/usd-to-glb).
+usd = ["usd-core>=26.11", "Pillow>=13.0.0"]
 
 [build-system]
 requires = ["hatchling"]
@@ -74,6 +79,9 @@ override-dependencies = [
     # XPU wheels start at torch 2.13, above lerobot's caps; torchvision must match torch exactly.
     "torch==2.14.1",
     "torchvision==0.29.1",
+    # gym-pusht (via LeRobot) asks for opencv-python while everything else uses the headless build; both
+    # install the same cv2 package and a mixed install breaks `import cv2`. Keep only the headless one.
+    "opencv-python; sys_platform == 'never'",
 ]
 
 [tool.uv.sources]

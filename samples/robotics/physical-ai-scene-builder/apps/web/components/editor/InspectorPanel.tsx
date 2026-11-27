@@ -42,6 +42,8 @@ export interface InspectorPanelProps {
   /** Objects that start inside a splat table, with how far each must rise to rest on it. */
   tableOverlaps?: readonly { name: string; depth: number }[];
   onDropOntoTable?: (name: string) => void;
+  /** Free objects that start inside other geometry (robot, objects), deepest first. */
+  objectOverlaps?: readonly { body: string; other: string; depth: number }[];
 }
 
 function AttributeField({
@@ -150,6 +152,7 @@ function Inspector({
   previewCameraId,
   tableOverlap,
   onDropOntoTable,
+  objectOverlap,
 }: {
   node: SceneNode;
   graph: SceneGraph;
@@ -159,6 +162,7 @@ function Inspector({
   previewCameraId?: string | null;
   tableOverlap?: { name: string; depth: number } | null;
   onDropOntoTable?: (name: string) => void;
+  objectOverlap?: { body: string; other: string; depth: number } | null;
 }) {
   const xml = useEditorStore((state) => state.xml);
   const attributes = getNodeAttributes(xml, node);
@@ -220,6 +224,16 @@ function Inspector({
             Drop onto table
           </Button>
         </div>
+      )}
+      {objectOverlap && (
+        <p
+          role="alert"
+          className="border border-danger/40 bg-danger/10 p-3 text-[11px] text-foreground"
+          title="Generate refuses states that start like this. Move the object apart."
+        >
+          {(objectOverlap.depth * 1000).toFixed(0)} mm inside{' '}
+          <span className="font-mono">{objectOverlap.other}</span>
+        </p>
       )}
       {node.kind !== 'joint' && (
         <Section title="Transform">
@@ -338,17 +352,17 @@ function Inspector({
           />
           <AttributeField
             label="Cutoff"
-            value={attributes.cutoff ?? '180'}
+            value={attributes.cutoff ?? '45'}
             onCommit={(value) => setAttribute('cutoff', value)}
           />
           <AttributeField
             label="Exponent"
-            value={attributes.exponent ?? '0'}
+            value={attributes.exponent ?? '10'}
             onCommit={(value) => setAttribute('exponent', value)}
           />
           <AttributeField
             label="Shadows"
-            value={attributes.castshadow ?? 'false'}
+            value={attributes.castshadow ?? 'true'}
             onCommit={(value) => setAttribute('castshadow', value)}
           />
         </Section>
@@ -491,6 +505,7 @@ export function InspectorPanel({
   previewCameraId,
   showHeader = true,
   tableOverlaps = [],
+  objectOverlaps = [],
   onDropOntoTable,
 }: InspectorPanelProps) {
   const { graph } = usePhysics();
@@ -512,6 +527,13 @@ export function InspectorPanel({
             previewCameraId={previewCameraId}
             tableOverlap={tableOverlaps.find((overlap) => overlap.name === node.name) ?? null}
             onDropOntoTable={onDropOntoTable}
+            objectOverlap={
+              objectOverlaps.find(
+                (overlap) =>
+                  overlap.body === node.name &&
+                  !tableOverlaps.some((table) => table.name === node.name),
+              ) ?? null
+            }
           />
         ) : (
           <p className="p-3 text-xs text-muted">

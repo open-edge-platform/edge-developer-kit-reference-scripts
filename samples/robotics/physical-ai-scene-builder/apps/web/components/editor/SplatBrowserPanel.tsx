@@ -7,7 +7,12 @@ import {
   ArrowUpToLine,
   Check,
   ChevronDown,
+  Crop,
   Crosshair,
+  Eraser,
+  EyeOff,
+  ScanSearch,
+  Sparkles,
   Layers,
   MousePointer2,
   Plus,
@@ -25,6 +30,10 @@ import { Button, cn, Panel, PanelBody, PanelHeader } from '@mujoco-studio/ui';
 import { useEditorStore } from '@/lib/store/editorStore';
 import type { SplatTableStatus, TableOverlap } from '@/lib/editor/scanTable';
 import { isSplatUpAxis, SPLAT_UP_AXES, type SplatCalibration } from '@/lib/editor/splatCollision';
+import { cleanupActive, DEFAULT_ISOLATION, type SplatCleanup } from '@/lib/editor/splatCleanup';
+import type { TableProposal } from '@/lib/mcp/tableDetection';
+
+import { ToggleSwitch } from './ToggleSwitch';
 
 const STATUS_LABEL: Record<string, string> = {
   idle: 'No scan loaded',
@@ -176,8 +185,130 @@ function Step({
   );
 }
 
+/** Faint-Gaussian thresholds offered in the Clean step (0: off). */
+const MIN_OPACITY_LEVELS = [0, 0.3, 0.5, 0.7] as const;
+
 /**
- * Step 3: boxes you place over the scanned tables make them solid (the scan itself never
+ * Step 3: leave parts of the scan out (crop box, faint and isolated Gaussians). The preview,
+ * the collision heightfield, and native recordings all use the result.
+ */
+function CleanStep({
+  cleanup,
+  removed,
+  onChange,
+  onFitCrop,
+}: {
+  cleanup: SplatCleanup;
+  removed: number;
+  onChange: (cleanup: SplatCleanup) => string | null;
+  onFitCrop: () => string | null;
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const update = (next: SplatCleanup) => setError(onChange(next));
+  const without = (key: keyof SplatCleanup): SplatCleanup => {
+    const next = { ...cleanup };
+    delete next[key];
+    return next;
+  };
+  const opacity = cleanup.minOpacity ?? 0;
+
+  return (
+    <Step step={3} icon={Eraser} title="Clean" done={cleanupActive(cleanup)}>
+      <div className="space-y-2 text-[11px]">
+        <div className="flex items-center gap-2" title="Keep only the workspace">
+          <Crop className="size-3.5 text-muted" />
+          <span className="flex-1 text-foreground">Crop</span>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-6 px-2 text-[11px]"
+            aria-label="Fit crop to tables"
+            title="Fit to the tables (or the robot) plus a margin"
+            onClick={() => setError(onFitCrop())}
+          >
+            <Table2 />
+            Fit
+          </Button>
+          {cleanup.crop && (
+            <Button
+              size="icon"
+              variant="ghost"
+              className="size-6"
+              aria-label="Remove crop"
+              title="Remove crop"
+              onClick={() => update(without('crop'))}
+            >
+              <X />
+            </Button>
+          )}
+        </div>
+        {cleanup.crop && (
+          <p className="font-mono text-[10px] text-muted-foreground" aria-label="Crop box">
+            {cleanup.crop.min.map((value) => value.toFixed(2)).join(' ')} →{' '}
+            {cleanup.crop.max.map((value) => value.toFixed(2)).join(' ')}
+          </p>
+        )}
+        <div className="flex items-center gap-2" title="Hide Gaussians fainter than this">
+          <EyeOff className="size-3.5 text-muted" />
+          <span className="flex-1 text-foreground">Faint</span>
+          <div role="radiogroup" aria-label="Minimum opacity" className="flex border border-border">
+            {MIN_OPACITY_LEVELS.map((level) => (
+              <button
+                key={level}
+                type="button"
+                role="radio"
+                aria-checked={opacity === level}
+                className={cn(
+                  'px-1.5 py-0.5 text-[10px]',
+                  opacity === level
+                    ? 'bg-accent text-background'
+                    : 'text-muted hover:text-foreground',
+                )}
+                onClick={() =>
+                  update(level ? { ...cleanup, minOpacity: level } : without('minOpacity'))
+                }
+              >
+                {level ? `<${level}` : 'Off'}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="flex items-center gap-2" title="Hide lone floaters">
+          <Sparkles className="size-3.5 text-muted" />
+          <span className="flex-1 text-foreground">Floaters</span>
+          <ToggleSwitch
+            checked={Boolean(cleanup.isolation)}
+            label="Remove floaters"
+            onToggle={() =>
+              update(
+                cleanup.isolation
+                  ? without('isolation')
+                  : { ...cleanup, isolation: { ...DEFAULT_ISOLATION } },
+              )
+            }
+          />
+        </div>
+        {cleanupActive(cleanup) && (
+          <p
+            className="flex items-center gap-1 text-muted-foreground"
+            role="status"
+            aria-label="Hidden"
+          >
+            <EyeOff className="size-3" />−{removed.toLocaleString('en-US')}
+          </p>
+        )}
+        {error && (
+          <p className="text-danger" role="alert">
+            {error}
+          </p>
+        )}
+      </div>
+    </Step>
+  );
+}
+
+/**
+ * Step 4: boxes you place over the scanned tables make them solid (the scan itself never
  * collides), and objects that start inside one are listed with Drop.
  */
 function TableStep({
@@ -185,6 +316,8 @@ function TableStep({
   overlaps,
   note,
   onAdd,
+  onDetect,
+  onAddDetected,
   onMatchHeight,
   onDrop,
   onSelect,
@@ -193,32 +326,79 @@ function TableStep({
   overlaps: readonly TableOverlap[];
   note: string | null;
   onAdd: () => string | null;
+  onDetect: () => TableProposal[] | string;
+  onAddDetected: (proposal: TableProposal) => string | null;
   onMatchHeight: (name: string) => string | null;
   onDrop: (names?: readonly string[]) => void;
   onSelect: (name: string) => void;
 }) {
   const [error, setError] = useState<string | null>(null);
+  const [proposals, setProposals] = useState<TableProposal[]>([]);
   const done = tables.length > 0 && overlaps.length === 0;
   const resting = new Set(tables.flatMap((table) => table.resting)).size;
   const where = tables.length === 1 ? 'the table' : 'a table';
 
   return (
-    <Step step={3} icon={Table2} title="Table" done={done}>
-      <p className="text-[11px] text-muted-foreground">
-        The scan is only a picture, so objects fall through it. Add a box for each scanned table and
-        line it up with the scan. Cameras see the scan, not the boxes, and the boxes are only shown
-        on this tab.
-      </p>
-      <Button
-        className="mt-2 w-full"
-        size="sm"
-        variant={tables.length ? 'outline' : 'primary'}
-        title="Add a box in the middle of the scan to move over a scanned table"
-        onClick={() => setError(onAdd())}
-      >
-        <Plus />
-        Add table
-      </Button>
+    <Step step={4} icon={Table2} title="Table" done={done}>
+      <div className="mt-2 flex gap-2">
+        <Button
+          className="flex-1"
+          size="sm"
+          variant={tables.length ? 'outline' : 'primary'}
+          title="Find table tops in the scan"
+          onClick={() => {
+            const found = onDetect();
+            if (typeof found === 'string') {
+              setProposals([]);
+              setError(found);
+            } else {
+              setProposals(found);
+              setError(null);
+            }
+          }}
+        >
+          <ScanSearch />
+          Detect
+        </Button>
+        <Button
+          className="flex-1"
+          size="sm"
+          variant="outline"
+          title="Add a box in the middle of the scan to move over a scanned table"
+          onClick={() => setError(onAdd())}
+        >
+          <Plus />
+          Add table
+        </Button>
+      </div>
+      {proposals.length > 0 && (
+        <ul aria-label="Detected tables" className="mt-2 space-y-1">
+          {proposals.map((proposal, index) => (
+            <li key={index} className="flex items-center gap-2 text-[11px]">
+              <Table2 className="size-3.5 text-muted" />
+              <span className="flex-1 text-foreground">
+                {proposal.size[0].toFixed(2)} × {proposal.size[1].toFixed(2)} m
+                <span className="text-muted-foreground"> · {proposal.height.toFixed(2)} m</span>
+              </span>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="size-6"
+                aria-label={`Add detected table ${index + 1}`}
+                title="Add this table"
+                onClick={() => {
+                  const failure = onAddDetected(proposal);
+                  setError(failure);
+                  if (!failure)
+                    setProposals((current) => current.filter((item) => item !== proposal));
+                }}
+              >
+                <Plus />
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
       {tables.length > 0 && (
         <ul aria-label="Tables" className="mt-2 space-y-2">
           {tables.map((table) => (
@@ -332,6 +512,11 @@ export function SplatBrowserPanel({
   overlaps,
   tableNote,
   onAddTable,
+  onDetectTables,
+  onAddDetectedTable,
+  onCleanupChange,
+  onFitCrop,
+  cleanupRemoved,
   onMatchTableHeight,
   onDropOntoTable,
   onSelectTable,
@@ -352,6 +537,15 @@ export function SplatBrowserPanel({
   tableNote: string | null;
   /** Adds a table and selects it; returns a user-facing error. */
   onAddTable: () => string | null;
+  /** Table tops found in the scan, or why none were. */
+  onDetectTables: () => TableProposal[] | string;
+  onAddDetectedTable: (proposal: TableProposal) => string | null;
+  /** Applies a splat cleanup; returns a user-facing error. */
+  onCleanupChange: (cleanup: SplatCleanup) => string | null;
+  /** Crops the scan to the tables (or robot) plus a margin; returns a user-facing error. */
+  onFitCrop: () => string | null;
+  /** Visible Gaussians the cleanup hides. */
+  cleanupRemoved: number;
   /** Sets the named table's top to the scan's surface; returns a user-facing error. */
   onMatchTableHeight: (name: string) => string | null;
   /** Raises the named objects (all when omitted) out of the tables onto their tops. */
@@ -391,12 +585,6 @@ export function SplatBrowserPanel({
             });
           }}
         />
-        {!splatSrc && (
-          <p className="text-[11px] text-muted-foreground">
-            Use a 3D scan of your real workspace as the scene&apos;s background. Cameras record the
-            scan, so training images look real.
-          </p>
-        )}
 
         <Step
           step={1}
@@ -452,9 +640,6 @@ export function SplatBrowserPanel({
         {splatSrc && splatStatus === 'ready' && (
           <>
             <Step step={2} icon={Crosshair} title="Line up" done={Boolean(levelNote?.ok)}>
-              <p className="text-[11px] text-muted-foreground">
-                Make the scanned floor flat and the scan the right size.
-              </p>
               <Button
                 aria-label="Auto level"
                 title="Fit tilt to the scanned floor"
@@ -506,11 +691,20 @@ export function SplatBrowserPanel({
               </div>
             </Step>
 
+            <CleanStep
+              cleanup={calibration.cleanup}
+              removed={cleanupRemoved}
+              onChange={onCleanupChange}
+              onFitCrop={onFitCrop}
+            />
+
             <TableStep
               tables={tables}
               overlaps={overlaps}
               note={tableNote}
               onAdd={onAddTable}
+              onDetect={onDetectTables}
+              onAddDetected={onAddDetectedTable}
               onMatchHeight={onMatchTableHeight}
               onDrop={onDropOntoTable}
               onSelect={onSelectTable}

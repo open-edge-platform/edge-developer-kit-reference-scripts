@@ -738,6 +738,8 @@ class TeleoperationServer:
                 "kind": "describe",
                 **self.session.describe(),
                 "streamClients": len(self._websockets),
+                # An external app (SDK client, evaluator, virtual follower) holds the control lease.
+                "controlled": self.session.active_lease_id is not None,
                 "cpuCount": cpu_count(),
                 "batch": self.batch_status,
                 "evaluationProfile": self._evaluation_profile,

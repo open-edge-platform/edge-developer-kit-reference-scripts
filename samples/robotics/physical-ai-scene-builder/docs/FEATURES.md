@@ -17,7 +17,7 @@ flowchart LR
 
 ## Features
 
-- **Build:** edit MuJoCo* scenes; add robots, assets, cameras, and lights; use AI scene authoring.
+- **Build:** edit MuJoCo* scenes; add robots, assets, cameras, and lights; use AI scene authoring, from photos or from a LeRobot* v3 recording of the real robot.
 - **Generate:** randomize scenes, record demonstrations, review episodes, and download datasets.
 - **Evaluate:** run supported policies and review results.
 - **Integrate:** connect Python* clients or use the optional [ROS 2 bridge](../integrations/ros2/README.md).

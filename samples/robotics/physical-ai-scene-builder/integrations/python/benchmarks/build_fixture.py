@@ -81,8 +81,8 @@ SO101_ROBOT_XML = REPOSITORY_ROOT / 'samples' / 'so101-environment' / 'robots' /
 SO101_ARM_JOINTS = ('shoulder_pan', 'shoulder_lift', 'elbow_flex', 'wrist_flex', 'wrist_roll', 'gripper')
 # Poses from the SO-101 Generate sample scene (payload/src/seed/so101.ts), as in the physics test.
 SO101_ROBOT_BASE = (-0.577447, -0.092209, 0.80605)
-SO101_CUBE_POSITION = (-0.305027, 0.059617, 0.830368)
-SO101_CONTAINER_POSITION = (-0.310196, -0.089869, 0.807)
+SO101_CUBE_POSITION = (-0.3244, 0.0375, 0.825)
+SO101_CONTAINER_POSITION = (-0.3299, -0.098, 0.7962)
 SO101_TIMESTEP = 0.002
 SO101_CAPTURE_FPS = 30
 
@@ -105,17 +105,17 @@ def _so101_scene() -> tuple[str, dict[str, bytes], Any]:
     def box(parent: Any, name: str, pos: tuple[float, ...], size: tuple[float, ...], **fields: Any) -> None:
         parent.add_geom(name=name, type=mujoco.mjtGeom.mjGEOM_BOX, pos=pos, size=size, **fields)
 
-    box(world, 'table_top', (0.0, 0.0, 0.75), (0.6, 0.8, 0.05))
-    box(world, 'asset_pad_geom', (-0.305027, 0.059617, 0.810868), (0.05, 0.05, 0.007), friction=(1, 0.005, 0.0001))
+    box(world, 'table_top', (0.0, 0.0, 0.743), (0.6, 0.8, 0.05))
+    box(world, 'asset_pad_geom', (-0.3212, 0.0387, 0.8043), (0.042, 0.04, 0.00822), friction=(1, 0.005, 0.0001))
     cube = world.add_body(name='asset_cube', pos=SO101_CUBE_POSITION)
     cube.add_freejoint()
     box(cube, 'asset_cube_geom', (0.0, 0.0, 0.0), (0.0125, 0.0125, 0.0125), mass=0.01, friction=(1, 0.005, 0.0001))
     container = world.add_body(name='container', pos=SO101_CONTAINER_POSITION)
-    box(container, 'container_bottom', (0, 0, 0.0025), (0.0375, 0.0375, 0.0025))
-    box(container, 'container_front', (0, -0.035, 0.0225), (0.0375, 0.0025, 0.0175))
-    box(container, 'container_back', (0, 0.035, 0.0225), (0.0375, 0.0025, 0.0175))
-    box(container, 'container_left', (-0.035, 0, 0.0225), (0.0025, 0.0325, 0.0175))
-    box(container, 'container_right', (0.035, 0, 0.0225), (0.0025, 0.0325, 0.0175))
+    box(container, 'container_bottom', (0, 0, 0.0025), (0.0425, 0.0425, 0.0025))
+    box(container, 'container_front', (0, -0.04, 0.025), (0.0425, 0.0025, 0.02))
+    box(container, 'container_back', (0, 0.04, 0.025), (0.0425, 0.0025, 0.02))
+    box(container, 'container_left', (-0.04, 0, 0.025), (0.0025, 0.0375, 0.02))
+    box(container, 'container_right', (0.04, 0, 0.025), (0.0025, 0.0375, 0.02))
     world.add_light(name='key', pos=(0.0, 0.0, 2.0), dir=(0.0, 0.0, -1.0))
     world.add_camera(name='front', pos=(0.15, -0.45, 1.25), xyaxes=(0.83, 0.56, 0, -0.33, 0.49, 0.81))
     world.add_camera(name='side', pos=(-0.3, -0.75, 1.05), xyaxes=(1, 0, 0, 0, 0.6, 0.8))

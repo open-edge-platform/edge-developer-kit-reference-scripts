@@ -78,6 +78,7 @@ async def _serve(
             session_id=arguments.session_id,
             collection_id=arguments.collection_id,
             writer=writer,
+            stream_recordings=True,
         )
         server = TeleoperationServer(
             session,

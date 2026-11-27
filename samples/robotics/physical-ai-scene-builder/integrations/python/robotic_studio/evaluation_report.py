@@ -111,6 +111,14 @@ def add_evaluation_arguments(parser: argparse.ArgumentParser) -> None:
         help='Save an MP4 of this camera for every episode (repeatable). Needs the av package.',
     )
     parser.add_argument(
+        '--unscored',
+        action='store_true',
+        help=(
+            'Run even when the session has no success check (no task). Episodes then run to '
+            '--max-steps and are not scored.'
+        ),
+    )
+    parser.add_argument(
         '--no-terminate-on-success',
         action='store_true',
         help='Keep stepping after the task succeeds, until --max-steps.',
@@ -230,9 +238,25 @@ def resolve_max_steps(requested: int | None, description: Mapping[str, Any]) -> 
 
 NO_SUCCESS_CHECK_WARNING = (
     'Warning: this session has no success check, so episodes cannot be scored; each runs to '
-    '--max-steps and is recorded as void. To score episodes, run with --local and a --profile '
-    'that defines a pick-and-place task.'
+    '--max-steps and is recorded as void.'
 )
+NO_TASK_IN_SESSION = (
+    'This Evaluate session has no task, so episodes would not be scored (and the object start '
+    'position is not randomized). In Physical AI Scene Builder, open Simulate > Task, turn on '
+    'Score episodes, choose the object and target, then turn Stream to external app off and on '
+    'again. To run without scores anyway, add --unscored.'
+)
+NO_TASK_IN_PROFILE = (
+    'The --profile defines no pick-and-place task, so episodes would not be scored. Add a "task" '
+    'to the profile, or add --unscored to run without scores.'
+)
+
+
+def unscored_problem(args: argparse.Namespace) -> str:
+    """Why an evaluation without a success check stops before its first episode."""
+    if getattr(args, 'local', False) and getattr(args, 'profile', None):
+        return NO_TASK_IN_PROFILE
+    return NO_TASK_IN_SESSION
 
 
 def has_success_check(description: Mapping[str, Any]) -> bool:
@@ -507,6 +531,8 @@ def run_policy_evaluation(
     )
     scored = has_success_check(description)
     if not scored:
+        if not getattr(args, 'unscored', False):
+            raise SystemExit(unscored_problem(args))
         output(NO_SUCCESS_CHECK_WARNING)
     seed_start = resolve_seed_start(args)
     max_steps = resolve_max_steps(args.max_steps, description)

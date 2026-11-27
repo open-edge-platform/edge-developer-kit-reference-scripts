@@ -29,6 +29,11 @@ import { URL_CHARS } from '@/lib/http/urlChars';
 import type { TeleoperationBackdropRenderProgress } from '@/lib/teleoperation/backdropRender';
 import type { TeleoperationSessionSummary } from '@/lib/teleoperation/sessionManager';
 import { teleoperationProfilesMatch } from '@/lib/teleoperation/profile';
+import {
+  busySessionMessage,
+  busySessionReason,
+  SessionBusyError,
+} from '@/lib/teleoperation/sessionBusy';
 import type { EvaluationEpisodeSummary } from '@/lib/evaluation/sharedSession';
 
 type TeleoperationRuntimeStatus =
@@ -46,6 +51,20 @@ export interface TeleoperationSnapshot {
   attachments: Record<string, ArrayBuffer>;
 }
 
+/** The scene's name for messages, or its ID when it cannot be read. */
+async function sceneName(sceneId: string): Promise<string> {
+  try {
+    const response = await fetch(`/api/scenes/${encodeURIComponent(sceneId)}?depth=0`, {
+      cache: 'no-store',
+    });
+    const body = response.ok ? ((await response.json()) as { name?: unknown }) : null;
+    if (typeof body?.name === 'string' && body.name.trim()) return body.name.trim();
+  } catch {
+    // Fall back to the ID below.
+  }
+  return `Scene ${sceneId}`;
+}
+
 interface TeleoperationRuntimeValue {
   status: TeleoperationRuntimeStatus;
   streaming: boolean;
@@ -54,7 +73,15 @@ interface TeleoperationRuntimeValue {
   error: string | null;
   droppedMessages: number;
   lastMessageAt: number | null;
-  prepareSession: (form: FormData) => Promise<TeleoperationSessionSummary>;
+  /**
+   * Start (or reuse) the native session for this scene. A session that is in use (a batch, a
+   * recording, or an external app holding control) is not ended unless `replaceBusy` is set;
+   * otherwise a `SessionBusyError` explains what starting here would end.
+   */
+  prepareSession: (
+    form: FormData,
+    options?: { replaceBusy?: boolean },
+  ) => Promise<TeleoperationSessionSummary>;
   startStream: () => Promise<void>;
   stopStream: () => Promise<void>;
   endSession: () => Promise<void>;
@@ -427,7 +454,10 @@ export function TeleoperationRuntimeProvider({ children }: { children: ReactNode
   }, []);
 
   const prepareSession = useCallback(
-    async (form: FormData): Promise<TeleoperationSessionSummary> => {
+    async (
+      form: FormData,
+      options: { replaceBusy?: boolean } = {},
+    ): Promise<TeleoperationSessionSummary> => {
       setStatus('starting');
       setError(null);
       const profileValue = form.get('profile');
@@ -450,6 +480,21 @@ export function TeleoperationRuntimeProvider({ children }: { children: ReactNode
             'Stop streaming and finish recording before changing the teleoperation camera profile.',
           );
         }
+        if (!options.replaceBusy) {
+          // The cached summary can be stale (an external app may have connected since).
+          const latestResponse = await fetch(
+            `/api/teleoperation/sessions?sessionId=${encodeURIComponent(current.sessionId)}`,
+            { cache: 'no-store' },
+          );
+          const latest = latestResponse.ok
+            ? ((await readJsonBody(latestResponse)) as TeleoperationSessionSummary)
+            : current;
+          const reason = busySessionReason(latest);
+          if (reason) {
+            setStatus('idle');
+            throw new SessionBusyError(busySessionMessage(await sceneName(latest.sceneId), reason));
+          }
+        }
         await endSession();
       }
       const existingResponse = await fetch('/api/teleoperation/sessions', { cache: 'no-store' });
@@ -459,10 +504,10 @@ export function TeleoperationRuntimeProvider({ children }: { children: ReactNode
           adoptPreparedSession(existing);
           return existing;
         }
-        if (existing.recording !== 'idle') {
-          throw new Error(
-            'Finish the active recording before changing the teleoperation camera profile.',
-          );
+        const reason = busySessionReason(existing);
+        if (reason && !options.replaceBusy) {
+          setStatus('idle');
+          throw new SessionBusyError(busySessionMessage(await sceneName(existing.sceneId), reason));
         }
         const deleteResponse = await fetch(
           `/api/teleoperation/sessions?sessionId=${encodeURIComponent(existing.sessionId)}`,

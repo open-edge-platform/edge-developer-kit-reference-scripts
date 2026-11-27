@@ -56,6 +56,7 @@ from ..bindings import (
     site_position,
 )
 from ..overlaps import find_initial_overlaps
+from ..servo import ServoCompensation
 from .adapter import SO101
 
 if TYPE_CHECKING:
@@ -63,6 +64,16 @@ if TYPE_CHECKING:
 
 
 DEFAULT_WRIST_ROLL_DEGREES = SO101.home_wrist_roll_degrees
+# The folded rest pose (degrees) every recording starts and ends at, serial or batch, so episodes
+# match the evaluation start pose and the real arm's rest.
+REST_POSE_DEGREES: Mapping[str, float] = {
+    "shoulder_pan": 0.0,
+    "shoulder_lift": -100.0,
+    "elbow_flex": 86.85,
+    "wrist_flex": 70.92,
+    "wrist_roll": -90.00,
+    "gripper": 0.0,
+}
 # Gripper closing speed while waiting for bilateral contact, in actuator units per simulated second.
 MAX_CONTACT_CLOSE_SPEED = 1.25
 MAX_GRASP_PENETRATION = 0.001
@@ -89,6 +100,9 @@ GRASP_ORIENTATION_MAX_ITERATIONS = 300
 GRASP_SWEEP_SAMPLES = 40
 GRASP_RAISE_STEP = 0.001
 GRASP_MAX_RAISE_STEPS = 15
+# The moving pad must first meet the object at least this far below its top: a pad landing on the
+# top edge (steep approach tilts) squeezes the object out of the jaws on lift.
+GRASP_TOP_EDGE_MARGIN = 0.003
 # Extra simulated time a phase may take to reach or settle at its target before failing.
 PHASE_SETTLE_SECONDS = 2.4
 SETTLE_POSITION_TOLERANCE = 0.002
@@ -125,6 +139,15 @@ FAILURE_REASONS = {
     "placement_failed": "The object did not come to rest inside the container.",
     "return_failed": "The arm did not return to its start pose after placing the object.",
 }
+
+
+# A failed grasp is re-planned from another direction, up to this many attempts per episode.
+MAX_GRASP_ATTEMPTS = 3
+# Failures before the object is lifted that another grasp direction can avoid.
+RETRYABLE_GRASP_FAILURES = frozenset({"motion_timeout", "grasp_failed", "dropped"})
+# A lowering that stops with the carried object this close (horizontally) to the container's
+# placement reference releases there; the placement check decides whether it landed inside.
+RELEASE_ABOVE_CONTAINER_LIMIT = 0.02
 
 
 class PickPlaceError(RuntimeError):
@@ -353,6 +376,45 @@ def _ignore(_message: str) -> None:
     return
 
 
+def _settle_joints(
+    client: ControlTarget,
+    targets: Mapping[str, float],
+    *,
+    physics_steps: int,
+    tolerance: float,
+    max_commands: int,
+    servo: ServoCompensation | None = None,
+    actions: Mapping[str, str] | None = None,
+) -> Any | None:
+    """Command joint ``targets`` until every joint is at rest there; ``None`` if they never settle.
+
+    With ``servo`` and ``actions`` (joint name to action name) the commands are offset so compliant
+    servos reach the targets. A joint whose command is pinned at its range limit cannot be pushed
+    further, so it counts as arrived once it stops.
+    """
+    joints = {name: client.joints[name] for name in targets}
+    compensate = servo is not None and actions is not None
+    qpos = None
+    for _ in range(max_commands):
+        command = dict(targets)
+        if compensate:
+            offset = servo.command({actions[name]: value for name, value in targets.items()}, qpos, physics_steps)
+            command = {name: offset[actions[name]] for name in targets}
+        snapshot = client.step(joints=command, physics_steps=physics_steps)
+        qpos = np.asarray(snapshot.qpos)
+        qvel = np.asarray(snapshot.qvel)
+        if all(
+            (
+                abs(float(qpos[joint.qpos_slice][0]) - targets[name]) <= tolerance
+                or (compensate and servo.saturated.get(actions[name], False))
+            )
+            and abs(float(qvel[joint.qvel_slice][0])) <= HOME_POSE_MAX_VELOCITY
+            for name, joint in joints.items()
+        ):
+            return snapshot
+    return None
+
+
 def set_default_home_pose(
     client: ControlTarget,
     *,
@@ -360,12 +422,13 @@ def set_default_home_pose(
     physics_steps: int = 1,
     tolerance: float = HOME_POSE_TOLERANCE,
     max_commands: int = HOME_POSE_MAX_COMMANDS,
+    mujoco: Any = None,
 ) -> Any:
     """Set the default SO-101 wrist-roll home pose before moving the cube.
 
     The actuator drives the joint through physics, so commands repeat until the joint settles at
     the target. The grasp orientation is latched from this pose, so an unsettled wrist would grasp
-    with the wrong roll.
+    with the wrong roll. Pass ``mujoco`` to offset the command for compliant servos.
     """
     if not np.isfinite(wrist_roll_degrees):
         raise ValueError("wrist_roll_degrees must be finite.")
@@ -373,14 +436,27 @@ def set_default_home_pose(
         raise ValueError("physics_steps must be a positive integer.")
 
     wrist_roll, wrist_roll_position = SO101.home_joint_target(client, wrist_roll_degrees)
-    joint = client.joints[wrist_roll]
-    snapshot = None
-    for _ in range(max_commands):
-        snapshot = client.step(joints={wrist_roll: wrist_roll_position}, physics_steps=physics_steps)
-        position = float(np.asarray(snapshot.qpos)[joint.qpos_slice][0])
-        velocity = float(np.asarray(snapshot.qvel)[joint.qvel_slice][0])
-        if abs(position - wrist_roll_position) <= tolerance and abs(velocity) <= HOME_POSE_MAX_VELOCITY:
-            return snapshot
+    servo = actions = None
+    if mujoco is not None:
+        bindings = [
+            binding
+            for binding in resolve_action_bindings(mujoco, client.local.model, client.profile)
+            if binding.joint_name == wrist_roll
+        ]
+        if bindings:
+            servo = ServoCompensation(mujoco, client.local.model, bindings)
+            actions = {wrist_roll: bindings[0].action_name}
+    snapshot = _settle_joints(
+        client,
+        {wrist_roll: wrist_roll_position},
+        physics_steps=physics_steps,
+        tolerance=tolerance,
+        max_commands=max_commands,
+        servo=servo,
+        actions=actions,
+    )
+    if snapshot is not None:
+        return snapshot
     raise PickPlaceError(
         "home_pose",
         f"The wrist did not settle at its home pose ({math.degrees(wrist_roll_position):.0f} degrees) "
@@ -413,25 +489,29 @@ def move_to_home_pose(
 ) -> Any:
     """Drive the listed SO-101 joints to ``home_pose`` (degrees) and wait until all are at rest there.
 
-    Joints not listed keep their current targets. Returns the snapshot in which the pose settled.
+    Joints not listed keep their current targets. Commands are offset so compliant servos reach
+    the pose. Returns the snapshot in which the pose settled.
     """
     bindings = resolve_action_bindings(mujoco, client.local.model, client.profile)
+    pose = home_pose_targets(bindings, home_pose)
     targets: dict[str, float] = {}
-    for binding, value in home_pose_targets(bindings, home_pose):
+    actions: dict[str, str] = {}
+    for binding, value in pose:
         if binding.joint_name is None:
             raise RuntimeError(f"Home pose action '{binding.action_name}' does not drive a joint.")
         targets[binding.joint_name] = value
-    joints = {name: client.joints[name] for name in targets}
-    for _ in range(max_commands):
-        snapshot = client.step(joints=targets, physics_steps=physics_steps)
-        qpos = np.asarray(snapshot.qpos)
-        qvel = np.asarray(snapshot.qvel)
-        if all(
-            abs(float(qpos[joint.qpos_slice][0]) - targets[name]) <= tolerance
-            and abs(float(qvel[joint.qvel_slice][0])) <= HOME_POSE_MAX_VELOCITY
-            for name, joint in joints.items()
-        ):
-            return snapshot
+        actions[binding.joint_name] = binding.action_name
+    snapshot = _settle_joints(
+        client,
+        targets,
+        physics_steps=physics_steps,
+        tolerance=tolerance,
+        max_commands=max_commands,
+        servo=ServoCompensation(mujoco, client.local.model, [binding for binding, _ in pose]),
+        actions=actions,
+    )
+    if snapshot is not None:
+        return snapshot
     raise PickPlaceError(
         "home_pose",
         f"The arm did not settle at its home pose within {max_commands} commands.",
@@ -508,6 +588,9 @@ class PickPlaceController:
             mujoco, model, override=tuning.end_effector_site
         )
         self.arm_bindings = SO101.resolve_arm_bindings(bindings, tuning.arm_joints)
+        # ``targets`` are planned joint angles; the servo offsets turn them into commands.
+        self.servo = ServoCompensation(mujoco, model, self.arm_bindings)
+        self.measured_qpos = np.asarray(data.qpos, dtype=np.float64).copy()
         self.gripper = SO101.resolve_gripper_binding(bindings, tuning.gripper_action)
         self.gripper_open = tuning.gripper_open
         self.gripper_closed = (
@@ -557,6 +640,12 @@ class PickPlaceController:
         )
         self.grasp_gripper_target = self.gripper_closed
         self.grasp_orientation = self._site_rotation()
+        # The (face normal, tilt) of the planned grasp, so a retry can try another direction.
+        self.grasp_direction: tuple[np.ndarray, float] | None = None
+        # Set by grasp planning when the last direction was rejected only for a top-edge grasp.
+        self.edge_grasp = False
+        # Arm joints a streamed move is committed to after switching IK branches (see _action_for).
+        self.joint_goal: np.ndarray | None = None
         self.orientation_seeds: list[tuple[np.ndarray, np.ndarray]] = []
         self.hold_orientation = True
         self.source_initial_position = body_position(mujoco, model, data, self.source_body)
@@ -600,11 +689,13 @@ class PickPlaceController:
 
     def _send(self, targets: Mapping[str, float]) -> Any:
         """Send one complete action map, then synchronize the local replica to its snapshot."""
+        physics_steps = self.clock.next_physics_steps()
         snapshot = self.client.step(
-            actuators=dict(targets),
-            physics_steps=self.clock.next_physics_steps(),
+            actuators=self.servo.command(targets, self.measured_qpos, physics_steps),
+            physics_steps=physics_steps,
         )
         self.client.local.synchronize(snapshot)
+        self.measured_qpos = np.asarray(self.data.qpos, dtype=np.float64).copy()
         return snapshot
 
     def _current_targets(self, bindings: Sequence[ActionBinding]) -> dict[str, float]:
@@ -677,6 +768,8 @@ class PickPlaceController:
             if binding.qpos_address is not None:
                 np.asarray(self.data.qpos)[binding.qpos_address] = self.targets[binding.action_name]
         self.mujoco.mj_forward(self.model, self.data)
+        if rate_limit and self.joint_goal is not None:
+            return self._step_joints(self.joint_goal, gripper_value, gripper_step)
         incremental_target = self._incremental_target(target_position, cartesian_step)
         solve_options = {
             "target_orientation": (
@@ -713,23 +806,55 @@ class PickPlaceController:
                 if result.success:
                     break
             if rate_limit and not result.success:
-                result = self._reseeded_orientation_solve(incremental_target, solve_options) or result
+                reseeded = self._reseeded_orientation_solve(incremental_target, solve_options)
+                if reseeded is not None:
+                    # The planned joints are on another IK branch (often the wrist rolled the
+                    # other way). Re-solving from the commanded joints next tick would fall back
+                    # to the old branch and oscillate, so move in joint space until there.
+                    self.joint_goal = np.asarray(reseeded.joint_positions, dtype=np.float64).copy()
+                    return self._step_joints(self.joint_goal, gripper_value, gripper_step)
         if result is None or not result.success:
             result = self.ik.solve(
                 incremental_target,
                 position_tolerance=solve_options["position_tolerance"],
+                max_iterations=GRASP_ORIENTATION_MAX_ITERATIONS,
+                preserve_state=False,
+            )
+        if not result.success and rate_limit:
+            # A streamed step re-solves every control tick, so a step that lands within the settle
+            # tolerance is close enough; near the workspace edge the tight step tolerance could
+            # miss by a tenth of a millimetre and end the episode.
+            result = self.ik.solve(
+                incremental_target,
+                position_tolerance=max(solve_options["position_tolerance"], SETTLE_POSITION_TOLERANCE),
+                max_iterations=GRASP_ORIENTATION_MAX_ITERATIONS,
                 preserve_state=False,
             )
         if not result.success:
             raise PickPlaceError("ik_failed", result.message or "The DLS IK solver did not converge.")
+        return self._step_joints(
+            np.asarray(result.joint_positions, dtype=np.float64), gripper_value, gripper_step, rate_limit=rate_limit
+        )
+
+    def _step_joints(
+        self,
+        joints: np.ndarray,
+        gripper_value: float,
+        gripper_step: float | None,
+        *,
+        rate_limit: bool = True,
+    ) -> dict[str, float]:
+        """Command one rate-limited step toward ``joints`` and the gripper toward its value."""
         previous = np.array([self.targets[binding.action_name] for binding in self.arm_bindings])
-        delta = np.asarray(result.joint_positions, dtype=np.float64) - previous
+        delta = np.asarray(joints, dtype=np.float64)[: len(previous)] - previous
         largest = float(np.max(np.abs(delta))) if delta.size else 0.0
         max_step = MAX_JOINT_COMMAND_SPEED * self.command_period
         if rate_limit and largest > max_step:
             # Scale the whole joint step so torque-limited servos can follow it; saturated servos
             # chatter and let the arm sag. Uniform scaling keeps the step's Cartesian direction.
             delta *= max_step / largest
+        elif rate_limit:
+            self.joint_goal = None  # This step arrives.
         for binding, value in zip(self.arm_bindings, previous + delta, strict=True):
             self.targets[binding.action_name] = clamp(float(value), binding.control_range)
         effective_gripper_step = self.gripper_step if gripper_step is None else gripper_step
@@ -907,21 +1032,41 @@ class PickPlaceController:
         return orientation
 
     def _plan_grasp(self, source_reference: np.ndarray) -> np.ndarray:
-        """Choose the most upright reachable grasp orientation and return its grasp target.
+        """Choose the most upright reachable grasp orientation and return its grasp target."""
+        return next(self._grasp_plans(source_reference))
+
+    def _grasp_plans(
+        self, source_reference: np.ndarray, tried: Sequence[tuple[np.ndarray, float]] = ()
+    ) -> Iterator[np.ndarray]:
+        """Yield reachable grasp targets, most preferred first, skipping ``tried`` directions.
 
         Faces nearest the current jaw axis are tried first. The orientation must be reachable at
         the grasp, approach, and lift heights so the wrist does not reorient beside the object.
+        Each yield sets :attr:`grasp_orientation`, :attr:`orientation_seeds`, and
+        :attr:`grasp_direction`. Raises when no direction is left.
         """
         heights = (0.0, self.approach_height, self.lift_height)
         blocked = False
-        for face_normal in self._face_closing_axes():
-            for tilt in GRASP_APPROACH_TILTS:
+        directions = [(face, tilt) for face in self._face_closing_axes() for tilt in GRASP_APPROACH_TILTS]
+        # Directions whose moving pad only meets the object at its top edge come last.
+        edge_directions: list[tuple[np.ndarray, float]] = []
+        for allow_edge, candidates in ((False, directions), (True, edge_directions)):
+            for face_normal, tilt in candidates:
+                if any(
+                    abs(tilt - tried_tilt) < 1e-9 and float(face_normal @ tried_normal) > 0.99
+                    for tried_normal, tried_tilt in tried
+                ):
+                    continue
                 self.grasp_orientation = self._grasp_orientation(face_normal, tilt)
-                grasp_target = self._plan_grasp_target(source_reference)
+                self.edge_grasp = False
+                grasp_target = self._plan_grasp_target(source_reference, allow_edge=allow_edge)
                 if grasp_target is None:
-                    # The open jaws would land on nearby geometry (a pad, a container wall); another
-                    # face pair or tilt puts them on different sides of the object.
-                    blocked = True
+                    if self.edge_grasp:
+                        edge_directions.append((face_normal, tilt))
+                    else:
+                        # The open jaws would land on nearby geometry (a pad, a container wall);
+                        # another face pair or tilt puts them on different sides of the object.
+                        blocked = True
                     continue
                 solutions = []
                 for height in heights:
@@ -934,7 +1079,10 @@ class PickPlaceController:
                     # Streamed IK follows whichever branch the start pose leads to; these planned
                     # joints re-seed it at a waypoint when that branch cannot hold the orientation.
                     self.orientation_seeds = solutions
-                    return grasp_target
+                    self.grasp_direction = (face_normal, tilt)
+                    yield grasp_target
+                    # The caller came back for another direction; the planning state it set
+                    # (orientation, seeds) is replaced by the next yield.
         if blocked:
             raise PickPlaceError(
                 "grasp_blocked",
@@ -962,26 +1110,37 @@ class PickPlaceController:
             )
         return np.asarray(result.joint_positions, dtype=np.float64).copy() if result.success else None
 
-    def _plan_grasp_target(self, source_reference: np.ndarray) -> np.ndarray | None:
+    def _plan_grasp_target(self, source_reference: np.ndarray, *, allow_edge: bool = True) -> np.ndarray | None:
         """Plan the end-effector grasp target at the grasp orientation, not the current one.
 
         The closed-pad offset from the site depends on orientation, so the centered target is
         re-evaluated at the IK grasp pose before the fixed pad is aligned to the object face.
-        None when the open jaws cannot clear the environment at this orientation.
+        None when the open jaws cannot clear the environment at this orientation, or, unless
+        ``allow_edge``, when the moving pad would close on the object's top edge (sets
+        :attr:`edge_grasp`).
         """
         with self._local_probe():
             target = self._site_target(source_reference, 0.0, self.gripper_closed)
             for _ in range(GRASP_PLAN_ITERATIONS):
                 self._action_for(target, self.gripper_open, 1.0, rate_limit=False)
                 target = self._site_target(source_reference, 0.0, self.gripper_closed)
-            target = self._collision_aligned_grasp_target(target)
-            target = self._jaw_clear_grasp_target(target)
-            if target is None:
-                return None
-            # Raising changes the IK pose slightly; realign the fixed pad at the final height.
-            return self._collision_aligned_grasp_target(target)
+            # Aligning shifts the target along the closing axis, which has a vertical component at
+            # a tilted grasp, and raising changes the IK pose slightly; alternate until the aligned
+            # target also clears the support, or the fixed pad lands on it and stalls the descent.
+            for _ in range(GRASP_PLAN_ITERATIONS):
+                aligned = self._collision_aligned_grasp_target(target)
+                target = self._jaw_clear_grasp_target(aligned, allow_edge=allow_edge)
+                if target is None:
+                    return None
+                if float(np.linalg.norm(target - aligned)) <= GRASP_PLAN_POSITION_TOLERANCE:
+                    return target
+            # Not converged: keep a target that clears the support and is within a millimetre of
+            # alignment; a larger miss would put the fixed pad into, or well off, the object.
+            if float(np.linalg.norm(self._collision_aligned_grasp_target(target) - target)) <= 0.001:
+                return target
+            return None
 
-    def _jaw_clear_grasp_target(self, target: np.ndarray) -> np.ndarray | None:
+    def _jaw_clear_grasp_target(self, target: np.ndarray, *, allow_edge: bool = True) -> np.ndarray | None:
         """Raise the grasp target until the closing jaws clear the object's support surface.
 
         The moving jaw closes on an arc that dips below the fixed pad, so a grasp centered on a
@@ -996,15 +1155,26 @@ class PickPlaceController:
             for binding in self.arm_bindings:
                 if binding.qpos_address is not None:
                     np.asarray(self.data.qpos)[binding.qpos_address] = probe_targets[binding.action_name]
-            if not self._jaw_sweep_collides():
+            sweep = self._jaw_sweep_collides()
+            if not sweep:
                 return raised
+            if sweep == "edge":
+                if allow_edge:
+                    return raised
+                # Raising only moves the pad further up the object.
+                self.edge_grasp = True
+                return None
             raised = raised + [0.0, 0.0, GRASP_RAISE_STEP]
         return None
 
-    def _jaw_sweep_collides(self) -> bool:
-        """Report whether closing from open until the object is touched hits the environment."""
+    def _jaw_sweep_collides(self) -> str | None:
+        """Report how closing from open until the object is touched goes wrong, or None.
+
+        ``"support"`` when a pad hits the environment (raising the grasp may clear it), ``"edge"``
+        when the moving pad first meets the object within :data:`GRASP_TOP_EDGE_MARGIN` of its top.
+        """
         if self.gripper.qpos_address is None or self.moving_pad is None or self.fixed_pad is None:
-            return False
+            return None
         moving_id = _model_id(self.mujoco, self.model, self.mujoco.mjtObj.mjOBJ_GEOM, self.moving_pad, "geom")
         pads = {
             moving_id,
@@ -1016,6 +1186,7 @@ class PickPlaceController:
             np.asarray(self.data.qpos)[self.gripper.qpos_address] = value
             self.mujoco.mj_forward(self.model, self.data)
             touched_source = False
+            lowest_touch = math.inf
             for contact_index in range(int(self.data.ncon)):
                 contact = self.data.contact[contact_index]
                 first, second = int(contact.geom1), int(contact.geom2)
@@ -1024,15 +1195,27 @@ class PickPlaceController:
                 pad = first if first in pads else second
                 other = second if pad == first else first
                 if other in source_geoms:
-                    touched_source = touched_source or pad == moving_id
+                    if pad == moving_id:
+                        touched_source = True
+                        lowest_touch = min(lowest_touch, float(contact.pos[2]))
                 elif (
                     int(self.model.body_rootid[int(self.model.geom_bodyid[other])]) != robot_root
                     and float(contact.dist) < 0.0
                 ):
-                    return True
+                    return "support"
             if touched_source:
-                return False
-        return False
+                return "edge" if lowest_touch > self._source_top() - GRASP_TOP_EDGE_MARGIN else None
+        return None
+
+    def _source_top(self) -> float:
+        """World height of the top of the object's collision geometry at the current pose."""
+        top = -math.inf
+        for geom_id in self._source_geom_ids():
+            rotation = np.asarray(self.data.geom_xmat[geom_id]).reshape(3, 3)
+            center = np.asarray(self.data.geom_xpos[geom_id]) + rotation @ np.asarray(self.model.geom_aabb[geom_id][:3])
+            half = np.asarray(self.model.geom_aabb[geom_id][3:])
+            top = max(top, float(center[2] + np.abs(rotation[2]) @ half))
+        return top
 
     def _collision_aligned_grasp_target(self, centered_target: np.ndarray) -> np.ndarray:
         """Shift a centered target along the jaw axis so the fixed pad sits at the object face.
@@ -1215,6 +1398,7 @@ class PickPlaceController:
             return True
 
         self.log(f"{label}: target={np.round(current_target(), 4).tolist()} steps={count_label}")
+        self.joint_goal = None
         iteration = 0
         closed_commands = 0
         # Fixed step counts are a minimum; settling and reaching may run this much longer.
@@ -1251,8 +1435,57 @@ class PickPlaceController:
             raise PickPlaceError(
                 "motion_timeout",
                 f"The arm did not reach the '{label}' pose within "
-                f"{PHASE_SETTLE_SECONDS:g} extra simulated seconds; the target may be unreachable.",
+                f"{PHASE_SETTLE_SECONDS:g} extra simulated seconds; the target may be unreachable "
+                f"({self._pose_error_summary(current_target())}).",
             )
+
+    def _pose_error_summary(self, target_position: np.ndarray) -> str:
+        """Where the arm stopped relative to the phase target, for timeout messages."""
+        actual = float(np.linalg.norm(self._end_effector_position() - target_position))
+        commanded = float(np.linalg.norm(self._commanded_end_effector_position() - target_position))
+        rotation = self._site_rotation()
+        axis_error = max(
+            math.degrees(
+                math.acos(float(np.clip(rotation[:, axis] @ self.grasp_orientation[:, axis], -1.0, 1.0)))
+            )
+            for axis in GRASP_ORIENTATION_AXES
+        )
+        qvel = np.asarray(self.data.qvel)
+        speed = max(
+            (
+                abs(float(qvel[int(self.model.jnt_dofadr[binding.joint_id])]))
+                for binding in self.arm_bindings
+                if binding.joint_id is not None
+            ),
+            default=0.0,
+        )
+        contacts = sorted(self._arm_contacts())
+        return (
+            f"position error {actual * 1000:.1f} mm (commanded {commanded * 1000:.1f} mm), "
+            f"jaw axis {axis_error:.1f} deg, joint speed {speed:.3f} rad/s"
+            + (f", touching {', '.join(contacts)}" if contacts else "")
+        )
+
+    def _arm_contacts(self) -> set[str]:
+        """Names of non-robot bodies the arm touches (the object, the table, the container)."""
+        robot_root = None
+        if self.fixed_pad is not None:
+            pad = _model_id(self.mujoco, self.model, self.mujoco.mjtObj.mjOBJ_GEOM, self.fixed_pad, "geom")
+            robot_root = int(self.model.body_rootid[int(self.model.geom_bodyid[pad])])
+        names: set[str] = set()
+        for index in range(int(self.data.ncon)):
+            contact = self.data.contact[index]
+            roots = [int(self.model.body_rootid[int(self.model.geom_bodyid[int(g)])]) for g in (contact.geom1, contact.geom2)]
+            if robot_root is None or robot_root not in roots:
+                continue
+            other = roots[1] if roots[0] == robot_root else roots[0]
+            if other == robot_root:
+                continue
+            geom = int(contact.geom2) if roots[0] == robot_root else int(contact.geom1)
+            robot_geom = int(contact.geom1) if roots[0] == robot_root else int(contact.geom2)
+            robot_part = self.model.geom(robot_geom).name or self.model.body(int(self.model.geom_bodyid[robot_geom])).name
+            names.add(f"{self.model.body(other).name or self.model.geom(geom).name or 'world'} ({robot_part}, {float(contact.dist) * 1000:.1f} mm)")
+        return names
 
     def _gripper_stopped(self) -> bool:
         if self.gripper.joint_id is None:
@@ -1303,10 +1536,98 @@ class PickPlaceController:
         """Run one attempt; raise :class:`PickPlaceError` when a quality gate fails."""
         source_reference = self._reference_position(self.source_body, self.source_site).copy()
         container_reference = self._reference_position(self.container_body, self.container_site).copy()
-        # Plan the aligned grasp before approaching so the descent is vertical: approaching above
-        # the centered target and then shifting sideways drags the fixed pad across the top edge.
-        grasp_target = self._plan_grasp(source_reference)
+        self._grasp_with_retries(source_reference)
+        # The jaw axis only matters while the pads meet the object. Holding a world-fixed jaw
+        # axis while the shoulder pans toward the container folds the elbow into its limit.
+        self.hold_orientation = False
+        self._via_phase(
+            "transfer via point",
+            self._commanded_end_effector_position(),
+            self._carried_object_target(container_reference, self.lift_height),
+            self.variation.transfer_via_offset,
+        )
+        self._phase(
+            "move above container",
+            lambda: self._carried_object_target(container_reference, self.lift_height),
+            self.grasp_gripper_target,
+            self.travel_step,
+            reach_target=True,
+        )
+        try:
+            self._phase(
+                "lower into container",
+                lambda: self._carried_object_target(container_reference, self.lower_height),
+                self.grasp_gripper_target,
+                self.descend_step,
+                reach_target=True,
+            )
+        except PickPlaceError as error:
+            carried = body_position(self.mujoco, self.model, self.data, self.source_body)
+            beside = float(np.linalg.norm(carried[:2] - container_reference[:2]))
+            if error.reason != "motion_timeout" or beside > RELEASE_ABOVE_CONTAINER_LIMIT:
+                raise
+            # Over the container but short of the lowering height (edge of reach): release
+            # from here; the placement check below still requires the object to land inside.
+            self.log(f"lower into container: stopped {beside * 1000:.0f} mm off centre; releasing")
+        release_target = self._commanded_end_effector_position()
+        self._phase(
+            "release cube",
+            release_target,
+            self.gripper_release,
+            self.descend_step,
+            self.release_steps,
+        )
+        self._phase(
+            "retreat",
+            release_target + [0.0, 0.0, self.lift_height - self.lower_height],
+            self.gripper_open,
+            self.travel_step,
+        )
+        if self.return_to_start:
+            self._return_to_start()
+        self._assert_placed()
 
+    def _grasp_with_retries(self, source_reference: np.ndarray) -> np.ndarray:
+        """Approach, descend, close on, and lift the object; return the grasp target that held.
+
+        A grasp whose approach or descent stalls (the arm cannot reach the pose, often a jaw
+        resting on the object's edge), that closes without both pads on the object, or whose lift
+        leaves the object behind is retried from another direction, up to
+        :data:`MAX_GRASP_ATTEMPTS` attempts: the gripper opens, rises, and the grasp is re-planned
+        from the object's current pose.
+        """
+        tried: list[tuple[np.ndarray, float]] = []
+        plans = self._grasp_plans(source_reference)
+        last_failure: PickPlaceError | None = None
+        while True:
+            # Plan the aligned grasp before approaching so the descent is vertical: approaching
+            # above the centered target and then shifting sideways drags the fixed pad across the
+            # top edge.
+            try:
+                grasp_target = next(plans)
+            except PickPlaceError:
+                # No other direction is left: report why the last grasp failed.
+                if last_failure is not None:
+                    raise last_failure from None
+                raise
+            assert self.grasp_direction is not None
+            tried.append(self.grasp_direction)
+            try:
+                self._attempt_grasp(grasp_target)
+                return grasp_target
+            except PickPlaceError as error:
+                if error.reason not in RETRYABLE_GRASP_FAILURES or len(tried) >= MAX_GRASP_ATTEMPTS:
+                    raise
+                last_failure = error
+            # From a stalled descent, rise by the approach height; after a failed lift, stay at
+            # most that high above the grasp.
+            back_off = self._commanded_end_effector_position()
+            back_off[2] = min(back_off[2] + self.approach_height, grasp_target[2] + self.lift_height)
+            self._phase("back off for another grasp", back_off, self.gripper_open, self.travel_step)
+            source_reference = self._reference_position(self.source_body, self.source_site).copy()
+            plans = self._grasp_plans(source_reference, tried)
+
+    def _attempt_grasp(self, grasp_target: np.ndarray) -> None:
         # Settle above the object so the wrist finishes reorienting before the pads descend.
         approach_target = grasp_target + [0.0, 0.0, self.approach_height]
         self._via_phase(
@@ -1355,46 +1676,6 @@ class PickPlaceController:
             reach_target=True,
         )
         self._assert_lifted()
-        # The jaw axis only matters while the pads meet the object. Holding a world-fixed jaw
-        # axis while the shoulder pans toward the container folds the elbow into its limit.
-        self.hold_orientation = False
-        self._via_phase(
-            "transfer via point",
-            self._commanded_end_effector_position(),
-            self._carried_object_target(container_reference, self.lift_height),
-            self.variation.transfer_via_offset,
-        )
-        self._phase(
-            "move above container",
-            lambda: self._carried_object_target(container_reference, self.lift_height),
-            self.grasp_gripper_target,
-            self.travel_step,
-            reach_target=True,
-        )
-        self._phase(
-            "lower into container",
-            lambda: self._carried_object_target(container_reference, self.lower_height),
-            self.grasp_gripper_target,
-            self.descend_step,
-            reach_target=True,
-        )
-        release_target = self._commanded_end_effector_position()
-        self._phase(
-            "release cube",
-            release_target,
-            self.gripper_release,
-            self.descend_step,
-            self.release_steps,
-        )
-        self._phase(
-            "retreat",
-            release_target + [0.0, 0.0, self.lift_height - self.lower_height],
-            self.gripper_open,
-            self.travel_step,
-        )
-        if self.return_to_start:
-            self._return_to_start()
-        self._assert_placed()
 
     def _return_to_start(self) -> None:
         """Drive the arm and gripper back to the episode's start pose, then wait for the arm to stop.
@@ -1507,6 +1788,7 @@ def prepare_controller(
             client,
             wrist_roll_degrees=tuning.home_wrist_roll_degrees,
             physics_steps=tuning.home_physics_steps,
+            mujoco=mujoco,
         )
     # step() does not refresh the local replica, and the controller latches its initial targets and
     # grasp orientation from it, so synchronize before building the controller.

@@ -3,7 +3,7 @@
 
 'use client';
 
-import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { SparkRenderer, SplatMesh } from '@sparkjsdev/spark';
@@ -11,6 +11,13 @@ import { SPLAT_BACKDROP_BODY, splatFormatOf } from '@mujoco-studio/types';
 import { usePhysics } from '@mujoco-studio/mujoco';
 
 import { backdropDragPreview } from '@/lib/editor/backdropDragPreview';
+import {
+  bodyTransform,
+  cachedRemovedSplatIndices,
+  cleanupActive,
+  keptByCropAndOpacity,
+  type SplatCleanup,
+} from '@/lib/editor/splatCleanup';
 import { readSplatPoints } from '@/lib/editor/splatPoints';
 import { type QuaternionTuple, type SplatPoint, type Vec3Tuple } from '@/lib/editor/splatCollision';
 
@@ -38,6 +45,8 @@ export interface SplatEnvironmentProps {
   rotation?: QuaternionTuple;
   /** Translation used only while the body is missing (before the backdrop is merged). */
   fallbackOrigin?: Vec3Tuple | null;
+  /** Parts of the scan left out (splatCleanup.ts), as the native compositor leaves them out. */
+  cleanup?: SplatCleanup;
   onStatusChange?: (status: SplatEnvironmentStatus) => void;
   /**
    * Visible splats in raw PLY coordinates (Spark applies no axis flip), read at full precision.
@@ -70,6 +79,64 @@ function patchSparkRendererResilience(SparkRendererCtor: new (...args: never[]) 
   proto.__driveSortPatched = true;
 }
 
+/** Decoded points per splat URL, shared by the viewport, camera preview, and captures. */
+const pointsByUrl = new Map<string, Promise<SplatPoint[] | null>>();
+function splatPointsFor(url: string, blob: Blob): Promise<SplatPoint[] | null> {
+  let points = pointsByUrl.get(url);
+  if (!points) {
+    points = readSplatPoints(blob).catch(() => null);
+    pointsByUrl.set(url, points);
+    // Blob URLs are revoked when the splat is replaced; keep only recent entries.
+    while (pointsByUrl.size > 4) pointsByUrl.delete(pointsByUrl.keys().next().value as string);
+  }
+  return points;
+}
+
+type EditableSplats = NonNullable<SplatMesh['packedSplats']>;
+
+/**
+ * Hides (zero opacity) the Gaussians `cleanup` removes, after restoring the ones hidden before.
+ * `hidden` remembers their original opacities. Returns how many are hidden.
+ */
+function applyCleanup(
+  mesh: SplatMesh,
+  points: readonly SplatPoint[],
+  cleanup: SplatCleanup | undefined,
+  scale: number,
+  rotation: QuaternionTuple,
+  hidden: Map<number, number>,
+): number {
+  const splats = (mesh.packedSplats ?? mesh.extSplats) as EditableSplats | undefined;
+  if (!splats) return 0;
+  let changed = false;
+  if (hidden.size) {
+    splats.forEachSplat((index, center, scales, quaternion, _opacity, color) => {
+      const original = hidden.get(index);
+      if (original !== undefined)
+        splats.setSplat(index, center, scales, quaternion, original, color);
+    });
+    hidden.clear();
+    changed = true;
+  }
+  if (cleanupActive(cleanup)) {
+    const removed = cachedRemovedSplatIndices(points, cleanup, scale, rotation);
+    const toBody = bodyTransform(scale, rotation);
+    splats.forEachSplat((index, center, scales, quaternion, opacity, color) => {
+      if (opacity <= 0) return;
+      if (
+        removed?.has(index) ||
+        !keptByCropAndOpacity(cleanup, toBody, center.x, center.y, center.z, opacity)
+      ) {
+        hidden.set(index, opacity);
+        splats.setSplat(index, center, scales, quaternion, 0, color);
+      }
+    });
+    changed = true;
+  }
+  if (changed) splats.needsUpdate = true;
+  return hidden.size;
+}
+
 /** Renders one PLY or SPZ Gaussian splat at the runtime pose of its MJCF backdrop body. */
 export function SplatEnvironment({
   src,
@@ -77,6 +144,7 @@ export function SplatEnvironment({
   scale = 1,
   rotation,
   fallbackOrigin = null,
+  cleanup,
   onStatusChange,
   onLoad,
   onError,
@@ -85,6 +153,9 @@ export function SplatEnvironment({
   const { gl, invalidate } = useThree();
   const { graph, getSimulation } = usePhysics();
   const meshRef = useRef<SplatMesh | null>(null);
+  const pointsRef = useRef<SplatPoint[]>([]);
+  const hiddenRef = useRef(new Map<number, number>());
+  const [loadedVersion, setLoadedVersion] = useState(0);
   const callbacksRef = useRef({ onStatusChange, onLoad, onError });
   const scratch = useRef({
     matrix: new THREE.Matrix4(),
@@ -165,10 +236,8 @@ export function SplatEnvironment({
         const blob = await fetch(url).then((response) => response.blob());
         if (disposed) return;
         const format = splatFormatOf(new Uint8Array(await blob.slice(0, 2).arrayBuffer()));
-        // Parse the splat for collision while Spark decodes it for rendering.
-        const precise = callbacksRef.current.onLoad
-          ? readSplatPoints(blob).catch(() => null)
-          : Promise.resolve([] as SplatPoint[]);
+        // Parse the splat (collision and cleanup) while Spark decodes it for rendering.
+        const precise = splatPointsFor(url, blob);
         patchSparkRendererResilience(SparkRenderer);
         spark = new SparkRenderer({ renderer: gl, onDirty: invalidate });
         mesh = new SplatMesh({
@@ -186,8 +255,11 @@ export function SplatEnvironment({
         const points = await precise;
         if (disposed) return;
         if (!points) throw new Error('The splat could not be decoded for collision geometry.');
-        mesh.visible = true;
+        pointsRef.current = points;
+        hiddenRef.current = new Map();
         meshRef.current = mesh;
+        setLoadedVersion((version) => version + 1);
+        mesh.visible = true;
         callbacksRef.current.onStatusChange?.('ready');
         callbacksRef.current.onLoad?.(points);
         invalidate();
@@ -204,6 +276,7 @@ export function SplatEnvironment({
     return () => {
       disposed = true;
       meshRef.current = null;
+      pointsRef.current = [];
       if (mesh) {
         splatGroup.remove(mesh);
         mesh.dispose();
@@ -214,6 +287,22 @@ export function SplatEnvironment({
       }
     };
   }, [src, gl, invalidate]);
+
+  // Re-applied when the cleanup or calibration changes, without reloading the splat.
+  const cleanupKey = JSON.stringify(cleanup ?? null);
+  useEffect(() => {
+    const mesh = meshRef.current;
+    if (!mesh) return;
+    applyCleanup(
+      mesh,
+      pointsRef.current,
+      cleanupKey === 'null' ? undefined : (JSON.parse(cleanupKey) as SplatCleanup),
+      scale > 0 ? scale : 1,
+      [rw, rx, ry, rz],
+      hiddenRef.current,
+    );
+    invalidate();
+  }, [cleanupKey, scale, rw, rx, ry, rz, loadedVersion, invalidate]);
 
   return <group ref={groupRef} />;
 }

@@ -23,6 +23,10 @@ vendored.
 
 Motor properties for the STS3215 motors used in the robot are adapted from the [Open Duck Mini project](https://github.com/apirrone/Open_Duck_Mini).
 
+The arm position and velocity gains (`kp` 6 and `kv` 0.3; 13 and 1.6 for `shoulder_lift`) are
+fitted to teleoperation recordings of a real follower arm. The simulated arm therefore sags under
+its own weight and lags its command like the hardware.
+
 ## Gripper Note
 
 LeRobot exposes the gripper as a normalized scalar, where:
@@ -33,7 +37,8 @@ LeRobot exposes the gripper as a normalized scalar, where:
 The MJCF keeps the native revolute gripper joint and actuator ranges. Physical AI Scene Builder's evaluation
 profiles map the normalized scalar across that native range. The MuJoCo model uses
 primitive fingertip pads instead of the visual CAD meshes for contact, with a gripper-specific gain
-and force limit matching the protected hardware configuration.
+and force limit matching the protected hardware configuration. The pads are placed so the gripper
+reads what the real arm reads while holding a 25 mm cube.
 
 ---
 

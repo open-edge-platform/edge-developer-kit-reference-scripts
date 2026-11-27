@@ -379,7 +379,7 @@ function buildSo101SampleMjcf(
   const withMountedCamera = addCameraToBody(
     mjcf,
     'gripper',
-    '\n              <camera name="camera" pos="-0.004122 0.0846 0.010032" fovy="45" quat="0.978541 -0.20581 -0.010025 0" resolution="640 480"/>',
+    '\n              <camera name="camera" pos="0.0049 0.0904 0.0037" fovy="40" quat="0.9656 -0.2505 0.064 -0.0283" resolution="640 480"/>',
   );
   if (!withMountedCamera) throw new Error('SO101 robot MJCF has no gripper body.');
   mjcf = withMountedCamera;
@@ -403,38 +403,39 @@ function buildSo101SampleMjcf(
     .replace(assetSection, '')
     .replace(/<worldbody\s*>/i, `${assetSection}\n  <worldbody>`);
 
+  // Object places, the container, and both cameras are fitted to recordings of a real SO-101 rig.
   const taskObjectsBeforeRobot = `
     <geom name="floor" type="plane" size="4 4 0.1" material="sample_floor_material" pos="0.004367 0 0"/>
     <light name="key" pos="0 0 3" dir="0 0 -1" diffuse="1 1 1"/>
     <body name="table" pos="0 0 0">
-      <geom name="table_top" type="box" pos="0 0 0.75" size="0.6 0.8 0.05" rgba="0.55 0.35 0.18 1"/>
+      <geom name="table_top" type="box" pos="0 0 0.743" size="0.6 0.8 0.05" rgba="0.55 0.35 0.18 1"/>
       <geom name="leg_fl" type="cylinder" pos="-0.5 -0.3 0.375" size="0.05 0.375" rgba="0.45 0.28 0.14 1"/>
       <geom name="leg_fr" type="cylinder" pos="0.5 -0.3 0.375" size="0.05 0.375" rgba="0.45 0.28 0.14 1"/>
       <geom name="leg_bl" type="cylinder" pos="-0.5 0.3 0.375" size="0.05 0.375" rgba="0.45 0.28 0.14 1"/>
       <geom name="leg_br" type="cylinder" pos="0.5 0.3 0.375" size="0.05 0.375" rgba="0.45 0.28 0.14 1"/>
     </body>
-    <body name="asset_a2_plate_body" pos="-0.305027 0 0.8035">
+    <body name="asset_a2_plate_body" pos="-0.305027 0 0.7945">
       <freejoint/>
       <geom name="a2_plate" type="box" size="0.297 0.210 0.0015" material="sample_a2_material"/>
     </body>
-    <body name="asset_cube" pos="-0.305027 0.059617 0.830368">
+    <body name="asset_cube" pos="-0.3244 0.0375 0.825">
       <freejoint/>
       <geom name="asset_cube_geom" type="box" size="0.0125 0.0125 0.0125" mass="0.01" friction="1 0.005 0.0001" rgba="1 0 0 1"/>
     </body>
-    <camera name="camera_2" pos="-0.576544 0.019815 1.188545" fovy="60" quat="0.687152 0.161652 -0.162981 -0.689295" resolution="640 480"/>
-    <body name="asset_pad" pos="0 -0.029921 0.5">
-      <geom name="asset_pad_geom" type="box" size="0.05 0.05 0.007" rgba="0 0 0 1" mass="1" friction="1 0.005 0.0001" pos="-0.305027 0.089538 0.310868"/>
+    <camera name="camera_2" pos="-0.5117 0.0253 1.1783" fovy="55" quat="-0.6768 -0.1241 0.11 0.7173" resolution="640 400"/>
+    <body name="asset_pad" pos="-0.016173 -0.050838 0.493432">
+      <geom name="asset_pad_geom" type="box" size="0.042 0.04 0.00822" rgba="0 0 0 1" mass="1" friction="1 0.005 0.0001" pos="-0.305027 0.089538 0.310868"/>
     </body>
     <body name="robot_1__root" pos="-0.577447 -0.092209 0.80605" quat="1 0 0 0">`;
   const taskObjectsAfterRobot = `
     </body>
-    <body name="container" pos="-0.310196 -0.089869 0.807">
-      <site name="container__generation_interior" pos="0 0 0.025" size="0.0325 0.0325 0.001" rgba="0 1 0 0"/>
-      <geom name="container_bottom" type="box" pos="0 0 0.0025" size="0.0375 0.0375 0.0025"/>
-      <geom name="container_front" type="box" pos="0 -0.035 0.0225" size="0.0375 0.0025 0.0175"/>
-      <geom name="container_back" type="box" pos="0 0.035 0.0225" size="0.0375 0.0025 0.0175"/>
-      <geom name="container_left" type="box" pos="-0.035 0 0.0225" size="0.0025 0.0325 0.0175"/>
-      <geom name="container_right" type="box" pos="0.035 0 0.0225" size="0.0025 0.0325 0.0175"/>
+    <body name="container" pos="-0.3299 -0.098 0.7962">
+      <site name="container__generation_interior" pos="0 0 0.025" size="0.0375 0.0375 0.001" rgba="0 1 0 0"/>
+      <geom name="container_bottom" type="box" pos="0 0 0.0025" size="0.0425 0.0425 0.0025" rgba="0.92 0.94 0.97 1"/>
+      <geom name="container_front" type="box" pos="0 -0.04 0.025" size="0.0425 0.0025 0.02" rgba="0.92 0.94 0.97 1"/>
+      <geom name="container_back" type="box" pos="0 0.04 0.025" size="0.0425 0.0025 0.02" rgba="0.92 0.94 0.97 1"/>
+      <geom name="container_left" type="box" pos="-0.04 0 0.025" size="0.0025 0.0375 0.02" rgba="0.92 0.94 0.97 1"/>
+      <geom name="container_right" type="box" pos="0.04 0 0.025" size="0.0025 0.0375 0.02" rgba="0.92 0.94 0.97 1"/>
     </body>`;
   const robotBody = /(<body\s+name="base")/i;
   if (!robotBody.test(mjcf)) throw new Error('SO101 robot MJCF has no base body.');

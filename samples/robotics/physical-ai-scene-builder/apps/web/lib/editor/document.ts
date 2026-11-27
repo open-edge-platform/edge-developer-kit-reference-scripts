@@ -1662,8 +1662,10 @@ export function insertTable(
 
 export interface ContainerPlacement {
   name: string;
-  /** Inner width (X) and depth (Y), meters. */
+  /** Inner width (X) and depth (Y), meters; a round bowl uses the width as its inner diameter. */
   inner: readonly [number, number];
+  /** `tray` (rectangular, the default) or `round` (a bowl of `ROUND_CONTAINER_SEGMENTS` walls). */
+  shape?: 'tray' | 'round';
   wallHeight: number;
   wallThickness: number;
   /** Centre of the container's underside. */
@@ -1694,16 +1696,18 @@ export function insertContainer(
   ) {
     throw new Error('Container inner size, wallHeight, and wallThickness must be positive.');
   }
-  const halfWidth = innerWidth / 2 + wall;
-  const halfDepth = innerDepth / 2 + wall;
+  const round = placement.shape === 'round';
+  const outer = round
+    ? [innerWidth / 2 + wall, innerWidth / 2 + wall]
+    : [innerWidth / 2 + wall, innerDepth / 2 + wall];
   const inserted = insertPrimitiveObject(xml, {
     name: placement.name,
-    type: 'box',
-    size: [halfWidth, halfDepth, wall / 2],
+    type: round ? 'cylinder' : 'box',
+    size: round ? [outer[0], wall / 2, 0] : [outer[0], outer[1], wall / 2],
     position: placement.position,
     rotation: placement.rotation,
     rgba: placement.rgba,
-    mass: placement.mass / 5,
+    mass: placement.mass / (round ? ROUND_CONTAINER_SEGMENTS + 1 : 5),
     friction: [1, 0.005, 0.0001],
     fixed: placement.fixed,
   });
@@ -1718,27 +1722,140 @@ export function insertContainer(
   if (!document || !body || !floor) return null;
   floor.setAttribute('name', uniqueName(document, `${inserted.bodyName}_bottom`));
   floor.setAttribute('pos', numberList([0, 0, wall / 2]));
+  buildContainerWalls(document, body, floor, inserted.bodyName, {
+    inner: placement.inner,
+    wallHeight,
+    wall,
+    round,
+  });
+  return { xml: serialize(document), bodyName: inserted.bodyName };
+}
+
+/** Wall count of a round container: a 16-sided ring. */
+export const ROUND_CONTAINER_SEGMENTS = 16;
+
+/** Adds the walls and the interior site after `floor` (a clone of it per wall keeps its style). */
+function buildContainerWalls(
+  document: Document,
+  body: Element,
+  floor: Element,
+  name: string,
+  shape: { inner: readonly [number, number]; wallHeight: number; wall: number; round: boolean },
+): void {
+  const { inner, wallHeight, wall, round } = shape;
+  const [innerWidth, innerDepth] = inner;
   const wallZ = wall + wallHeight / 2;
-  const walls: [string, number[], number[]][] = [
-    ['front', [0, -(innerDepth + wall) / 2, wallZ], [halfWidth, wall / 2, wallHeight / 2]],
-    ['back', [0, (innerDepth + wall) / 2, wallZ], [halfWidth, wall / 2, wallHeight / 2]],
-    ['left', [-(innerWidth + wall) / 2, 0, wallZ], [wall / 2, innerDepth / 2, wallHeight / 2]],
-    ['right', [(innerWidth + wall) / 2, 0, wallZ], [wall / 2, innerDepth / 2, wallHeight / 2]],
-  ];
-  for (const [side, pos, size] of walls) {
+  const walls: [string, number[], number[], number[] | null][] = [];
+  if (round) {
+    const radius = innerWidth / 2;
+    // Each segment covers its share of the ring's outside, so neighbours meet without gaps.
+    const halfLength = (radius + wall) * Math.tan(Math.PI / ROUND_CONTAINER_SEGMENTS);
+    for (let index = 0; index < ROUND_CONTAINER_SEGMENTS; index++) {
+      const angle = (2 * Math.PI * index) / ROUND_CONTAINER_SEGMENTS;
+      const at = radius + wall / 2;
+      walls.push([
+        `ring_${index}`,
+        [at * Math.cos(angle), at * Math.sin(angle), wallZ],
+        [wall / 2, halfLength, wallHeight / 2],
+        [Math.cos(angle / 2), 0, 0, Math.sin(angle / 2)],
+      ]);
+    }
+  } else {
+    const halfWidth = innerWidth / 2 + wall;
+    walls.push(
+      ['front', [0, -(innerDepth + wall) / 2, wallZ], [halfWidth, wall / 2, wallHeight / 2], null],
+      ['back', [0, (innerDepth + wall) / 2, wallZ], [halfWidth, wall / 2, wallHeight / 2], null],
+      [
+        'left',
+        [-(innerWidth + wall) / 2, 0, wallZ],
+        [wall / 2, innerDepth / 2, wallHeight / 2],
+        null,
+      ],
+      [
+        'right',
+        [(innerWidth + wall) / 2, 0, wallZ],
+        [wall / 2, innerDepth / 2, wallHeight / 2],
+        null,
+      ],
+    );
+  }
+  for (const [side, pos, size, quat] of walls) {
     const geom = floor.cloneNode(true) as Element;
-    geom.setAttribute('name', uniqueName(document, `${inserted.bodyName}_${side}`));
+    geom.setAttribute('name', uniqueName(document, `${name}_${side}`));
+    geom.setAttribute('type', 'box');
     geom.setAttribute('pos', numberList(pos));
     geom.setAttribute('size', numberList(size));
+    if (quat) geom.setAttribute('quat', numberList(quat));
+    else geom.removeAttribute('quat');
     body.append(geom);
   }
   const site = mjcfElement(document, 'site');
-  site.setAttribute('name', `${inserted.bodyName}__generation_interior`);
+  site.setAttribute('name', `${name}__generation_interior`);
   site.setAttribute('pos', numberList([0, 0, wall + wallHeight / 2]));
-  site.setAttribute('size', numberList([innerWidth / 2, innerDepth / 2, 0.001]));
+  // A round bowl's placement target is the square that fits inside it.
+  const half = round
+    ? [innerWidth / 2 / Math.SQRT2, innerWidth / 2 / Math.SQRT2]
+    : [innerWidth / 2, innerDepth / 2];
+  site.setAttribute('size', numberList([half[0], half[1], 0.001]));
   site.setAttribute('rgba', '0 1 0 0');
   body.insertBefore(site, floor);
-  return { xml: serialize(document), bodyName: inserted.bodyName };
+}
+
+/**
+ * Resizes a container built by `insertContainer` in place: its floor, walls, and interior site
+ * are rebuilt for the new size inside the same body, so its pose, joint, colour, total mass, and
+ * shape stay. Omitted wall height or thickness keep their current values. Null when `name` is not
+ * such a container.
+ */
+export function resizeContainer(
+  xml: string,
+  name: string,
+  update: { inner: readonly [number, number]; wallHeight?: number; wallThickness?: number },
+): string | null {
+  const document = parse(xml);
+  const body = document ? topLevelBody(document, name) : null;
+  if (!document || !body) return null;
+  const geoms = [...body.children].filter((element) => element.tagName === 'geom');
+  const floor = geoms.find((geom) => geom.getAttribute('name') === `${name}_bottom`);
+  const site = [...body.children].find(
+    (element) =>
+      element.tagName === 'site' && element.getAttribute('name') === `${name}__generation_interior`,
+  );
+  if (!floor || !site) return null;
+  const round = floor.getAttribute('type') === 'cylinder';
+  const floorSize = numbers(floor.getAttribute('size'), round ? [0, 0] : [0, 0, 0]);
+  const currentWall = round ? floorSize[1] * 2 : floorSize[2] * 2;
+  const sitePos = numbers(site.getAttribute('pos'), [0, 0, 0]);
+  const wall = update.wallThickness ?? currentWall;
+  const wallHeight = update.wallHeight ?? (sitePos[2] - currentWall) * 2;
+  if (
+    !hasFiniteValues(update.inner) ||
+    update.inner.some((value) => value <= 0) ||
+    !(wall > 0) ||
+    !(wallHeight > 0)
+  ) {
+    return null;
+  }
+  const mass = geoms.reduce((sum, geom) => sum + Number(geom.getAttribute('mass') ?? 0), 0);
+  for (const geom of geoms) if (geom !== floor) geom.remove();
+  site.remove();
+  const outer = round
+    ? [update.inner[0] / 2 + wall]
+    : [update.inner[0] / 2 + wall, update.inner[1] / 2 + wall];
+  floor.setAttribute(
+    'size',
+    numberList(round ? [outer[0], wall / 2] : [outer[0], outer[1], wall / 2]),
+  );
+  floor.setAttribute('pos', numberList([0, 0, wall / 2]));
+  const pieces = round ? ROUND_CONTAINER_SEGMENTS + 1 : 5;
+  if (mass > 0) floor.setAttribute('mass', numberList([mass / pieces]));
+  buildContainerWalls(document, body, floor, name, {
+    inner: update.inner,
+    wallHeight,
+    wall,
+    round,
+  });
+  return serialize(document);
 }
 
 export const SPLAT_BACKDROP_FIELD = `${SPLAT_BACKDROP_BODY}_heightfield`;
@@ -2281,5 +2398,71 @@ export function setObjectFriction(
       numberList(current.map((value, index) => friction[index] ?? value)),
     );
   }
+  return serialize(document);
+}
+
+/** Name of the primitive that stands in for an object's collision meshes. */
+export function collisionProxyName(bodyName: string): string {
+  return `${bodyName}_collision_proxy`;
+}
+
+/**
+ * Gives a top-level object a primitive collision shape fitted to its collision geometry, or puts
+ * its collision meshes back (`mesh`). `box` is the object's body-frame bounds of what collides
+ * now. A box or cylinder (about the body's z axis) contacts faster and steadier than a convex
+ * hull. The collision meshes stay in the file, switched off (contype and conaffinity 0, mass 0),
+ * so `mesh` restores them; the caller sets the mass afterwards. Null when the object has no
+ * collision mesh to replace.
+ */
+export function setCollisionProxy(
+  xml: string,
+  bodyName: string,
+  shape: 'mesh' | 'box' | 'cylinder',
+  box: { low: readonly number[]; high: readonly number[] },
+): string | null {
+  const document = parse(xml);
+  const body = document ? topLevelBody(document, bodyName) : null;
+  if (!document || !body) return null;
+  const proxyName = collisionProxyName(bodyName);
+  const geoms = [...body.querySelectorAll('geom')];
+  const switchedOff = (geom: Element) =>
+    geom.getAttribute('type') === 'mesh' &&
+    geom.getAttribute('group') === '4' &&
+    !isCollidingGeom(geom);
+  // Undo an earlier proxy first, so a new one fits the meshes rather than the old proxy.
+  for (const geom of geoms) {
+    if (geom.getAttribute('name') === proxyName) geom.remove();
+    else if (switchedOff(geom)) {
+      geom.removeAttribute('contype');
+      geom.removeAttribute('conaffinity');
+    }
+  }
+  const meshes = [...body.querySelectorAll('geom')].filter(
+    (geom) => geom.getAttribute('type') === 'mesh' && isCollidingGeom(geom),
+  );
+  if (!meshes.length) return null;
+  if (shape === 'mesh') return serialize(document);
+
+  const center = [0, 1, 2].map((axis) => (box.low[axis] + box.high[axis]) / 2);
+  const half = [0, 1, 2].map((axis) => (box.high[axis] - box.low[axis]) / 2);
+  if (half.some((value) => !Number.isFinite(value) || value <= 0)) return null;
+  const friction = meshes[0].getAttribute('friction');
+  for (const geom of meshes) {
+    geom.setAttribute('contype', '0');
+    geom.setAttribute('conaffinity', '0');
+    geom.setAttribute('group', '4');
+  }
+  const proxy = mjcfElement(document, 'geom');
+  proxy.setAttribute('name', proxyName);
+  proxy.setAttribute('type', shape);
+  proxy.setAttribute(
+    'size',
+    numberList(shape === 'box' ? half : [Math.max(half[0], half[1]), half[2]]),
+  );
+  proxy.setAttribute('pos', numberList(center));
+  if (friction) proxy.setAttribute('friction', friction);
+  proxy.setAttribute('rgba', '0.55 0.55 0.55 0.12');
+  proxy.setAttribute('group', '4');
+  body.append(proxy);
   return serialize(document);
 }

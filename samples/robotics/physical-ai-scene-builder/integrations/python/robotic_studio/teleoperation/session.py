@@ -23,6 +23,7 @@ from ..generation.dataset import (
     EpisodeFrame,
     EpisodeSummary,
     EpisodeWriter,
+    IncrementalEpisodeWriter,
     RGBImage,
 )
 from ..generation.native_env import (
@@ -36,6 +37,7 @@ from ..generation.model_randomization import (
     BACKDROP_APPEARANCE_KIND,
     MODEL_RULE_KINDS,
 )
+from ..frame_clock import capture_fps_from_profile
 from ..generation.randomization import XorShift32, derive_seed, sample_rules
 from .collection import TeleoperationCollectionStore, TeleoperationStoredState
 
@@ -386,6 +388,7 @@ class TeleoperationSession:
         read_only: bool = False,
         lease_timeout: float | None = TELEOPERATION_LEASE_TIMEOUT_SECONDS,
         live_backdrop_budget: bool | None = None,
+        stream_recordings: bool = False,
     ) -> None:
         """Create a session.
 
@@ -398,6 +401,11 @@ class TeleoperationSession:
         ``live_backdrop_budget`` says whether ``profile.backdropRenderBudget`` applies. By default
         it applies only to interactive sessions (writable, unstaged, expiring leases); a recording
         that exceeds it defers its remaining backdrop frames to save time.
+
+        ``stream_recordings`` (interactive sessions) encodes camera frames while recording into a
+        directory under ``dataset/staging/`` instead of keeping them until save. A backdrop
+        recording that falls behind defers the rest of its frames (always a suffix); they are
+        rendered and appended at save, and the finished episode moves into ``dataset/episodes/``.
         """
         self.environment = environment
         self.profile = dict(profile)
@@ -423,6 +431,11 @@ class TeleoperationSession:
         )
         self._read_only = bool(read_only) or bool(getattr(collection_store, "read_only", False))
         self._staging_directory = Path(staging_directory) if staging_directory is not None else None
+        self._stream_recordings = bool(stream_recordings) and staging_directory is None and not self._read_only
+        # The open interactive stream: its writer, directory, and frames encoded so far.
+        self._interactive_writer: IncrementalEpisodeWriter | None = None
+        self._interactive_directory: Path | None = None
+        self._streamed_count = 0
         self._staging_episode_index = staging_episode_index
         if lease_timeout is not None and (not math.isfinite(float(lease_timeout)) or lease_timeout <= 0):
             raise TeleoperationSessionError("lease_timeout must be a positive number or None.")
@@ -870,7 +883,8 @@ class TeleoperationSession:
                 else {}
             )
             self.write_recording_frame(
-                EpisodeFrame.from_values(
+                deferred=deferred_render_state is not None,
+                frame=EpisodeFrame.from_values(
                     frame_index,
                     pre_action_observation.simulation_time,
                     pre_action_state,
@@ -963,6 +977,27 @@ class TeleoperationSession:
             abort = getattr(self._writer, "abort", None)
             if callable(abort):
                 abort()
+        self._close_interactive_stream(remove=True)
+
+    def _close_interactive_stream(self, *, remove: bool) -> None:
+        writer, directory = self._interactive_writer, self._interactive_directory
+        self._interactive_writer = None
+        self._interactive_directory = None
+        self._streamed_count = 0
+        if writer is not None:
+            writer.abort()
+        if remove and directory is not None:
+            shutil.rmtree(directory, ignore_errors=True)
+
+    def _open_interactive_stream(self, episode_id: str) -> None:
+        self._close_interactive_stream(remove=True)
+        directory = self.collection.root / "dataset" / "staging" / f"interactive-{episode_id}"
+        shutil.rmtree(directory, ignore_errors=True)
+        writer = IncrementalEpisodeWriter(directory, fps=capture_fps_from_profile(self.profile))
+        writer.begin_episode(directory)
+        self._interactive_writer = writer
+        self._interactive_directory = directory
+        self._streamed_count = 0
 
     def start_recording(self, client_id: str, lease_id: str | None = None, *, admin: bool = False) -> str:
         self._require_control(client_id, lease_id, allow_admin=admin)
@@ -986,7 +1021,10 @@ class TeleoperationSession:
         )
 
     def _start_recording_slot(self, attempt: Mapping[str, int]) -> str:
-        self._recording_episode_id = f"episode-{uuid.uuid4()}"
+        episode_id = f"episode-{uuid.uuid4()}"
+        if self._stream_recordings:
+            self._open_interactive_stream(episode_id)
+        self._recording_episode_id = episode_id
         self._recording_started_at = _now()
         self._recording_start_simulation_time = self._last_observation.simulation_time
         self._recording_frames = []
@@ -1101,12 +1139,18 @@ class TeleoperationSession:
             try:
                 for index in indices:
                     images = self._render_stored_state(pending.deferred_states[index])
-                    frame = pending.frames[index]
-                    # The rendered images replace the empty placeholder; nothing is kept twice.
-                    pending.frames[index] = replace(
-                        frame,
+                    frame = replace(
+                        pending.frames[index],
                         images={name: RGBImage.from_array(image) for name, image in images.items()},
                     )
+                    if self._interactive_writer is not None and index == self._streamed_count:
+                        # Deferred frames are the recording's suffix, rendered in order: encode
+                        # each one after the streamed frames.
+                        self._interactive_writer.append(frame)
+                        self._streamed_count += 1
+                        frame = replace(frame, images={})
+                    # The rendered images replace the empty placeholder; nothing is kept twice.
+                    pending.frames[index] = frame
                     del pending.deferred_states[index]
             finally:
                 if recorded_state is not None:
@@ -1206,6 +1250,7 @@ class TeleoperationSession:
             ),
         )
         episode = CollectedEpisode(summary, tuple(pending.frames))
+        streamed_directory: Path | None = None
         if staged:
             finalize = getattr(self._writer, "finalize_episode", None)
             write_at = getattr(self._writer, "write_episode_at", None)
@@ -1215,6 +1260,9 @@ class TeleoperationSession:
                 artifact_path = write_at(episode, self._staging_directory)
             else:
                 raise TeleoperationRecordingError("Staging mode requires a staging-capable writer.")
+        elif self._interactive_writer is not None:
+            streamed_directory = self._finish_interactive_stream(episode, summary)
+            artifact_path = None
         else:
             artifact_path = self._writer.write_episode(episode) if self._writer is not None else None
         value = {
@@ -1248,13 +1296,36 @@ class TeleoperationSession:
             self._pending_recording = None
             self.last_staged_episode = dict(value)
             return dict(value)
-        committed = self.collection.append_episode(value)
+        if streamed_directory is not None:
+            # Moves the streamed directory to dataset/episodes/episode-NNNNNN and records it.
+            committed = self.collection.append_staged_episode(
+                value, streamed_directory, dataset_root=self.collection.root / "dataset"
+            )
+            paths = getattr(self._writer, "_episode_paths", None)
+            if isinstance(paths, list):
+                paths.append(self._episode_directory(episode_index))
+        else:
+            committed = self.collection.append_episode(value)
         self._pending_recording = None
         if not admin:
             # Saving can write a large artifact synchronously. Keep the lease alive
             # through that write so the following release command remains valid.
             self._lease_last_seen = time.monotonic()
         return dict(committed)
+
+    def _finish_interactive_stream(self, episode: CollectedEpisode, summary: EpisodeSummary) -> Path:
+        """Close the streamed videos and write the episode's metadata in its staging directory."""
+        writer = self._interactive_writer
+        assert writer is not None
+        if self._streamed_count != len(episode.frames):
+            raise TeleoperationRecordingError(
+                f"Only {self._streamed_count} of {len(episode.frames)} frames were encoded."
+            )
+        directory = Path(writer.finalize_episode(episode, summary=summary.to_dict()))
+        self._interactive_writer = None
+        self._interactive_directory = None
+        self._streamed_count = 0
+        return directory
 
     def _episode_directory(self, episode_index: int) -> Path:
         return self.collection.root / "dataset" / "episodes" / f"episode-{episode_index:06d}"
@@ -1341,6 +1412,7 @@ class TeleoperationSession:
             self._abort_streamed_frames()
             self._clear_recording()
             return None
+        self._close_interactive_stream(remove=True)
         value = self.collection.append_episode(
             {
                 "episodeId": self._recording_episode_id,
@@ -1406,7 +1478,9 @@ class TeleoperationSession:
             self._base_state.ctrl,
             images=False,
         )
-        random = XorShift32(seed)
+        # Hash the seed: XorShift32 seeded with nearby integers (seeds 1000, 1001, ...) emits
+        # almost the same first draws, which pinned every state's x offset to one value.
+        random = XorShift32(derive_seed(seed))
         x_cm = random.range(list(x_range))
         y_cm = random.range(list(y_range))
         yaw_degrees = random.range(list(yaw_range))
@@ -1430,6 +1504,8 @@ class TeleoperationSession:
         quaternion = _multiply_quaternion(base_quaternion, _axis_quaternion(math.radians(yaw_degrees)))
         position = base_position + np.asarray([x_cm / 100.0, y_cm / 100.0, 0.0], dtype=np.float64)
         self.environment.set_body_pose(body, position, quaternion)
+        # The x/y move keeps the authored height: rest the object on whatever is below its new spot.
+        self.environment.rest_on_support(body)
         # The robot start pose continues the seeded stream after the object pose and model rules,
         # so existing seeds keep their object poses and appearance.
         try:
@@ -1579,6 +1655,7 @@ class TeleoperationSession:
             quaternion = _multiply_quaternion(base_quaternion, _axis_quaternion(math.radians(yaw_degrees)))
             position = base_position + np.asarray([x_cm / 100.0, y_cm / 100.0, 0.0], dtype=np.float64)
             self.environment.set_body_pose(body, position, quaternion)
+            self.environment.rest_on_support(body)
         except (KeyError, ValueError, NativeEnvironmentError) as error:
             raise TeleoperationStateError(f"Its object '{body}' is missing or no longer movable.") from error
         object_samples = self._reapply_object_poses(value.get("objectRandomization"))
@@ -1654,7 +1731,8 @@ class TeleoperationSession:
     ) -> list[dict[str, Any]]:
         """Place each additional object in its zone, redrawing poses that overlap anything.
 
-        Objects are placed in order, so a later object also avoids the ones placed before it (and
+        An accepted pose then rests on the geometry below it (see ``rest_on_support``). Objects
+        are placed in order, so a later object also avoids the ones placed before it (and
         the main object). Contacts already present before placing are tolerated.
         """
         samples: list[dict[str, Any]] = []
@@ -1666,6 +1744,7 @@ class TeleoperationSession:
                 yaw_degrees = random.range(list(yaw_range))
                 self._place_object(body, x_cm, y_cm, yaw_degrees)
                 if self.environment.penetrating_contacts() <= allowed_contacts:
+                    self.environment.rest_on_support(body)
                     samples.append({"target": body, "values": [x_cm, y_cm, yaw_degrees]})
                     break
             else:
@@ -1696,6 +1775,7 @@ class TeleoperationSession:
             x_cm, y_cm, yaw_degrees = (float(item) for item in values)
             try:
                 self._place_object(body, x_cm, y_cm, yaw_degrees)
+                self.environment.rest_on_support(body)
             except TeleoperationStateError as error:
                 raise TeleoperationStateError(f"Its object '{body}' is missing or no longer movable.") from error
             samples.append({"target": body, "values": [x_cm, y_cm, yaw_degrees]})
@@ -1836,11 +1916,22 @@ class TeleoperationSession:
         self._state_revision += 1
         self._step_id = 0
 
-    def write_recording_frame(self, frame: EpisodeFrame) -> None:
-        """Keep one recorded frame; streamed staging recordings encode images immediately."""
+    def write_recording_frame(self, frame: EpisodeFrame, *, deferred: bool = False) -> None:
+        """Keep one recorded frame; streamed recordings encode its images immediately.
+
+        A ``deferred`` frame has no images yet; it is encoded when they are rendered at save.
+        """
         if self._streams_frames():
             self._writer.append(frame)  # type: ignore[union-attr]
             # Only state, action, and metadata stay in memory; images live in the videos.
+            frame = replace(frame, images={})
+        elif (
+            self._interactive_writer is not None
+            and not deferred
+            and self._streamed_count == len(self._recording_frames)
+        ):
+            self._interactive_writer.append(frame)
+            self._streamed_count += 1
             frame = replace(frame, images={})
         self._recording_frames.append(frame)
 

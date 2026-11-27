@@ -19,8 +19,18 @@ export interface CameraFitPoint {
   pixel: readonly [number, number];
 }
 
+/**
+ * A known straight world edge (two points on it, such as a table edge's corners) and any two
+ * pixels along its image: the corners themselves may be outside the photo.
+ */
+export interface CameraFitLine {
+  world: readonly [readonly [number, number, number], readonly [number, number, number]];
+  pixels: readonly [readonly [number, number], readonly [number, number]];
+}
+
 export interface CameraFitInput {
   points: readonly CameraFitPoint[];
+  lines?: readonly CameraFitLine[];
   width: number;
   height: number;
   /** Known vertical field of view in degrees; omit to estimate it. */
@@ -140,7 +150,67 @@ function residuals(pose: Pose, input: CameraFitInput): number[] {
     if (depth <= 1e-6) out.push(1e4, 1e4);
     else out.push(u - point.pixel[0], v - point.pixel[1]);
   }
+  for (const line of input.lines ?? []) out.push(...lineResiduals(pose, line, cx, cy));
   return out;
+}
+
+/** Pixel distance from each given pixel to the image of the world line. */
+function lineResiduals(pose: Pose, line: CameraFitLine, cx: number, cy: number): number[] {
+  const a = project(pose, line.world[0], cx, cy);
+  const b = project(pose, line.world[1], cx, cy);
+  if (a.depth <= 1e-6 || b.depth <= 1e-6) return [1e4, 1e4];
+  const du = b.u - a.u;
+  const dv = b.v - a.v;
+  const length = Math.hypot(du, dv);
+  if (length < 1e-9) return [1e4, 1e4];
+  return line.pixels.map(([u, v]) => (du * (v - a.v) - dv * (u - a.u)) / length);
+}
+
+/** Every world point the fit knows: corners and the ends of the line constraints. */
+function worldPoints(input: CameraFitInput): (readonly number[])[] {
+  return [
+    ...input.points.map((point) => point.world),
+    ...(input.lines ?? []).flatMap((line) => [line.world[0], line.world[1]]),
+  ];
+}
+
+/**
+ * Start poses without a homography (fewer than 4 corners): level cameras around the points'
+ * centre at several headings, pitches, distances, and lenses. The best few by pixel error are
+ * refined.
+ */
+function searchStarts(input: CameraFitInput, focalHint: number | null): Pose[] {
+  const world = worldPoints(input);
+  const centre = scale(
+    world.reduce<Vec3>((sum, point) => add(sum, point), [0, 0, 0]),
+    1 / world.length,
+  );
+  const extent = Math.max(0.1, ...world.map((point) => norm(sub(point, centre))));
+  const focals =
+    focalHint !== null
+      ? [focalHint]
+      : [30, 45, 60, 75, 90].map((f) => focalFromFovy(f, input.height));
+  const candidates: { pose: Pose; cost: number }[] = [];
+  for (let heading = 0; heading < 24; heading++) {
+    const yaw = (heading * Math.PI) / 12;
+    for (const pitchDegrees of [-15, -30, -45, -60, -75]) {
+      const forward = forwardFromAngles(yaw, (pitchDegrees * Math.PI) / 180);
+      for (const distance of [1.5, 2.5, 4, 6].map((factor) => factor * extent)) {
+        for (const focal of focals) {
+          const pose: Pose = {
+            rotation: levelRotation(forward),
+            center: sub(centre, scale(forward, distance)),
+            focal,
+          };
+          candidates.push({ pose, cost: sumSquares(residuals(pose, input)) });
+        }
+      }
+    }
+  }
+  return candidates
+    .sort((a, b) => a.cost - b.cost)
+    .slice(0, 8)
+    .map((candidate) => candidate.pose);
 }
 
 const sumSquares = (values: readonly number[]) =>
@@ -354,16 +424,30 @@ function rollDegrees(pose: Pose): number {
 const focalFromFovy = (fovy: number, height: number) =>
   height / 2 / Math.tan((fovy * Math.PI) / 360);
 
+/** Vertical fields of view of real desk cameras and phones; outside this a fit is suspect. */
+export const MIN_PLAUSIBLE_FOVY = 20;
+export const MAX_PLAUSIBLE_FOVY = 100;
+
 export function fitCamera(input: CameraFitInput): CameraFitResult {
   const { points, width, height } = input;
-  if (points.length < 4)
-    throw new Error('Give at least 4 points (for example the 4 table-top corners).');
-  if (!(width > 0 && height > 0)) throw new Error('width and height must be positive pixel sizes.');
+  const lines = input.lines ?? [];
   const fixedFocal = input.fovy !== undefined;
+  // Each corner and each line gives two equations; the camera has 6 unknowns, 7 with the lens.
+  const equations = 2 * points.length + 2 * lines.length;
+  if (points.length + lines.length < 2 || equations < (fixedFocal ? 6 : 8)) {
+    throw new Error(
+      'Give at least 4 corners, or fewer corners plus table-edge lines (2 corners and 2 lines, for example); with fovy, 3 constraints are enough.',
+    );
+  }
+  if (!(width > 0 && height > 0)) throw new Error('width and height must be positive pixel sizes.');
   const hint = fixedFocal ? focalFromFovy(input.fovy!, height) : null;
   const starts: Pose[] = [];
-  const homography = initialPose(input, hint);
+  const homography = points.length >= 4 ? initialPose(input, hint) : null;
   if (homography) starts.push(homography);
+  // Four or more corners on one line give no homography; without lines that cannot be fixed.
+  if (!homography && (points.length < 4 || lines.length)) {
+    starts.push(...searchStarts(input, hint));
+  }
   if (!fixedFocal && homography) {
     // The focal estimate from four points is noisy; also try common lenses from the same view.
     for (const fovy of [30, 45, 60, 75, 90]) {
@@ -387,10 +471,14 @@ export function fitCamera(input: CameraFitInput): CameraFitResult {
   const pose = refineLevel(free!, input, fixedFocal);
   const cx = width / 2;
   const cy = height / 2;
-  const perPoint = points.map((point) => {
-    const { u, v, depth } = project(pose, point.world, cx, cy);
-    return depth <= 0 ? Infinity : Math.hypot(u - point.pixel[0], v - point.pixel[1]);
-  });
+  const perPoint = [
+    ...points.map((point) => {
+      const { u, v, depth } = project(pose, point.world, cx, cy);
+      return depth <= 0 ? Infinity : Math.hypot(u - point.pixel[0], v - point.pixel[1]);
+    }),
+    // A line's error is the larger of its two pixels' distances from the projected edge.
+    ...lines.map((line) => Math.max(...lineResiduals(pose, line, cx, cy).map(Math.abs))),
+  ];
   if (perPoint.some((value) => !Number.isFinite(value))) {
     throw new Error(
       'No camera sees all points in front of it. Check the pixel and world point order.',
@@ -398,28 +486,87 @@ export function fitCamera(input: CameraFitInput): CameraFitResult {
   }
   // Look at the points' centre along the optical axis, so target - position is the view direction.
   const forward: Vec3 = [pose.rotation[2][0], pose.rotation[2][1], pose.rotation[2][2]];
+  const known = worldPoints(input);
   const centroid = scale(
-    points.reduce<Vec3>((sum, point) => add(sum, point.world), [0, 0, 0]),
-    1 / points.length,
+    known.reduce<Vec3>((sum, point) => add(sum, point), [0, 0, 0]),
+    1 / known.length,
   );
   const distance = Math.max(dot(sub(centroid, pose.center), forward), 0.05);
   const round = (value: number) => Number(value.toFixed(4));
   // Face-on to the points' plane, a wider lens further away looks the same as a narrower one closer.
-  const faceOn = Math.abs(dot(forward, pointPlane(points).normal)) > 0.985;
-  const warning =
-    faceOn && !fixedFocal
-      ? 'The photo looks almost straight at the points, so lens and distance cannot be told apart. Pass fovy (the camera lens) and fit again.'
+  const faceOn = points.length >= 3 && Math.abs(dot(forward, pointPlane(points).normal)) > 0.985;
+  // Lens and distance trade off when a different lens fits as well (face-on views, or two
+  // corners with edge lines, which give directions but no scale).
+  const fitCost = sumSquares(residuals(pose, input));
+  const lensAmbiguous =
+    !fixedFocal &&
+    [0.8, 1.25].some((factor) => {
+      const other = refineLevel({ ...pose, focal: pose.focal * factor }, input, true);
+      return sumSquares(residuals(other, input)) <= Math.max(4 * fitCost, equations * 0.25);
+    });
+  const fovy = (2 * Math.atan(height / 2 / pose.focal) * 180) / Math.PI;
+  const implausible = !fixedFocal && (fovy < MIN_PLAUSIBLE_FOVY || fovy > MAX_PLAUSIBLE_FOVY);
+  const warning = implausible
+    ? `The fitted lens (fovy ${fovy.toFixed(1)} degrees) is unlike a desk camera or phone (${MIN_PLAUSIBLE_FOVY}-${MAX_PLAUSIBLE_FOVY}). Check each pixel belongs to its world point: a table's width and depth swapped (corners in the wrong order) can fit exactly as a telephoto. Pass fovy if you know the lens.`
+    : (faceOn || lensAmbiguous) && !fixedFocal
+      ? 'These points leave lens and distance ambiguous (a wider lens further away fits as well). Pass fovy (the camera lens), or add another point such as the robot base, and fit again.'
       : undefined;
   return {
     position: pose.center.map(round) as Vec3,
     target: add(pose.center, scale(forward, distance)).map(round) as Vec3,
     rollDegrees: Number(rollDegrees(free!).toFixed(2)),
     ...(warning ? { warning } : {}),
-    fovy: Number(((2 * Math.atan(height / 2 / pose.focal) * 180) / Math.PI).toFixed(2)),
+    fovy: Number(fovy.toFixed(2)),
     reprojectionError: {
       mean: Number((perPoint.reduce((s, v) => s + v, 0) / perPoint.length).toFixed(2)),
       max: Number(Math.max(...perPoint).toFixed(2)),
       perPoint: perPoint.map((value) => Number(value.toFixed(2))),
     },
+  };
+}
+
+export interface PixelToWorldInput {
+  /** A level camera as fit_camera returns it (or add_camera takes it). */
+  position: readonly [number, number, number];
+  target: readonly [number, number, number];
+  fovy: number;
+  width: number;
+  height: number;
+  pixels: readonly (readonly [number, number])[];
+  /** World height of the horizontal plane the pixels lie on, such as the table top. */
+  planeZ: number;
+}
+
+/**
+ * Where photo pixels land on a horizontal plane, seen through a level camera: each pixel's ray is
+ * intersected with z = planeZ. Null for a pixel whose ray never reaches the plane (above the
+ * horizon, or the camera on the wrong side).
+ */
+export function pixelToWorld(input: PixelToWorldInput): { world: (Vec3 | null)[] } {
+  const forward = sub(input.target, input.position);
+  if (!(norm(forward) > 1e-9)) throw new Error('position and target must differ.');
+  if (!(input.width > 0 && input.height > 0 && input.fovy > 0 && input.fovy < 180)) {
+    throw new Error('width, height, and fovy must be positive (fovy under 180).');
+  }
+  const rotation = levelRotation(unit(forward));
+  const focal = focalFromFovy(input.fovy, input.height);
+  const cx = input.width / 2;
+  const cy = input.height / 2;
+  const round = (value: number) => Number(value.toFixed(4));
+  return {
+    world: input.pixels.map(([u, v]) => {
+      const camera = [(u - cx) / focal, (v - cy) / focal, 1];
+      // World direction = R^T * camera direction (rows of R are the camera axes in world).
+      const direction = [0, 1, 2].map(
+        (axis) =>
+          rotation[0][axis] * camera[0] +
+          rotation[1][axis] * camera[1] +
+          rotation[2][axis] * camera[2],
+      );
+      if (Math.abs(direction[2]) < 1e-9) return null;
+      const t = (input.planeZ - input.position[2]) / direction[2];
+      if (!(t > 0)) return null;
+      return [0, 1, 2].map((axis) => round(input.position[axis] + t * direction[axis])) as Vec3;
+    }),
   };
 }

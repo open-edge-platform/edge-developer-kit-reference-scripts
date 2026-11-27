@@ -71,6 +71,19 @@ export interface TeleoperationRobotRandomizationV1 {
  * `q = scale * R(rotation) * p_raw`, where `p_raw` are the raw PLY coordinates (no axis flip), so
  * the splat render matrix is `bodyWorld * R * S(scale)`.
  */
+/**
+ * What the backdrop leaves out of a splat scan, in the backdrop body frame (`scale * R * p_raw`);
+ * the rule is in apps/web/lib/editor/splatCleanup.ts and robotic_studio/generation/backdrop.py.
+ */
+export interface SplatCleanupV1 {
+  /** Keep only Gaussians whose centre lies in this box (meters). */
+  crop?: { min: [number, number, number]; max: [number, number, number] };
+  /** Drop Gaussians fainter than this (0-1). */
+  minOpacity?: number;
+  /** Drop visible Gaussians with fewer than `minNeighbors` others in their voxel and the 26 around it. */
+  isolation?: { cell: number; minNeighbors: number };
+}
+
 export interface TeleoperationBackdropV1 {
   /** Bundle-relative path of the splat PLY or SPZ (for example `splats/12/scene.ply`). */
   asset: string;
@@ -86,6 +99,8 @@ export interface TeleoperationBackdropV1 {
   rotation?: [number, number, number, number];
   /** SHA-256 hex digest of the PLY bytes. */
   hash?: string;
+  /** Parts of the scan left out, as in the editor (absent: the whole scan). */
+  cleanup?: SplatCleanupV1;
 }
 
 export interface TeleoperationProfileV1 {

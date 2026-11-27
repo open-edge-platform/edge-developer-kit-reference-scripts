@@ -6,13 +6,19 @@
 import { usePhysics } from '@mujoco-studio/mujoco';
 import { MUJOCO_ROOT_ROTATION_X } from '@mujoco-studio/scene';
 import { Grid, GizmoHelper, GizmoViewcube, OrbitControls } from '@react-three/drei';
-import { Canvas, events as createPointerEvents, type RootStore } from '@react-three/fiber';
+import {
+  Canvas,
+  events as createPointerEvents,
+  useThree,
+  type RootStore,
+} from '@react-three/fiber';
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { BoxGeometry } from 'three';
 
 import { Button } from '@mujoco-studio/ui';
 import type { BoxFace, MeshObjectPlacement } from '@/lib/editor/document';
 import type { ViewportCameraPose } from '@/lib/editor/runtimeTransforms';
+import type { SplatCleanup } from '@/lib/editor/splatCleanup';
 import type { QuaternionTuple, SplatPoint, Vec3Tuple } from '@/lib/editor/splatCollision';
 import { prioritizeTransformGizmoHits } from '@/lib/editor/transformInteraction';
 import { useEditorStore } from '@/lib/store/editorStore';
@@ -49,6 +55,11 @@ export type { TransformCommit, DraggedAssetPreview, ViewportHandle };
 export { CameraPreviewWindow };
 
 export interface ViewportProps {
+  /**
+   * Stop drawing (a camera capture is rendering). On software rendering a large splat in the main
+   * viewport starved captures past their time limit.
+   */
+  paused?: boolean;
   onTransformCommit: (commit: TransformCommit) => void;
   draggedAsset: DraggedAssetPreview | null;
   onAssetDrop: (placement: MeshObjectPlacement) => void;
@@ -70,13 +81,25 @@ export interface ViewportProps {
   splatScale?: number;
   /** Calibration rotation from raw PLY to the backdrop body frame ([w, x, y, z]). */
   splatRotation?: QuaternionTuple;
+  /** Parts of the scan left out (splatCleanup.ts). */
+  splatCleanup?: SplatCleanup;
   onSplatStatusChange?: (status: SplatEnvironmentStatus) => void;
   onSplatLoad?: (points: SplatPoint[]) => void;
   onSplatError?: (error: Error) => void;
 }
 
+/** A demand frameloop does not redraw when it resumes from `never`; ask for one frame. */
+function RedrawOnResume({ paused }: { paused: boolean }) {
+  const invalidate = useThree((state) => state.invalidate);
+  useEffect(() => {
+    if (!paused) invalidate();
+  }, [paused, invalidate]);
+  return null;
+}
+
 export const Viewport = forwardRef<ViewportHandle, ViewportProps>(function Viewport(
   {
+    paused = false,
     onTransformCommit,
     draggedAsset,
     onAssetDrop,
@@ -95,6 +118,7 @@ export const Viewport = forwardRef<ViewportHandle, ViewportProps>(function Viewp
     splatOrigin = null,
     splatScale = 1,
     splatRotation,
+    splatCleanup,
     onSplatStatusChange,
     onSplatLoad,
     onSplatError,
@@ -174,7 +198,7 @@ export const Viewport = forwardRef<ViewportHandle, ViewportProps>(function Viewp
   return (
     <div className="relative h-full">
       <Canvas
-        frameloop="demand"
+        frameloop={paused ? 'never' : 'demand'}
         shadows={helpers.shadows ? 'percentage' : false}
         dpr={[1, 2]}
         events={viewportEvents}
@@ -196,6 +220,7 @@ export const Viewport = forwardRef<ViewportHandle, ViewportProps>(function Viewp
           if (!marqueeStart && !editingId && !generationPickStage) select(null);
         }}
       >
+        <RedrawOnResume paused={paused} />
         <CameraPoseTracker cameraPoseRef={cameraPoseRef} />
         <ViewportNavigation focusRequestRef={focusRequestRef} />
         <color attach="background" args={['#08090c']} />
@@ -270,6 +295,7 @@ export const Viewport = forwardRef<ViewportHandle, ViewportProps>(function Viewp
               src={splatSrc}
               scale={splatScale}
               rotation={splatRotation}
+              cleanup={splatCleanup}
               fallbackOrigin={splatOrigin}
               onStatusChange={onSplatStatusChange}
               onLoad={onSplatLoad}

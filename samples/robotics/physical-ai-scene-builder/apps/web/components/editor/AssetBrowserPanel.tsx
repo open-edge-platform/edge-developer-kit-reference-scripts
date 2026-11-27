@@ -12,6 +12,7 @@ import type { BoxFace, MeshObjectPlacement, PrimitiveObjectPlacement } from '@/l
 import { listRobotMeshReferences } from '@/lib/scenes/api';
 import {
   CATEGORIES,
+  convertUsdToGlb,
   createCustomAsset,
   createMaterial,
   createPrimitiveAsset,
@@ -47,7 +48,8 @@ import { PrimitiveObjectDialog } from './PrimitiveObjectDialog';
 export type { SceneAsset, SceneAssetArtifact } from '@/lib/scenes/assetsApi';
 
 const ASSET_KINDS: readonly AssetKind[] = ['mesh', 'material'];
-const ACCEPTED_MESH_FILES = '.glb,.obj,.stl';
+const ACCEPTED_MESH_FILES = '.glb,.obj,.stl,.usd,.usda,.usdc,.usdz';
+const USD_FILE = /\.(usd|usda|usdc|usdz)$/i;
 
 export function AssetBrowserPanel({
   previewAssetId,
@@ -292,7 +294,20 @@ export function AssetBrowserPanel({
             onChange={(event) => {
               const file = event.currentTarget.files?.[0];
               event.currentTarget.value = '';
-              if (file) {
+              if (file && USD_FILE.test(file.name)) {
+                // USD is converted to a Y-up, metre GLB on the server, then uploads as a GLB.
+                setManagementError(null);
+                convertUsdToGlb(file)
+                  .then(({ glb, info }) => {
+                    setMeshFile(glb);
+                    setMtlFile(null);
+                    setObjTextureFiles([]);
+                    setUploadUnit('m');
+                    setUploadUpAxis('y');
+                    if (info.warnings.length) setManagementError(info.warnings.join(' '));
+                  })
+                  .catch((error: Error) => setManagementError(error.message));
+              } else if (file) {
                 setMeshFile(file);
                 setMtlFile(null);
                 setObjTextureFiles([]);

@@ -38,6 +38,7 @@ import math
 import os
 import posixpath
 import re
+from collections import OrderedDict
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -78,6 +79,8 @@ TRANSMITTANCE_MIN = 1e-4
 # Depth-ordered Gaussians per tile per compositing step (power of two, adapted to memory).
 _MIN_CHUNK = 32
 _MAX_CHUNK = 2048
+# Views whose tile results are kept: each recorded camera is one view while it stays still.
+_TILE_CACHE_VIEWS = 8
 # torch threshold keeps values strictly above the threshold; keep alpha >= 1/255.
 _ALPHA_SKIP = float(np.nextafter(np.float32(ALPHA_MIN), np.float32(0.0)))
 # Hard ceiling on Gaussians; the effective limit also scales with device memory.
@@ -86,6 +89,15 @@ MAX_GAUSSIANS = 16_000_000
 _BYTES_PER_GAUSSIAN = 320
 # Approximate bytes per (Gaussian, tile) pair during binning and sorting.
 _BYTES_PER_PAIR = 48
+
+
+@dataclass
+class _TileCache:
+    """One view's last composited tiles and the native depth they were composited against."""
+
+    depth: Any  # (tiles, 256) float32
+    color: Any  # (tiles, 256, 3)
+    transmittance: Any  # (tiles, 256)
 
 
 class BackdropError(RuntimeError):
@@ -118,6 +130,8 @@ class BackdropSpec:
     hash: str | None = None
     # Local calibration rotation (w, x, y, z), applied to raw PLY coordinates before scaling.
     rotation: tuple[float, float, float, float] = IDENTITY_QUATERNION
+    # Parts of the scan left out (see cleanup_keep_mask); None keeps the whole scan.
+    cleanup: Mapping[str, Any] | None = None
 
     @classmethod
     def from_profile(cls, value: object) -> BackdropSpec | None:
@@ -166,6 +180,7 @@ class BackdropSpec:
             scale=float(scale),
             hash=content_hash,
             rotation=rotation,
+            cleanup=normalize_splat_cleanup(value.get("cleanup")),
         )
 
 
@@ -193,6 +208,121 @@ def normalize_backdrop_rotation(value: object) -> tuple[float, float, float, flo
 
 
 _SHA256_HEX = re.compile(r"[0-9a-f]{64}")
+
+# Gaussians at least this opaque count as visible (the editor's SPLAT_OPACITY_THRESHOLD).
+VISIBLE_OPACITY = 0.3
+
+
+def normalize_splat_cleanup(value: object) -> dict[str, Any] | None:
+    """Validate ``profile.backdrop.cleanup``; None when it removes nothing."""
+    if value is None:
+        return None
+    if not isinstance(value, Mapping):
+        raise ValueError("profile.backdrop.cleanup must be an object.")
+    cleanup: dict[str, Any] = {}
+    crop = value.get("crop")
+    if crop is not None:
+        try:
+            low = [float(item) for item in crop["min"]]
+            high = [float(item) for item in crop["max"]]
+        except (KeyError, TypeError, ValueError) as error:
+            raise ValueError("profile.backdrop.cleanup.crop must have min and max [x, y, z].") from error
+        if len(low) != 3 or len(high) != 3 or not all(math.isfinite(v) for v in (*low, *high)):
+            raise ValueError("profile.backdrop.cleanup.crop must have min and max [x, y, z].")
+        if not all(a < b for a, b in zip(low, high)):
+            raise ValueError("profile.backdrop.cleanup.crop min must be below max on every axis.")
+        cleanup["crop"] = {"min": low, "max": high}
+    min_opacity = value.get("minOpacity")
+    if min_opacity is not None:
+        if not isinstance(min_opacity, (int, float)) or isinstance(min_opacity, bool) or not 0 <= min_opacity <= 1:
+            raise ValueError("profile.backdrop.cleanup.minOpacity must be in [0, 1].")
+        if min_opacity > 0:
+            cleanup["minOpacity"] = float(min_opacity)
+    isolation = value.get("isolation")
+    if isolation is not None:
+        cell = isolation.get("cell") if isinstance(isolation, Mapping) else None
+        neighbors = isolation.get("minNeighbors") if isinstance(isolation, Mapping) else None
+        if (
+            not isinstance(cell, (int, float))
+            or isinstance(cell, bool)
+            or not math.isfinite(cell)
+            or cell <= 0
+            or not isinstance(neighbors, int)
+            or isinstance(neighbors, bool)
+            or neighbors < 1
+        ):
+            raise ValueError("profile.backdrop.cleanup.isolation must have cell > 0 and minNeighbors >= 1.")
+        cleanup["isolation"] = {"cell": float(cell), "minNeighbors": int(neighbors)}
+    return cleanup or None
+
+
+def cleanup_keep_mask(
+    positions: np.ndarray,
+    opacity_logits: np.ndarray,
+    scale: float,
+    rotation: tuple[float, float, float, float],
+    cleanup: Mapping[str, Any] | None,
+) -> np.ndarray:
+    """Which Gaussians the backdrop keeps; the same rule as the editor (``splatCleanup.ts``).
+
+    In the backdrop body frame (``scale * R * p_raw``) a Gaussian is removed when it lies outside
+    ``crop``, is fainter than ``minOpacity``, or (``isolation``) is visible (opacity >= 0.3) with
+    fewer than ``minNeighbors`` other visible kept Gaussians in its ``cell`` voxel and the 26 around it.
+    """
+    count = len(positions)
+    keep = np.ones(count, dtype=bool)
+    if not cleanup:
+        return keep
+    body = float(scale) * (np.asarray(positions, dtype=np.float64) @ _quaternion_matrices(np.asarray([rotation], dtype=np.float64))[0].T)
+    opacity = 1.0 / (1.0 + np.exp(-np.asarray(opacity_logits, dtype=np.float64)))
+    crop = cleanup.get("crop")
+    if crop is not None:
+        low = np.asarray(crop["min"], dtype=np.float64)
+        high = np.asarray(crop["max"], dtype=np.float64)
+        keep &= np.all((body >= low) & (body <= high), axis=1)
+    min_opacity = cleanup.get("minOpacity")
+    if min_opacity:
+        keep &= opacity >= float(min_opacity)
+    isolation = cleanup.get("isolation")
+    if isolation:
+        candidates = np.flatnonzero(keep & (opacity >= VISIBLE_OPACITY))
+        if candidates.size:
+            voxels = np.floor(body[candidates] / float(isolation["cell"])).astype(np.int64)
+            # One int64 key per voxel (21 bits per axis), so neighbours are found by sorted search.
+            def encode(cells: np.ndarray) -> np.ndarray:
+                shifted = cells + (1 << 20)
+                return (shifted[:, 0] << 42) | (shifted[:, 1] << 21) | shifted[:, 2]
+
+            keys, inverse, counts = np.unique(encode(voxels), return_inverse=True, return_counts=True)
+            unique_cells = voxels[np.unique(inverse.reshape(-1), return_index=True)[1]]
+            neighbors = np.full(candidates.size, -1, dtype=np.int64)
+            per_voxel = np.zeros(len(keys), dtype=np.int64)
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1):
+                    for dz in (-1, 0, 1):
+                        probe = encode(unique_cells + np.array([dx, dy, dz], dtype=np.int64))
+                        at = np.clip(np.searchsorted(keys, probe), 0, len(keys) - 1)
+                        per_voxel += np.where(keys[at] == probe, counts[at], 0)
+            neighbors += per_voxel[inverse.reshape(-1)]
+            isolated = candidates[neighbors < int(isolation["minNeighbors"])]
+            keep[isolated] = False
+    return keep
+
+
+def filter_point_cloud(cloud: PLYPointCloud, keep: np.ndarray) -> PLYPointCloud:
+    """The Gaussians of ``cloud`` where ``keep`` is True."""
+    if bool(np.all(keep)):
+        return cloud
+    take = lambda value: None if value is None else np.asarray(value)[keep]  # noqa: E731
+    return PLYPointCloud(
+        positions=take(cloud.positions),
+        colors=take(cloud.colors),
+        scales=take(cloud.scales),
+        rotations=take(cloud.rotations),
+        opacities=take(cloud.opacities),
+        spherical_harmonics=take(cloud.spherical_harmonics),
+        sh_rest=take(cloud.sh_rest),
+    )
 
 
 def resolve_backdrop_asset(bundle: Any, spec: BackdropSpec) -> Path:
@@ -378,6 +508,7 @@ class IntelXPUBackdropRenderer:
         *,
         scale: float = 1.0,
         rotation: Any = None,
+        cleanup: Mapping[str, Any] | None = None,
         max_sh_degree: int = MAX_SH_DEGREE,
         device: Any = None,
         max_gaussians: int = MAX_GAUSSIANS,
@@ -413,6 +544,12 @@ class IntelXPUBackdropRenderer:
             raise BackdropError(
                 "3DGS PLY must contain x/y/z, f_dc_0..2 (or red/green/blue), scale_0..2, rot_0..3, and opacity."
             )
+        if cleanup:
+            cloud = filter_point_cloud(
+                cloud,
+                cleanup_keep_mask(cloud.positions, cloud.opacities, self.scale, quaternion, cleanup),
+            )
+        self.cleanup = cleanup
         try:
             cloud_degree = cloud.sh_degree
         except PLYError as error:
@@ -464,6 +601,8 @@ class IntelXPUBackdropRenderer:
         self._world_cov: Any = None
         self._frame_rotation: Any = None  # (R_b R_l) as a device tensor, for SH view directions
         self._appearance: tuple[float, float, float] | None = None
+        # Per-view tile results (see _rasterize), most recently used last.
+        self._tile_cache: OrderedDict[bytes, _TileCache] = OrderedDict()
         offsets = torch.arange(TILE_SIZE, dtype=torch.float32, device=self.device) + 0.5 - TILE_SIZE / 2
         local_y, local_x = torch.meshgrid(offsets, offsets, indexing="ij")
         local_x, local_y = local_x.reshape(-1), local_y.reshape(-1)
@@ -669,6 +808,35 @@ class IntelXPUBackdropRenderer:
         ).to(torch.int64)
         return packed, tiles
 
+    def _view_key(self, camera: BackdropCamera) -> bytes:
+        """Everything besides native depth that a tile's result depends on."""
+        values = (
+            camera.fx, camera.fy, camera.cx, camera.cy, camera.width, camera.height, camera.near,
+            *(self._appearance or (math.nan, math.nan, math.nan)),
+        )
+        return (
+            np.asarray(camera.rotation, dtype=np.float64).tobytes()
+            + np.asarray(camera.translation, dtype=np.float64).tobytes()
+            + np.asarray(values, dtype=np.float64).tobytes()
+            + (self._pose_key or b"")
+        )
+
+    def _tile_images(self, tile_color: Any, tile_transmittance: Any, width: int, height: int) -> tuple[Any, Any]:
+        tiles_x = (width + TILE_SIZE - 1) // TILE_SIZE
+        tiles_y = (height + TILE_SIZE - 1) // TILE_SIZE
+        padded_h, padded_w = tiles_y * TILE_SIZE, tiles_x * TILE_SIZE
+        color = (
+            tile_color.reshape(tiles_y, tiles_x, TILE_SIZE, TILE_SIZE, 3)
+            .permute(0, 2, 1, 3, 4)
+            .reshape(padded_h, padded_w, 3)[:height, :width]
+        )
+        transmittance = (
+            tile_transmittance.reshape(tiles_y, tiles_x, TILE_SIZE, TILE_SIZE)
+            .permute(0, 2, 1, 3)
+            .reshape(padded_h, padded_w)[:height, :width]
+        )
+        return color, transmittance
+
     def _rasterize(self, camera: BackdropCamera, means: Any, covariances: Any, native_depth: Any) -> tuple[Any, Any]:
         torch = self._torch
         threshold_ = torch.nn.functional.threshold_
@@ -678,11 +846,43 @@ class IntelXPUBackdropRenderer:
         tiles_y = (height + TILE_SIZE - 1) // TILE_SIZE
         tile_count = tiles_x * tiles_y
         pixels = TILE_SIZE * TILE_SIZE
-        color = torch.zeros((height, width, 3), dtype=torch.float32, device=device)
-        transmittance = torch.ones((height, width), dtype=torch.float32, device=device)
+        padded_h, padded_w = tiles_y * TILE_SIZE, tiles_x * TILE_SIZE
+        depth_tiles = torch.full((padded_h, padded_w), -math.inf, dtype=torch.float32, device=device)
+        depth_tiles[:height, :width] = torch.nan_to_num(native_depth, nan=math.inf)
+        depth_tiles = (
+            depth_tiles.reshape(tiles_y, TILE_SIZE, tiles_x, TILE_SIZE).permute(0, 2, 1, 3).reshape(tile_count, pixels)
+        )
+        # A tile's result depends only on the view (camera, backdrop pose, appearance) and its own
+        # native depth. A fixed camera over a static backdrop sees the same depth in most tiles from
+        # frame to frame (only the robot and objects move), so those tiles reuse the previous
+        # result exactly and only the changed tiles are composited again.
+        view_key = self._view_key(camera)
+        cached = self._tile_cache.pop(view_key, None)
+        changed = None
+        if cached is not None:
+            changed = (depth_tiles != cached.depth).any(dim=1)
+            if not bool(changed.any()):
+                self._tile_cache[view_key] = cached
+                return self._tile_images(cached.color, cached.transmittance, width, height)
+
+        def finish(tile_color: Any, tile_transmittance: Any) -> tuple[Any, Any]:
+            self._tile_cache[view_key] = _TileCache(depth_tiles, tile_color, tile_transmittance)
+            while len(self._tile_cache) > _TILE_CACHE_VIEWS:
+                self._tile_cache.popitem(last=False)
+            return self._tile_images(tile_color, tile_transmittance, width, height)
+
+        if cached is not None:
+            # Start from the previous result and clear the tiles that will be composited again.
+            tile_color = cached.color.clone()
+            tile_transmittance = cached.transmittance.clone()
+            tile_color[changed] = 0.0
+            tile_transmittance[changed] = 1.0
+        else:
+            tile_color = torch.zeros((tile_count, pixels, 3), dtype=torch.float32, device=device)
+            tile_transmittance = torch.ones((tile_count, pixels), dtype=torch.float32, device=device)
         projected = self._project(camera, means, covariances)
         if projected is None:
-            return color, transmittance
+            return finish(tile_color, tile_transmittance)
         packed, tiles = projected
 
         # --- tile binning: (tile, depth)-ordered pair list -------------------------------
@@ -713,26 +913,21 @@ class IntelXPUBackdropRenderer:
         tile_end = torch.searchsorted(pair_tile, tile_index, right=True)
         tile_pairs = tile_end - tile_start
 
-        # --- per-tile pixel data (padded to whole tiles) ----------------------------------
-        padded_h, padded_w = tiles_y * TILE_SIZE, tiles_x * TILE_SIZE
-        depth_tiles = torch.full((padded_h, padded_w), -math.inf, dtype=torch.float32, device=device)
-        depth_tiles[:height, :width] = torch.nan_to_num(native_depth, nan=math.inf)
-        depth_tiles = (
-            depth_tiles.reshape(tiles_y, TILE_SIZE, tiles_x, TILE_SIZE).permute(0, 2, 1, 3).reshape(tile_count, pixels)
-        )
+        # --- per-tile pixel data ------------------------------------------------------------
         tile_max_depth = depth_tiles.max(dim=1).values
         tile_center_x = (tile_index % tiles_x).to(torch.float32) * TILE_SIZE + TILE_SIZE / 2
         tile_center_y = (tile_index // tiles_x).to(torch.float32) * TILE_SIZE + TILE_SIZE / 2
 
-        tile_color = torch.zeros((tile_count, pixels, 3), dtype=torch.float32, device=device)
-        tile_transmittance = torch.ones((tile_count, pixels), dtype=torch.float32, device=device)
         # Per-pixel stop threshold on the chunk-relative log transmittance; +inf once a pixel stops.
         # Padding pixels outside the image never contribute and never hold a tile open.
         tile_stop = torch.where(
             torch.isneginf(depth_tiles), math.inf, math.log(TRANSMITTANCE_MIN)
         ).to(torch.float32)
         pointer = torch.zeros(tile_count, dtype=torch.int64, device=device)
-        active = torch.nonzero(tile_pairs > 0).squeeze(1)
+        open_tiles = tile_pairs > 0
+        if changed is not None:
+            open_tiles &= changed
+        active = torch.nonzero(open_tiles).squeeze(1)
         features = self._pixel_features
         last_pair = max(pair_count - 1, 0)
 
@@ -818,15 +1013,4 @@ class IntelXPUBackdropRenderer:
 
         while active.numel() > 0:
             active = torch.cat([composite(group) for group in torch.split(active, max_group)])
-
-        color = (
-            tile_color.reshape(tiles_y, tiles_x, TILE_SIZE, TILE_SIZE, 3)
-            .permute(0, 2, 1, 3, 4)
-            .reshape(padded_h, padded_w, 3)[:height, :width]
-        )
-        transmittance = (
-            tile_transmittance.reshape(tiles_y, tiles_x, TILE_SIZE, TILE_SIZE)
-            .permute(0, 2, 1, 3)
-            .reshape(padded_h, padded_w)[:height, :width]
-        )
-        return color, transmittance
+        return finish(tile_color, tile_transmittance)

@@ -16,7 +16,7 @@ export function useEvaluationRuntime() {
   const runtime = useTeleoperationRuntime();
   const { prepareSession, refreshSession, startStream } = runtime;
   const startStreaming = useCallback(
-    async (form: FormData) => {
+    async (form: FormData, options: { replaceBusy?: boolean } = {}) => {
       const raw = form.get('profile');
       if (typeof raw !== 'string') throw new Error('A streaming profile is required.');
       const profile: unknown = JSON.parse(raw);
@@ -24,7 +24,7 @@ export function useEvaluationRuntime() {
         throw new Error('The streaming profile must be an object.');
       }
       form.set('profile', JSON.stringify(sharedStreamProfile(profile as Record<string, unknown>)));
-      const session = await prepareSession(form);
+      const session = await prepareSession(form, options);
       const response = await fetch('/api/evaluation/sessions', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
