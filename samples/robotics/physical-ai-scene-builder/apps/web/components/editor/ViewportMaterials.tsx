@@ -8,9 +8,53 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 
 import type { BoxFace } from '@/lib/editor/document';
+import {
+  applyMujocoPhong,
+  mujocoPhongSettings,
+  type MujocoGeomShading,
+} from '@/lib/editor/mujocoShading';
 import { viewportTextures } from '@/lib/editor/viewportTextures';
 
 const BOX_FACE_GROUPS: readonly BoxFace[] = ['right', 'left', 'top', 'bottom', 'front', 'back'];
+
+/** A Phong material shaded like MuJoCo's renderer (camera preview; see mujocoShading.ts). */
+function MujocoPhongMaterial({
+  attach,
+  color,
+  shading,
+  map = null,
+  opacity,
+  side,
+}: {
+  attach?: string;
+  color: THREE.Color;
+  shading: MujocoGeomShading;
+  map?: THREE.Texture | null;
+  opacity: number;
+  side: THREE.Side;
+}) {
+  const settings = mujocoPhongSettings(shading, color);
+  return (
+    <meshPhongMaterial
+      ref={(material) => {
+        if (material && !material.userData.mujocoPhong) {
+          material.userData.mujocoPhong = true;
+          applyMujocoPhong(material);
+          material.needsUpdate = true;
+        }
+      }}
+      attach={attach}
+      color={color}
+      map={map}
+      specular={settings.specular}
+      shininess={settings.shininess}
+      emissive={settings.emissive}
+      transparent={opacity < 1}
+      opacity={opacity}
+      side={side}
+    />
+  );
+}
 
 export function TexturedGeomMaterial({
   attach,
@@ -20,6 +64,7 @@ export function TexturedGeomMaterial({
   side,
   textureUrl,
   rawTexture = false,
+  mujoco,
 }: {
   attach?: string;
   color: THREE.Color;
@@ -29,6 +74,8 @@ export function TexturedGeomMaterial({
   textureUrl: string;
   /** Use texel values as stored, like MuJoCo, instead of decoding them as sRGB. */
   rawTexture?: boolean;
+  /** Shade like MuJoCo's renderer with these material values (camera preview). */
+  mujoco?: MujocoGeomShading;
 }) {
   const [loaded, setLoaded] = useState<{ url: string; texture: THREE.Texture } | null>(null);
   const sharedTexture = loaded && loaded.url === textureUrl ? loaded.texture : null;
@@ -66,6 +113,20 @@ export function TexturedGeomMaterial({
     if (texture && materialRef.current) materialRef.current.needsUpdate = true;
   }, [texture]);
 
+  if (mujoco) {
+    return (
+      <MujocoPhongMaterial
+        key={texture ? 'textured' : 'plain'}
+        attach={attach}
+        color={color}
+        shading={mujoco}
+        map={texture}
+        opacity={opacity}
+        side={side}
+      />
+    );
+  }
+
   return (
     <meshStandardMaterial
       ref={materialRef}
@@ -92,6 +153,7 @@ export function GeomMaterials({
   textureUrl,
   textureFace,
   rawTexture = false,
+  mujoco,
 }: {
   color: THREE.Color;
   emissive: THREE.Color;
@@ -102,20 +164,32 @@ export function GeomMaterials({
   textureFace: BoxFace | null;
   /** See TexturedGeomMaterial: MuJoCo-parity camera views use stored texel values. */
   rawTexture?: boolean;
+  /** See TexturedGeomMaterial: MuJoCo-parity camera views shade like MuJoCo. */
+  mujoco?: MujocoGeomShading;
 }) {
-  const standardMaterial = (key: string, attach?: string) => (
-    <meshStandardMaterial
-      key={key}
-      attach={attach}
-      color={color}
-      emissive={emissive}
-      transparent={opacity < 1}
-      opacity={opacity}
-      roughness={0.62}
-      metalness={0.08}
-      side={side}
-    />
-  );
+  const standardMaterial = (key: string, attach?: string) =>
+    mujoco ? (
+      <MujocoPhongMaterial
+        key={key}
+        attach={attach}
+        color={color}
+        shading={mujoco}
+        opacity={opacity}
+        side={side}
+      />
+    ) : (
+      <meshStandardMaterial
+        key={key}
+        attach={attach}
+        color={color}
+        emissive={emissive}
+        transparent={opacity < 1}
+        opacity={opacity}
+        roughness={0.62}
+        metalness={0.08}
+        side={side}
+      />
+    );
 
   if (geomType === GeomType.Box && textureUrl && textureFace) {
     return (
@@ -131,6 +205,7 @@ export function GeomMaterials({
               side={side}
               textureUrl={textureUrl}
               rawTexture={rawTexture}
+              mujoco={mujoco}
             />
           ) : (
             standardMaterial(face, `material-${groupIndex}`)
@@ -148,6 +223,7 @@ export function GeomMaterials({
       side={side}
       textureUrl={textureUrl}
       rawTexture={rawTexture}
+      mujoco={mujoco}
     />
   ) : (
     standardMaterial('standard')

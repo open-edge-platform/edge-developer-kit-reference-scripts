@@ -18,6 +18,7 @@ import {
   type ImageTo3dEvent,
   type ImageTo3dPipelineType,
 } from '@/lib/scenes/imageTo3dApi';
+import { glb2objPath, integrationPath } from './integrationPaths';
 
 const GLB2OBJ_TIMEOUT_MS = 120_000;
 
@@ -29,20 +30,6 @@ export function trellisTimeoutMs(): number {
     );
   }
   return timeoutMs;
-}
-
-function integrationPath(): string {
-  return path.resolve(
-    process.env.ROBOTIC_STUDIO_PYTHONPATH?.trim() ||
-      path.resolve(/* turbopackIgnore: true */ process.cwd(), '../../integrations/python'),
-  );
-}
-
-function glb2objPath(): string {
-  return path.resolve(
-    process.env.ROBOTIC_STUDIO_GLB2OBJ_PATH?.trim() ||
-      path.resolve(/* turbopackIgnore: true */ process.cwd(), '../../services/glb2obj'),
-  );
 }
 
 async function assetDirectory(id: string): Promise<string> {

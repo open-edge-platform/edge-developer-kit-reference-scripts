@@ -1,6 +1,8 @@
 // Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
+import type { SplatCleanupV1 } from '@mujoco-studio/types';
+
 import type { Mujoco } from './runtime';
 
 export interface RuntimeFile {
@@ -19,6 +21,8 @@ export interface RuntimeFile {
    * `profile.backdrop.rotation`; identity when omitted.
    */
   splatRotation?: readonly [number, number, number, number];
+  /** Splat cleanup (`kind: 'splat'` only), sent to workers as `profile.backdrop.cleanup`. */
+  splatCleanup?: SplatCleanupV1;
 }
 
 const stagedByRuntime = new WeakMap<Mujoco, Map<string, string>>();

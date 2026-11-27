@@ -24,7 +24,7 @@ Accept the model's access conditions before setup.
 From the `physical-ai-scene-builder` workspace root:
 
 ```sh
-uv sync --locked --project integrations/python --extra teleoperation --extra test --extra obj2mjcf
+uv sync --locked --project integrations/python --extra teleoperation --extra test --extra obj2mjcf --extra usd
 uv sync --locked --project services/glb2obj
 uv sync --locked --project services/trellis2-runtime
 ```

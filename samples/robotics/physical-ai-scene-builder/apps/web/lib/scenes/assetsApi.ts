@@ -301,6 +301,38 @@ function normalizeAsset(asset: SceneAsset): SceneAsset {
   return { ...asset, primitive: primitiveDefinition(asset.primitive) };
 }
 
+export interface UsdImportInfo {
+  mass?: number;
+  warnings: string[];
+}
+
+/** Converts a USD/USDA/USDC/USDZ file to a GLB on the server; the GLB uploads like any other mesh. */
+export async function convertUsdToGlb(file: File): Promise<{ glb: File; info: UsdImportInfo }> {
+  const body = new FormData();
+  body.append('file', file);
+  const response = await fetch('/api/assets/usd-to-glb', { method: 'POST', body });
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as {
+      errors?: { message?: string }[];
+    } | null;
+    throw new Error(payload?.errors?.[0]?.message ?? 'The USD asset could not be converted.');
+  }
+  const header = response.headers.get('X-Usd-Import');
+  const metadata = header
+    ? (JSON.parse(decodeURIComponent(header)) as Record<string, unknown>)
+    : {};
+  const physics = (metadata.physics ?? {}) as { mass?: number };
+  return {
+    glb: new File([await response.blob()], `${file.name.replace(/\.[^.]+$/, '')}.glb`, {
+      type: 'model/gltf-binary',
+    }),
+    info: {
+      mass: physics.mass,
+      warnings: Array.isArray(metadata.warnings) ? (metadata.warnings as string[]) : [],
+    },
+  };
+}
+
 export function uploadAsset({
   file,
   category,

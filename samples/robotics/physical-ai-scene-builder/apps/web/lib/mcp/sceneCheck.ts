@@ -25,7 +25,12 @@ export type SceneIssueCode =
   | 'unnamed_camera'
   | 'camera_resolution'
   | 'no_objects'
-  | 'no_robot';
+  | 'no_robot'
+  | 'no_container'
+  | 'container_unreachable'
+  | 'container_too_small'
+  | 'grasp_blocked'
+  | 'no_light';
 
 export interface SceneIssue {
   level: SceneIssueLevel;
@@ -41,7 +46,16 @@ export interface SceneCheckResult {
   ok: boolean;
   settleSeconds: number;
   robots: { name: string; reach: number; toolSite: string }[];
-  objects: { name: string; moved: number; drop: number }[];
+  objects: {
+    name: string;
+    moved: number;
+    drop: number;
+    /**
+     * Free space beside the object along its two horizontal axes (meters, capped at
+     * GRASP_CLEARANCE_RANGE): what the open gripper jaws have on each side. Null without a robot.
+     */
+    clearance: GraspClearance[] | null;
+  }[];
   cameras: { name: string; resolution: [number, number] | null }[];
   issues: SceneIssue[];
 }
@@ -52,6 +66,24 @@ export const OVERLAP_TOLERANCE = 0.005;
 export const FALL_DISTANCE = 0.05;
 /** Movement above this while settling means it was resting badly (edge, tilt, slight float). */
 export const SETTLE_DISTANCE = 0.01;
+
+/**
+ * Free space the open SO-101 jaws need beside an object (meters, at the object's height): the
+ * fixed finger on one side, the opened moving jaw on the other. Calibrated against the native
+ * planner's jaw sweep (`grasp_blocked`), see docs/features.md.
+ */
+export const FIXED_JAW_CLEARANCE = 0.015;
+export const MOVING_JAW_CLEARANCE = 0.04;
+/** Probes stop here: farther geometry never blocks a grasp. */
+export const GRASP_CLEARANCE_RANGE = 0.2;
+
+export interface GraspClearance {
+  /** Horizontal unit axis in world coordinates (the object's x or y axis, flattened). */
+  axis: [number, number];
+  /** Free space on the +axis and -axis sides. */
+  plus: number;
+  minus: number;
+}
 
 const FREE_JOINT = 0;
 const STATE_FIELDS = [
@@ -86,6 +118,95 @@ interface Inventory {
   objects: number[];
   /** Root bodies with at least two hinge or slide joints in their subtree. */
   robots: number[];
+  /** Other root bodies with geometry (tables, containers, pads). */
+  fixtures: number[];
+}
+
+/** Names Generate and the Simulate task pick as the destination, most preferred first. */
+const CONTAINER_NAMES = [
+  'container',
+  'destination',
+  'basket',
+  'bin',
+  'tray',
+  'bowl',
+  'box',
+  'plate',
+];
+
+/** The body pick-and-place would place objects into: the best-named fixed root body. */
+function findContainer(found: Inventory): number | null {
+  for (const name of CONTAINER_NAMES) {
+    const exact = found.fixtures.find((body) => found.bodyName(body).toLowerCase() === name);
+    if (exact !== undefined) return exact;
+  }
+  for (const name of CONTAINER_NAMES) {
+    const partial = found.fixtures.find((body) =>
+      found.bodyName(body).toLowerCase().includes(name),
+    );
+    if (partial !== undefined) return partial;
+  }
+  return null;
+}
+
+/** World x/y bounds of the colliding geometry under a root body, or null when it has none. */
+function footprint(simulation: Simulation, root: number): [number, number, number, number] | null {
+  const model = simulation.model;
+  const geomBody = model.geom_bodyid as Int32Array;
+  const rootOf = model.body_rootid as Int32Array;
+  const contype = model.geom_contype as Int32Array;
+  const conaffinity = model.geom_conaffinity as Int32Array;
+  const aabb = model.geom_aabb as Float64Array;
+  const positions = simulation.geomPositions;
+  const rotations = simulation.geomRotations;
+  let bounds: [number, number, number, number] | null = null;
+  for (let geom = 0; geom < model.ngeom; geom++) {
+    if (rootOf[geomBody[geom]] !== root || (contype[geom] === 0 && conaffinity[geom] === 0))
+      continue;
+    const r = rotations.subarray(geom * 9, geom * 9 + 9);
+    const local = aabb.subarray(geom * 6, geom * 6 + 6);
+    const center = [0, 1].map(
+      (axis) =>
+        positions[geom * 3 + axis] +
+        r[axis * 3] * local[0] +
+        r[axis * 3 + 1] * local[1] +
+        r[axis * 3 + 2] * local[2],
+    );
+    const half = [0, 1].map(
+      (axis) =>
+        Math.abs(r[axis * 3]) * local[3] +
+        Math.abs(r[axis * 3 + 1]) * local[4] +
+        Math.abs(r[axis * 3 + 2]) * local[5],
+    );
+    const box: [number, number, number, number] = [
+      center[0] - half[0],
+      center[0] + half[0],
+      center[1] - half[1],
+      center[1] + half[1],
+    ];
+    bounds = bounds
+      ? [
+          Math.min(bounds[0], box[0]),
+          Math.max(bounds[1], box[1]),
+          Math.min(bounds[2], box[2]),
+          Math.max(bounds[3], box[3]),
+        ]
+      : box;
+  }
+  return bounds;
+}
+
+/** Inner x/y half sizes from the container's `<name>__generation_interior` box site, if any. */
+function interiorHalfSize(simulation: Simulation, name: string): [number, number] | null {
+  const model = simulation.model;
+  const siteNames = model.name_siteadr as Int32Array;
+  const sizes = model.site_size as Float64Array;
+  for (let site = 0; site < model.nsite; site++) {
+    if (simulation.nameAt(siteNames[site]) === `${name}__generation_interior`) {
+      return [sizes[site * 3], sizes[site * 3 + 1]];
+    }
+  }
+  return null;
 }
 
 function inventory(simulation: Simulation): Inventory {
@@ -99,6 +220,8 @@ function inventory(simulation: Simulation): Inventory {
   const bodyName = (index: number) => simulation.nameAt(bodyNames[index]) || `body ${index}`;
   const objects: number[] = [];
   const robots: number[] = [];
+  const fixtures: number[] = [];
+  const geomCount = model.body_geomnum as Int32Array;
   const robotJoints = new Map<number, number>();
   for (let joint = 0; joint < model.njnt; joint++) {
     if (jointType[joint] === FREE_JOINT) continue;
@@ -110,8 +233,16 @@ function inventory(simulation: Simulation): Inventory {
     const joint = jointAddress[body];
     if (joint >= 0 && jointType[joint] === FREE_JOINT) objects.push(body);
     else if ((robotJoints.get(body) ?? 0) >= 2) robots.push(body);
+    else if (geomCount[body] > 0 || subtreeHasGeoms(body)) fixtures.push(body);
   }
-  return { bodyName, objects, robots };
+  return { bodyName, objects, robots, fixtures };
+
+  function subtreeHasGeoms(root: number): boolean {
+    for (let body = root + 1; body < model.nbody; body++) {
+      if (rootOf[body] === root && geomCount[body] > 0) return true;
+    }
+    return false;
+  }
 }
 
 /** Sites that mark an arm's tool point, preferred over other robot sites. */
@@ -240,14 +371,154 @@ function withRestoredState<T>(simulation: Simulation, work: () => T): T {
   }
 }
 
-function overlapIssues(simulation: Simulation, objects: Inventory): SceneIssue[] {
+/**
+ * Free space beside a free object along its two horizontal axes, from horizontal rays at the
+ * object's bottom, middle, and top (and a pad width to either side). Rays pass through the object,
+ * robots, the splat backdrop, and geometry that collides with nothing.
+ */
+function graspClearance(simulation: Simulation, body: number, robots: number[]): GraspClearance[] {
+  const mujoco = simulation.mujoco as unknown as {
+    mj_ray: (...args: unknown[]) => number;
+    IntBuffer: new (size: number) => { GetView(): Int32Array; delete(): void };
+  };
+  const model = simulation.model;
+  const rootOf = model.body_rootid as Int32Array;
+  const geomBody = model.geom_bodyid as Int32Array;
+  const contype = model.geom_contype as Int32Array;
+  const conaffinity = model.geom_conaffinity as Int32Array;
+  const aabb = model.geom_aabb as Float64Array;
+  const backdrop = (() => {
+    const names = model.name_bodyadr as Int32Array;
+    for (let index = 1; index < model.nbody; index++) {
+      if (simulation.nameAt(names[index]) === SPLAT_BACKDROP_BODY) return index;
+    }
+    return -1;
+  })();
+  const skipped = new Set([body, ...robots, backdrop]);
+  const rotation = simulation.bodyRotations.subarray(body * 9, body * 9 + 9);
+  const center = vector(simulation.bodyPositions, body);
+  const axes: [number, number][] = [];
+  for (const column of [0, 1]) {
+    const x = rotation[column];
+    const y = rotation[3 + column];
+    const length = Math.hypot(x, y);
+    if (length > 1e-6) axes.push([x / length, y / length]);
+  }
+  if (axes.length < 2) axes.splice(0, axes.length, [1, 0], [0, 1]);
+
+  // The object's extent along each direction and its height range, from its geoms' boxes.
+  const corners: Vec3[] = [];
+  for (let geom = 0; geom < model.ngeom; geom++) {
+    if (rootOf[geomBody[geom]] !== body || (contype[geom] === 0 && conaffinity[geom] === 0))
+      continue;
+    const r = simulation.geomRotations.subarray(geom * 9, geom * 9 + 9);
+    const p = vector(simulation.geomPositions, geom);
+    const local = aabb.subarray(geom * 6, geom * 6 + 6);
+    for (const sx of [-1, 1])
+      for (const sy of [-1, 1])
+        for (const sz of [-1, 1]) {
+          const l = [local[0] + sx * local[3], local[1] + sy * local[4], local[2] + sz * local[5]];
+          corners.push(
+            [0, 1, 2].map(
+              (axis) =>
+                p[axis] + r[axis * 3] * l[0] + r[axis * 3 + 1] * l[1] + r[axis * 3 + 2] * l[2],
+            ) as Vec3,
+          );
+        }
+  }
+  if (!corners.length) return [];
+  const bottom = Math.min(...corners.map((corner) => corner[2]));
+  const top = Math.max(...corners.map((corner) => corner[2]));
+  const heights = [bottom + Math.min(0.008, (top - bottom) / 2), (bottom + top) / 2, top];
+  const extent = (direction: [number, number]) =>
+    Math.max(
+      ...corners.map(
+        (corner) => (corner[0] - center[0]) * direction[0] + (corner[1] - center[1]) * direction[1],
+      ),
+    );
+
+  const hitGeom = new mujoco.IntBuffer(1);
+  const free = (direction: [number, number]): number => {
+    const reach = extent(direction);
+    const side: [number, number] = [-direction[1], direction[0]];
+    let nearest = GRASP_CLEARANCE_RANGE;
+    for (const height of heights) {
+      for (const offset of [-0.007, 0, 0.007]) {
+        let origin: Vec3 = [center[0] + side[0] * offset, center[1] + side[1] * offset, height];
+        let travelled = 0;
+        for (let attempt = 0; attempt < 16; attempt++) {
+          const hit = mujoco.mj_ray(
+            model,
+            simulation.data,
+            origin,
+            [direction[0], direction[1], 0],
+            null,
+            true,
+            body,
+            hitGeom,
+            null,
+          );
+          const geom = hitGeom.GetView()[0];
+          if (hit < 0 || geom < 0) break;
+          travelled += hit;
+          if (travelled - reach >= nearest) break;
+          const passThrough =
+            skipped.has(rootOf[geomBody[geom]]) || (contype[geom] === 0 && conaffinity[geom] === 0);
+          if (!passThrough) {
+            nearest = Math.max(0, travelled - reach);
+            break;
+          }
+          travelled += 1e-4;
+          origin = [
+            origin[0] + direction[0] * (hit + 1e-4),
+            origin[1] + direction[1] * (hit + 1e-4),
+            height,
+          ];
+        }
+      }
+    }
+    return nearest;
+  };
+  try {
+    return axes.map((axis) => ({
+      axis,
+      plus: free(axis),
+      minus: free([-axis[0], -axis[1]]),
+    }));
+  } finally {
+    hitGeom.delete();
+  }
+}
+
+/** True when the jaws fit along this axis: the fixed finger on one side, the moving jaw opposite. */
+export function graspFits(clearance: GraspClearance): boolean {
+  const { plus, minus } = clearance;
+  return (
+    (plus >= MOVING_JAW_CLEARANCE && minus >= FIXED_JAW_CLEARANCE) ||
+    (minus >= MOVING_JAW_CLEARANCE && plus >= FIXED_JAW_CLEARANCE)
+  );
+}
+
+/** A free object that starts more than OVERLAP_TOLERANCE inside other geometry, deepest first. */
+export interface ObjectOverlap {
+  body: string;
+  other: string;
+  depth: number;
+}
+
+/**
+ * Free objects starting inside other geometry (the robot, a table, another object), from the
+ * current contacts: the deepest overlap per pair, deepest first. Call after `forward`.
+ */
+export function objectOverlaps(simulation: Simulation): ObjectOverlap[] {
+  const objects = inventory(simulation);
   const model = simulation.model;
   const data = simulation.data;
   const geomBody = model.geom_bodyid as Int32Array;
   const rootOf = model.body_rootid as Int32Array;
   const geomNames = model.name_geomadr as Int32Array;
   const free = new Set(objects.objects);
-  const deepest = new Map<string, { body: string; other: string; depth: number }>();
+  const deepest = new Map<string, ObjectOverlap>();
   for (let index = 0; index < data.ncon; index++) {
     const contact = data.contact.get(index);
     if (!contact) continue;
@@ -269,15 +540,17 @@ function overlapIssues(simulation: Simulation, objects: Inventory): SceneIssue[]
     const key = `${body}\u0000${other}`;
     if (depth > (deepest.get(key)?.depth ?? 0)) deepest.set(key, { body, other, depth });
   }
-  return [...deepest.values()]
-    .sort((a, b) => b.depth - a.depth)
-    .map(({ body, other, depth }) => ({
-      level: 'error',
-      code: 'overlap',
-      node: body,
-      message: `'${body}' starts ${(depth * 1000).toFixed(0)} mm inside '${other}'.`,
-      fix: `Move '${body}' so it rests on '${other}' instead of inside it: raise or shift its pos with apply_scene_operations set_attribute.`,
-    }));
+  return [...deepest.values()].sort((a, b) => b.depth - a.depth);
+}
+
+function overlapIssues(simulation: Simulation): SceneIssue[] {
+  return objectOverlaps(simulation).map(({ body, other, depth }) => ({
+    level: 'error',
+    code: 'overlap',
+    node: body,
+    message: `'${body}' starts ${(depth * 1000).toFixed(0)} mm inside '${other}'.`,
+    fix: `Move '${body}' so it rests on '${other}' instead of inside it: raise or shift its pos with apply_scene_operations set_attribute.`,
+  }));
 }
 
 /** Steps the live model for `seconds` and measures each object's motion (state restored). */
@@ -322,18 +595,91 @@ function visibleFromCamera(
   return Math.abs(axis(1)) <= halfHeight && Math.abs(axis(0)) <= halfHeight * aspect;
 }
 
+/** The destination exists, the robot reaches it, and each object fits its opening. */
+function containerIssues(
+  simulation: Simulation,
+  found: Inventory,
+  robots: RobotReach[],
+): SceneIssue[] {
+  const container = findContainer(found);
+  if (container === null) {
+    return [
+      {
+        level: 'warning',
+        code: 'no_container',
+        message:
+          'No body looks like a destination (container, bin, tray, bowl, ...), so Generate has nowhere to place objects.',
+        fix: "Add one with add_container, or name the destination body 'container'.",
+      },
+    ];
+  }
+  const issues: SceneIssue[] = [];
+  const name = found.bodyName(container);
+  const bounds = footprint(simulation, container);
+  const position = vector(simulation.bodyPositions, container);
+  const center: Vec3 = bounds
+    ? [(bounds[0] + bounds[1]) / 2, (bounds[2] + bounds[3]) / 2, position[2]]
+    : position;
+  if (robots.length) {
+    const fits = robots.some((robot) => {
+      const gap = Math.hypot(center[0] - robot.base[0], center[1] - robot.base[1]);
+      return gap <= reachAt(robot, center[2] - robot.base[2], MAX_GRASP_TILT_DEGREES);
+    });
+    if (!fits) {
+      issues.push({
+        level: 'error',
+        code: 'container_unreachable',
+        node: name,
+        message: `No robot can reach the middle of '${name}', so objects cannot be placed in it.`,
+        fix: `Move '${name}' closer to the robot base.`,
+      });
+    }
+  }
+  const interior = interiorHalfSize(simulation, name);
+  const opening: [number, number] | null = interior
+    ? [interior[0] * 2, interior[1] * 2]
+    : bounds
+      ? [bounds[1] - bounds[0], bounds[3] - bounds[2]]
+      : null;
+  if (opening) {
+    for (const body of found.objects) {
+      const objectBounds = footprint(simulation, body);
+      if (!objectBounds) continue;
+      const size = [objectBounds[1] - objectBounds[0], objectBounds[3] - objectBounds[2]].sort(
+        (a, b) => a - b,
+      );
+      const room = [...opening].sort((a, b) => a - b);
+      if (size[0] >= room[0] || size[1] >= room[1]) {
+        const object = found.bodyName(body);
+        issues.push({
+          level: 'warning',
+          code: 'container_too_small',
+          node: object,
+          message: `'${object}' (${cm(size[1])} x ${cm(size[0])}) does not fit the ${interior ? 'inside' : 'outline'} of '${name}' (${cm(room[1])} x ${cm(room[0])}).`,
+          fix: `Use a larger container (add_container with a bigger size) or a smaller object.`,
+        });
+      }
+    }
+  }
+  return issues;
+}
+
 export function checkScene(simulation: Simulation, settleSeconds = 1): SceneCheckResult {
   const model = simulation.model;
   const found = inventory(simulation);
   const issues: SceneIssue[] = [];
   simulation.forward();
-  issues.push(...overlapIssues(simulation, found));
+  issues.push(...overlapIssues(simulation));
+  const clearances = found.robots.length
+    ? found.objects.map((body) => graspClearance(simulation, body, found.robots))
+    : null;
 
   const motion = settle(simulation, found.objects, settleSeconds);
   const objects = found.objects.map((body, index) => ({
     name: found.bodyName(body),
     moved: motion[index].moved,
     drop: motion[index].drop,
+    clearance: clearances ? clearances[index] : null,
   }));
   for (const [index, object] of objects.entries()) {
     if (!motion[index].finite) {
@@ -418,6 +764,33 @@ export function checkScene(simulation: Simulation, settleSeconds = 1): SceneChec
         });
       }
     }
+  }
+
+  if (found.objects.length && found.robots.length) {
+    issues.push(...containerIssues(simulation, found, robots));
+  }
+  for (const object of objects) {
+    if (!object.clearance?.length || object.clearance.some(graspFits)) continue;
+    const sides = object.clearance
+      .flatMap(({ plus, minus }) => [plus, minus])
+      .map((space) => cm(space))
+      .join(', ');
+    issues.push({
+      level: 'warning',
+      code: 'grasp_blocked',
+      node: object.name,
+      message: `The open gripper does not fit beside '${object.name}' from any side (free space ${sides}): it needs ${cm(FIXED_JAW_CLEARANCE)} on one side and ${cm(MOVING_JAW_CLEARANCE)} on the opposite side.`,
+      fix: `Move '${object.name}' at least ${cm(MOVING_JAW_CLEARANCE)} away from container walls and other objects on one side (place_object), or rotate it so a clear side faces the gap.`,
+    });
+  }
+  if (model.nlight === 0) {
+    issues.push({
+      level: 'warning',
+      code: 'no_light',
+      message:
+        'The scene has no lights, so cameras see it lit only by the headlight, unlike a real room.',
+      fix: 'Add a light above the workspace (apply_scene_operations add_light), lit like the room in the reference photos.',
+    });
   }
 
   const cameraNames = model.name_camadr as Int32Array;

@@ -54,6 +54,12 @@ function localDatabaseUri(rootValues) {
   return `postgres://${encodeURIComponent(user)}:${encodeURIComponent(password)}@localhost:${port}/${encodeURIComponent(database)}`;
 }
 
+// `npm run build` passes --skip-if-configured: the Docker image and the E2E server set the data
+// directory in their environment and need no .env; a fresh clone does, or the build fails.
+if (process.argv.includes('--skip-if-configured') && process.env.ROBOTIC_STUDIO_DATA_DIR?.trim()) {
+  process.exit(0);
+}
+
 try {
   await access(envPath);
 } catch (error) {

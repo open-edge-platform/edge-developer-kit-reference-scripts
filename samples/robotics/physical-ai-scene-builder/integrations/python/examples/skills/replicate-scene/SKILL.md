@@ -54,7 +54,9 @@ tell the user rather than silently moving it.
 - **Scanned room**: call `detect_table`. Take the first proposal (nearest the robot) unless the photo
   says otherwise, then `add_scan_table` with its `center`, `size`, `top`, and `yaw`. Scan surfaces
   do not collide by themselves; without this table objects fall through. A proposal can extend along
-  a long bench; shrink `size` to the part the robot works on if that matters.
+  a long bench; shrink `size` to the part the robot works on if that matters. Then `clean_splat`
+  with `crop: 'tables'` and `removeFloaters: true` if renders show far-away clutter or specks in
+  mid-air.
 
 ## 3. Add the robot
 
@@ -68,8 +70,10 @@ pose the upper arm points up and the forearm forward. Check the heading with a f
 ## 4. Add the objects
 
 **The destination.** A bowl, tray, or box the object is put into is an `add_container` operation
-(in `apply_scene_operations`): give its `inner` width and depth, `wallHeight`, and color, then
-`place_object` it on the table. It carries the placement target Generate checks. A flat target
+(in `apply_scene_operations`): give its `inner` width and depth, `wallHeight`, and color (and
+`shape: 'round'` for a bowl, whose `inner[0]` is the inside diameter), then `place_object` it on
+the table. It carries the placement target Generate checks. To change its size later, use
+`resize_container` (same name, new `inner`); it keeps its place. A flat target
 (a coaster, a marked spot) is a thin fixed box primitive named `container`.
 
 **Everything else**, preferring in order:
@@ -87,7 +91,10 @@ For every object, then:
 
 - `set_object_physics` with `largestDimension` (its real size), `mass` (a 4 cm wooden cube about
   0.04 kg, an empty mug about 0.3 kg, a plastic bowl about 0.1 kg), and `friction` if it is
-  slippery or rubbery. Generated objects come in at an arbitrary size; always set this.
+  slippery or rubbery. Generated objects come in at an arbitrary size; always set this. Add
+  `category` (cube, mug, plate, bottle, ...) to fill in typical values for whatever you cannot
+  judge from the photo. For a generated object the robot will grasp, `collision` `box` (or
+  `cylinder` for mugs, cans, bottles) gives steadier grasps than its mesh.
 - `place_object` with `at` (world X, Y), `on` (a table or container), or `beside` (another object)
   instead of computing heights yourself. `yaw` sets its heading. It refuses spots with nothing
   below or with something in the way; move the spot rather than forcing it.
@@ -115,13 +122,24 @@ Call `render_camera` with the scene camera's name and compare it with the photo,
 3. **Appearance**: colors, then lighting direction and brightness.
 
 Framing converges much faster from a fitted camera than by eye. Read the pixel positions of the
-table top's 4 corners in the photo (and of other known points, such as the robot base, if visible),
+table top's corners in the photo (and of other known points, such as the robot base, if visible),
 pass them with their world positions to `fit_camera`, and apply its `position`, `target`, and
 `fovy` with `aim_camera`. Keep the corners in the same order in both lists. A good fit has a
-`reprojectionError` of a few pixels; tens of pixels mean a swapped corner or a wrong table size. If
-it returns a `warning` (a view almost straight down), pass the camera's `fovy` and fit again; a
-large `rollDegrees` means the photo is tilted, which a level camera cannot match exactly.
-Back-project object pixels onto the table plane with the fitted camera to place objects.
+`reprojectionError` of a few pixels; tens of pixels mean a swapped corner or a wrong table size.
+
+- **Only the far two corners visible** (the near edge runs out of the photo, as with most desk
+  photos): pass those two as `points`, and each side edge as a `line`: its two world corners and
+  any two pixels along that edge in the photo. Add the robot base as a third point if you can see
+  it; otherwise give `fovy` (phones: about 45-55 degrees vertical in landscape, 65-75 in portrait).
+- **A `warning`**: ambiguous lens (straight down, or corners plus lines only): pass `fovy` or add
+  a point and fit again. Implausible lens (under 20 or over 100 degrees): a corner is matched to the
+  wrong world corner, often the table's width and depth swapped; fix the order rather than accept
+  it.
+- A large `rollDegrees` means the photo is tilted, which a level camera cannot match exactly.
+
+Place objects where the photo shows them with `pixel_to_world`: pass the fitted camera, the photo
+size, the pixels of each object's footprint centre, and `planeZ` (the table top); then
+`place_object` `at` the returned X, Y.
 `aim_camera` moves or re-aims any world camera by name and keeps its name and resolution. Change
 one thing per round and render again. Stop after about five rounds, or when another round changes
 nothing visible, and list what still differs. Do not claim a match you cannot see.
@@ -130,13 +148,17 @@ nothing visible, and list what still differs. Do not claim a match you cannot se
 
 Call `check_scene` and fix every error, using its `fix` text:
 
-| Code                              | Usual fix                                                             |
-| --------------------------------- | --------------------------------------------------------------------- |
-| `overlap`                         | `place_object` the object again, or move it apart                     |
-| `falls`, `settles`                | Add or extend the table under it; `place_object` it on that           |
-| `unreachable`, `near_reach_limit` | Move the object closer to the robot (ask if the photo says otherwise) |
-| `not_visible`                     | Aim the camera at the object or widen its `fovy`                      |
-| `no_camera`, `camera_resolution`  | Add a named camera with a `resolution`                                |
+| Code                                  | Usual fix                                                                 |
+| ------------------------------------- | ------------------------------------------------------------------------- |
+| `overlap`                             | `place_object` the object again, or move it apart                         |
+| `falls`, `settles`                    | Add or extend the table under it; `place_object` it on that               |
+| `unreachable`, `near_reach_limit`     | Move the object closer to the robot (ask if the photo says otherwise)     |
+| `not_visible`                         | Aim the camera at the object or widen its `fovy`                          |
+| `no_camera`, `camera_resolution`      | Add a named camera with a `resolution`                                    |
+| `no_container`, `container_too_small` | `add_container` large enough for the object, named `container`            |
+| `container_unreachable`               | Move the container closer to the robot                                    |
+| `grasp_blocked`                       | Leave 4 cm of free space on one side of the object (`place_object`)       |
+| `no_light`                            | `apply_scene_operations` `add_light` above the workspace, as in the photo |
 
 Warnings may stay if the photo requires them; say which. When `ok` is true, `render_camera` once
 more, then `save_scene`, and `get_scene` to confirm it saved.

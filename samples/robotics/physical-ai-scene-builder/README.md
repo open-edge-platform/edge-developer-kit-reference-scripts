@@ -80,10 +80,12 @@ flowchart LR
    - [uv](https://docs.astral.sh/uv/)
    - Git\*
    - `build-essential`, `pkg-config`, and `python3-dev`
+   - The EGL and OpenGL libraries that MuJoCo camera rendering needs
    - A Chromium\*-based browser
 
    ```bash
-   sudo apt-get update && sudo apt-get install -y build-essential pkg-config python3-dev git
+   sudo apt-get update && sudo apt-get install -y build-essential pkg-config python3-dev git \
+     libegl1 libgl1 libegl-mesa0 libgl1-mesa-dri
    ```
 
 4. Optional: for virtual cameras (**Simulate**), install and load the `v4l2loopback` kernel module.

@@ -14,6 +14,7 @@ import {
   insertPrimitiveObject,
   insertTable,
   isSplatBackdropNode,
+  resizeContainer,
   robotInstancePrefixForNode,
   setNodeAttribute,
 } from '../editor/document';
@@ -31,6 +32,12 @@ export function applySceneOperations(
       next = insertTable(candidate, operation)?.xml ?? null;
     } else if (operation.type === 'add_container') {
       next = insertContainer(candidate, operation)?.xml ?? null;
+    } else if (operation.type === 'resize_container') {
+      next = resizeContainer(candidate, operation.name, operation);
+      if (!next)
+        throw new Error(
+          `"${operation.name}" is not a container from add_container, or the new size is invalid.`,
+        );
     } else if (operation.type === 'add_primitive') {
       next = insertPrimitiveObject(candidate, { ...operation, type: operation.shape })?.xml ?? null;
     } else if (operation.type === 'add_camera') {

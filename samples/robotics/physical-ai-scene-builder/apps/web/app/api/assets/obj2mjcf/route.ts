@@ -12,19 +12,13 @@ import { Obj2MjcfError, runObj2Mjcf } from '@/lib/process/obj2mjcf';
 import { saveObjectModelAsset } from '@/lib/process/objectModelAsset';
 import type { AssetCategory } from '@/lib/scenes/assetsApi';
 import { objectModelAssetName } from '@/lib/scenes/imageTo3dApi';
+import { integrationPath } from '@/lib/process/integrationPaths';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const MAX_FILE_BYTES = 500 * 1024 * 1024;
 const MAX_TEXTURES = 16;
-
-function integrationPath(): string {
-  return path.resolve(
-    process.env.ROBOTIC_STUDIO_PYTHONPATH?.trim() ||
-      path.resolve(/* turbopackIgnore: true */ process.cwd(), '../../integrations/python'),
-  );
-}
 
 function errorResponse(message: string, status = 400): Response {
   return Response.json({ errors: [{ message }] }, { status });

@@ -44,6 +44,22 @@ uv run --project integrations/python --extra teleoperation \
 | `--profile-cpu`           | Print a cProfile cumulative-time summary.                                                                                                                                        |
 | `--no-save`               | Print the result without appending it to `results/`.                                                                                                                             |
 
+## Scripted demonstrations
+
+```sh
+uv run --project integrations/python --extra teleoperation \
+  python integrations/python/benchmarks/bench_scripted.py \
+  --scene-bundle integrations/python/benchmarks/fixtures/so101.mujoco-scene \
+  --profile integrations/python/benchmarks/fixtures/so101-profile.json \
+  --states 100 --x-cm 10 --y-cm 10 --yaw-deg 45 --workers 8
+```
+
+Adds `--states` randomized states (object x/y and yaw, no robot joint offsets) to a temporary
+collection, records them with the batch Generate runner, and prints the scripted success rate, the
+rate over states with a feasible grasp (`feasibleSuccessRate`: states failing `unreachable` or
+`grasp_blocked` are left out), and failure reasons; the result is appended to `results/` (`--no-save` skips it, `--keep DIR` keeps
+the collection and its report for inspection).
+
 ## Evaluate
 
 ```sh

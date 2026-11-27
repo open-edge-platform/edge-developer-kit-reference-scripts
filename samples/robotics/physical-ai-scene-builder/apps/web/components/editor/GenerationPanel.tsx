@@ -434,6 +434,21 @@ export function GenerationPanel({
                   </Button>
                 </div>
               )}
+              {g.busySessionWarning && (
+                <div className="flex items-start justify-between gap-2" role="alert">
+                  <p className="text-[10px] leading-relaxed text-warning">{g.busySessionWarning}</p>
+                  <Button
+                    className={SMALL_BUTTON_CLASS}
+                    disabled={g.busy}
+                    onClick={g.replaceBusySession}
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                  >
+                    End it and start here
+                  </Button>
+                </div>
+              )}
               {g.generationMessage && (
                 <p className="text-[10px] text-success">{g.generationMessage}</p>
               )}

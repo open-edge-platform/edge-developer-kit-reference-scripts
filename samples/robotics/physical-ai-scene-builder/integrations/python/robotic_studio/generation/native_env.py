@@ -25,6 +25,20 @@ from .backdrop import (
 from .model_randomization import ModelRandomizationError, ModelRandomizer, is_model_rule
 from .randomization import sample_task_randomization
 
+# drop_onto_support: search 30 cm down and 5 cm up, stop within 0.5 mm of the support.
+DROP_MAX_DISTANCE = 0.30
+DROP_MAX_LIFT = 0.05
+DROP_CONTACT_GAP = 5e-4
+# A support's nearest point lies below the body: within about 45 degrees of straight down.
+DROP_BELOW_SLOPE = 0.7
+DROP_MAX_ITERATIONS = 32
+# rest_on_support: settle for at most 2 s, until still (1 cm/s, 0.2 rad/s) for 0.1 s.
+SETTLE_MAX_SECONDS = 2.0
+SETTLE_STILL_SECONDS = 0.1
+SETTLE_LINEAR_SPEED = 0.01
+SETTLE_ANGULAR_SPEED = 0.2
+SETTLE_LIFT_CLEARANCE = 2e-5
+
 
 class NativeEnvironmentError(RuntimeError):
     pass
@@ -643,6 +657,143 @@ class NativeEnvironment:
         qvel[qvel_address : qvel_address + 6] = 0.0
         self._mujoco.mj_forward(self.model, self.data)
 
+    def drop_onto_support(
+        self,
+        name: str,
+        *,
+        max_drop: float = DROP_MAX_DISTANCE,
+        max_lift: float = DROP_MAX_LIFT,
+    ) -> float | None:
+        """Move free body ``name`` straight down (or up) until it rests on the geometry below it.
+
+        A randomized x/y position keeps the authored height, so an object authored on a pad floats
+        when its new spot is beside the pad, and sinks into it the other way round. This lowers the
+        body by its distance to the nearest collidable geometry below it, repeatedly (conservative
+        advancement), and first lifts it out of anything below that it overlaps. Nothing below
+        within ``max_drop`` (beside the table) leaves the body where it was and returns None;
+        otherwise returns the vertical change in metres (negative = lowered).
+        """
+        body_index = self.body_id(name)
+        own, others = self._support_geoms(body_index)
+        if not own or not others:
+            return None
+        start = self.body_position(name)
+        position = start.copy()
+        def gap_below(limit: float) -> float:
+            return self._gap_below(own, others, float(position[2]), limit)
+
+        for _ in range(DROP_MAX_ITERATIONS):
+            gap = gap_below(max_drop)
+            if gap < -DROP_CONTACT_GAP:
+                position[2] += min(-gap + DROP_CONTACT_GAP, max_lift)
+            elif gap >= max_drop and position[2] == start[2]:
+                return None
+            elif gap > DROP_CONTACT_GAP:
+                position[2] -= gap - DROP_CONTACT_GAP * 0.5
+            else:
+                break
+            if position[2] < start[2] - max_drop or position[2] > start[2] + max_lift:
+                self.set_body_pose(name, start)
+                return None
+            self.set_body_pose(name, position)
+        return float(position[2] - start[2])
+
+    def _gap_below(self, own: list[int], others: list[int], body_z: float, limit: float) -> float:
+        """Smallest distance from ``own`` geoms to geometry below them (negative: overlap)."""
+        fromto = np.zeros(6, dtype=np.float64)
+        nearest = limit
+        for geom in own:
+            for other in others:
+                distance = float(self._mujoco.mj_geomDistance(self.model, self.data, geom, other, limit, fromto))
+                if distance >= nearest:
+                    continue
+                if distance >= 0.0 and fromto[2] - fromto[5] < DROP_BELOW_SLOPE * distance:
+                    continue  # beside or above the body: not a support
+                if distance < 0.0 and float(self.data.geom_xpos[other][2]) >= body_z:
+                    continue  # overlaps something whose centre is higher: not resting on it
+                nearest = distance
+        return nearest
+
+    def rest_on_support(self, name: str, *, max_seconds: float = SETTLE_MAX_SECONDS) -> None:
+        """Drop free body ``name`` onto the geometry below it, then let physics settle it alone.
+
+        The drop handles flat supports exactly; the settle handles what geometry alone cannot,
+        such as an object hanging over a pad edge tipping onto the table. With nothing below (the
+        spot is beside the table) the body stays where it is. Otherwise physics runs until the
+        body has been still for ``SETTLE_STILL_SECONDS`` (at most ``max_seconds``); then every
+        other joint returns to where it was, so only this body moves, and all velocities are zero.
+        """
+        if self.drop_onto_support(name) is None:
+            return
+        body_index = self.body_id(name)
+        joint_index = _scalar(np.asarray(self.model.body_jntadr)[body_index])
+        qpos_address = _scalar(np.asarray(self.model.jnt_qposadr)[joint_index])
+        dof_address = _scalar(np.asarray(self.model.jnt_dofadr)[joint_index])
+        qpos = np.asarray(self.data.qpos)
+        qvel = np.asarray(self.data.qvel)
+        saved_qpos = qpos.copy()
+        saved_ctrl = np.asarray(self.data.ctrl).copy()
+        saved_act = np.asarray(self.data.act).copy()
+        saved_time = float(self.data.time)
+        timestep = float(self.model.opt.timestep)
+        still_steps = max(1, round(SETTLE_STILL_SECONDS / timestep))
+        still = 0
+        for _ in range(max(1, round(max_seconds / timestep))):
+            self._mujoco.mj_step(self.model, self.data)
+            speed = qvel[dof_address : dof_address + 6]
+            moving = (
+                float(np.linalg.norm(speed[:3])) > SETTLE_LINEAR_SPEED
+                or float(np.linalg.norm(speed[3:])) > SETTLE_ANGULAR_SPEED
+            )
+            still = 0 if moving else still + 1
+            if still >= still_steps:
+                break
+        settled = qpos[qpos_address : qpos_address + 7].copy()
+        qpos[:] = saved_qpos
+        qpos[qpos_address : qpos_address + 7] = settled
+        qvel[:] = 0.0
+        np.asarray(self.data.ctrl)[:] = saved_ctrl
+        np.asarray(self.data.act)[:] = saved_act
+        np.asarray(self.data.qacc_warmstart)[:] = 0.0
+        self.data.time = saved_time
+        self._mujoco.mj_forward(self.model, self.data)
+        # Soft contacts leave a resting body sunk a fraction of a millimetre into its support;
+        # lift it out so the stored state starts without overlaps.
+        own, others = self._support_geoms(body_index)
+        sunk = self._gap_below(own, others, float(qpos[qpos_address + 2]), DROP_CONTACT_GAP)
+        if sunk < 0.0:
+            qpos[qpos_address + 2] += -sunk + SETTLE_LIFT_CLEARANCE
+            self._mujoco.mj_forward(self.model, self.data)
+
+    def _support_geoms(self, body_index: int) -> tuple[list[int], list[int]]:
+        """Collidable geoms of the body's subtree, and the collidable geoms they could rest on."""
+        parents = np.asarray(self.model.body_parentid)
+
+        def in_subtree(index: int) -> bool:
+            while index > 0:
+                if index == body_index:
+                    return True
+                index = int(parents[index])
+            return False
+
+        contype = np.asarray(self.model.geom_contype)
+        conaffinity = np.asarray(self.model.geom_conaffinity)
+        types = np.asarray(self.model.geom_type)
+        hfield = int(self._mujoco.mjtGeom.mjGEOM_HFIELD)
+        bodies = np.asarray(self.model.geom_bodyid)
+        own: list[int] = []
+        others: list[int] = []
+        for geom in range(int(self.model.ngeom)):
+            if (contype[geom] == 0 and conaffinity[geom] == 0) or int(types[geom]) == hfield:
+                continue
+            (own if in_subtree(int(bodies[geom])) else others).append(geom)
+        others = [
+            other
+            for other in others
+            if any(contype[g] & conaffinity[other] or contype[other] & conaffinity[g] for g in own)
+        ]
+        return own, others
+
     def hinge_joint_for_action(self, action_name: str) -> int:
         """Return the hinge joint an action drives, or raise NativeActionError."""
         try:
@@ -855,6 +1006,9 @@ class NativeEnvironment:
             if not is_model_rule(rule):
                 self._apply_randomization_rule(rule, sample)
         self._mujoco.mj_forward(self.model, self.data)
+        for rule in task_rules:
+            if rule.get("kind") == "free-body-position" and rule.get("restOnSupport") is True:
+                self.rest_on_support(str(rule["body"]))
         self._last_reset_info = NativeResetInfo(
             seed=effective_seed,
             samples=tuple({key: value for key, value in sample.items()} for sample in samples),
@@ -985,7 +1139,10 @@ class NativeEnvironment:
             assert self.backdrop is not None
             try:
                 renderer = IntelXPUBackdropRenderer(
-                    self._backdrop_asset_path, scale=self.backdrop.scale, rotation=self.backdrop.rotation
+                    self._backdrop_asset_path,
+                    scale=self.backdrop.scale,
+                    rotation=self.backdrop.rotation,
+                    cleanup=self.backdrop.cleanup,
                 )
             except Exception as error:
                 raise NativeEnvironmentError(f"Could not initialize Intel XPU backdrop rendering: {error}") from error

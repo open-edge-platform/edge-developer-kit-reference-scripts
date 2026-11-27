@@ -33,9 +33,13 @@ function colorAttribute(value: string | undefined, fallback: string): THREE.Colo
   return value ? new THREE.Color(r, g, b) : new THREE.Color(fallback);
 }
 
-function boolAttribute(value: string | undefined): boolean {
+function boolAttribute(value: string | undefined, fallback = false): boolean {
+  if (value === undefined) return fallback;
   return value === 'true' || value === '1';
 }
+
+/** MuJoCo's shadow map size (`visual/quality shadowsize` defaults to 4096); 2048 keeps it light. */
+const PARITY_SHADOW_MAP_SIZE = 2048;
 
 function lightIntensity(value: string | undefined, mujocoParity: boolean): number {
   // MuJoCo shading has no 1/pi Lambert factor; scaling by pi matches it (color carries the RGB).
@@ -83,6 +87,9 @@ function AuthoredLight({
       ? new THREE.Color(0.7, 0.7, 0.7)
       : colorAttribute(attributes.diffuse, '#ffffff');
 
+  // MuJoCo lights cast shadows unless `castshadow="false"` (spot and directional lights).
+  const castShadow = boolAttribute(attributes.castshadow, mujocoParity);
+
   useEffect(() => {
     if (lightRef.current && targetRef.current && 'target' in lightRef.current) {
       (lightRef.current as THREE.DirectionalLight | THREE.SpotLight).target = targetRef.current;
@@ -96,6 +103,31 @@ function AuthoredLight({
     const position = simulation.lightPosition(node.mjIndex);
     const currentDirection = simulation.lightDirection(node.mjIndex);
     group.position.set(position[0], position[1], position[2]);
+    const light = lightRef.current as THREE.SpotLight | THREE.DirectionalLight | null;
+    if (mujocoParity && castShadow && light?.shadow) {
+      // MuJoCo frames a directional light's shadow by the model extent (`visual/map shadowclip`
+      // times `statistic extent`) and a spot light's by its cutoff cone.
+      const extent = simulation.model.stat.extent > 0 ? simulation.model.stat.extent : 1;
+      const shadow = light.shadow;
+      if (shadow.mapSize.x !== PARITY_SHADOW_MAP_SIZE) {
+        shadow.mapSize.set(PARITY_SHADOW_MAP_SIZE, PARITY_SHADOW_MAP_SIZE);
+        shadow.map?.dispose();
+        shadow.map = null;
+      }
+      shadow.bias = -0.0005;
+      shadow.normalBias = 0.002;
+      const shadowCamera = shadow.camera as THREE.OrthographicCamera | THREE.PerspectiveCamera;
+      if (shadowCamera instanceof THREE.OrthographicCamera) {
+        const clip = simulation.model.vis.map.shadowclip * extent;
+        shadowCamera.left = -clip;
+        shadowCamera.right = clip;
+        shadowCamera.top = clip;
+        shadowCamera.bottom = -clip;
+      }
+      shadowCamera.near = 0.01 * extent;
+      shadowCamera.far = 10 * extent;
+      shadowCamera.updateProjectionMatrix();
+    }
     // The target is a child of the light's group, so it sits one direction vector from the light.
     // Adding the light position here again aimed lights away from the scene.
     targetRef.current?.position.set(currentDirection[0], currentDirection[1], currentDirection[2]);
@@ -104,13 +136,17 @@ function AuthoredLight({
   return (
     <group ref={groupRef} userData={{ authoredLight: node.id }}>
       {type === 'point' ? (
-        <pointLight
-          ref={lightRef as React.RefObject<THREE.PointLight>}
-          color={color}
-          intensity={lightIntensity(attributes.diffuse, mujocoParity)}
-          decay={mujocoParity ? 0 : 2}
-          castShadow={boolAttribute(attributes.castshadow)}
-        />
+        // MuJoCo's native renderer (recordings) draws only spot and directional lights; point
+        // lights light nothing there, so the parity preview leaves them out too.
+        mujocoParity ? null : (
+          <pointLight
+            ref={lightRef as React.RefObject<THREE.PointLight>}
+            color={color}
+            intensity={lightIntensity(attributes.diffuse, mujocoParity)}
+            decay={2}
+            castShadow={boolAttribute(attributes.castshadow)}
+          />
+        )
       ) : type === 'spot' ? (
         <spotLight
           ref={lightRef as React.RefObject<THREE.SpotLight>}
@@ -124,7 +160,7 @@ function AuthoredLight({
                 penumbra: Math.min(1, (Number(attributes.exponent) || 0) / 100),
                 decay: 2,
               })}
-          castShadow={boolAttribute(attributes.castshadow)}
+          castShadow={castShadow}
         />
       ) : (
         <directionalLight
@@ -132,7 +168,7 @@ function AuthoredLight({
           position={LIGHT_AT_GROUP_ORIGIN}
           color={color}
           intensity={lightIntensity(attributes.diffuse, mujocoParity)}
-          castShadow={boolAttribute(attributes.castshadow)}
+          castShadow={castShadow}
         />
       )}
       <object3D ref={targetRef} userData={{ authoredLightTarget: node.id }} position={target} />

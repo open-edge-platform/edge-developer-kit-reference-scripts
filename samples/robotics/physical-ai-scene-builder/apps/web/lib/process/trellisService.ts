@@ -3,7 +3,6 @@
 
 import { spawn, type ChildProcess } from 'node:child_process';
 import { readdir } from 'node:fs/promises';
-import path from 'node:path';
 
 import { URL_CHARS } from '../http/urlChars';
 import {
@@ -12,6 +11,7 @@ import {
   serializeWorkerOperation,
   waitForExitOrForceKill,
 } from './pythonWorkerProcess';
+import { trellisPath } from './integrationPaths';
 
 const STARTUP_TIMEOUT_MS = 10 * 60_000;
 const STOP_TIMEOUT_MS = 5_000;
@@ -198,10 +198,7 @@ export function startTrellisService(): Promise<TrellisServiceState> {
       );
     }
     await stopOwnedProcess();
-    const projectPath = path.resolve(
-      process.env.ROBOTIC_STUDIO_TRELLIS_PATH?.trim() ||
-        path.resolve(/* turbopackIgnore: true */ process.cwd(), '../../services/trellis2-runtime'),
-    );
+    const projectPath = trellisPath();
     const command = process.env.ROBOTIC_STUDIO_UV?.trim() || 'uv';
     const args = [
       'run',

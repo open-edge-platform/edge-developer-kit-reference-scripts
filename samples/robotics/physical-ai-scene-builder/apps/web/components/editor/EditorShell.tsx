@@ -25,12 +25,22 @@ import * as THREE from 'three';
 import { InspectorPanel } from './InspectorPanel';
 import { McpPanel } from './McpPanel';
 import { mcpAssetSummary } from '@/lib/mcp/assetSummary';
+import {
+  cachedRemovedSplatIndices,
+  cropAroundTables,
+  DEFAULT_ISOLATION,
+  worldBoxToBodyCrop,
+  type SplatCleanup,
+} from '@/lib/editor/splatCleanup';
 import { applySceneOperations } from '@/lib/mcp/editorOperations';
 import type { EditorCommand, RenderCameraResult } from '@/lib/mcp/contracts';
+import { homePoseFromRecording } from '@/lib/mcp/homePose';
 import { FREE_VIEW_SIZE, renderSize, resolveRenderTarget } from '@/lib/mcp/renderCamera';
-import { checkScene } from '@/lib/mcp/sceneCheck';
-import { detectTables } from '@/lib/mcp/tableDetection';
+import { checkScene, objectOverlaps } from '@/lib/mcp/sceneCheck';
+import { detectTables, robotBases, type TableProposal } from '@/lib/mcp/tableDetection';
+import { OBJECT_CATEGORIES } from '@/lib/mcp/objectCategories';
 import {
+  bodyBox,
   bodyDimensions,
   currentWorldBounds,
   planPlacement,
@@ -69,6 +79,7 @@ import {
   applyMaterialToNode,
   compilerAngleUnit,
   scaleObject,
+  setCollisionProxy,
   setObjectFriction,
   setObjectMass,
   insertCamera,
@@ -236,6 +247,18 @@ function backdropWorldPose(
     position: simulation.bodyPositions.subarray(id * 3, id * 3 + 3),
     rotation: simulation.bodyRotations.subarray(id * 9, id * 9 + 9),
   };
+}
+
+/** Visible Gaussians `calibration.cleanup` hides from these points. */
+function removedCount(points: readonly SplatPoint[], calibration: SplatCalibration): number {
+  return (
+    cachedRemovedSplatIndices(
+      points,
+      calibration.cleanup,
+      calibration.scale,
+      calibrationRotation(calibration),
+    )?.size ?? 0
+  );
 }
 
 /** World rotation `[w, x, y, z]` of the loaded backdrop body (a worldbody child), or null. */
@@ -487,6 +510,8 @@ export function EditorShell({
   const hydratedHomePoseDocument = useRef<string | null>(null);
   const restoredSplatKey = useRef<string | null>(null);
   const splatPointsRef = useRef<SplatPoint[]>([]);
+  /** Visible Gaussians the cleanup hides (shown in the Splat tab), counted when it is applied. */
+  const [splatCleanupRemoved, setSplatCleanupRemoved] = useState(0);
   const restoringSplatRef = useRef<SplatRestore | null>(null);
   // Set by a new upload: its orientation is detected once its points arrive.
   const detectSplatOrientationRef = useRef(false);
@@ -1814,6 +1839,7 @@ export function EditorShell({
         return `MuJoCo rejected the recalibrated backdrop${detail ? `: ${detail}` : '.'}`;
       }
       setSplatBackdrop({ calibration, origin: derived.origin });
+      setSplatCleanupRemoved(removedCount(points, calibration));
       cacheSplat(calibration, derived.origin);
       return null;
     },
@@ -1878,6 +1904,7 @@ export function EditorShell({
         return;
       }
       setSplatBackdrop({ calibration, origin });
+      setSplatCleanupRemoved(removedCount(points, calibration));
       cacheSplat(calibration, origin);
       setSplatStatus('ready');
     },
@@ -1966,6 +1993,73 @@ export function EditorShell({
     setTableNote(`Added ${inserted.name}. Move and resize the box to cover the scanned table.`);
     return null;
   }, [applyCompiledXml, getLastLoadError, getSimulation, sceneName]);
+
+  // Splat cleanup: stored with the calibration, so the heightfield is re-derived without the
+  // removed Gaussians and workers receive it as profile.backdrop.cleanup.
+  const applySplatCleanup = useCallback(
+    (cleanup: SplatCleanup): string | null =>
+      handleSplatCalibrationChange({ ...useEditorStore.getState().splatCalibration, cleanup }),
+    [handleSplatCalibrationChange],
+  );
+
+  /** World floor height under the scan, or null before it has loaded. */
+  const scanFloor = useCallback((): number | null => {
+    const { splatOrigin: origin, splatCalibration: calibration } = useEditorStore.getState();
+    const pose = backdropWorldPose(getSimulation());
+    if (!origin || !pose) return null;
+    const [x, y, z] = backdropPivot(origin, calibration.level);
+    const { position: t, rotation: r } = pose;
+    return t[2] + r[6] * x + r[7] * y + r[8] * z;
+  }, [getSimulation]);
+
+  // Crop the scan to the workspace: the tables' footprint (or the robot, without tables) plus a
+  // margin, from the floor to a metre above the highest top.
+  const fitSplatCrop = useCallback((): string | null => {
+    const simulation = getSimulation();
+    const pose = backdropWorldPose(simulation);
+    const floor = scanFloor();
+    if (!simulation || !pose || floor === null) return 'Wait for the scan to finish loading.';
+    const robot = robotBases(simulation)[0] ?? null;
+    const box = cropAroundTables(simulationSplatTables(simulation), floor, robot);
+    if (!box) return 'Add a table or a robot first.';
+    const { splatCalibration } = useEditorStore.getState();
+    return applySplatCleanup({
+      ...splatCalibration.cleanup,
+      crop: worldBoxToBodyCrop(box.min, box.max, pose),
+    });
+  }, [applySplatCleanup, getSimulation, scanFloor]);
+
+  /** Table tops found in the scan's heightfield, nearest the robot first. */
+  const detectScanTables = useCallback((): TableProposal[] | string => {
+    const simulation = getSimulation();
+    if (!simulation || !backdropWorldPose(simulation))
+      return 'Wait for the scan to finish loading.';
+    try {
+      const found = detectTables(simulation).tables.slice(0, 3);
+      return found.length ? found : 'No flat table top was found in the scan.';
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error);
+    }
+  }, [getSimulation]);
+
+  const addDetectedTable = useCallback(
+    (proposal: TableProposal): string | null => {
+      const inserted = insertSplatTable(
+        useEditorStore.getState().xml,
+        [proposal.center[0], proposal.center[1], proposal.top],
+        [proposal.size[0] / 2, proposal.size[1] / 2, SPLAT_TABLE_HALF_SIZE[2]],
+        (proposal.yaw * Math.PI) / 180,
+      );
+      if (!inserted) return 'Could not add the table.';
+      if (!applyCompiledXml(inserted.xml, sceneName, 'incremental')) {
+        const detail = getLastLoadError();
+        return `MuJoCo rejected the table${detail ? `: ${detail}` : '.'}`;
+      }
+      setTableNote(`Added ${inserted.name}.`);
+      return null;
+    },
+    [applyCompiledXml, getLastLoadError, sceneName],
+  );
 
   // Match height to scan: sets the table's top to the scan's surface measured under it, in one
   // undo step. Objects resting on the table move with its top, so they are neither left inside
@@ -2068,11 +2162,20 @@ export function EditorShell({
   const workerRuntimeFiles = useMemo(() => {
     const files = generationRuntimeFiles.filter((file) => file.kind !== 'splat');
     return splatFile && splatSrc && splatOrigin
-      ? [...files, { ...splatFile.runtime, splatScale: splatCalibration.scale, splatRotation }]
+      ? [
+          ...files,
+          {
+            ...splatFile.runtime,
+            splatScale: splatCalibration.scale,
+            splatRotation,
+            splatCleanup: splatCalibration.cleanup,
+          },
+        ]
       : files;
   }, [
     generationRuntimeFiles,
     splatCalibration.scale,
+    splatCalibration.cleanup,
     splatFile,
     splatOrigin,
     splatRotation,
@@ -2781,6 +2884,18 @@ export function EditorShell({
     [getSimulation, graph],
   );
   const tableOverlaps = useMemo(() => objectsInsideTables(splatTables), [splatTables]);
+  // Objects inside the robot, another object, or other geometry (the scene check's rule), at
+  // the authored state of each compile.
+  const objectOverlapList = useMemo(() => {
+    const simulation = graph ? getSimulation() : null;
+    if (!simulation) return [];
+    try {
+      simulation.forward();
+      return objectOverlaps(simulation);
+    } catch {
+      return [];
+    }
+  }, [getSimulation, graph]);
   // Splat tables are drawn only on the Build > Splat tab; leaving it also deselects them, so
   // nothing undrawn stays selected.
   const setSplatTablesVisible = useEditorStore((state) => state.setSplatTablesVisible);
@@ -2980,6 +3095,54 @@ export function EditorShell({
         message: `Added ${inserted.name}. Call get_scene for the new revision, then place_object to set objects on it.`,
       };
     }
+    if (command.tool === 'clean_splat') {
+      const simulation = getSimulation();
+      const pose = backdropWorldPose(simulation);
+      if (!simulation || !pose || !splatPointsRef.current.length) {
+        throw new Error('The scene has no loaded splat backdrop to clean up.');
+      }
+      const { crop, minOpacity, removeFloaters } = command.input;
+      const next: SplatCleanup = { ...useEditorStore.getState().splatCalibration.cleanup };
+      if (crop === null) delete next.crop;
+      else if (crop === 'tables') {
+        const floor = scanFloor();
+        const box =
+          floor === null
+            ? null
+            : cropAroundTables(
+                simulationSplatTables(simulation),
+                floor,
+                robotBases(simulation)[0] ?? null,
+              );
+        if (!box) throw new Error('Add a scan table (add_scan_table) or a robot first.');
+        next.crop = worldBoxToBodyCrop(box.min, box.max, pose);
+      } else if (crop) {
+        if (!crop.min.every((low, axis) => low < crop.max[axis])) {
+          throw new Error('crop.min must be below crop.max on every axis.');
+        }
+        next.crop = worldBoxToBodyCrop(crop.min, crop.max, pose);
+      }
+      if (minOpacity !== undefined) {
+        if (minOpacity > 0) next.minOpacity = minOpacity;
+        else delete next.minOpacity;
+      }
+      if (removeFloaters !== undefined) {
+        if (removeFloaters) next.isolation = { ...DEFAULT_ISOLATION };
+        else delete next.isolation;
+      }
+      assertCurrent();
+      const failure = applySplatCleanup(next);
+      if (failure) throw new Error(failure);
+      const calibration = useEditorStore.getState().splatCalibration;
+      return {
+        compiled: true,
+        saved: false,
+        cleanup: calibration.cleanup,
+        hiddenGaussians: removedCount(splatPointsRef.current, calibration),
+        visibleGaussians: splatPointsRef.current.length,
+        message: 'Updated. Check with render_camera; call get_scene for the new revision.',
+      };
+    }
     if (command.tool === 'place_object') {
       const simulation = getSimulation();
       if (!simulation || !graph) throw new Error('No compiled scene graph is available.');
@@ -3030,13 +3193,31 @@ export function EditorShell({
     if (command.tool === 'set_object_physics') {
       const simulation = getSimulation();
       if (!simulation) throw new Error('No compiled scene is available.');
-      const { object, largestDimension, scale, mass, friction } = command.input;
-      if (largestDimension !== undefined && scale !== undefined) {
+      const { object, category, collision, scale } = command.input;
+      if (command.input.largestDimension !== undefined && scale !== undefined) {
         throw new Error('Give largestDimension or scale, not both.');
       }
-      if ([largestDimension, scale, mass, friction].every((value) => value === undefined)) {
-        throw new Error('Give at least one of largestDimension, scale, mass, or friction.');
+      if (
+        [
+          category,
+          collision,
+          command.input.largestDimension,
+          scale,
+          command.input.mass,
+          command.input.friction,
+        ].every((value) => value === undefined)
+      ) {
+        throw new Error(
+          'Give at least one of category, collision, largestDimension, scale, mass, or friction.',
+        );
       }
+      // A category fills in what the agent left out; a given scale counts as a size.
+      const typical = category ? OBJECT_CATEGORIES[category] : null;
+      const largestDimension =
+        command.input.largestDimension ??
+        (scale === undefined ? typical?.largestDimension : undefined);
+      const mass = command.input.mass ?? typical?.mass;
+      const friction = command.input.friction ?? typical?.friction;
       let candidate: string | null = baseXml;
       const before = bodyDimensions(simulation, object);
       const factor =
@@ -3046,6 +3227,24 @@ export function EditorShell({
         const bottom = currentWorldBounds(simulation, object).low[2];
         const origin = simulation.bodyPositions[simulation.bodyIndex(object) * 3 + 2];
         candidate = scaleObject(candidate, object, factor, (bottom - origin) * (1 - factor));
+      }
+      const index = simulation.bodyIndex(object);
+      const currentMass = (simulation.model.body_subtreemass as Float64Array)[index];
+      if (candidate && collision !== undefined) {
+        // The body-frame bounds of what collides now, scaled like the object.
+        const box = bodyBox(simulation, object);
+        const scaleBy = factor ?? 1;
+        candidate = setCollisionProxy(candidate, object, collision, {
+          low: box.low.map((value) => value * scaleBy),
+          high: box.high.map((value) => value * scaleBy),
+        });
+        if (!candidate) {
+          throw new Error(
+            `"${object}" has no collision mesh to replace (primitives already collide as themselves).`,
+          );
+        }
+        // The switched-off meshes carried mass; keep the total unless a new one is given.
+        if (mass === undefined) candidate = setObjectMass(candidate, object, currentMass);
       }
       if (candidate && mass !== undefined) candidate = setObjectMass(candidate, object, mass);
       if (candidate && friction !== undefined) {
@@ -3063,15 +3262,43 @@ export function EditorShell({
         throw new Error(getLastLoadError() ?? 'MuJoCo rejected the change. No edits were made.');
       }
       const updated = getSimulation();
-      const index = updated?.bodyIndex(object) ?? -1;
+      const updatedIndex = updated?.bodyIndex(object) ?? -1;
       return {
         compiled: true,
         saved: false,
         object,
         dimensions: updated ? bodyDimensions(updated, object) : null,
-        mass: updated && index > 0 ? (updated.model.body_subtreemass as Float64Array)[index] : null,
+        mass:
+          updated && updatedIndex > 0
+            ? (updated.model.body_subtreemass as Float64Array)[updatedIndex]
+            : null,
         scaledBy: factor ?? 1,
+        ...(category ? { category, typical } : {}),
+        ...(collision ? { collision } : {}),
         message: 'Updated. Call get_scene for the new revision.',
+      };
+    }
+    if (command.tool === 'set_home_pose') {
+      const simulation = getSimulation();
+      if (!simulation) throw new Error('No compiled scene is available.');
+      const positions = homePoseFromRecording(
+        simulation.getScalarJointStates(),
+        command.input.jointPositions,
+        command.input.unit,
+      );
+      // Joints left out keep their current reset value, so a partial recording still gives a full pose.
+      const pose = { ...homePose, ...positions };
+      assertCurrent();
+      setResetPose(pose);
+      setHomePose(pose);
+      setHomePoseStatus(null);
+      return {
+        compiled: true,
+        saved: false,
+        jointPositions: pose,
+        unit: 'radians (hinge) or meters (slide)',
+        message:
+          'Reset pose set and the arm moved there. Call get_scene for the new revision; save_scene keeps it with the scene.',
       };
     }
     if (command.tool === 'add_robot') {
@@ -3367,6 +3594,11 @@ export function EditorShell({
               overlaps={tableOverlaps}
               tableNote={tableNote}
               onAddTable={addSplatTable}
+              onDetectTables={detectScanTables}
+              onAddDetectedTable={addDetectedTable}
+              onCleanupChange={applySplatCleanup}
+              onFitCrop={fitSplatCrop}
+              cleanupRemoved={splatCleanupRemoved}
               onMatchTableHeight={matchTableHeight}
               onDropOntoTable={dropOntoTable}
               onSelectTable={(name) => {
@@ -3409,6 +3641,7 @@ export function EditorShell({
           >
             <Viewport
               ref={viewportRef}
+              paused={cameraCapture !== null}
               onTransformCommit={onTransformCommit}
               draggedAsset={
                 draggedAsset
@@ -3435,6 +3668,7 @@ export function EditorShell({
               splatOrigin={splatOrigin}
               splatScale={splatCalibration.scale}
               splatRotation={splatRotation}
+              splatCleanup={splatCalibration.cleanup}
               onSplatStatusChange={handleSplatStatusChange}
               onSplatLoad={handleSplatLoad}
               onSplatError={handleSplatError}
@@ -3476,6 +3710,7 @@ export function EditorShell({
               splatOrigin={splatOrigin}
               splatScale={splatCalibration.scale}
               splatRotation={splatRotation}
+              splatCleanup={splatCalibration.cleanup}
             />
           )}
           {cameraCapture && (
@@ -3489,6 +3724,7 @@ export function EditorShell({
               splatOrigin={splatOrigin}
               splatScale={splatCalibration.scale}
               splatRotation={splatRotation}
+              splatCleanup={splatCalibration.cleanup}
             />
           )}
         </main>
@@ -3558,6 +3794,7 @@ export function EditorShell({
                   <InspectorPanel
                     showHeader={false}
                     tableOverlaps={tableOverlaps}
+                    objectOverlaps={objectOverlapList}
                     onDropOntoTable={(name) => dropOntoTable([name])}
                     onDocumentChange={applyDocument}
                     onBackdropRotation={handleBackdropInspectorRotation}

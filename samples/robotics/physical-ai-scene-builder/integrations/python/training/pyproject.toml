@@ -29,6 +29,9 @@ override-dependencies = [
         # XPU wheels start at torch 2.13, above lerobot's caps; torchvision must match torch exactly.
         "torch==2.14.1",
         "torchvision==0.29.1",
+        # gym-pusht (via LeRobot) asks for opencv-python while everything else uses the headless build; both
+        # install the same cv2 package and a mixed install breaks `import cv2`. Keep only the headless one.
+        "opencv-python; sys_platform == 'never'",
 ]
 
 [[tool.uv.index]]

@@ -159,8 +159,9 @@ export function taskProblem(
 
 /**
  * Reset rules for the Generate zones: an x/y position rule per object (and a yaw rule when the
- * zone has a yaw range and the object is authored upright). Unlike Generate, Simulate does not
- * redraw overlapping placements, so objects sharing a zone can occasionally start touching.
+ * zone has a yaw range and the object is authored upright). Like Generate, each object then rests
+ * on whatever is below its new spot. Unlike Generate, Simulate does not redraw overlapping
+ * placements, so objects sharing a zone can occasionally start touching.
  */
 export function zoneRules(
   zones: TeleoperationSourceRandomizationV1,
@@ -179,6 +180,7 @@ export function zoneRules(
         y: [y + zone.yCm[0] / 100, y + zone.yCm[1] / 100],
         z: [z, z],
       },
+      restOnSupport: true,
     });
     const [minYaw, maxYaw] = zone.yawDegrees;
     if (body.upright && (minYaw !== 0 || maxYaw !== 0)) {

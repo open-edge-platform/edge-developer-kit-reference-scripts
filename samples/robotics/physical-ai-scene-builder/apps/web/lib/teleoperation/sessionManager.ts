@@ -77,6 +77,9 @@ import {
   rawDatasetInventorySignature as inventorySignature,
   removeOrphanedStagedArchives,
 } from './rawDatasetCache';
+import { integrationPath } from '@/lib/process/integrationPaths';
+
+export { integrationPath };
 
 export const MAX_TELEOPERATION_SCENE_BUNDLE_BYTES = 1024 ** 3;
 const READY_TIMEOUT_MS = 15_000;
@@ -119,6 +122,8 @@ export interface TeleoperationSessionSummary extends TeleoperationBackdropRender
   pid: number | null;
   error?: string;
   batch?: TeleoperationBatchStatusV1;
+  /** An external app (SDK client, evaluator, virtual follower) holds the control lease. */
+  controlled?: boolean;
   /** Generated scenes rebuilt in this scene version from an earlier one, if any. */
   carryOver?: TeleoperationCarryOverV1 | null;
   evaluationProfile?: Record<string, unknown>;
@@ -218,13 +223,6 @@ const managerGlobal = globalThis as typeof globalThis & {
 
 function storageDirectory(): string {
   return dataPath('teleoperation-sessions');
-}
-
-export function integrationPath(): string {
-  return path.resolve(
-    process.env.ROBOTIC_STUDIO_PYTHONPATH?.trim() ||
-      path.resolve(/* turbopackIgnore: true */ process.cwd(), '../../integrations/python'),
-  );
 }
 
 function teleoperationBasePort(): number {
@@ -631,6 +629,7 @@ function updateFromDescription(record: TeleoperationRecord, value: Record<string
   if (isRecord(value.batch)) {
     record.summary.batch = value.batch as unknown as TeleoperationBatchStatusV1;
   }
+  if (typeof value.controlled === 'boolean') record.summary.controlled = value.controlled;
   if (typeof value.activeStateId === 'string') record.summary.activeStateId = value.activeStateId;
   if (typeof value.stateRevision === 'number') record.summary.stateRevision = value.stateRevision;
   if (typeof value.recording === 'boolean')

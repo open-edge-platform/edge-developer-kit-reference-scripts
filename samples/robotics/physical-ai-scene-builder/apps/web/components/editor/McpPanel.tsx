@@ -5,7 +5,7 @@
 
 import { Button, cn, copyText, Dialog } from '@mujoco-studio/ui';
 import { useQueryClient } from '@tanstack/react-query';
-import { Check, Copy, ImagePlus, Settings2, X } from 'lucide-react';
+import { Check, Copy, FolderUp, ImagePlus, Settings2, X } from 'lucide-react';
 import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import { ToggleSwitch } from './ToggleSwitch';
 
@@ -22,6 +22,7 @@ import {
   type PendingCommand,
 } from '@/lib/mcp/contracts';
 import type { ImageJobSummary, SharedImageSummary } from '@/lib/mcp/imageJobs';
+import type { SharedDatasetSummary } from '@/lib/mcp/datasets';
 import { URL_CHARS } from '@/lib/http/urlChars';
 
 const EXPOSED_TOOLS_KEY = 'mcp-exposed-tools';
@@ -64,8 +65,11 @@ export function McpPanel({
   const [baseUrl, setBaseUrl] = useState('');
   const [images, setImages] = useState<SharedImageSummary[]>([]);
   const [jobs, setJobs] = useState<ImageJobSummary[]>([]);
+  const [datasets, setDatasets] = useState<SharedDatasetSummary[]>([]);
+  const [datasetImporting, setDatasetImporting] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const datasetInputRef = useRef<HTMLInputElement>(null);
   const finishedJobsRef = useRef(new Set<string>());
   const connectionRef = useRef<Connection | null>(null);
   const revokeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -146,6 +150,46 @@ export function McpPanel({
     else setError('Could not remove the image.');
   }
 
+  async function shareDataset(file: File) {
+    const current = connectionRef.current;
+    if (!current) return;
+    setDatasetImporting(file.name);
+    try {
+      const response = await fetch('/api/mcp/editor/datasets', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${current.editorToken}`,
+          'Content-Type': 'application/zip',
+          'X-Dataset-Name': encodeURIComponent(file.name),
+        },
+        body: file,
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? 'Could not share the dataset.');
+      setDatasets((shared) => [...shared.filter((dataset) => dataset.id !== result.id), result]);
+      setError(null);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Could not share the dataset.');
+    } finally {
+      setDatasetImporting(null);
+    }
+  }
+
+  async function removeDataset(id: string) {
+    const current = connectionRef.current;
+    if (!current) return;
+    const response = await fetch('/api/mcp/editor/datasets', {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${current.editorToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ id }),
+    });
+    if (response.ok) setDatasets((shared) => shared.filter((dataset) => dataset.id !== id));
+    else setError('Could not remove the dataset.');
+  }
+
   async function enable() {
     setTransition('Connecting');
     setBusy(true);
@@ -177,6 +221,7 @@ export function McpPanel({
     setConnection(null);
     setImages([]);
     setJobs([]);
+    setDatasets([]);
     if (!current) return;
     setTransition('Stopping');
     setBusy(true);
@@ -244,6 +289,7 @@ export function McpPanel({
         if (!response.ok) throw new Error(body.error ?? 'MCP editor connection failed.');
         if (stopped) return;
         setImages(body.images ?? []);
+        setDatasets(body.datasets ?? []);
         const polledJobs: ImageJobSummary[] = body.jobs ?? [];
         setJobs(polledJobs);
         // Show agent-generated objects in the Asset Browser without a manual refresh.
@@ -522,6 +568,71 @@ export function McpPanel({
                         : job.error}
                   </p>
                 ))}
+              </section>
+              <section aria-label="Robot recording for agent" className="space-y-2">
+                <div className="flex items-center justify-between text-muted">
+                  <span title="A real robot recording, as a zip of a LeRobot v3 dataset folder. The agent rebuilds its workspace: cameras, layout, and start pose.">
+                    Robot recording (LeRobot v3 zip)
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 text-[11px]"
+                    disabled={datasets.length >= 1 || Boolean(datasetImporting)}
+                    onClick={() => datasetInputRef.current?.click()}
+                  >
+                    <FolderUp />
+                    Share recording
+                  </Button>
+                </div>
+                <input
+                  ref={datasetInputRef}
+                  type="file"
+                  aria-label="Recording to share with the agent"
+                  accept=".zip,application/zip"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = '';
+                    if (file) shareDataset(file);
+                  }}
+                />
+                {datasetImporting && (
+                  <p role="status" className="text-[11px] text-muted">
+                    Importing {datasetImporting}…
+                  </p>
+                )}
+                {datasets.length > 0 && (
+                  <ul className="divide-y divide-border rounded border border-border">
+                    {datasets.map((dataset) => (
+                      <li
+                        key={dataset.id}
+                        className="flex items-center justify-between gap-2 px-3 py-1.5"
+                      >
+                        <span className="min-w-0 truncate">
+                          {dataset.name}
+                          <span className="text-muted">
+                            {' '}
+                            · {dataset.totalEpisodes} episode
+                            {dataset.totalEpisodes === 1 ? '' : 's'} · {dataset.cameras.length}{' '}
+                            camera{dataset.cameras.length === 1 ? '' : 's'}
+                            {dataset.robotType && ` · ${dataset.robotType}`}
+                            {dataset.source === 'agent' && ' · from agent'}
+                          </span>
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 px-1"
+                          aria-label={`Remove ${dataset.name}`}
+                          onClick={() => void removeDataset(dataset.id)}
+                        >
+                          <X />
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </section>
             </>
           )}

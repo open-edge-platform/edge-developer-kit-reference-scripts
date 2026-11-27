@@ -853,7 +853,7 @@ def run_so101_attempt(
     import mujoco
 
     from ..frame_clock import capture_fps_from_profile
-    from ..robots.so101 import PickPlaceTask, record_episode
+    from ..robots.so101 import REST_POSE_DEGREES, PickPlaceTask, PickPlaceTuning, record_episode
     from ..teleoperation.local import LocalTeleoperation
     from ..teleoperation.session import TeleoperationSession, build_teleoperation_environment
     from .native_scene import NativeScene
@@ -902,7 +902,9 @@ def run_so101_attempt(
 
             local.step = step_with_progress  # type: ignore[method-assign]
         task = PickPlaceTask.for_session(local)
-        outcome = record_episode(local, mujoco, task, state_id=attempt.state_id)
+        # Start and end at the rest pose, as serial recording does (generate_dataset.py).
+        tuning = PickPlaceTuning(home_pose=REST_POSE_DEGREES)
+        outcome = record_episode(local, mujoco, task, tuning, state_id=attempt.state_id)
         staged = session.last_staged_episode
         if not outcome.saved or staged is None:
             shutil.rmtree(staging, ignore_errors=True)

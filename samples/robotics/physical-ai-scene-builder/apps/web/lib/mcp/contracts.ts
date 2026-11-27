@@ -5,6 +5,9 @@ import { z } from 'zod';
 
 import { IMAGE_TO_3D_PIPELINE_TYPES } from '@/lib/scenes/imageTo3dApi';
 
+import { HOME_POSE_UNITS } from './homePose';
+import { OBJECT_CATEGORY_NAMES } from './objectCategories';
+
 const vector = z.tuple([z.number().finite(), z.number().finite(), z.number().finite()]);
 const name = z.string().trim().min(1).max(100);
 const target = z.object({
@@ -56,6 +59,10 @@ export const sceneOperationSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('add_container'),
     name: name.default('container'),
+    shape: z
+      .enum(['tray', 'round'])
+      .default('tray')
+      .describe('tray: rectangular; round: a bowl (inner[0] is its inside diameter).'),
     inner: z
       .tuple([z.number().positive().max(2), z.number().positive().max(2)])
       .describe('Inside width (X) and depth (Y), meters; the walls are outside this.'),
@@ -78,6 +85,15 @@ export const sceneOperationSchema = z.discriminatedUnion('type', [
       .boolean()
       .default(true)
       .describe('Fixed containers stay put when bumped; set false for a loose tray.'),
+  }),
+  z.object({
+    type: z.literal('resize_container'),
+    name: name.describe('A container added with add_container.'),
+    inner: z
+      .tuple([z.number().positive().max(2), z.number().positive().max(2)])
+      .describe('New inside width and depth (a round bowl: inner[0] is the diameter), meters.'),
+    wallHeight: z.number().positive().max(1).optional(),
+    wallThickness: z.number().positive().max(0.1).optional(),
   }),
   z.object({
     type: z.literal('add_camera'),
@@ -190,6 +206,18 @@ export const placeObjectInputSchema = saveInputSchema.extend({
 
 export const objectPhysicsInputSchema = saveInputSchema.extend({
   object: name.describe('Top-level body, from get_scene.'),
+  category: z
+    .enum(OBJECT_CATEGORY_NAMES)
+    .optional()
+    .describe(
+      'What the object is: fills in a typical size, mass, and friction for any you leave out.',
+    ),
+  collision: z
+    .enum(['mesh', 'box', 'cylinder'])
+    .optional()
+    .describe(
+      'Collision shape: a box or upright cylinder fitted to the object contacts faster and steadier than its mesh (a cylinder suits mugs, cans, bottles); mesh restores the mesh.',
+    ),
   largestDimension: z
     .number()
     .positive()
@@ -213,6 +241,25 @@ export const detectTableInputSchema = z.object({
     .max(5)
     .default(0.6)
     .describe('With a robot, fit only surface this close to its base (m); 0 fits whole surfaces.'),
+});
+
+export const cleanSplatInputSchema = saveInputSchema.extend({
+  crop: z
+    .union([z.literal('tables'), z.object({ min: vector, max: vector }), z.null()])
+    .optional()
+    .describe(
+      "Keep only the scan inside a world box (min and max corners, meters); 'tables' fits it to the scan tables (or the robot) plus 0.8 m and 1 m of headroom; null removes the crop.",
+    ),
+  minOpacity: z
+    .number()
+    .min(0)
+    .max(1)
+    .optional()
+    .describe('Hide Gaussians fainter than this (0 turns it off; 0.3-0.5 removes haze).'),
+  removeFloaters: z
+    .boolean()
+    .optional()
+    .describe('Hide lone Gaussians (fewer than 3 others within 5 cm): floaters in mid-air.'),
 });
 
 export const scanTableInputSchema = saveInputSchema.extend({
@@ -270,19 +317,39 @@ export const renderCameraInputSchema = z.object({
     .describe('Leave out the scanned room backdrop, to see only the simulated objects.'),
 });
 
+const pixel = z
+  .tuple([z.number().finite(), z.number().finite()])
+  .describe('Pixels from the top-left of the photo, +x right, +y down.');
+
 export const fitCameraInputSchema = z.object({
   points: z
     .array(
       z.object({
         world: vector.describe('World point in meters, for example a table-top corner.'),
-        pixel: z
-          .tuple([z.number().finite(), z.number().finite()])
-          .describe('Where it appears in the photo: pixels from the top-left, +x right, +y down.'),
+        pixel: pixel.describe(
+          'Where it appears in the photo: pixels from the top-left, +x right, +y down.',
+        ),
       }),
     )
-    .min(4)
     .max(32)
-    .describe('At least 4 points that span an area, such as the 4 corners of the table top.'),
+    .default([])
+    .describe('Known points, such as the table-top corners visible in the photo.'),
+  lines: z
+    .array(
+      z.object({
+        world: z
+          .tuple([vector, vector])
+          .describe('Two world points on a straight edge, such as the ends of a table edge.'),
+        pixels: z
+          .tuple([pixel, pixel])
+          .describe('Any two pixels along that edge in the photo; its ends may be off-screen.'),
+      }),
+    )
+    .max(16)
+    .optional()
+    .describe(
+      'Edges whose corners are not visible: a table edge running out of the photo. With only the 2 far corners visible, add the 2 side edges as lines.',
+    ),
   width: z.number().int().positive().max(20000).describe('Photo width in pixels.'),
   height: z.number().int().positive().max(20000).describe('Photo height in pixels.'),
   fovy: z
@@ -291,6 +358,20 @@ export const fitCameraInputSchema = z.object({
     .max(179)
     .optional()
     .describe('Known vertical field of view in degrees; omit to estimate it.'),
+});
+
+export const pixelToWorldInputSchema = z.object({
+  position: vector.describe('Camera position, as fit_camera returns it.'),
+  target: vector.describe('Camera target, as fit_camera returns it.'),
+  fovy: z.number().min(1).max(179),
+  width: z.number().int().positive().max(20000).describe('Photo width in pixels.'),
+  height: z.number().int().positive().max(20000).describe('Photo height in pixels.'),
+  pixels: z
+    .array(pixel)
+    .min(1)
+    .max(64)
+    .describe('Photo pixels to locate, such as object footprints.'),
+  planeZ: z.number().finite().describe('World height of the surface they lie on (the table top).'),
 });
 
 export const checkSceneInputSchema = z.object({
@@ -306,21 +387,28 @@ export const mcpToolNameSchema = z.enum([
   'get_scene',
   'render_camera',
   'fit_camera',
+  'pixel_to_world',
   'check_scene',
   'apply_scene_operations',
   'place_object',
   'set_object_physics',
+  'set_home_pose',
   'save_scene',
   'list_robots',
   'add_table',
   'detect_table',
   'add_scan_table',
+  'clean_splat',
   'add_robot',
   'list_assets',
   'add_asset',
   'list_images',
   'start_image_to_3d',
   'get_image_to_3d_job',
+  'list_datasets',
+  'get_dataset_frame',
+  'get_dataset_state',
+  'compare_with_dataset',
 ]);
 export type McpToolName = z.infer<typeof mcpToolNameSchema>;
 export const MCP_TOOL_NAMES = mcpToolNameSchema.options;
@@ -332,21 +420,28 @@ export const MCP_TOOL_SUMMARIES: Record<McpToolName, string> = {
   get_scene: 'Read the scene, node names, live poses, and revision.',
   render_camera: 'See an image from a scene camera or a free view, as recordings capture it.',
   fit_camera: 'Estimate a camera pose and lens from photo pixels of known points.',
+  pixel_to_world: 'Find where photo pixels lie on the table, through a fitted camera.',
   check_scene: 'Find overlaps, falling objects, unreachable or unseen objects, and camera gaps.',
   apply_scene_operations: 'Add primitives, cameras, and lights; edit, delete, or duplicate nodes.',
   place_object: 'Set an object down at a point, on a surface, or beside another object.',
   set_object_physics: 'Give an object its real-world size, mass, and friction.',
+  set_home_pose: "Set the robot's reset pose, for example from a recording's first frame.",
   save_scene: 'Save the scene to the project.',
   list_robots: 'Browse the robot catalog.',
   add_table: 'Add a fixed four-legged table.',
   detect_table: 'Find table tops in a scanned room and propose collision tables.',
   add_scan_table: 'Add a hidden collision table over a scanned table top.',
+  clean_splat: 'Crop the scanned room and hide faint or floating Gaussians.',
   add_robot: 'Add a catalog robot.',
   list_assets: 'Browse library objects, including image-to-3D objects.',
   add_asset: 'Add a library object to the scene.',
   list_images: 'List images shared with the agent for image-to-3D.',
   start_image_to_3d: 'Generate a library object from a shared image on the GPU.',
   get_image_to_3d_job: 'Check image-to-3D progress and the resulting object.',
+  list_datasets: 'List the shared real-robot recording (LeRobot v3): cameras, joints, episodes.',
+  get_dataset_frame: "See a recording's camera frames at a moment of an episode.",
+  get_dataset_state: "Read a recording's joint positions at a frame, and their range.",
+  compare_with_dataset: "Score a scene camera's render against the recording's matching frame.",
 };
 export const exposedToolsSchema = z.array(mcpToolNameSchema).max(MCP_TOOL_NAMES.length);
 
@@ -366,6 +461,67 @@ export const imageJobInputSchema = z.object({
   jobId: z.string().uuid().describe('Job id from start_image_to_3d.'),
 });
 
+const datasetId = z.string().uuid().describe('Dataset id from list_datasets.');
+const episode = z.number().int().min(0).default(0).describe('Episode index from list_datasets.');
+const datasetTime = z
+  .number()
+  .min(0)
+  .max(86_400)
+  .default(0)
+  .describe('Seconds from the start of the episode; 0 is the first frame (the start layout).');
+const datasetCamera = z
+  .string()
+  .min(1)
+  .max(128)
+  .describe('Camera feature key from list_datasets, such as observation.images.front.');
+
+export const datasetFrameInputSchema = z.object({
+  datasetId,
+  episode,
+  time: datasetTime,
+  cameras: z
+    .array(datasetCamera)
+    .min(1)
+    .max(8)
+    .optional()
+    .describe('Cameras to return; all of them when omitted.'),
+  share: z
+    .boolean()
+    .default(false)
+    .describe('Also add the frames to the shared images (list_images), for image-to-3D.'),
+});
+
+export const datasetStateInputSchema = z.object({
+  datasetId,
+  episode,
+  frame: z.number().int().min(0).default(0).describe('Frame index in the episode; 0 is the start.'),
+});
+
+export const compareWithDatasetInputSchema = z.object({
+  datasetId,
+  episode,
+  time: datasetTime,
+  camera: name.describe('Scene camera from get_scene that should match the recording camera.'),
+  datasetCamera,
+});
+
+export const setHomePoseInputSchema = saveInputSchema.extend({
+  jointPositions: z
+    .record(z.string().min(1).max(200), z.number().finite())
+    .refine((value) => Object.keys(value).length > 0 && Object.keys(value).length <= 64, {
+      message: 'Give 1 to 64 joint positions.',
+    })
+    .describe(
+      'Joint name to value. Recorded names such as shoulder_pan.pos match the scene joint (or its namespaced robot_N__ copy).',
+    ),
+  unit: z
+    .enum(HOME_POSE_UNITS)
+    .default('so101-normalized')
+    .describe(
+      "so101-normalized: LeRobot's default SO-101 units (joints -100..100 over the joint range, gripper 0..100). degrees: LeRobot with use_degrees (gripper still 0..100). radians: scene units.",
+    ),
+});
+
 export const commandSchema = z.discriminatedUnion('tool', [
   z.object({ tool: z.literal('get_scene'), input: z.object({}) }),
   z.object({ tool: z.literal('render_camera'), input: renderCameraInputSchema }),
@@ -380,11 +536,13 @@ export const commandSchema = z.discriminatedUnion('tool', [
   z.object({ tool: z.literal('apply_scene_operations'), input: editInputSchema }),
   z.object({ tool: z.literal('place_object'), input: placeObjectInputSchema }),
   z.object({ tool: z.literal('set_object_physics'), input: objectPhysicsInputSchema }),
+  z.object({ tool: z.literal('set_home_pose'), input: setHomePoseInputSchema }),
   z.object({ tool: z.literal('save_scene'), input: saveInputSchema }),
   z.object({ tool: z.literal('add_robot'), input: robotInputSchema }),
   z.object({ tool: z.literal('add_table'), input: tableInputSchema }),
   z.object({ tool: z.literal('detect_table'), input: detectTableInputSchema }),
   z.object({ tool: z.literal('add_scan_table'), input: scanTableInputSchema }),
+  z.object({ tool: z.literal('clean_splat'), input: cleanSplatInputSchema }),
   z.object({ tool: z.literal('list_assets'), input: assetListInputSchema }),
   z.object({ tool: z.literal('add_asset'), input: assetInputSchema }),
 ]);

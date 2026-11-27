@@ -14,6 +14,13 @@ import * as THREE from 'three';
 
 import { Button } from '@mujoco-studio/ui';
 import type { BoxFace } from '@/lib/editor/document';
+import {
+  geomShading,
+  MUJOCO_POINT_LIGHT,
+  mujocoSpecularScale,
+  sceneSpecularScale,
+} from '@/lib/editor/mujocoShading';
+import type { SplatCleanup } from '@/lib/editor/splatCleanup';
 import { MUJOCO_TO_THREE, rotationFromMatrix, threePosition } from '@/lib/editor/runtimeTransforms';
 import { isCameraVisibleGeom } from '@/lib/editor/sceneGraph';
 import type { QuaternionTuple, Vec3Tuple } from '@/lib/editor/splatCollision';
@@ -34,9 +41,12 @@ function CameraPreviewGeoms({
   textureUrlsByGeom,
   textureFaceByGeom,
   hideGroundPlanes,
+  model,
 }: {
   entries: GeomEntry[];
   graph: SceneGraph | null;
+  /** The compiled model, for each geom's MuJoCo material values. */
+  model: Parameters<typeof geomShading>[0] | null;
   meshRefs: React.MutableRefObject<Map<number, THREE.Mesh>>;
   textureUrlsByMaterial: Record<string, string>;
   textureUrlsByGeom: Record<string, string>;
@@ -80,6 +90,7 @@ function CameraPreviewGeoms({
               textureUrl={textureUrl}
               textureFace={textureFace}
               rawTexture
+              mujoco={model ? geomShading(model, node.mjIndex) : undefined}
             />
           </mesh>
         );
@@ -105,12 +116,24 @@ function MujocoHeadlight() {
     const ambient = ambientRef.current;
     const light = lightRef.current;
     if (!simulation || !ambient || !light) return;
-    const headlight = simulation.model.vis.headlight;
+    const model = simulation.model;
+    const headlight = model.vis.headlight;
     const active = headlight.active !== 0;
     const ambientColor = headlight.ambient as ArrayLike<number>;
     const diffuseColor = headlight.diffuse as ArrayLike<number>;
-    ambient.color.setRGB(ambientColor[0], ambientColor[1], ambientColor[2]);
-    ambient.intensity = active ? Math.PI : 0;
+    // MuJoCo adds every light's ambient color to the headlight's. (The WASM build cannot read
+    // `light_active`, a bool array; lights are active unless authored otherwise.)
+    const ambientRgb = active ? [ambientColor[0], ambientColor[1], ambientColor[2]] : [0, 0, 0];
+    const lightAmbient = model.light_ambient as ArrayLike<number>;
+    const lightType = model.light_type as ArrayLike<number>;
+    for (let index = 0; index < model.nlight; index++) {
+      if (lightType[index] === MUJOCO_POINT_LIGHT) continue;
+      for (let channel = 0; channel < 3; channel++)
+        ambientRgb[channel] += lightAmbient[index * 3 + channel];
+    }
+    ambient.color.setRGB(ambientRgb[0], ambientRgb[1], ambientRgb[2]);
+    ambient.intensity = Math.PI;
+    mujocoSpecularScale.value = sceneSpecularScale(model);
     light.color.setRGB(diffuseColor[0], diffuseColor[1], diffuseColor[2]);
     light.intensity = active ? Math.PI : 0;
     const camera = get().camera;
@@ -142,6 +165,7 @@ export interface CameraSceneProps {
   splatOrigin?: Vec3Tuple | null;
   splatScale?: number;
   splatRotation?: QuaternionTuple;
+  splatCleanup?: SplatCleanup;
 }
 
 const freeEye = new THREE.Vector3();
@@ -158,6 +182,7 @@ function CameraPreviewScene({
   splatOrigin,
   splatScale,
   splatRotation,
+  splatCleanup,
 }: CameraSceneProps & {
   view: CameraView;
   hideSplat?: boolean;
@@ -216,6 +241,10 @@ function CameraPreviewScene({
         textureUrlsByGeom={textureUrlsByGeom}
         textureFaceByGeom={textureFaceByGeom}
         hideGroundPlanes={showSplat && splatStatus === 'ready'}
+        model={
+          (getSimulation()?.model as unknown as Parameters<typeof geomShading>[0] | undefined) ??
+          null
+        }
       />
       {showSplat && splatSrc && (
         <group rotation={[MUJOCO_ROOT_ROTATION_X, 0, 0]}>
@@ -223,6 +252,7 @@ function CameraPreviewScene({
             src={splatSrc}
             scale={splatScale}
             rotation={splatRotation}
+            cleanup={splatCleanup}
             fallbackOrigin={splatOrigin}
             onStatusChange={(status) => {
               setSplatStatus(status);
@@ -246,6 +276,7 @@ export function CameraPreviewWindow({
   splatOrigin,
   splatScale,
   splatRotation,
+  splatCleanup,
 }: {
   cameraId: string;
   onClose: () => void;
@@ -256,6 +287,7 @@ export function CameraPreviewWindow({
   splatOrigin?: Vec3Tuple | null;
   splatScale?: number;
   splatRotation?: QuaternionTuple;
+  splatCleanup?: SplatCleanup;
 }) {
   const { graph, getSimulation } = usePhysics();
   const node = graph?.nodes[cameraId];
@@ -304,6 +336,7 @@ export function CameraPreviewWindow({
             dpr={[1, 2]}
             flat
             linear
+            shadows
             camera={{ position: [0, 0, 1], fov: 45, near: 0.01, far: 50 }}
           >
             <CameraPreviewScene
@@ -315,6 +348,7 @@ export function CameraPreviewWindow({
               splatOrigin={splatOrigin}
               splatScale={splatScale}
               splatRotation={splatRotation}
+              splatCleanup={splatCleanup}
             />
           </Canvas>
         </div>
@@ -406,6 +440,7 @@ export function CameraCapture({
         dpr={1}
         flat
         linear
+        shadows
         gl={{ preserveDrawingBuffer: true, antialias: true }}
         camera={{ position: [0, 0, 1], fov: 45, near: 0.01, far: 50 }}
       >

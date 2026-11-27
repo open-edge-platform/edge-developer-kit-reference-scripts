@@ -54,7 +54,7 @@ N parallel processes with its built-in SO-101 controller and default settings. E
 `robotic_studio/robots/so101/` or tuning options in this folder do not affect `--workers` runs, so
 debug and tune without `--workers`, and use it only for the unmodified controller. It cannot be
 combined with `--check`, `--no-variation`, `--no-return-to-start`, or
-`--home-pose`, and it does not use the home pose; Ctrl+C
+`--home-pose`; it always starts and ends at the default home pose; Ctrl+C
 cancels and keeps finished episodes.
 
 ## Writing controllers

@@ -1,6 +1,12 @@
 // Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
+import {
+  cachedRemovedSplatIndices,
+  normalizeSplatCleanup,
+  type SplatCleanup,
+} from './splatCleanup';
+
 /**
  * Derives the splat backdrop's alignment origin and MuJoCo collision heightfield from a
  * Gaussian-splat point cloud, independent of any splat-rendering library (plain sampled points,
@@ -147,6 +153,8 @@ export interface SplatCalibration {
   tiltX: number;
   /** Fine leveling in degrees about body Y, applied after `tiltX`. */
   tiltY: number;
+  /** What of the scan is left out (crop box, faint and isolated Gaussians); see splatCleanup.ts. */
+  cleanup: SplatCleanup;
 }
 
 export const DEFAULT_SPLAT_CALIBRATION: SplatCalibration = {
@@ -155,6 +163,7 @@ export const DEFAULT_SPLAT_CALIBRATION: SplatCalibration = {
   upAxis: '+z',
   tiltX: 0,
   tiltY: 0,
+  cleanup: {},
 };
 
 /** Tuning of the backdrop heightfield; the editor always uses the defaults. */
@@ -178,7 +187,7 @@ export interface SplatHeightfieldOptions {
 /** Default `SplatHeightfieldOptions.splatSize`, also used to measure table heights. */
 const DEFAULT_SPLAT_SIZE = 1;
 
-type NumericCalibrationKey = Exclude<keyof SplatCalibration, 'upAxis'>;
+type NumericCalibrationKey = Exclude<keyof SplatCalibration, 'upAxis' | 'cleanup'>;
 
 export function isSplatUpAxis(value: unknown): value is SplatUpAxis {
   return typeof value === 'string' && (SPLAT_UP_AXES as readonly string[]).includes(value);
@@ -202,6 +211,7 @@ export function normalizeSplatCalibration(value: unknown): SplatCalibration {
     upAxis: isSplatUpAxis(candidate.upAxis) ? candidate.upAxis : DEFAULT_SPLAT_CALIBRATION.upAxis,
     tiltX: read('tiltX', () => true),
     tiltY: read('tiltY', () => true),
+    cleanup: normalizeSplatCleanup(candidate.cleanup),
   };
 }
 
@@ -286,7 +296,7 @@ export function levelBackdropPose(
 }
 
 /** Row-major 3x3 rotation matrix of a unit quaternion `[w, x, y, z]`. */
-function rotationMatrix([w, x, y, z]: QuaternionTuple): number[] {
+export function rotationMatrix([w, x, y, z]: QuaternionTuple): number[] {
   return [
     1 - 2 * (y * y + z * z),
     2 * (x * y - w * z),
@@ -382,9 +392,16 @@ function bodyFramePoints(
     calibration.scale > 0 && Number.isFinite(calibration.scale) ? calibration.scale : 1;
   const m = rotationMatrix(calibrationRotation(calibration)).map((value) => value * factor);
   const mz = [m[6], m[7], m[8]];
+  const removed = cachedRemovedSplatIndices(
+    points,
+    calibration.cleanup,
+    factor,
+    calibrationRotation(calibration),
+  );
   const result: Point[] = [];
   for (const point of points) {
     if (point.opacity < SPLAT_OPACITY_THRESHOLD) continue;
+    if (removed?.has(point.index)) continue;
     const { x, y, z } = point;
     result.push({
       x: m[0] * x + m[1] * y + m[2] * z,

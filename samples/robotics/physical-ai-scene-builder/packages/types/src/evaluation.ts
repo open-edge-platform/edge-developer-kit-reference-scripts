@@ -49,6 +49,11 @@ export type PoseRandomizationRuleV1 =
       kind: 'free-body-position';
       body: string;
       range: EvaluationAxisRangesV1;
+      /**
+       * After all pose rules, drop the body onto the geometry below it and let it settle alone,
+       * as Generate does for its zones (an x/y move otherwise keeps the authored height).
+       */
+      restOnSupport?: boolean;
     }
   | {
       kind: 'free-body-orientation-euler';
@@ -735,6 +740,14 @@ function validateRandomizationRule(
     valid = false;
   }
 
+  if (
+    kind === 'free-body-position' &&
+    value.restOnSupport !== undefined &&
+    typeof value.restOnSupport !== 'boolean'
+  ) {
+    addIssue(issues, `${path}.restOnSupport`, 'must be a boolean', 'type');
+    valid = false;
+  }
   if (
     kind === 'free-body-orientation-euler' &&
     !['xyz', 'xzy', 'yxz', 'yzx', 'zxy', 'zyx'].includes(value.order as string)

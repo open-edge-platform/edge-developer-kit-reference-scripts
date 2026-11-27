@@ -3,9 +3,11 @@
 
 'use client';
 
+import { useState } from 'react';
+
 import { type RuntimeFile, usePhysics } from '@mujoco-studio/mujoco';
 import type { PickPlaceTaskV1, PoseRandomizationRuleV1 } from '@mujoco-studio/types';
-import { cn, PanelBody, PanelHeader, useNotice } from '@mujoco-studio/ui';
+import { Button, cn, PanelBody, PanelHeader, useNotice } from '@mujoco-studio/ui';
 import { LoaderCircle } from 'lucide-react';
 import { backdropNotReady } from '@/lib/editor/backdropProfile';
 import { generationSessionProfile } from '@/lib/teleoperation/profile';
@@ -21,6 +23,7 @@ import { CopyButton } from './VirtualSo101Panel';
 import { useEvaluationRuntime } from '@/components/evaluation/EvaluationRuntimeProvider';
 import { RequestError } from '@/lib/http/requestError';
 import { noticeFromError } from '@/lib/notices';
+import { isSessionBusyError } from '@/lib/teleoperation/sessionBusy';
 import { exportSceneArchive } from '@/lib/scenes/sceneArchive';
 import { sceneBackdropBodyName } from '@/lib/generation/modelRandomizationPresets';
 
@@ -61,13 +64,16 @@ export function ExternalControlPanel({
     stopStreaming,
   } = useEvaluationRuntime();
   const showNotice = useNotice();
+  // Another scene's session is in use: say what starting here ends, and offer to end it.
+  const [busyWarning, setBusyWarning] = useState<string | null>(null);
   const connecting = status === 'starting' || status === 'connecting';
 
   const blockStart = (message: string, hint?: string) =>
     showNotice({ tone: 'warning', title: 'Cannot start streaming', message, hint });
 
-  const start = async () => {
+  const start = async (replaceBusy = false) => {
     if (streaming || connecting) return;
+    setBusyWarning(null);
     if (taskProblem) {
       blockStart(taskProblem, 'Fix the task below, or turn it off, then start again.');
       return;
@@ -131,8 +137,12 @@ export function ExternalControlPanel({
       const form = new FormData();
       form.append('sceneBundle', new File([archive], 'scene.mujoco-scene'));
       form.append('profile', JSON.stringify(profile));
-      await startStreaming(form);
+      await startStreaming(form, { replaceBusy });
     } catch (reason) {
+      if (isSessionBusyError(reason)) {
+        setBusyWarning(reason.message);
+        return;
+      }
       const sceneChanged =
         reason instanceof Error && reason.message.startsWith('The scene changed while');
       showNotice(
@@ -225,6 +235,20 @@ export function ExternalControlPanel({
                 <dd className="text-foreground">{unitsLabel(session.profile)}</dd>
               </div>
             </dl>
+          )}
+          {busyWarning && !locked && (
+            <div className="flex items-start justify-between gap-2" role="alert">
+              <p className="text-[10px] leading-relaxed text-warning">{busyWarning}</p>
+              <Button
+                className="h-6 shrink-0 px-1.5 text-[10px]"
+                onClick={() => void start(true)}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                End it and start here
+              </Button>
+            </div>
           )}
           {runtimeErrorSummary && (
             <p className="text-[11px] leading-relaxed text-danger">{runtimeErrorSummary}</p>

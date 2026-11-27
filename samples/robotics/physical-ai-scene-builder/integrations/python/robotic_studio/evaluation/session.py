@@ -235,20 +235,40 @@ class EvaluationSession:
         demonstrations do before they start recording. Not part of the scored episode."""
         if not self._start_targets:
             return observation
+        from ..robots.bindings import resolve_action_bindings
+        from ..robots.servo import ServoCompensation
+
+        mujoco = self.environment._mujoco
+        model = self.environment.model
+        # Compliant servos sag below a plain command, so offset it until the joints are at the pose.
+        servo = ServoCompensation(
+            mujoco,
+            model,
+            [
+                binding
+                for binding in resolve_action_bindings(mujoco, model, self.profile)
+                if binding.action_name in self._start_targets
+            ],
+        )
         names = list(self.environment.action_names)
         hold = {name: self.environment.action_position(name) for name in names if name not in self._start_targets}
         targets = {**hold, **self._start_targets}
         physics_steps = int(self.profile.get("physicsSteps", 1))
         previous: dict[str, float] | None = None
         for _ in range(START_POSE_MAX_COMMANDS):
-            values = self.environment.validate_action({name: targets[name] for name in names})
+            command = servo.command(targets, self.environment.data.qpos, physics_steps)
+            values = self.environment.validate_action({name: command[name] for name in names})
             # Physics only: rendering (and backdrop compositing) every settle step is far too slow.
             if self._control:
                 self._control.step(values, physics_steps, images=False)
             else:
                 self.environment.step(values, physics_steps=physics_steps, observe=False)
             current = {name: self.environment.action_position(name) for name in self._start_targets}
-            at_pose = all(abs(current[name] - target) <= START_POSE_TOLERANCE for name, target in self._start_targets.items())
+            # A command pinned at its range limit cannot push the joint further.
+            at_pose = all(
+                abs(current[name] - target) <= START_POSE_TOLERANCE or servo.saturated.get(name, False)
+                for name, target in self._start_targets.items()
+            )
             still = previous is not None and all(abs(current[name] - previous[name]) <= START_POSE_REST for name in current)
             if at_pose and still:
                 return self.environment.observe(images=True)

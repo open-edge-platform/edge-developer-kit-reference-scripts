@@ -12,7 +12,7 @@ workflow:
 
 | Workspace                  | Use it for                                                                                        | Environment                                               |
 | -------------------------- | ------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| [Python](python/README.md) | SO-101 scripted recording, keyboard control, or generic joint and actuator control                | Linux, `uv`, Python 3.12 or later                         |
+| [Python](python/README.md) | SO-101 scripted recording, keyboard control, or generic joint and actuator control                | Linux x86-64, `uv`, Python 3.12 to 3.14 (3.13 by default) |
 | [ROS 2](ros2/README.md)    | ROS joint commands, joint states, camera previews, recording services, and the RViz control panel | Linux x86-64, Pixi, RoboStack Lyrical, Python 3.14, Zenoh |
 
 Both workspaces control Studio's simulation, not a physical robot. Install only the environment

@@ -4,6 +4,8 @@
 import type { RuntimeFile } from '@mujoco-studio/mujoco';
 import { SPLAT_BACKDROP_BODY, type TeleoperationBackdropV1 } from '@mujoco-studio/types';
 
+import { cleanupActive } from './splatCleanup';
+
 /**
  * `profile.backdrop` for the worker runtime files: the splat PLY path, the static MJCF body that
  * poses it, its calibration scale and rotation (`q_body = scale * R * p_raw`, `R` as a unit
@@ -22,6 +24,7 @@ export function backdropProfile(
       scale: splat.splatScale && splat.splatScale > 0 ? splat.splatScale : 1,
       rotation: unitQuaternion(splat.splatRotation),
       hash: splat.checksum,
+      ...(cleanupActive(splat.splatCleanup) ? { cleanup: splat.splatCleanup } : {}),
     },
   };
 }
